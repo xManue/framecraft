@@ -1,4 +1,4 @@
-import { Box, ChevronDown, Code2, Highlighter, Info, LayoutGrid, Lock, MousePointerClick, Move, Palette, Ruler, Save, SlidersHorizontal, Trash2, Type as TypeIcon, X } from "lucide-react";
+import { Box, ChevronDown, ChevronsUpDown, Code2, Highlighter, Info, LayoutGrid, Lock, MousePointerClick, Move, Palette, Ruler, Save, SlidersHorizontal, Tags, Trash2, Type as TypeIcon, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { EditorNode } from "../core/types";
 import { useEditorStore } from "../state/editorStore";
@@ -8,8 +8,10 @@ function rounded(value: number) {
   return Math.round(value * 10) / 10;
 }
 
-function InspectorSection({ title, icon, children, initiallyOpen = false }: { title: string; icon: ReactNode; children: ReactNode; initiallyOpen?: boolean }) {
+function InspectorSection({ title, icon, children, initiallyOpen = false, expandSignal }: { title: string; icon: ReactNode; children: ReactNode; initiallyOpen?: boolean; expandSignal?: number }) {
   const [open, setOpen] = useState(initiallyOpen);
+  // A double click in the canvas asks for the complete sheet, so every section opens at once.
+  useEffect(() => { if (expandSignal) setOpen(true); }, [expandSignal]);
   return <section className={`inspector-section ${open ? "open" : ""}`}>
     <button className="inspector-section-title" type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
       {icon}<span>{title}</span><ChevronDown size={13} />
@@ -90,6 +92,33 @@ function ColorStyleField({ label, property, value, disabled }: { label: string; 
   </span></label>;
 }
 
+const internalProps = new Set(["data-fc-highlight-target", "data-fc-highlight-color", "data-fc-highlight-width", "data-fc-highlight-id"]);
+
+function AttributeField({ name, value }: { name: string; value: string | number }) {
+  const update = useEditorStore((state) => state.updateAttribute);
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => { setDraft(String(value)); }, [value]);
+  return <label className="property-field"><span title={name}>{name}</span><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
+    if (event.key === "Enter") event.currentTarget.blur();
+    if (event.key === "Escape") { setDraft(String(value)); event.currentTarget.blur(); }
+  }} onBlur={() => {
+    if (draft !== String(value)) void update(name, draft);
+  }} /></label>;
+}
+
+function AttributesSection({ node, expandSignal }: { node: EditorNode; expandSignal?: number }) {
+  const editable = Object.entries(node.props).filter(([name]) => !internalProps.has(name));
+  const flags = editable.filter(([, value]) => typeof value === "boolean").map(([name]) => name);
+  const fields = editable.filter((pair): pair is [string, string | number] => typeof pair[1] !== "boolean");
+  const empty = !fields.length && !flags.length && !node.dynamicProps.length;
+  return <InspectorSection title="Attributi" icon={<Tags size={12} />} expandSignal={expandSignal}>
+    {empty && <p className="inspector-note">Questo elemento non ha attributi.</p>}
+    {fields.map(([name, value]) => <AttributeField key={name} name={name} value={value} />)}
+    {flags.map((name) => <div className="property-field read-only-property" key={name}><span title={name}>{name}</span><em>attivo</em></div>)}
+    {node.dynamicProps.map((name) => <div className="property-field read-only-property" key={name}><span title={name}>{name}</span><em>dinamico · solo in Code</em></div>)}
+  </InspectorSection>;
+}
+
 function HighlightInteractionEditor({ node }: { node: EditorNode }) {
   const beginSelection = useEditorStore((state) => state.beginHighlightSelection);
   const cancelSelection = useEditorStore((state) => state.cancelHighlightSelection);
@@ -127,6 +156,8 @@ export function Inspector() {
   const updateText = useEditorStore((state) => state.updateText);
   const remove = useEditorStore((state) => state.deleteSelection);
   const setMode = useEditorStore((state) => state.setViewMode);
+  const expandSignal = useEditorStore((state) => state.propertiesExpandedAt);
+  const expandProperties = useEditorStore((state) => state.expandProperties);
   const node = selectedId ? document?.nodes[selectedId] : undefined;
   const inspectorRef = useRef<HTMLElement>(null);
   const [text, setText] = useState(node?.text ?? "");
@@ -137,13 +168,14 @@ export function Inspector() {
   const locked = !node.capabilities.style;
   const style = (property: string) => node.styles[property] ?? selectionStyles[property];
   return <aside ref={inspectorRef} className="inspector has-selection">
-    <div className="panel-title"><span>PROPRIETÀ</span><button onClick={() => setMode("code")} title="Apri il codice" aria-label="Apri il codice dell'elemento"><Code2 size={13} /></button></div>
+    <div className="panel-title"><span>PROPRIETÀ</span><button onClick={expandProperties} title="Mostra tutte le proprietà (doppio click sull'elemento)" aria-label="Mostra tutte le proprietà"><ChevronsUpDown size={13} /></button><button onClick={() => setMode("code")} title="Apri il codice" aria-label="Apri il codice dell'elemento"><Code2 size={13} /></button></div>
     <div className="selection-summary"><span className="node-icon">&lt;/&gt;</span><span><strong>{node.type}</strong><small>{selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : `Riga ${node.source.line}:${node.source.column}`} · selezionato</small></span></div>
     {node.dynamic && <div className="code-component"><Lock size={13} /><span>Il contenuto è dinamico; geometria e stile restano modificabili.</span></div>}
-    {node.capabilities.text && <InspectorSection title="Contenuto" icon={<TypeIcon size={12} />} initiallyOpen><label className="property-stack"><span>Testo</span><textarea value={text} aria-label="Testo dell'elemento" onChange={(event) => setText(event.target.value)} onBlur={() => text !== node.text && void updateText(text)} /></label></InspectorSection>}
+    {node.capabilities.text && <InspectorSection title="Contenuto" icon={<TypeIcon size={12} />} initiallyOpen expandSignal={expandSignal}><label className="property-stack"><span>Testo</span><textarea value={text} aria-label="Testo dell'elemento" onChange={(event) => setText(event.target.value)} onBlur={() => text !== node.text && void updateText(text)} /></label></InspectorSection>}
     {(node.type === "button" || typeof node.props["data-fc-highlight-target"] === "string") && <HighlightInteractionEditor node={node} />}
+    <AttributesSection node={node} expandSignal={expandSignal} />
 
-    <InspectorSection title="Posizione" icon={<Move size={12} />} initiallyOpen>
+    <InspectorSection title="Posizione" icon={<Move size={12} />} initiallyOpen expandSignal={expandSignal}>
       <div className="property-pair coordinate-pair"><CoordinateField label="X" axis="x" value={selectionRect?.x} translate={style("translate")} disabled={locked} /><CoordinateField label="Y" axis="y" value={selectionRect?.y} translate={style("translate")} disabled={locked} /></div>
       <StyleSelect label="Posizione" property="position" value={style("position")} options={["static", "relative", "absolute", "fixed", "sticky"]} disabled={locked} />
       <div className="property-pair"><StyleField label="Left" property="left" value={style("left")} disabled={locked} /><StyleField label="Top" property="top" value={style("top")} disabled={locked} /></div>
@@ -153,14 +185,14 @@ export function Inspector() {
       <div className="property-pair"><StyleField label="Rotazione" property="rotate" value={style("rotate")} disabled={locked} /><StyleField label="Scala" property="scale" value={style("scale")} disabled={locked} /></div>
     </InspectorSection>
 
-    <InspectorSection title="Dimensioni" icon={<Ruler size={12} />} initiallyOpen>
+    <InspectorSection title="Dimensioni" icon={<Ruler size={12} />} initiallyOpen expandSignal={expandSignal}>
       <div className="property-pair"><NumberStyleField label="W" property="width" value={style("width")} fallback={selectionRect?.width} disabled={locked} /><NumberStyleField label="H" property="height" value={style("height")} fallback={selectionRect?.height} disabled={locked} /></div>
       <div className="property-pair"><StyleField label="Min W" property="minWidth" value={style("minWidth")} disabled={locked} /><StyleField label="Min H" property="minHeight" value={style("minHeight")} disabled={locked} /></div>
       <div className="property-pair"><StyleField label="Max W" property="maxWidth" value={style("maxWidth")} disabled={locked} /><StyleField label="Max H" property="maxHeight" value={style("maxHeight")} disabled={locked} /></div>
       <StyleField label="Proporzioni" property="aspectRatio" value={style("aspectRatio")} disabled={locked} placeholder="auto / 16 / 9" />
     </InspectorSection>
 
-    <InspectorSection title="Aspetto" icon={<Palette size={12} />} initiallyOpen>
+    <InspectorSection title="Aspetto" icon={<Palette size={12} />} initiallyOpen expandSignal={expandSignal}>
       <ColorStyleField label="Sfondo" property="backgroundColor" value={style("backgroundColor")} disabled={locked} />
       <ColorStyleField label="Testo" property="color" value={style("color")} disabled={locked} />
       <StyleField label="Immagine bg" property="backgroundImage" value={style("backgroundImage")} disabled={locked} />
@@ -171,7 +203,7 @@ export function Inspector() {
       <NumberStyleField label="Opacità" property="opacity" value={style("opacity")} unit="" disabled={locked} />
     </InspectorSection>
 
-    <InspectorSection title="Layout" icon={<LayoutGrid size={12} />}>
+    <InspectorSection title="Layout" icon={<LayoutGrid size={12} />} expandSignal={expandSignal}>
       <StyleSelect label="Display" property="display" value={style("display")} options={["block", "inline", "inline-block", "flex", "grid", "none"]} disabled={locked} />
       <StyleSelect label="Direzione" property="flexDirection" value={style("flexDirection")} options={["row", "column", "row-reverse", "column-reverse"]} disabled={locked} />
       <StyleSelect label="A capo" property="flexWrap" value={style("flexWrap")} options={["nowrap", "wrap", "wrap-reverse"]} disabled={locked} />
@@ -183,7 +215,7 @@ export function Inspector() {
       <StyleField label="Padding" property="padding" value={style("padding")} disabled={locked} />
     </InspectorSection>
 
-    <InspectorSection title="Testo e font" icon={<TypeIcon size={12} />}>
+    <InspectorSection title="Testo e font" icon={<TypeIcon size={12} />} expandSignal={expandSignal}>
       <StyleField label="Font" property="fontFamily" value={style("fontFamily")} disabled={locked} />
       <NumberStyleField label="Dimensione" property="fontSize" value={style("fontSize")} disabled={locked} />
       <StyleSelect label="Peso" property="fontWeight" value={style("fontWeight")} options={["300", "400", "500", "600", "700", "800", "900"]} disabled={locked} />
@@ -195,7 +227,7 @@ export function Inspector() {
       <StyleSelect label="A capo" property="whiteSpace" value={style("whiteSpace")} options={["normal", "nowrap", "pre", "pre-wrap", "break-spaces"]} disabled={locked} />
     </InspectorSection>
 
-    <InspectorSection title="Avanzate" icon={<SlidersHorizontal size={12} />}>
+    <InspectorSection title="Avanzate" icon={<SlidersHorizontal size={12} />} expandSignal={expandSignal}>
       <StyleSelect label="Visibilità" property="visibility" value={style("visibility")} options={["visible", "hidden", "collapse"]} disabled={locked} />
       <StyleSelect label="Click" property="pointerEvents" value={style("pointerEvents")} options={["auto", "none"]} disabled={locked} />
       <StyleField label="Cursore" property="cursor" value={style("cursor")} disabled={locked} />

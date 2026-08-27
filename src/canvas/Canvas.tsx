@@ -38,6 +38,7 @@ export function Canvas() {
   const setInteractionMode = useEditorStore((state) => state.setInteractionMode);
   const setConsoleOpen = useEditorStore((state) => state.setConsoleOpen);
   const selectSource = useEditorStore((state) => state.selectSource);
+  const inspectSource = useEditorStore((state) => state.inspectSource);
   const setSelectionRect = useEditorStore((state) => state.setSelectionRect);
   const setSelectionStyles = useEditorStore((state) => state.setSelectionStyles);
   const updateText = useEditorStore((state) => state.updateText);
@@ -219,6 +220,8 @@ export function Canvas() {
           height: `${Math.round(geometry.cssHeight * 10) / 10}px`,
         };
         void selectSource(event.data.source).then(() => setSelectionStyles(styles));
+      } else if (event.data.type === "framecraft:inspect") {
+        void inspectSource(event.data.source);
       } else if (event.data.type === "framecraft:edit-text") {
         const { source, value } = event.data;
         void selectSource(source).then(() => updateText(value));
@@ -261,7 +264,7 @@ export function Canvas() {
     };
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
-  }, [deleteSelection, insert, selectSource, setSelectionRect, setSelectionStyles, syncPreviewPath, syncStatePage, updateStyles, updateText, interactionMode, requestedStatePage, viewport]);
+  }, [deleteSelection, insert, inspectSource, selectSource, setSelectionRect, setSelectionStyles, syncPreviewPath, syncStatePage, updateStyles, updateText, interactionMode, requestedStatePage, viewport]);
 
   return <section className="canvas-area" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
     event.preventDefault();

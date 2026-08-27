@@ -112,6 +112,41 @@ export function removeHighlightTrigger(source: string, start: number, end: numbe
   return magic.toString();
 }
 
+/** Mirrors what parseSource treats as a static value, so the Inspector never offers a field it
+ * cannot then write back. */
+function holdsStaticValue(attribute: JSXAttribute): boolean {
+  if (!attribute.value) return true;
+  if (attribute.value.type === "StringLiteral") return true;
+  if (attribute.value.type !== "JSXExpressionContainer") return false;
+  const expression = attribute.value.expression;
+  return expression.type === "StringLiteral" || expression.type === "NumericLiteral" || expression.type === "BooleanLiteral";
+}
+
+/** A JSX string literal cannot contain a double quote and decodes HTML entities, so a value with
+ * either is written as an expression container, which round-trips exactly. */
+function attributeLiteral(value: string): string {
+  return /^[^"&<>\r\n]*$/.test(value) ? `"${value}"` : `{${JSON.stringify(value)}}`;
+}
+
+/** Only attributes that already hold a literal — or are absent altogether — are rewritten. An
+ * expression-backed attribute keeps whatever logic the author wrote and stays code-only. */
+export function updateStaticAttributes(source: string, start: number, end: number, values: Record<string, string>): string {
+  const element = elementAt(source, start, end);
+  const patch: Record<string, string> = {};
+  for (const [name, value] of Object.entries(values)) {
+    if (!/^[A-Za-z_$][\w$-]*(?::[A-Za-z_$][\w$-]*)?$/.test(name)) throw new Error(`Nome attributo non valido: ${name}`);
+    if (name === "style") throw new Error("Lo stile si modifica dalle sezioni Aspetto, Layout e Dimensioni.");
+    const existing = attributeNamed(element, name);
+    if (existing && !holdsStaticValue(existing)) {
+      throw new Error(`L'attributo ${name} ha un valore dinamico: modificalo in modalità Code.`);
+    }
+    patch[name] = attributeLiteral(value);
+  }
+  const magic = new MagicString(source);
+  updateAttributes(magic, element, patch);
+  return magic.toString();
+}
+
 export function updateStaticText(source: string, start: number, end: number, value: string): string {
   const element = elementAt(source, start, end);
   const meaningful = element.children.filter((child) => child.type !== "JSXText" || child.value.trim());

@@ -34,25 +34,33 @@ function readStyles(object: ObjectExpression): Record<string, string | number> {
   return styles;
 }
 
+function attributeLabel(name: JSXAttribute["name"]): string {
+  return name.type === "JSXIdentifier" ? name.name : `${name.namespace.name}:${name.name.name}`;
+}
+
 function details(element: JSXElement) {
   const props: Record<string, string | number | boolean> = {};
+  const dynamicProps: string[] = [];
   let styles: Record<string, string | number> = {};
   let stylesEditable = true;
   for (const attribute of element.openingElement.attributes) {
-    if (attribute.type !== "JSXAttribute" || attribute.name.type !== "JSXIdentifier") continue;
-    const name = attribute.name.name;
+    // A spread carries attributes the editor cannot name, so it is surfaced rather than hidden.
+    if (attribute.type === "JSXSpreadAttribute") { dynamicProps.push("...spread"); continue; }
+    if (attribute.type !== "JSXAttribute") continue;
+    const name = attributeLabel(attribute.name);
     if (name === "style" && attribute.value?.type === "JSXExpressionContainer" && attribute.value.expression.type === "ObjectExpression") {
       styles = readStyles(attribute.value.expression);
       continue;
     }
     if (name === "style") continue;
-    const value = staticAttribute(attribute);
+    const value = attribute.name.type === "JSXIdentifier" ? staticAttribute(attribute) : undefined;
     if (value !== undefined) props[name] = value;
+    else dynamicProps.push(name);
   }
   const meaningful = element.children.filter((child) => child.type !== "JSXText" || child.value.trim());
   const textNode = meaningful.length === 1 && meaningful[0]?.type === "JSXText" ? meaningful[0] : undefined;
   const dynamic = element.children.some((child) => child.type === "JSXExpressionContainer" || child.type === "JSXSpreadChild");
-  return { props, styles, stylesEditable, text: textNode?.value.trim(), textEditable: Boolean(textNode), dynamic };
+  return { props, dynamicProps, styles, stylesEditable, text: textNode?.value.trim(), textEditable: Boolean(textNode), dynamic };
 }
 
 export function parseSource(file: string, source: string, version = 1): EditorDocument {
@@ -84,6 +92,7 @@ export function parseSource(file: string, source: string, version = 1): EditorDo
           parentId,
           children: [],
           props: data.props,
+          dynamicProps: data.dynamicProps,
           styles: data.styles,
           text: data.text,
           dynamic: data.dynamic,

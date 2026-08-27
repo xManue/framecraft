@@ -45,6 +45,8 @@ export interface EditorNode {
   parentId?: string;
   children: string[];
   props: Record<string, string | number | boolean>;
+  /** Attribute names whose value is an expression, so they are listed but not editable visually. */
+  dynamicProps: string[];
   styles: Record<string, string | number>;
   text?: string;
   dynamic: boolean;
@@ -124,6 +126,7 @@ export interface ComponentPlacement {
 
 export type PreviewMessage =
   | { type: "framecraft:select"; source: SourceRef; instanceId: string; rect: SelectionRect; geometry: ElementGeometry; styles: Record<string, string> }
+  | { type: "framecraft:inspect"; source: SourceRef }
   | { type: "framecraft:edit-text"; source: SourceRef; value: string }
   | { type: "framecraft:drop"; source: SourceRef; jsx: string; x: number; y: number; positionContainer: boolean }
   | { type: "framecraft:drag-move"; source: SourceRef; instanceId: string; rect: SelectionRect }

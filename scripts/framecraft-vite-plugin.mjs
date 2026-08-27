@@ -190,7 +190,11 @@ const bridgeScript = String.raw`
   document.addEventListener("dblclick", (event) => {
     if (mode !== "edit") return;
     const element = event.target.closest?.("[" + attribute + "]");
-    if (!element || element.children.length || !element.textContent.trim()) return;
+    const source = readSource(element);
+    if (!source) return;
+    // Any element opens its full property sheet; only a plain text element also becomes editable.
+    window.parent.postMessage({ type: "framecraft:inspect", source }, "*");
+    if (element.children.length || !element.textContent.trim()) return;
     event.preventDefault();
     event.stopPropagation();
     inlineTarget = { element, original: element.textContent };

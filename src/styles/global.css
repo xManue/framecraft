@@ -237,6 +237,10 @@ code, kbd { font-family: "JetBrains Mono", Consolas, monospace; }
 .preview-empty button { margin-top: 7px; height: 31px; padding: 0 11px; border: 1px solid #d7a4a7; border-radius: 5px; background: white; color: #8c3036; display: flex; align-items: center; gap: 6px; }
 .preview-error-actions { display: flex; gap: 7px; }
 .preview-error-overlay { position: absolute; inset: 0; z-index: 90; background: rgba(255,255,255,.95); }
+.read-only-property { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.read-only-property em { flex: 0 0 auto; padding: 2px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--muted); font: 9px Consolas, monospace; font-style: normal; }
+.inspector-note { margin: 0; padding: 2px 0 4px; color: var(--muted); font-size: 11px; }
+.property-field > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spin { animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .code-pane { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; background: #0e1014; border-left: 1px solid var(--border); }

@@ -119,6 +119,18 @@ describe("project lifecycle", () => {
     expect(useEditorStore.getState().previewUrl).toBe("http://127.0.0.1:61999");
   });
 
+  it("opens the full property sheet when the canvas asks to inspect an element", async () => {
+    const { parseSource } = await import("../src/source-parser/parseSource");
+    const document = parseSource("App.jsx", "export default function App() { return <main><button>Vai</button></main>; }");
+    const button = Object.values(document.nodes).find((node) => node.type === "button")!;
+    useEditorStore.setState({ document, selectedId: undefined, propertiesExpandedAt: undefined });
+
+    await useEditorStore.getState().inspectSource(button.source);
+
+    expect(useEditorStore.getState().selectedId).toBe(button.id);
+    expect(useEditorStore.getState().propertiesExpandedAt).toBeTypeOf("number");
+  });
+
   it("reports the files the working copy had to skip", async () => {
     bridge.createWorkingCopy.mockResolvedValue({
       root, workspaceRoot: "C:\\work", created: true, originalRoot: root,

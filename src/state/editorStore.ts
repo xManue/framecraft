@@ -19,6 +19,8 @@ interface EditorState {
   selectedId?: string;
   selectionRect?: SelectionRect;
   selectionStyles: Record<string, string>;
+  /** Bumped to force every Inspector section open; a double click in the canvas sets it. */
+  propertiesExpandedAt?: number;
   previewUrl?: string;
   previewPath: string;
   previewStatus: PreviewStatus;
@@ -69,6 +71,9 @@ interface EditorState {
   cancelHighlightSelection: () => void;
   updateHighlightInteraction: (settings: HighlightSettings) => Promise<void>;
   removeHighlightInteraction: () => Promise<void>;
+  expandProperties: () => void;
+  inspectSource: (source: SourceRef) => Promise<void>;
+  updateAttribute: (name: string, value: string) => Promise<void>;
   updateText: (value: string) => Promise<void>;
   updateStyle: (property: string, value: string | number) => Promise<void>;
   updateStyles: (values: Record<string, string | number>) => Promise<void>;
@@ -422,6 +427,19 @@ export const useEditorStore = create<EditorState>((set, get) => {
         const { removeHighlightTrigger } = await import("../source-parser/transformSource");
         await applySource(removeHighlightTrigger(document.source, node.source.start, node.source.end));
         set((state) => ({ consoleEntries: [...state.consoleEntries, entry("success", "Interazione rimossa. L'elemento evidenziato non è stato modificato.")] }));
+      } catch (error) { reportError(error); }
+    },
+    expandProperties: () => set({ propertiesExpandedAt: Date.now() }),
+    async inspectSource(source) {
+      await get().selectSource(source);
+      if (get().selectedId) set({ propertiesExpandedAt: Date.now() });
+    },
+    async updateAttribute(name, value) {
+      const { document, selectedId } = get(); if (!document || !selectedId) return;
+      try {
+        const node = document.nodes[selectedId];
+        const { updateStaticAttributes } = await import("../source-parser/transformSource");
+        await applySource(updateStaticAttributes(document.source, node.source.start, node.source.end, { [name]: value }));
       } catch (error) { reportError(error); }
     },
     async updateText(value) {
