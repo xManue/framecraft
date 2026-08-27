@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Framecraft icon">
+  <rect width="512" height="512" rx="112" fill="#111318"/>
+  <path d="M146 114h-32v92h24v-68h68v-24h-60Zm220 0h32v92h-24v-68h-68v-24h60ZM146 398h-32v-92h24v68h68v24h-60Zm220 0h32v-92h-24v68h-68v24h60Z" fill="#8a7cff"/>
+  <path d="m230 186-72 70 72 70 20-21-50-49 50-49-20-21Zm52 0-20 21 50 49-50 49 20 21 72-70-72-70Z" fill="#f4f2ff"/>
+  <circle cx="126" cy="126" r="14" fill="#55c791"/>
+</svg>

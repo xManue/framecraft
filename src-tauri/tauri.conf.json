@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Framecraft",
+  "version": "0.1.0",
+  "identifier": "com.framecraft.editor",
+  "build": {
+    "beforeDevCommand": "npm run web:dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Framecraft",
+        "width": 1500,
+        "height": 940,
+        "minWidth": 980,
+        "minHeight": 680,
+        "decorations": true,
+        "resizable": true
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": ["../scripts/framecraft-vite-plugin.mjs"]
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+target/
+.framecraft/
+*.log
+*.tsbuildinfo
+.DS_Store
+src-tauri/gen/
