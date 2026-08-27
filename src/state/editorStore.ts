@@ -432,7 +432,12 @@ export const useEditorStore = create<EditorState>((set, get) => {
     expandProperties: () => set({ propertiesExpandedAt: Date.now() }),
     async inspectSource(source) {
       await get().selectSource(source);
-      if (get().selectedId) set({ propertiesExpandedAt: Date.now() });
+      set({ propertiesExpandedAt: Date.now() });
+      // Failing to match the clicked element back to the source is the one way this can quietly do
+      // nothing, so it is reported instead of leaving the user double clicking at a silent panel.
+      if (!get().selectedId) {
+        reportWarning(`L'elemento non corrisponde più al sorgente di ${source.file}: aggiorna l'anteprima e riprova.`);
+      }
     },
     async updateAttribute(name, value) {
       const { document, selectedId } = get(); if (!document || !selectedId) return;
