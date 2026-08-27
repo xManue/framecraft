@@ -34,6 +34,7 @@ describe("recent project opening", () => {
       scripts: { dev: "vite" },
       dependencies: ["react", "vite"],
       hasNodeModules: true,
+    missingDependencies: [],
     });
     bridge.readFile.mockReset().mockResolvedValue("export default function App() { return <main>Panel</main>; }");
     bridge.startPreview.mockReset();

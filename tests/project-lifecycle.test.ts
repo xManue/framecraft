@@ -31,6 +31,7 @@ function analysis() {
     scripts: { dev: "vite" },
     dependencies: ["react", "vite"],
     hasNodeModules: true,
+    missingDependencies: [],
   };
 }
 

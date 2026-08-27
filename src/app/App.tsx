@@ -59,6 +59,9 @@ function EditorApp() {
 
   useEffect(() => {
     if (!desktopAvailable) return;
+    // Subscribing is asynchronous, so a cleanup that runs before it resolves (StrictMode does exactly
+    // that) would leave the first listeners attached and every host event would be handled twice.
+    let active = true;
     let disposes: (() => void)[] = [];
     void import("@tauri-apps/api/event").then(({ listen }) => Promise.all([
       listen<string>("project-file-changed", (event) => {
@@ -67,8 +70,11 @@ function EditorApp() {
       listen<{ stream: string; line: string }>("preview-output", (event) => {
         useEditorStore.getState().addPreviewOutput(event.payload.stream, event.payload.line);
       }),
-    ])).then((listeners) => { disposes = listeners; });
-    return () => disposes.forEach((dispose) => dispose());
+    ])).then((listeners) => {
+      if (!active) { listeners.forEach((dispose) => dispose()); return; }
+      disposes = listeners;
+    });
+    return () => { active = false; disposes.forEach((dispose) => dispose()); };
   }, []);
 
   useEffect(() => {

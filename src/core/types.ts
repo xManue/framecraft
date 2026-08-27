@@ -80,6 +80,8 @@ export interface ProjectAnalysis {
   scripts: Record<string, string>;
   dependencies: string[];
   hasNodeModules: boolean;
+  /** Declared dependencies whose package manifest cannot be resolved in node_modules. */
+  missingDependencies: string[];
 }
 
 export interface WorkingCopyResult {
