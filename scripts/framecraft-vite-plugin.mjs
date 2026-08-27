@@ -274,6 +274,8 @@ const bridgeScript = String.raw`
   window.addEventListener("load", sendSize);
   let lastStatePage;
   const watchStatePage = () => {
+    // The poll outlives the page in tests and during navigation, so it checks it still has a window.
+    if (typeof window === "undefined") return;
     if (typeof window.__framecraftRequestedPage === "string" && typeof window.__framecraftSetPage === "function") {
       const requested = window.__framecraftRequestedPage;
       window.__framecraftRequestedPage = undefined;
@@ -288,7 +290,8 @@ const bridgeScript = String.raw`
   sendReady();
   sendSize();
   watchStatePage();
-  setInterval(watchStatePage, 100);
+  const statePageTimer = setInterval(watchStatePage, 100);
+  window.addEventListener("pagehide", () => clearInterval(statePageTimer));
 })();`;
 
 export default function framecraftSourcePlugin() {

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { EditorNode } from "../core/types";
 import { insideProject } from "../core/paths";
 import { plcTagsInSource } from "../core/plcVariables";
-import { useEditorStore } from "../state/editorStore";
+import { useEditorStore, type SelectionProblem } from "../state/editorStore";
 import { translatedCoordinate } from "./coordinates";
 
 function rounded(value: number) {
@@ -180,13 +180,20 @@ const readOnlyGroups: { title: string; icon: ReactNode; properties: string[] }[]
 
 /** An element rendered from outside the open project still has properties worth showing: they come
  * from the running preview rather than from the source, so they are presented read-only. */
-function ExternalElementSheet({ file, tag, expandSignal }: { file: string; tag?: string; expandSignal?: number }) {
+function explain(reason: SelectionProblem, name: string) {
+  if (reason === "outside") return `${name} sta fuori dal progetto aperto e dalle cartelle sorgente che dichiara.`;
+  if (reason === "unreadable") return `Non è stato possibile leggere ${name}.`;
+  if (reason === "unparsed") return `${name} contiene un errore di sintassi, quindi non è analizzabile.`;
+  return `Questo elemento non corrisponde più al sorgente di ${name}: aggiorna l’anteprima e riprova.`;
+}
+
+function ExternalElementSheet({ file, tag, reason, detail, expandSignal }: { file: string; tag?: string; reason: SelectionProblem; detail?: string; expandSignal?: number }) {
   const selectionRect = useEditorStore((state) => state.selectionRect);
   const selectionStyles = useEditorStore((state) => state.selectionStyles);
   const name = file.split(/[\\/]/).at(-1) ?? file;
   return <>
     <div className="selection-summary"><span className="node-icon">&lt;/&gt;</span><span><strong>{tag ?? "elemento"}</strong><small>{selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : "fuori dal progetto"} · sola lettura</small></span></div>
-    <div className="code-component external-source"><Lock size={13} /><span>Il sorgente di <strong>{name}</strong> non è raggiungibile: le proprietà qui sotto sono quelle calcolate dall’anteprima.<small title={file}>{file}</small></span></div>
+    <div className="code-component external-source"><Lock size={13} /><span>{explain(reason, name)}{detail ? ` (${detail})` : ""} Le proprietà qui sotto sono quelle calcolate dall’anteprima.<small title={file}>{file}</small></span></div>
     <InformationSection tag={tag} file={file} expandSignal={expandSignal} />
     {readOnlyGroups.map(({ title, icon, properties }) => {
       const rows = properties.filter((property) => selectionStyles[property]);
@@ -247,7 +254,7 @@ export function Inspector() {
   if (!node && unresolvedSelection) {
     return <aside ref={inspectorRef} className="inspector has-selection">
       <div className="panel-title"><span>PROPRIETÀ</span><button onClick={expandProperties} title="Mostra tutte le proprietà" aria-label="Mostra tutte le proprietà"><ChevronsUpDown size={13} /></button></div>
-      <ExternalElementSheet file={unresolvedSelection.file} tag={unresolvedSelection.tag} expandSignal={expandSignal} />
+      <ExternalElementSheet file={unresolvedSelection.file} tag={unresolvedSelection.tag} reason={unresolvedSelection.reason} detail={unresolvedSelection.detail} expandSignal={expandSignal} />
     </aside>;
   }
   if (!node) return <aside ref={inspectorRef} className="inspector empty-inspector"><div className="panel-title"><span>PROPRIETÀ</span></div><div><Info size={20} /><strong>Nessun elemento selezionato</strong><p>Clicca un elemento nel canvas: coordinate, dimensioni, colori, font e layout appariranno qui.</p></div></aside>;

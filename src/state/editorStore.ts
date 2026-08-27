@@ -8,6 +8,16 @@ type LeftPanel = "project" | "components" | "pages" | "plc";
 type HighlightSettings = { color: string; width: number };
 type HighlightPicker = HighlightSettings & { trigger: SourceRef; triggerLabel: string };
 type HistorySnapshot = { file: string; source: string };
+/** Why an element on the canvas could not be tied back to its source. Naming the exact step turns a
+ * dead panel into something the user can act on. */
+export type SelectionProblem = "outside" | "unreadable" | "unparsed" | "missing";
+export interface UnresolvedSelection {
+  file: string;
+  tag?: string;
+  source: SourceRef;
+  reason: SelectionProblem;
+  detail?: string;
+}
 
 interface EditorState {
   project?: ProjectAnalysis;
@@ -23,7 +33,7 @@ interface EditorState {
   /** Bumped to force every Inspector section open; a double click in the canvas sets it. */
   propertiesExpandedAt?: number;
   /** Set when the preview selects an element whose source file is not part of the open project. */
-  unresolvedSelection?: { file: string; tag?: string; source: SourceRef };
+  unresolvedSelection?: UnresolvedSelection;
   /** What the preview reports about the selected element: rendered text, PLC tag, id, classes. */
   selectionInfo?: RenderedInfo;
   /** PLC catalog of the open project, used to describe the signal an element is wired to. */
@@ -212,22 +222,29 @@ export const useEditorStore = create<EditorState>((set, get) => {
   }
 
   // A file that cannot be parsed still opens as a code-only document: a syntax error in one page
-  // must never abort opening the whole project.
-  async function documentFor(file: string): Promise<EditorDocument | undefined> {
+  // must never abort opening the whole project. The failing step is reported so the editor can say
+  // what went wrong rather than showing an empty panel.
+  async function readDocument(file: string): Promise<{ document?: EditorDocument; reason?: SelectionProblem; detail?: string }> {
     let source: string;
     try {
       source = await desktopBridge.readFile(file);
     } catch (error) {
-      reportWarning(`Impossibile leggere ${file}: ${error instanceof Error ? error.message : String(error)}`);
-      return undefined;
+      const detail = error instanceof Error ? error.message : String(error);
+      reportWarning(`Impossibile leggere ${file}: ${detail}`);
+      return { reason: "unreadable", detail };
     }
     const { parseSource } = await import("../source-parser/parseSource");
     try {
-      return parseSource(file, source);
+      return { document: parseSource(file, source) };
     } catch (error) {
-      reportWarning(`${file} contiene un errore di sintassi (${error instanceof Error ? error.message : String(error)}). Correggilo in modalità Code.`);
-      return { file, source, nodes: {}, roots: [], version: 1 };
+      const detail = error instanceof Error ? error.message : String(error);
+      reportWarning(`${file} contiene un errore di sintassi (${detail}). Correggilo in modalità Code.`);
+      return { document: { file, source, nodes: {}, roots: [], version: 1 }, reason: "unparsed", detail };
     }
+  }
+
+  async function documentFor(file: string): Promise<EditorDocument | undefined> {
+    return (await readDocument(file)).document;
   }
 
   return {
@@ -276,13 +293,14 @@ export const useEditorStore = create<EditorState>((set, get) => {
         const target = firstPage?.file ?? project.entryFiles.find((file) => /App\.(tsx|jsx)$/.test(file)) ?? project.entryFiles[0];
         if (!target) throw new Error("Nessun file React modificabile trovato in src/.");
         const document = await documentFor(target);
-        const plcVariables = await readPlcCatalog(project.root);
         const recentProjects = [workingCopy.root, ...get().recentProjects.filter((item) => item !== root && item !== workingCopy.root && item !== workingCopy.originalRoot)].slice(0, 8);
         persistRecentProjects(recentProjects);
-        set({ project, document, plcVariables, pages: pageData.pages, routerFile: pageData.routerFile, routerEditable: pageData.routerEditable,
+        set({ project, document, plcVariables: [], pages: pageData.pages, routerFile: pageData.routerFile, routerEditable: pageData.routerEditable,
           activePageId: firstPage?.id, requestedStatePage: firstPage?.stateValue,
           previewUrl: undefined, previewPath: firstPage?.route ?? "/", recentProjects, history: [], future: [], dirty: false, externalRoots: [], selectedId: undefined, selectionRect: undefined, selectionStyles: {}, selectionInfo: undefined, unresolvedSelection: undefined,
           highlightPicker: undefined, standalonePreviewOpen: false, previewStatus: "starting", leftPanel: pageData.pages.length ? "pages" : "project", leftPanelCollapsed: false });
+        // The PLC catalog only enriches the Inspector, so it must never delay starting the preview.
+        void readPlcCatalog(project.root).then((plcVariables) => set({ plcVariables }));
         try {
           const preview = await desktopBridge.startPreview(workingCopy.root);
           set((state) => ({ previewUrl: preview.url, previewStatus: "starting", externalRoots: preview.sourceRoots ?? [], consoleEntries: [...state.consoleEntries,
@@ -419,16 +437,23 @@ export const useEditorStore = create<EditorState>((set, get) => {
       // A project can legitimately render components from outside its own folder — a shared template
       // catalog reached through a Vite alias, for instance. Those files are not part of the working
       // copy, so they cannot be edited, but the element must still report what it is.
+      const unresolved = (reason: SelectionProblem, detail?: string) =>
+        set({ selectedId: undefined, unresolvedSelection: { file: source.file, tag, source, reason, detail } });
       const editable = insideProject(get().project?.root, source.file)
         || get().externalRoots.some((root) => insideProject(root, source.file));
-      if (!editable) {
-        set({ selectedId: undefined, unresolvedSelection: { file: source.file, tag, source } });
-        return;
-      }
+      if (!editable) { unresolved("outside"); return; }
+
       let document = get().document;
-      if (!document || document.file !== source.file) { await get().openFile(source.file); document = get().document; }
-      const node = document && Object.values(document.nodes).find((item) => item.source.start === source.start && item.source.end === source.end);
-      set({ selectedId: node?.id, unresolvedSelection: node ? undefined : { file: source.file, tag, source } });
+      if (!document || document.file !== source.file) {
+        const opened = await readDocument(source.file);
+        if (!opened.document) { unresolved(opened.reason ?? "unreadable", opened.detail); return; }
+        document = opened.document;
+        set({ document, selectionRect: undefined, dirty: false });
+        if (opened.reason) { unresolved(opened.reason, opened.detail); return; }
+      }
+      const node = Object.values(document.nodes).find((item) => item.source.start === source.start && item.source.end === source.end);
+      if (!node) { unresolved("missing"); return; }
+      set({ selectedId: node.id, unresolvedSelection: undefined });
     },
     beginHighlightSelection(settings) {
       const { document, selectedId } = get();

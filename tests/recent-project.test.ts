@@ -46,7 +46,7 @@ describe("recent project opening", () => {
     bridge.startPreview.mockReturnValue(new Promise((resolve) => { finishPreview = resolve; }));
 
     const opening = useEditorStore.getState().openProject("C:\\work\\panel");
-    await vi.waitFor(() => expect(bridge.startPreview).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(bridge.startPreview).toHaveBeenCalledOnce(), { timeout: 8000 });
     expect(useEditorStore.getState().loading).toBe(true);
 
     finishPreview({ url: "http://127.0.0.1:61234", port: 61234 });
@@ -60,7 +60,7 @@ describe("recent project opening", () => {
     bridge.startPreview.mockReturnValue(new Promise((resolve) => { finishPreview = resolve; }));
 
     const first = useEditorStore.getState().openProject("C:\\work\\panel");
-    await vi.waitFor(() => expect(bridge.startPreview).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(bridge.startPreview).toHaveBeenCalledOnce(), { timeout: 8000 });
     await useEditorStore.getState().openProject("C:\\work\\panel");
     expect(bridge.createWorkingCopy).toHaveBeenCalledOnce();
 

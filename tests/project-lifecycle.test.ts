@@ -144,7 +144,7 @@ describe("project lifecycle", () => {
 
     const state = useEditorStore.getState();
     expect(state.selectedId).toBeUndefined();
-    expect(state.unresolvedSelection).toEqual({ file: external.file, tag: "button", source: external });
+    expect(state.unresolvedSelection).toEqual({ file: external.file, tag: "button", source: external, reason: "outside", detail: undefined });
     expect(bridge.readFile).not.toHaveBeenCalledWith(external.file);
   });
 
@@ -154,7 +154,7 @@ describe("project lifecycle", () => {
     const file = `${root}/src/App.jsx`;
     const document = parseSource(file, "export default function App() { return <main><button>Vai</button></main>; }");
     const button = Object.values(document.nodes).find((node) => node.type === "button")!;
-    useEditorStore.setState({ project: { ...analysis(), root } as never, document, unresolvedSelection: { file: "C:/altrove/X.jsx", source: { file: "C:/altrove/X.jsx", start: 0, end: 1, line: 1, column: 1 } } });
+    useEditorStore.setState({ project: { ...analysis(), root } as never, document, unresolvedSelection: { file: "C:/altrove/X.jsx", reason: "outside", source: { file: "C:/altrove/X.jsx", start: 0, end: 1, line: 1, column: 1 } } });
 
     await useEditorStore.getState().inspectSource(button.source, "button");
 

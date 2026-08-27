@@ -926,6 +926,22 @@ mod tests {
     }
 
     #[test]
+    fn a_preview_path_with_forward_slashes_is_recognised_inside_the_project() {
+        let directory = tempfile::tempdir().unwrap();
+        let project = directory.path().join("panel");
+        fs::create_dir_all(project.join("src")).unwrap();
+        fs::write(project.join("src/Overlay.jsx"), "export const Overlay = () => <div />;").unwrap();
+
+        // What analyze_project stores as the boundary.
+        let authorized = fs::canonicalize(&project).unwrap();
+        // What the preview reports: the same file, but with the separators Vite uses.
+        let reported = path_string(&project).replace('\\', "/") + "/src/Overlay.jsx";
+        let target = fs::canonicalize(&reported).unwrap();
+
+        assert!(target.starts_with(&authorized), "target {target:?} non riconosciuto dentro {authorized:?}");
+    }
+
+    #[test]
     fn a_plain_project_is_its_own_workspace() {
         let directory = tempfile::tempdir().unwrap();
         let project = directory.path().join("panel");
