@@ -21,6 +21,9 @@ struct RuntimeState {
     watcher: Mutex<Option<RecommendedWatcher>>,
     project_root: Mutex<Option<PathBuf>>,
     authorized_root: Mutex<Option<PathBuf>>,
+    /// Directories outside the project the user explicitly chose to edit, such as a shared
+    /// template catalog the project reaches through a Vite alias.
+    external_roots: Mutex<Vec<PathBuf>>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -380,8 +383,23 @@ fn authorized_path(path: &str, state: &RuntimeState) -> Result<PathBuf, String> 
     };
     let guard = state.authorized_root.lock().map_err(|_| "Authorized root lock poisoned")?;
     let root = guard.as_ref().ok_or("Nessun progetto aperto")?;
-    if !target.starts_with(root) { return Err("Accesso negato: il file non appartiene al progetto aperto.".into()); }
-    Ok(target)
+    if target.starts_with(root) { return Ok(target); }
+    drop(guard);
+    let external = state.external_roots.lock().map_err(|_| "External roots lock poisoned")?;
+    if external.iter().any(|allowed| target.starts_with(allowed)) { return Ok(target); }
+    Err("Accesso negato: il file non appartiene al progetto aperto.".into())
+}
+
+/// Grants edit access to one directory outside the project. Called only after the user asks for it
+/// on a specific file, so the working copy stays the default and widening it stays deliberate.
+#[tauri::command]
+fn allow_external_path(path: String, state: State<RuntimeState>) -> Result<String, String> {
+    let target = fs::canonicalize(&path).map_err(|error| format!("{path}: {error}"))?;
+    if !target.is_file() { return Err("Il percorso indicato non è un file.".into()); }
+    let directory = target.parent().ok_or("Percorso file non valido.")?.to_path_buf();
+    let mut roots = state.external_roots.lock().map_err(|_| "External roots lock poisoned")?;
+    if !roots.iter().any(|allowed| directory.starts_with(allowed)) { roots.push(directory.clone()); }
+    Ok(path_string(&directory))
 }
 
 #[tauri::command]
@@ -683,6 +701,7 @@ fn close_project(state: State<RuntimeState>) -> Result<(), String> {
     let _ = state.watcher.lock().map(|mut watcher| watcher.take());
     let _ = state.project_root.lock().map(|mut root| root.take());
     let _ = state.authorized_root.lock().map(|mut root| root.take());
+    let _ = state.external_roots.lock().map(|mut roots| roots.clear());
     Ok(())
 }
 
@@ -717,7 +736,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(RuntimeState::default())
-        .invoke_handler(tauri::generate_handler![create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, start_preview, stop_preview, close_project, create_vite_project])
+        .invoke_handler(tauri::generate_handler![create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, allow_external_path, start_preview, stop_preview, close_project, create_vite_project])
         .build(tauri::generate_context!())
         .expect("error while building Framecraft");
     app.run(|app_handle, event| {

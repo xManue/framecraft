@@ -11,6 +11,7 @@ const bridge = vi.hoisted(() => ({
   startPreview: vi.fn(),
   stopPreview: vi.fn(),
   closeProject: vi.fn(),
+  allowExternalPath: vi.fn(),
 }));
 
 vi.mock("../src/filesystem/desktopBridge", () => ({ desktopAvailable: true, desktopBridge: bridge }));
@@ -46,6 +47,7 @@ describe("project lifecycle", () => {
     bridge.startPreview.mockReset().mockResolvedValue({ url: "http://127.0.0.1:61234", port: 61234 });
     bridge.stopPreview.mockReset().mockResolvedValue(undefined);
     bridge.closeProject.mockReset().mockResolvedValue(undefined);
+    bridge.allowExternalPath.mockReset();
     useEditorStore.setState({
       project: undefined, document: undefined, loading: false, dirty: false, recentProjects: [],
       pages: [], history: [], future: [], previewUrl: undefined, previewStatus: "idle", previewError: undefined, consoleEntries: [],
@@ -144,7 +146,7 @@ describe("project lifecycle", () => {
 
     const state = useEditorStore.getState();
     expect(state.selectedId).toBeUndefined();
-    expect(state.unresolvedSelection).toEqual({ file: external.file, tag: "button" });
+    expect(state.unresolvedSelection).toEqual({ file: external.file, tag: "button", source: external });
     expect(bridge.readFile).not.toHaveBeenCalledWith(external.file);
   });
 
@@ -154,12 +156,37 @@ describe("project lifecycle", () => {
     const file = `${root}/src/App.jsx`;
     const document = parseSource(file, "export default function App() { return <main><button>Vai</button></main>; }");
     const button = Object.values(document.nodes).find((node) => node.type === "button")!;
-    useEditorStore.setState({ project: { ...analysis(), root } as never, document, unresolvedSelection: { file: "C:/altrove/X.jsx" } });
+    useEditorStore.setState({ project: { ...analysis(), root } as never, document, unresolvedSelection: { file: "C:/altrove/X.jsx", source: { file: "C:/altrove/X.jsx", start: 0, end: 1, line: 1, column: 1 } } });
 
     await useEditorStore.getState().inspectSource(button.source, "button");
 
     expect(useEditorStore.getState().selectedId).toBe(button.id);
     expect(useEditorStore.getState().unresolvedSelection).toBeUndefined();
+  });
+
+  it("unlocks a shared file on request and then selects it like any other", async () => {
+    const { parseSource } = await import("../src/source-parser/parseSource");
+    const shared = "C:/shared/templates/operator-shell/src/Shell.jsx";
+    const code = "export default function Shell() { return <main><button>Vai</button></main>; }";
+    const button = Object.values(parseSource(shared, code).nodes).find((node) => node.type === "button")!;
+    bridge.readFile.mockResolvedValue(code);
+    bridge.allowExternalPath.mockResolvedValue("C:/shared/templates/operator-shell/src");
+    useEditorStore.setState({
+      project: { ...analysis(), root } as never,
+      document: undefined, selectedId: undefined, unresolvedSelection: undefined, externalRoots: [],
+    });
+
+    await useEditorStore.getState().inspectSource(button.source, "button");
+    expect(useEditorStore.getState().unresolvedSelection?.file).toBe(shared);
+    expect(useEditorStore.getState().selectedId).toBeUndefined();
+
+    await useEditorStore.getState().allowExternalEditing();
+
+    expect(bridge.allowExternalPath).toHaveBeenCalledWith(shared);
+    expect(useEditorStore.getState().externalRoots).toContain("C:/shared/templates/operator-shell/src");
+    expect(useEditorStore.getState().selectedId).toBe(button.id);
+    expect(useEditorStore.getState().unresolvedSelection).toBeUndefined();
+    expect(useEditorStore.getState().document?.file).toBe(shared);
   });
 
   it("reports the files the working copy had to skip", async () => {

@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseSource } from "../src/source-parser/parseSource";
 import { updateStaticAttributes } from "../src/source-parser/transformSource";
+import { plcTagsInSource } from "../src/core/plcVariables";
 // The preview plugin is shipped as plain ESM so imported projects do not need TypeScript.
 // @ts-expect-error no declaration is required for the runtime plugin.
 import framecraftPlugin from "../scripts/framecraft-vite-plugin.mjs";
@@ -56,6 +57,14 @@ describe("element property sheet", () => {
     const link = nodeOfType(page, "a");
     const quoted = updateStaticAttributes(page, link.source.start, link.source.end, { id: 'a "quoted" value' });
     expect(nodeOfType(quoted, "a").props.id).toBe('a "quoted" value');
+  });
+
+  it("finds the PLC signal an element is wired to, however it is written", () => {
+    expect(plcTagsInSource('<span>{hmi.value("Machine.Speed")}</span>')).toEqual(["Machine.Speed"]);
+    expect(plcTagsInSource('<input onChange={() => plc.write("Commands.Start", 1)} />')).toEqual(["Commands.Start"]);
+    expect(plcTagsInSource('const [v] = usePlcVariable("Line.Counter");')).toEqual(["Line.Counter"]);
+    expect(plcTagsInSource('<div data-plc-variable="Tank.Level" />')).toEqual(["Tank.Level"]);
+    expect(plcTagsInSource("<div>niente</div>")).toEqual([]);
   });
 
   it("asks the editor to open the property sheet on a double click", () => {

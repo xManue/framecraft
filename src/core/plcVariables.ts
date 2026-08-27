@@ -109,3 +109,18 @@ export function renamePlcVariableUsage(source: string, previousName: string, nex
   replace(/(\bdata-plc-(?:variable|tag)\s*=\s*)(["'])([^"']+)\2/g);
   return source;
 }
+
+/** Tag names referenced anywhere in a slice of source: used to tell which PLC signal an element
+ * on the canvas is wired to. Mirrors the patterns detectPlcVariables recognises. */
+export function plcTagsInSource(source: string): string[] {
+  const tags = new Set<string>();
+  const patterns = [
+    /\b(?:hmi|plc)\.(?:value|read|write|setpoint)\(\s*["'`]([^"'`]+)["'`]/g,
+    /\busePlcVariable\(\s*["'`]([^"'`]+)["'`]/g,
+    /\bdata-plc-(?:variable|tag)\s*=\s*\{?\s*["'`]([^"'`]+)["'`]/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) if (match[1]) tags.add(match[1]);
+  }
+  return [...tags];
+}

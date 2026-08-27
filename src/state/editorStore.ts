@@ -1,7 +1,8 @@
 import { create } from "zustand";
-import type { ComponentPlacement, ConsoleEntry, EditorDocument, InteractionMode, PageDefinition, PreviewStatus, ProjectAnalysis, SelectionRect, SourceRef, ViewMode, Viewport } from "../core/types";
+import type { ComponentPlacement, ConsoleEntry, EditorDocument, InteractionMode, PageDefinition, PreviewStatus, ProjectAnalysis, RenderedInfo, SelectionRect, SourceRef, ViewMode, Viewport } from "../core/types";
+import type { PlcVariableDefinition } from "../core/plcVariables";
 import { desktopBridge, desktopAvailable } from "../filesystem/desktopBridge";
-import { joinProjectPath } from "../core/paths";
+import { insideProject, joinProjectPath } from "../core/paths";
 
 type LeftPanel = "project" | "components" | "pages" | "plc";
 type HighlightSettings = { color: string; width: number };
@@ -22,7 +23,13 @@ interface EditorState {
   /** Bumped to force every Inspector section open; a double click in the canvas sets it. */
   propertiesExpandedAt?: number;
   /** Set when the preview selects an element whose source file is not part of the open project. */
-  unresolvedSelection?: { file: string; tag?: string };
+  unresolvedSelection?: { file: string; tag?: string; source: SourceRef };
+  /** What the preview reports about the selected element: rendered text, PLC tag, id, classes. */
+  selectionInfo?: RenderedInfo;
+  /** PLC catalog of the open project, used to describe the signal an element is wired to. */
+  plcVariables: PlcVariableDefinition[];
+  /** Directories outside the project the user unlocked for editing during this session. */
+  externalRoots: string[];
   previewUrl?: string;
   previewPath: string;
   previewStatus: PreviewStatus;
@@ -68,6 +75,8 @@ interface EditorState {
   addPreviewOutput: (stream: string, line: string) => void;
   setSelectionRect: (rect?: SelectionRect) => void;
   setSelectionStyles: (styles: Record<string, string>) => void;
+  setSelectionInfo: (info?: RenderedInfo) => void;
+  allowExternalEditing: () => Promise<void>;
   selectSource: (source: SourceRef, tag?: string) => Promise<void>;
   beginHighlightSelection: (settings: HighlightSettings) => void;
   cancelHighlightSelection: () => void;
@@ -130,6 +139,16 @@ function entry(level: ConsoleEntry["level"], message: string): ConsoleEntry {
   return { id: crypto.randomUUID(), level, message, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
 }
 
+/** The catalog is optional: a project without one simply shows the tag name with no description. */
+async function readPlcCatalog(root: string): Promise<PlcVariableDefinition[]> {
+  try {
+    const { parsePlcCatalog } = await import("../core/plcVariables");
+    return parsePlcCatalog(await desktopBridge.readFile(joinProjectPath(root, "framecraft.plc.json")));
+  } catch {
+    return [];
+  }
+}
+
 async function inspectPages(project: ProjectAnalysis) {
   const sources: Record<string, string> = {};
   await Promise.all(project.entryFiles.map(async (file) => {
@@ -156,13 +175,6 @@ function insertionTarget(document: EditorDocument, selectedId?: string) {
   }
   return Object.values(document.nodes).find((node) => node.capabilities.insert && insertableElements.has(node.type))
     ?? Object.values(document.nodes).find((node) => node.capabilities.insert && /^[a-z]/.test(node.type));
-}
-
-/** Paths come from the host in native form, so the comparison is separator- and case-insensitive. */
-function insideProject(root: string | undefined, file: string) {
-  if (!root) return true;
-  const normalize = (value: string) => value.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();
-  return `${normalize(file)}/`.startsWith(`${normalize(root)}/`);
 }
 
 function highlightSettings(settings: HighlightSettings) {
@@ -220,7 +232,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
   }
 
   return {
-    pages: [], routerEditable: false, activePageId: undefined, requestedStatePage: undefined, previewPath: "/", previewStatus: "idle", interactionMode: "edit", selectionStyles: {},
+    pages: [], routerEditable: false, activePageId: undefined, requestedStatePage: undefined, previewPath: "/", previewStatus: "idle", interactionMode: "edit", selectionStyles: {}, plcVariables: [], externalRoots: [],
     viewMode: "visual", viewport: "desktop", zoom: 0.82, leftPanel: "pages", leftPanelCollapsed: false,
     paletteOpen: false, draggedComponent: undefined, consoleOpen: false, standalonePreviewOpen: false, loading: false, dirty: false, recentProjects: recent, history: [], future: [],
     consoleEntries: [entry("info", desktopAvailable ? "Desktop bridge ready" : "Browser mode: local project actions require the Tauri app")],
@@ -265,11 +277,12 @@ export const useEditorStore = create<EditorState>((set, get) => {
         const target = firstPage?.file ?? project.entryFiles.find((file) => /App\.(tsx|jsx)$/.test(file)) ?? project.entryFiles[0];
         if (!target) throw new Error("Nessun file React modificabile trovato in src/.");
         const document = await documentFor(target);
+        const plcVariables = await readPlcCatalog(project.root);
         const recentProjects = [workingCopy.root, ...get().recentProjects.filter((item) => item !== root && item !== workingCopy.root && item !== workingCopy.originalRoot)].slice(0, 8);
         persistRecentProjects(recentProjects);
-        set({ project, document, pages: pageData.pages, routerFile: pageData.routerFile, routerEditable: pageData.routerEditable,
+        set({ project, document, plcVariables, pages: pageData.pages, routerFile: pageData.routerFile, routerEditable: pageData.routerEditable,
           activePageId: firstPage?.id, requestedStatePage: firstPage?.stateValue,
-          previewUrl: undefined, previewPath: firstPage?.route ?? "/", recentProjects, history: [], future: [], dirty: false, selectedId: undefined, selectionRect: undefined, selectionStyles: {},
+          previewUrl: undefined, previewPath: firstPage?.route ?? "/", recentProjects, history: [], future: [], dirty: false, externalRoots: [], selectedId: undefined, selectionRect: undefined, selectionStyles: {}, selectionInfo: undefined, unresolvedSelection: undefined,
           highlightPicker: undefined, standalonePreviewOpen: false, previewStatus: "starting", leftPanel: pageData.pages.length ? "pages" : "project", leftPanelCollapsed: false });
         try {
           const preview = await desktopBridge.startPreview(workingCopy.root);
@@ -377,6 +390,19 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
     setSelectionRect: (selectionRect) => set({ selectionRect }),
     setSelectionStyles: (selectionStyles) => set({ selectionStyles }),
+    setSelectionInfo: (selectionInfo) => set({ selectionInfo }),
+    async allowExternalEditing() {
+      const pending = get().unresolvedSelection;
+      if (!pending) return;
+      try {
+        const directory = await desktopBridge.allowExternalPath(pending.file);
+        set((state) => ({ externalRoots: state.externalRoots.includes(directory) ? state.externalRoots : [...state.externalRoots, directory] }));
+        set((state) => ({ consoleEntries: [...state.consoleEntries,
+          entry("warning", `Modifica abilitata su ${directory}. Questi file sono gli originali, non la copia di lavoro.`)] }));
+        await get().selectSource(pending.source, pending.tag);
+        set({ propertiesExpandedAt: Date.now() });
+      } catch (error) { reportError(error); }
+    },
     async selectSource(source, tag) {
       const picker = get().highlightPicker;
       if (picker) {
@@ -406,14 +432,16 @@ export const useEditorStore = create<EditorState>((set, get) => {
       // A project can legitimately render components from outside its own folder — a shared template
       // catalog reached through a Vite alias, for instance. Those files are not part of the working
       // copy, so they cannot be edited, but the element must still report what it is.
-      if (!insideProject(get().project?.root, source.file)) {
-        set({ selectedId: undefined, unresolvedSelection: { file: source.file, tag } });
+      const editable = insideProject(get().project?.root, source.file)
+        || get().externalRoots.some((root) => insideProject(root, source.file));
+      if (!editable) {
+        set({ selectedId: undefined, unresolvedSelection: { file: source.file, tag, source } });
         return;
       }
       let document = get().document;
       if (!document || document.file !== source.file) { await get().openFile(source.file); document = get().document; }
       const node = document && Object.values(document.nodes).find((item) => item.source.start === source.start && item.source.end === source.end);
-      set({ selectedId: node?.id, unresolvedSelection: node ? undefined : { file: source.file, tag } });
+      set({ selectedId: node?.id, unresolvedSelection: node ? undefined : { file: source.file, tag, source } });
     },
     beginHighlightSelection(settings) {
       const { document, selectedId } = get();

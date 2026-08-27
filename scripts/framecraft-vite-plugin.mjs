@@ -79,10 +79,18 @@ const bridgeScript = String.raw`
       "aspectRatio", "backgroundColor", "backgroundImage", "color", "border", "outline", "boxShadow", "borderRadius", "opacity", "objectFit",
       "fontSize", "fontWeight", "lineHeight", "textAlign", "fontFamily", "letterSpacing", "textTransform", "textDecoration", "whiteSpace",
     ].map((property) => [property, style[property]]));
+    // Read from the rendered element, so this still describes components whose source is out of reach.
+    const rendered = (element.textContent || "").replace(/\s+/g, " ").trim();
     window.parent.postMessage({
       type: "framecraft:select",
       source,
       tag: element.localName,
+      info: {
+        text: rendered.length > 300 ? rendered.slice(0, 300) + "…" : rendered,
+        plcTag: element.getAttribute("data-plc-variable") || element.getAttribute("data-plc-tag") || undefined,
+        id: element.id || undefined,
+        className: typeof element.className === "string" ? element.className || undefined : undefined,
+      },
       instanceId: currentInstanceId,
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
       geometry: {

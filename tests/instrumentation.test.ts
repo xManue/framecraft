@@ -15,6 +15,13 @@ describe("preview instrumentation", () => {
     expect(result.code).toContain("data-fc-source={");
   });
 
+  it("injects a bridge that is valid JavaScript", () => {
+    // The bridge lives inside a template literal, so a stray backtick or ${ in it silently
+    // terminates the string and ships a broken script to every previewed project.
+    const bridge = framecraftPlugin().transformIndexHtml("<div></div>").tags[0].children;
+    expect(() => new Function(bridge)).not.toThrow();
+  });
+
   it("serves a file Babel cannot parse instead of breaking the previewed app", () => {
     const plugin = framecraftPlugin();
     const warnings: string[] = [];

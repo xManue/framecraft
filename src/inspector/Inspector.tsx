@@ -1,6 +1,8 @@
-import { Box, ChevronDown, ChevronsUpDown, Code2, Highlighter, Info, LayoutGrid, Lock, MousePointerClick, Move, Palette, Ruler, Save, SlidersHorizontal, Tags, Trash2, Type as TypeIcon, X } from "lucide-react";
+import { Box, Cable, ChevronDown, ChevronsUpDown, Code2, Highlighter, Info, LayoutGrid, Lock, MousePointerClick, Move, Palette, PencilLine, Ruler, Save, SlidersHorizontal, Tags, Trash2, Type as TypeIcon, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { EditorNode } from "../core/types";
+import { insideProject } from "../core/paths";
+import { plcTagsInSource } from "../core/plcVariables";
 import { useEditorStore } from "../state/editorStore";
 import { translatedCoordinate } from "./coordinates";
 
@@ -119,6 +121,54 @@ function AttributesSection({ node, expandSignal }: { node: EditorNode; expandSig
   </InspectorSection>;
 }
 
+function InfoRow({ label, value, title }: { label: string; value: ReactNode; title?: string }) {
+  return <div className="property-field read-only-property"><span title={label}>{label}</span><em title={title}>{value}</em></div>;
+}
+
+/** Everything known about the element regardless of where its source lives: what it actually
+ * displays, which PLC signal it is wired to, and where it comes from. */
+function InformationSection({ node, tag, file, expandSignal }: { node?: EditorNode; tag?: string; file: string; expandSignal?: number }) {
+  const info = useEditorStore((state) => state.selectionInfo);
+  const document = useEditorStore((state) => state.document);
+  const catalog = useEditorStore((state) => state.plcVariables);
+  const project = useEditorStore((state) => state.project);
+
+  const tags = new Set<string>();
+  if (info?.plcTag) tags.add(info.plcTag);
+  // A binding written as hmi.value("Machine.Speed") lives in the element's own JSX, not in an attribute.
+  if (node && document) {
+    for (const name of plcTagsInSource(document.source.slice(node.source.start, node.source.end))) tags.add(name);
+  }
+  const displayed = info?.text?.trim();
+  const external = !insideProject(project?.root, file);
+  const name = file.split(/[\\/]/).at(-1) ?? file;
+
+  return <InspectorSection title="Informazioni" icon={<Info size={12} />} initiallyOpen expandSignal={expandSignal}>
+    <InfoRow label="Elemento" value={node?.type ?? tag ?? "—"} />
+    {displayed ? <label className="property-stack read-only-stack"><span>Testo mostrato</span><p title={displayed}>{displayed}</p></label>
+      : <InfoRow label="Testo mostrato" value="nessuno" />}
+    {node && <InfoRow label="Testo nel sorgente" value={node.capabilities.text ? "statico · modificabile" : node.dynamic ? "dinamico · da codice" : "nessuno"} />}
+    {[...tags].map((plcTag) => {
+      const variable = catalog.find((item) => item.name === plcTag);
+      return <div className="plc-binding" key={plcTag}>
+        <span className="plc-binding-title"><Cable size={12} /> Variabile PLC</span>
+        <strong>{plcTag}</strong>
+        <span className="plc-binding-detail">
+          <em>{variable?.dataType || "tipo da definire"}</em>
+          <em>{variable?.access ?? "read"}</em>
+          <em title={variable?.address}>{variable?.address || "indirizzo da definire"}</em>
+        </span>
+        {variable?.description && <small>{variable.description}</small>}
+      </div>;
+    })}
+    {!tags.size && <InfoRow label="Variabile PLC" value="nessuna" />}
+    {info?.id && <InfoRow label="id" value={info.id} title={info.id} />}
+    {info?.className && <InfoRow label="Classi" value={info.className} title={info.className} />}
+    <InfoRow label="Sorgente" value={node ? `${name}:${node.source.line}` : name} title={file} />
+    <InfoRow label="Posizione file" value={external ? "fuori dal progetto" : "nel progetto"} title={file} />
+  </InspectorSection>;
+}
+
 const readOnlyGroups: { title: string; icon: ReactNode; properties: string[] }[] = [
   { title: "Posizione", icon: <Move size={12} />, properties: ["position", "left", "top", "right", "bottom", "zIndex", "translate", "rotate", "scale"] },
   { title: "Dimensioni", icon: <Ruler size={12} />, properties: ["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "aspectRatio"] },
@@ -131,12 +181,16 @@ const readOnlyGroups: { title: string; icon: ReactNode; properties: string[] }[]
 /** An element rendered from outside the open project still has properties worth showing: they come
  * from the running preview rather than from the source, so they are presented read-only. */
 function ExternalElementSheet({ file, tag, expandSignal }: { file: string; tag?: string; expandSignal?: number }) {
+  const allowExternalEditing = useEditorStore((state) => state.allowExternalEditing);
   const selectionRect = useEditorStore((state) => state.selectionRect);
   const selectionStyles = useEditorStore((state) => state.selectionStyles);
   const name = file.split(/[\\/]/).at(-1) ?? file;
   return <>
     <div className="selection-summary"><span className="node-icon">&lt;/&gt;</span><span><strong>{tag ?? "elemento"}</strong><small>{selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : "fuori dal progetto"} · sola lettura</small></span></div>
-    <div className="code-component external-source"><Lock size={13} /><span>Definito in <strong>{name}</strong>, fuori dal progetto aperto. Le proprietà sono quelle calcolate dall’anteprima e non sono modificabili da qui.<small title={file}>{file}</small></span></div>
+    <div className="code-component external-source"><Lock size={13} /><span>Definito in <strong>{name}</strong>, fuori dal progetto aperto: le proprietà qui sotto sono quelle calcolate dall’anteprima.<small title={file}>{file}</small></span></div>
+    <button className="unlock-external" onClick={() => void allowExternalEditing()}><PencilLine size={14} /> Modifica comunque questo file</button>
+    <p className="inspector-note">Le modifiche andranno sul file originale, non sulla copia di lavoro, e valgono per ogni progetto che lo usa.</p>
+    <InformationSection tag={tag} file={file} expandSignal={expandSignal} />
     {readOnlyGroups.map(({ title, icon, properties }) => {
       const rows = properties.filter((property) => selectionStyles[property]);
       if (!rows.length) return null;
@@ -206,6 +260,7 @@ export function Inspector() {
     <div className="panel-title"><span>PROPRIETÀ</span><button onClick={expandProperties} title="Mostra tutte le proprietà (doppio click sull'elemento)" aria-label="Mostra tutte le proprietà"><ChevronsUpDown size={13} /></button><button onClick={() => setMode("code")} title="Apri il codice" aria-label="Apri il codice dell'elemento"><Code2 size={13} /></button></div>
     <div className="selection-summary"><span className="node-icon">&lt;/&gt;</span><span><strong>{node.type}</strong><small>{selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : `Riga ${node.source.line}:${node.source.column}`} · selezionato</small></span></div>
     {node.dynamic && <div className="code-component"><Lock size={13} /><span>Il contenuto è dinamico; geometria e stile restano modificabili.</span></div>}
+    <InformationSection node={node} tag={node.type} file={node.source.file} expandSignal={expandSignal} />
     {node.capabilities.text && <InspectorSection title="Contenuto" icon={<TypeIcon size={12} />} initiallyOpen expandSignal={expandSignal}><label className="property-stack"><span>Testo</span><textarea value={text} aria-label="Testo dell'elemento" onChange={(event) => setText(event.target.value)} onBlur={() => text !== node.text && void updateText(text)} /></label></InspectorSection>}
     {(node.type === "button" || typeof node.props["data-fc-highlight-target"] === "string") && <HighlightInteractionEditor node={node} />}
     <AttributesSection node={node} expandSignal={expandSignal} />
