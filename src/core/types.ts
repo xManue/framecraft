@@ -125,8 +125,8 @@ export interface ComponentPlacement {
 }
 
 export type PreviewMessage =
-  | { type: "framecraft:select"; source: SourceRef; instanceId: string; rect: SelectionRect; geometry: ElementGeometry; styles: Record<string, string> }
-  | { type: "framecraft:inspect"; source: SourceRef }
+  | { type: "framecraft:select"; source: SourceRef; tag?: string; instanceId: string; rect: SelectionRect; geometry: ElementGeometry; styles: Record<string, string> }
+  | { type: "framecraft:inspect"; source: SourceRef; tag?: string }
   | { type: "framecraft:edit-text"; source: SourceRef; value: string }
   | { type: "framecraft:drop"; source: SourceRef; jsx: string; x: number; y: number; positionContainer: boolean }
   | { type: "framecraft:drag-move"; source: SourceRef; instanceId: string; rect: SelectionRect }

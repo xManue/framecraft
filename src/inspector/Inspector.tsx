@@ -119,6 +119,34 @@ function AttributesSection({ node, expandSignal }: { node: EditorNode; expandSig
   </InspectorSection>;
 }
 
+const readOnlyGroups: { title: string; icon: ReactNode; properties: string[] }[] = [
+  { title: "Posizione", icon: <Move size={12} />, properties: ["position", "left", "top", "right", "bottom", "zIndex", "translate", "rotate", "scale"] },
+  { title: "Dimensioni", icon: <Ruler size={12} />, properties: ["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "aspectRatio"] },
+  { title: "Aspetto", icon: <Palette size={12} />, properties: ["backgroundColor", "backgroundImage", "color", "border", "borderRadius", "boxShadow", "outline", "opacity", "objectFit"] },
+  { title: "Layout", icon: <LayoutGrid size={12} />, properties: ["display", "flexDirection", "flexWrap", "alignItems", "justifyContent", "gap", "overflow", "margin", "padding"] },
+  { title: "Testo e font", icon: <TypeIcon size={12} />, properties: ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "textAlign", "textTransform", "textDecoration", "whiteSpace"] },
+  { title: "Avanzate", icon: <SlidersHorizontal size={12} />, properties: ["visibility", "cursor", "pointerEvents"] },
+];
+
+/** An element rendered from outside the open project still has properties worth showing: they come
+ * from the running preview rather than from the source, so they are presented read-only. */
+function ExternalElementSheet({ file, tag, expandSignal }: { file: string; tag?: string; expandSignal?: number }) {
+  const selectionRect = useEditorStore((state) => state.selectionRect);
+  const selectionStyles = useEditorStore((state) => state.selectionStyles);
+  const name = file.split(/[\\/]/).at(-1) ?? file;
+  return <>
+    <div className="selection-summary"><span className="node-icon">&lt;/&gt;</span><span><strong>{tag ?? "elemento"}</strong><small>{selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : "fuori dal progetto"} · sola lettura</small></span></div>
+    <div className="code-component external-source"><Lock size={13} /><span>Definito in <strong>{name}</strong>, fuori dal progetto aperto. Le proprietà sono quelle calcolate dall’anteprima e non sono modificabili da qui.<small title={file}>{file}</small></span></div>
+    {readOnlyGroups.map(({ title, icon, properties }) => {
+      const rows = properties.filter((property) => selectionStyles[property]);
+      if (!rows.length) return null;
+      return <InspectorSection key={title} title={title} icon={icon} expandSignal={expandSignal}>
+        {rows.map((property) => <div className="property-field read-only-property" key={property}><span title={property}>{property}</span><em title={selectionStyles[property]}>{selectionStyles[property]}</em></div>)}
+      </InspectorSection>;
+    })}
+  </>;
+}
+
 function HighlightInteractionEditor({ node }: { node: EditorNode }) {
   const beginSelection = useEditorStore((state) => state.beginHighlightSelection);
   const cancelSelection = useEditorStore((state) => state.cancelHighlightSelection);
@@ -158,12 +186,19 @@ export function Inspector() {
   const setMode = useEditorStore((state) => state.setViewMode);
   const expandSignal = useEditorStore((state) => state.propertiesExpandedAt);
   const expandProperties = useEditorStore((state) => state.expandProperties);
+  const unresolvedSelection = useEditorStore((state) => state.unresolvedSelection);
   const node = selectedId ? document?.nodes[selectedId] : undefined;
   const inspectorRef = useRef<HTMLElement>(null);
   const [text, setText] = useState(node?.text ?? "");
   useEffect(() => { setText(node?.text ?? ""); }, [node?.id, node?.text]);
   useEffect(() => { inspectorRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }, [node?.id]);
 
+  if (!node && unresolvedSelection) {
+    return <aside ref={inspectorRef} className="inspector has-selection">
+      <div className="panel-title"><span>PROPRIETÀ</span><button onClick={expandProperties} title="Mostra tutte le proprietà" aria-label="Mostra tutte le proprietà"><ChevronsUpDown size={13} /></button></div>
+      <ExternalElementSheet file={unresolvedSelection.file} tag={unresolvedSelection.tag} expandSignal={expandSignal} />
+    </aside>;
+  }
   if (!node) return <aside ref={inspectorRef} className="inspector empty-inspector"><div className="panel-title"><span>PROPRIETÀ</span></div><div><Info size={20} /><strong>Nessun elemento selezionato</strong><p>Clicca un elemento nel canvas: coordinate, dimensioni, colori, font e layout appariranno qui.</p></div></aside>;
   const locked = !node.capabilities.style;
   const style = (property: string) => node.styles[property] ?? selectionStyles[property];

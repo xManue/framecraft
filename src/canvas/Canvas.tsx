@@ -219,9 +219,9 @@ export function Canvas() {
           width: `${Math.round(geometry.cssWidth * 10) / 10}px`,
           height: `${Math.round(geometry.cssHeight * 10) / 10}px`,
         };
-        void selectSource(event.data.source).then(() => setSelectionStyles(styles));
+        void selectSource(event.data.source, event.data.tag).then(() => setSelectionStyles(styles));
       } else if (event.data.type === "framecraft:inspect") {
-        void inspectSource(event.data.source);
+        void inspectSource(event.data.source, event.data.tag);
       } else if (event.data.type === "framecraft:edit-text") {
         const { source, value } = event.data;
         void selectSource(source).then(() => updateText(value));

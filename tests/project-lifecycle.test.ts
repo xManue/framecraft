@@ -131,6 +131,37 @@ describe("project lifecycle", () => {
     expect(useEditorStore.getState().propertiesExpandedAt).toBeTypeOf("number");
   });
 
+  it("shows an element rendered from outside the project instead of selecting nothing", async () => {
+    // A shared template catalog reached through a Vite alias renders inside the preview but is not
+    // part of the working copy, so it must be reported rather than silently ignored.
+    useEditorStore.setState({
+      project: { ...analysis(), root } as never,
+      document: undefined, selectedId: undefined, unresolvedSelection: undefined,
+    });
+    const external = { file: "C:/shared/templates/operator-shell/src/Shell.jsx", start: 10, end: 40, line: 2, column: 3 };
+
+    await useEditorStore.getState().inspectSource(external, "button");
+
+    const state = useEditorStore.getState();
+    expect(state.selectedId).toBeUndefined();
+    expect(state.unresolvedSelection).toEqual({ file: external.file, tag: "button" });
+    expect(bridge.readFile).not.toHaveBeenCalledWith(external.file);
+  });
+
+  it("clears the outside-the-project notice once a real source node is selected", async () => {
+    const { parseSource } = await import("../src/source-parser/parseSource");
+    // Vite reports forward slashes while the host reports native ones: both must resolve alike.
+    const file = `${root}/src/App.jsx`;
+    const document = parseSource(file, "export default function App() { return <main><button>Vai</button></main>; }");
+    const button = Object.values(document.nodes).find((node) => node.type === "button")!;
+    useEditorStore.setState({ project: { ...analysis(), root } as never, document, unresolvedSelection: { file: "C:/altrove/X.jsx" } });
+
+    await useEditorStore.getState().inspectSource(button.source, "button");
+
+    expect(useEditorStore.getState().selectedId).toBe(button.id);
+    expect(useEditorStore.getState().unresolvedSelection).toBeUndefined();
+  });
+
   it("reports the files the working copy had to skip", async () => {
     bridge.createWorkingCopy.mockResolvedValue({
       root, workspaceRoot: "C:\\work", created: true, originalRoot: root,

@@ -82,6 +82,7 @@ const bridgeScript = String.raw`
     window.parent.postMessage({
       type: "framecraft:select",
       source,
+      tag: element.localName,
       instanceId: currentInstanceId,
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
       geometry: {
@@ -193,7 +194,7 @@ const bridgeScript = String.raw`
     const source = readSource(element);
     if (!source) return;
     // Any element opens its full property sheet; only a plain text element also becomes editable.
-    window.parent.postMessage({ type: "framecraft:inspect", source }, "*");
+    window.parent.postMessage({ type: "framecraft:inspect", source, tag: element.localName }, "*");
     if (element.children.length || !element.textContent.trim()) return;
     event.preventDefault();
     event.stopPropagation();

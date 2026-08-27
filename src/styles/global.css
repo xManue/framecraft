@@ -240,6 +240,8 @@ code, kbd { font-family: "JetBrains Mono", Consolas, monospace; }
 .read-only-property { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .read-only-property em { flex: 0 0 auto; padding: 2px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--muted); font: 9px Consolas, monospace; font-style: normal; }
 .inspector-note { margin: 0; padding: 2px 0 4px; color: var(--muted); font-size: 11px; }
+.external-source small { display: block; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 9px Consolas, monospace; opacity: .75; }
+.read-only-property em { max-width: 58%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .property-field > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spin { animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

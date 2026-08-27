@@ -21,6 +21,8 @@ interface EditorState {
   selectionStyles: Record<string, string>;
   /** Bumped to force every Inspector section open; a double click in the canvas sets it. */
   propertiesExpandedAt?: number;
+  /** Set when the preview selects an element whose source file is not part of the open project. */
+  unresolvedSelection?: { file: string; tag?: string };
   previewUrl?: string;
   previewPath: string;
   previewStatus: PreviewStatus;
@@ -66,13 +68,13 @@ interface EditorState {
   addPreviewOutput: (stream: string, line: string) => void;
   setSelectionRect: (rect?: SelectionRect) => void;
   setSelectionStyles: (styles: Record<string, string>) => void;
-  selectSource: (source: SourceRef) => Promise<void>;
+  selectSource: (source: SourceRef, tag?: string) => Promise<void>;
   beginHighlightSelection: (settings: HighlightSettings) => void;
   cancelHighlightSelection: () => void;
   updateHighlightInteraction: (settings: HighlightSettings) => Promise<void>;
   removeHighlightInteraction: () => Promise<void>;
   expandProperties: () => void;
-  inspectSource: (source: SourceRef) => Promise<void>;
+  inspectSource: (source: SourceRef, tag?: string) => Promise<void>;
   updateAttribute: (name: string, value: string) => Promise<void>;
   updateText: (value: string) => Promise<void>;
   updateStyle: (property: string, value: string | number) => Promise<void>;
@@ -154,6 +156,13 @@ function insertionTarget(document: EditorDocument, selectedId?: string) {
   }
   return Object.values(document.nodes).find((node) => node.capabilities.insert && insertableElements.has(node.type))
     ?? Object.values(document.nodes).find((node) => node.capabilities.insert && /^[a-z]/.test(node.type));
+}
+
+/** Paths come from the host in native form, so the comparison is separator- and case-insensitive. */
+function insideProject(root: string | undefined, file: string) {
+  if (!root) return true;
+  const normalize = (value: string) => value.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();
+  return `${normalize(file)}/`.startsWith(`${normalize(root)}/`);
 }
 
 function highlightSettings(settings: HighlightSettings) {
@@ -368,7 +377,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
     setSelectionRect: (selectionRect) => set({ selectionRect }),
     setSelectionStyles: (selectionStyles) => set({ selectionStyles }),
-    async selectSource(source) {
+    async selectSource(source, tag) {
       const picker = get().highlightPicker;
       if (picker) {
         try {
@@ -394,10 +403,17 @@ export const useEditorStore = create<EditorState>((set, get) => {
         } catch (error) { set({ highlightPicker: undefined }); reportError(error); }
         return;
       }
+      // A project can legitimately render components from outside its own folder — a shared template
+      // catalog reached through a Vite alias, for instance. Those files are not part of the working
+      // copy, so they cannot be edited, but the element must still report what it is.
+      if (!insideProject(get().project?.root, source.file)) {
+        set({ selectedId: undefined, unresolvedSelection: { file: source.file, tag } });
+        return;
+      }
       let document = get().document;
       if (!document || document.file !== source.file) { await get().openFile(source.file); document = get().document; }
       const node = document && Object.values(document.nodes).find((item) => item.source.start === source.start && item.source.end === source.end);
-      set({ selectedId: node?.id });
+      set({ selectedId: node?.id, unresolvedSelection: node ? undefined : { file: source.file, tag } });
     },
     beginHighlightSelection(settings) {
       const { document, selectedId } = get();
@@ -430,14 +446,9 @@ export const useEditorStore = create<EditorState>((set, get) => {
       } catch (error) { reportError(error); }
     },
     expandProperties: () => set({ propertiesExpandedAt: Date.now() }),
-    async inspectSource(source) {
-      await get().selectSource(source);
+    async inspectSource(source, tag) {
+      await get().selectSource(source, tag);
       set({ propertiesExpandedAt: Date.now() });
-      // Failing to match the clicked element back to the source is the one way this can quietly do
-      // nothing, so it is reported instead of leaving the user double clicking at a silent panel.
-      if (!get().selectedId) {
-        reportWarning(`L'elemento non corrisponde più al sorgente di ${source.file}: aggiorna l'anteprima e riprova.`);
-      }
     },
     async updateAttribute(name, value) {
       const { document, selectedId } = get(); if (!document || !selectedId) return;
