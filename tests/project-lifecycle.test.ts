@@ -11,7 +11,6 @@ const bridge = vi.hoisted(() => ({
   startPreview: vi.fn(),
   stopPreview: vi.fn(),
   closeProject: vi.fn(),
-  allowExternalPath: vi.fn(),
 }));
 
 vi.mock("../src/filesystem/desktopBridge", () => ({ desktopAvailable: true, desktopBridge: bridge }));
@@ -47,7 +46,6 @@ describe("project lifecycle", () => {
     bridge.startPreview.mockReset().mockResolvedValue({ url: "http://127.0.0.1:61234", port: 61234 });
     bridge.stopPreview.mockReset().mockResolvedValue(undefined);
     bridge.closeProject.mockReset().mockResolvedValue(undefined);
-    bridge.allowExternalPath.mockReset();
     useEditorStore.setState({
       project: undefined, document: undefined, loading: false, dirty: false, recentProjects: [],
       pages: [], history: [], future: [], previewUrl: undefined, previewStatus: "idle", previewError: undefined, consoleEntries: [],
@@ -138,7 +136,7 @@ describe("project lifecycle", () => {
     // part of the working copy, so it must be reported rather than silently ignored.
     useEditorStore.setState({
       project: { ...analysis(), root } as never,
-      document: undefined, selectedId: undefined, unresolvedSelection: undefined,
+      document: undefined, selectedId: undefined, unresolvedSelection: undefined, externalRoots: [],
     });
     const external = { file: "C:/shared/templates/operator-shell/src/Shell.jsx", start: 10, end: 40, line: 2, column: 3 };
 
@@ -164,29 +162,36 @@ describe("project lifecycle", () => {
     expect(useEditorStore.getState().unresolvedSelection).toBeUndefined();
   });
 
-  it("unlocks a shared file on request and then selects it like any other", async () => {
+  it("edits a shared file the project declares as source, with no unlock step", async () => {
     const { parseSource } = await import("../src/source-parser/parseSource");
     const shared = "C:/shared/templates/operator-shell/src/Shell.jsx";
     const code = "export default function Shell() { return <main><button>Vai</button></main>; }";
     const button = Object.values(parseSource(shared, code).nodes).find((node) => node.type === "button")!;
     bridge.readFile.mockResolvedValue(code);
-    bridge.allowExternalPath.mockResolvedValue("C:/shared/templates/operator-shell/src");
     useEditorStore.setState({
       project: { ...analysis(), root } as never,
-      document: undefined, selectedId: undefined, unresolvedSelection: undefined, externalRoots: [],
+      document: undefined, selectedId: undefined, unresolvedSelection: undefined,
+      // What the preview reports on start: the catalog the project reaches through its alias.
+      externalRoots: ["C:/shared/templates"],
     });
 
     await useEditorStore.getState().inspectSource(button.source, "button");
-    expect(useEditorStore.getState().unresolvedSelection?.file).toBe(shared);
-    expect(useEditorStore.getState().selectedId).toBeUndefined();
 
-    await useEditorStore.getState().allowExternalEditing();
+    const state = useEditorStore.getState();
+    expect(state.selectedId).toBe(button.id);
+    expect(state.unresolvedSelection).toBeUndefined();
+    expect(state.document?.file).toBe(shared);
+    expect(state.propertiesExpandedAt).toBeTypeOf("number");
+  });
 
-    expect(bridge.allowExternalPath).toHaveBeenCalledWith(shared);
-    expect(useEditorStore.getState().externalRoots).toContain("C:/shared/templates/operator-shell/src");
-    expect(useEditorStore.getState().selectedId).toBe(button.id);
-    expect(useEditorStore.getState().unresolvedSelection).toBeUndefined();
-    expect(useEditorStore.getState().document?.file).toBe(shared);
+  it("adopts the source roots the preview reports when the project opens", async () => {
+    bridge.startPreview.mockResolvedValue({
+      url: "http://127.0.0.1:61234", port: 61234,
+      sourceRoots: ["C:\\work\\panel", "C:\\shared\\templates"],
+    });
+
+    await useEditorStore.getState().openProject(root);
+    expect(useEditorStore.getState().externalRoots).toEqual(["C:\\work\\panel", "C:\\shared\\templates"]);
   });
 
   it("reports the files the working copy had to skip", async () => {

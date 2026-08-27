@@ -1,4 +1,4 @@
-import { Box, Cable, ChevronDown, ChevronsUpDown, Code2, Highlighter, Info, LayoutGrid, Lock, MousePointerClick, Move, Palette, PencilLine, Ruler, Save, SlidersHorizontal, Tags, Trash2, Type as TypeIcon, X } from "lucide-react";
+import { Box, Cable, ChevronDown, ChevronsUpDown, Code2, Highlighter, Info, LayoutGrid, Lock, MousePointerClick, Move, Palette, Ruler, Save, SlidersHorizontal, Tags, Trash2, Type as TypeIcon, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { EditorNode } from "../core/types";
 import { insideProject } from "../core/paths";
@@ -165,7 +165,7 @@ function InformationSection({ node, tag, file, expandSignal }: { node?: EditorNo
     {info?.id && <InfoRow label="id" value={info.id} title={info.id} />}
     {info?.className && <InfoRow label="Classi" value={info.className} title={info.className} />}
     <InfoRow label="Sorgente" value={node ? `${name}:${node.source.line}` : name} title={file} />
-    <InfoRow label="Posizione file" value={external ? "fuori dal progetto" : "nel progetto"} title={file} />
+    <InfoRow label="File" value={external ? "condiviso · originale" : "copia di lavoro"} title={file} />
   </InspectorSection>;
 }
 
@@ -181,15 +181,12 @@ const readOnlyGroups: { title: string; icon: ReactNode; properties: string[] }[]
 /** An element rendered from outside the open project still has properties worth showing: they come
  * from the running preview rather than from the source, so they are presented read-only. */
 function ExternalElementSheet({ file, tag, expandSignal }: { file: string; tag?: string; expandSignal?: number }) {
-  const allowExternalEditing = useEditorStore((state) => state.allowExternalEditing);
   const selectionRect = useEditorStore((state) => state.selectionRect);
   const selectionStyles = useEditorStore((state) => state.selectionStyles);
   const name = file.split(/[\\/]/).at(-1) ?? file;
   return <>
     <div className="selection-summary"><span className="node-icon">&lt;/&gt;</span><span><strong>{tag ?? "elemento"}</strong><small>{selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : "fuori dal progetto"} · sola lettura</small></span></div>
-    <div className="code-component external-source"><Lock size={13} /><span>Definito in <strong>{name}</strong>, fuori dal progetto aperto: le proprietà qui sotto sono quelle calcolate dall’anteprima.<small title={file}>{file}</small></span></div>
-    <button className="unlock-external" onClick={() => void allowExternalEditing()}><PencilLine size={14} /> Modifica comunque questo file</button>
-    <p className="inspector-note">Le modifiche andranno sul file originale, non sulla copia di lavoro, e valgono per ogni progetto che lo usa.</p>
+    <div className="code-component external-source"><Lock size={13} /><span>Il sorgente di <strong>{name}</strong> non è raggiungibile: le proprietà qui sotto sono quelle calcolate dall’anteprima.<small title={file}>{file}</small></span></div>
     <InformationSection tag={tag} file={file} expandSignal={expandSignal} />
     {readOnlyGroups.map(({ title, icon, properties }) => {
       const rows = properties.filter((property) => selectionStyles[property]);

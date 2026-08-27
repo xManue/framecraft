@@ -69,10 +69,52 @@ struct WorkingCopyResult {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PreviewSession {
     url: String,
     port: u16,
+    /// Directories the project itself declares as source, so the editor can edit everything the
+    /// preview is able to render.
+    source_roots: Vec<String>,
 }
+
+/// The editor config is generated rather than formatted so the JavaScript below stays readable:
+/// `format!` would need every brace doubled.
+const EDITOR_CONFIG_TEMPLATE: &str = r#"import { defineConfig, loadConfigFromFile, mergeConfig, searchForWorkspaceRoot } from "vite";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
+import framecraft from "__FRAMECRAFT_PLUGIN_URL__";
+
+// Framecraft may edit whatever the preview can serve, so the source roots are taken from the
+// project's own configuration instead of being guessed.
+function sourceRoots(config, root) {
+  const roots = new Set([root]);
+  try { roots.add(searchForWorkspaceRoot(root)); } catch { /* no workspace marker above the project */ }
+  for (const entry of config.server?.fs?.allow ?? []) {
+    if (typeof entry === "string" && isAbsolute(entry)) roots.add(resolve(entry));
+  }
+  const alias = config.resolve?.alias;
+  const targets = Array.isArray(alias) ? alias.map((item) => item.replacement) : Object.values(alias ?? {});
+  for (const target of targets) {
+    if (typeof target === "string" && isAbsolute(target)) roots.add(resolve(target));
+  }
+  return [...roots];
+}
+
+export default defineConfig(async (env) => {
+  const root = resolve("__FRAMECRAFT_ROOT__");
+  const candidate = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs", "vite.config.cjs"]
+    .map((name) => resolve(root, name))
+    .find(existsSync);
+  const original = candidate ? await loadConfigFromFile(env, candidate, root) : null;
+  const merged = mergeConfig(original?.config ?? {}, { root, plugins: [framecraft()] });
+  try {
+    mkdirSync(resolve(root, ".framecraft"), { recursive: true });
+    writeFileSync(resolve(root, ".framecraft/source-roots.json"), JSON.stringify(sourceRoots(merged, root), null, 2));
+  } catch { /* the editor falls back to the project folder alone */ }
+  return merged;
+});
+"#;
 
 #[derive(Debug, Serialize, Clone)]
 struct PreviewOutput {
@@ -390,16 +432,20 @@ fn authorized_path(path: &str, state: &RuntimeState) -> Result<PathBuf, String> 
     Err("Accesso negato: il file non appartiene al progetto aperto.".into())
 }
 
-/// Grants edit access to one directory outside the project. Called only after the user asks for it
-/// on a specific file, so the working copy stays the default and widening it stays deliberate.
-#[tauri::command]
-fn allow_external_path(path: String, state: State<RuntimeState>) -> Result<String, String> {
-    let target = fs::canonicalize(&path).map_err(|error| format!("{path}: {error}"))?;
-    if !target.is_file() { return Err("Il percorso indicato non è un file.".into()); }
-    let directory = target.parent().ok_or("Percorso file non valido.")?.to_path_buf();
-    let mut roots = state.external_roots.lock().map_err(|_| "External roots lock poisoned")?;
-    if !roots.iter().any(|allowed| directory.starts_with(allowed)) { roots.push(directory.clone()); }
-    Ok(path_string(&directory))
+/// The source roots the editor config resolved from the project's own configuration. A project that
+/// renders a shared catalog through an alias declares it here, so its files are editable without the
+/// user having to grant anything.
+fn declared_source_roots(root: &Path) -> Vec<PathBuf> {
+    let Ok(text) = fs::read_to_string(root.join(".framecraft/source-roots.json")) else { return Vec::new() };
+    let Ok(entries) = serde_json::from_str::<Vec<String>>(&text) else { return Vec::new() };
+    let mut roots: Vec<PathBuf> = entries
+        .into_iter()
+        .filter_map(|entry| fs::canonicalize(entry).ok())
+        .filter(|entry| entry.is_dir())
+        .collect();
+    roots.sort();
+    roots.dedup();
+    roots
 }
 
 #[tauri::command]
@@ -617,17 +663,9 @@ fn start_preview(root: String, app: AppHandle, state: State<RuntimeState>) -> Re
     let framecraft_dir = root_path.join(".framecraft");
     fs::create_dir_all(&framecraft_dir).map_err(|error| error.to_string())?;
     let plugin_url = file_url(&editor_plugin_path(&app)?);
-    let config = format!(r#"import {{ defineConfig, loadConfigFromFile, mergeConfig }} from "vite";
-import {{ existsSync }} from "node:fs";
-import {{ resolve }} from "node:path";
-import framecraft from "{plugin_url}";
-export default defineConfig(async (env) => {{
-  const root = resolve("{}");
-  const candidate = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs"].map(name => resolve(root, name)).find(existsSync);
-  const original = candidate ? await loadConfigFromFile(env, candidate, root) : null;
-  return mergeConfig(original?.config ?? {{}}, {{ root, plugins: [framecraft()] }});
-}});
-"#, path_string(&root_path).replace('\\', "\\\\"));
+    let config = EDITOR_CONFIG_TEMPLATE
+        .replace("__FRAMECRAFT_PLUGIN_URL__", &plugin_url)
+        .replace("__FRAMECRAFT_ROOT__", &path_string(&root_path).replace('\\', "\\\\"));
     let config_path = framecraft_dir.join("vite.editor.config.mjs");
     fs::write(&config_path, config).map_err(|error| error.to_string())?;
     let (program, base_args) = package_command(&root_path);
@@ -655,8 +693,15 @@ export default defineConfig(async (env) => {{
         let mut announced = 0;
         loop {
             if preview_responds(port) {
+                // The config has run by now, so the roots it resolved are on disk.
+                let roots = declared_source_roots(&root_path);
+                *state.external_roots.lock().map_err(|_| "External roots lock poisoned")? = roots.clone();
                 *state.preview.lock().map_err(|_| "Preview lock poisoned")? = Some(child);
-                return Ok(PreviewSession { url: format!("http://127.0.0.1:{port}"), port });
+                return Ok(PreviewSession {
+                    url: format!("http://127.0.0.1:{port}"),
+                    port,
+                    source_roots: roots.iter().map(|root| path_string(root)).collect(),
+                });
             }
             if child.try_wait().map_err(|error| error.to_string())?.is_some() {
                 let tail = recent_output(&log);
@@ -736,7 +781,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(RuntimeState::default())
-        .invoke_handler(tauri::generate_handler![create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, allow_external_path, start_preview, stop_preview, close_project, create_vite_project])
+        .invoke_handler(tauri::generate_handler![create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, start_preview, stop_preview, close_project, create_vite_project])
         .build(tauri::generate_context!())
         .expect("error while building Framecraft");
     app.run(|app_handle, event| {

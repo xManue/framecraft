@@ -41,10 +41,6 @@ export const desktopBridge = {
   async stopPreview(): Promise<void> {
     if (desktopAvailable) await invoke("stop_preview");
   },
-  async allowExternalPath(path: string): Promise<string> {
-    requireDesktop();
-    return invoke("allow_external_path", { path });
-  },
   async closeProject(): Promise<void> {
     if (desktopAvailable) await invoke("close_project");
   },

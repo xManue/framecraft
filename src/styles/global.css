@@ -241,8 +241,6 @@ code, kbd { font-family: "JetBrains Mono", Consolas, monospace; }
 .read-only-property em { flex: 0 0 auto; padding: 2px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--muted); font: 9px Consolas, monospace; font-style: normal; }
 .inspector-note { margin: 0; padding: 2px 0 4px; color: var(--muted); font-size: 11px; }
 .external-source small { display: block; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 9px Consolas, monospace; opacity: .75; }
-.unlock-external { margin: 8px 12px 0; height: 30px; display: flex; align-items: center; justify-content: center; gap: 7px; width: calc(100% - 24px); border: 1px solid var(--border); border-radius: 5px; background: var(--accent-soft); color: var(--accent-strong); font-size: 11px; font-weight: 600; }
-.unlock-external:hover { background: var(--accent); color: white; }
 .read-only-stack p { margin: 0; padding: 7px 9px; max-height: 96px; overflow: auto; border: 1px solid var(--border); border-radius: 5px; background: var(--panel-soft, rgba(127,127,127,.06)); font-size: 11px; line-height: 1.45; }
 .plc-binding { display: flex; flex-direction: column; gap: 4px; padding: 9px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 5px; }
 .plc-binding-title { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }

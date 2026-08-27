@@ -28,7 +28,7 @@ interface EditorState {
   selectionInfo?: RenderedInfo;
   /** PLC catalog of the open project, used to describe the signal an element is wired to. */
   plcVariables: PlcVariableDefinition[];
-  /** Directories outside the project the user unlocked for editing during this session. */
+  /** Source directories outside the project folder that the running preview declares. */
   externalRoots: string[];
   previewUrl?: string;
   previewPath: string;
@@ -76,7 +76,6 @@ interface EditorState {
   setSelectionRect: (rect?: SelectionRect) => void;
   setSelectionStyles: (styles: Record<string, string>) => void;
   setSelectionInfo: (info?: RenderedInfo) => void;
-  allowExternalEditing: () => Promise<void>;
   selectSource: (source: SourceRef, tag?: string) => Promise<void>;
   beginHighlightSelection: (settings: HighlightSettings) => void;
   cancelHighlightSelection: () => void;
@@ -286,7 +285,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
           highlightPicker: undefined, standalonePreviewOpen: false, previewStatus: "starting", leftPanel: pageData.pages.length ? "pages" : "project", leftPanelCollapsed: false });
         try {
           const preview = await desktopBridge.startPreview(workingCopy.root);
-          set((state) => ({ previewUrl: preview.url, previewStatus: "starting", consoleEntries: [...state.consoleEntries,
+          set((state) => ({ previewUrl: preview.url, previewStatus: "starting", externalRoots: preview.sourceRoots ?? [], consoleEntries: [...state.consoleEntries,
             ...(workingCopy.created ? [entry("success", `Copia di lavoro creata. L'originale resta invariato: ${workingCopy.originalRoot}`)] : []),
             entry("success", `Preview avviata su ${preview.url}`)] }));
         } catch (error) {
@@ -391,18 +390,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setSelectionRect: (selectionRect) => set({ selectionRect }),
     setSelectionStyles: (selectionStyles) => set({ selectionStyles }),
     setSelectionInfo: (selectionInfo) => set({ selectionInfo }),
-    async allowExternalEditing() {
-      const pending = get().unresolvedSelection;
-      if (!pending) return;
-      try {
-        const directory = await desktopBridge.allowExternalPath(pending.file);
-        set((state) => ({ externalRoots: state.externalRoots.includes(directory) ? state.externalRoots : [...state.externalRoots, directory] }));
-        set((state) => ({ consoleEntries: [...state.consoleEntries,
-          entry("warning", `Modifica abilitata su ${directory}. Questi file sono gli originali, non la copia di lavoro.`)] }));
-        await get().selectSource(pending.source, pending.tag);
-        set({ propertiesExpandedAt: Date.now() });
-      } catch (error) { reportError(error); }
-    },
     async selectSource(source, tag) {
       const picker = get().highlightPicker;
       if (picker) {
@@ -576,7 +563,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       try {
         await desktopBridge.stopPreview();
         const preview = await desktopBridge.startPreview(project.root);
-        set((state) => ({ previewUrl: preview.url, previewStatus: "starting",
+        set((state) => ({ previewUrl: preview.url, previewStatus: "starting", externalRoots: preview.sourceRoots ?? [],
           consoleEntries: [...state.consoleEntries, entry("success", `Preview riavviata su ${preview.url}`)] }));
       } catch (error) {
         set({ previewStatus: "error", previewError: error instanceof Error ? error.message : String(error) });

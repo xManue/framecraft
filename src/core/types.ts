@@ -98,6 +98,8 @@ export interface WorkingCopyResult {
 export interface PreviewSession {
   url: string;
   port: number;
+  /** Directories the project declares as source: everything the preview renders is editable. */
+  sourceRoots?: string[];
 }
 
 export interface PageDefinition {
