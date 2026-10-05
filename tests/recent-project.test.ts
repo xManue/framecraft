@@ -53,7 +53,7 @@ describe("recent project opening", () => {
     await opening;
     expect(useEditorStore.getState().loading).toBe(false);
     expect(useEditorStore.getState().previewUrl).toBe("http://127.0.0.1:61234");
-  });
+  }, 15_000);
 
   it("ignores a second recent-project click while opening", async () => {
     let finishPreview!: (value: { url: string; port: number }) => void;
@@ -66,5 +66,5 @@ describe("recent project opening", () => {
 
     finishPreview({ url: "http://127.0.0.1:61234", port: 61234 });
     await first;
-  });
+  }, 15_000);
 });

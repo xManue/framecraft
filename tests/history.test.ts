@@ -21,7 +21,7 @@ describe("editor action history", () => {
   beforeEach(() => {
     bridge.readFile.mockReset();
     bridge.writeFile.mockReset().mockResolvedValue(undefined);
-    useEditorStore.setState({ history: [], future: [], pages: [], previewPath: "/", selectionStyles: {}, selectedId: undefined });
+    useEditorStore.setState({ history: [], future: [], pages: [], previewPath: "/", selectionStyles: {}, selectionInfo: undefined, selectedId: undefined });
   });
 
   it("undoes and redoes actions across different component files", async () => {
@@ -76,6 +76,27 @@ describe("editor action history", () => {
 
     await useEditorStore.getState().redo();
     expect(useEditorStore.getState().document?.source).toContain('translate: "24px 10px"');
+  });
+
+  it("routes a property edit to only the repeated instance clicked in the preview", async () => {
+    const file = "List.jsx";
+    const before = `export const List = ({ items }) => <div>{items.map((item) => <button>{item.label}</button>)}</div>;`;
+    const parsed = parseSource(file, before);
+    const button = Object.values(parsed.nodes).find((node) => node.type === "button")!;
+    useEditorStore.setState({
+      document: parsed,
+      selectedId: button.id,
+      selectionInfo: { instanceIndex: 2, instanceCount: 4 },
+      history: [],
+      future: [],
+    });
+
+    await useEditorStore.getState().updateStyle("width", "210px");
+
+    const source = useEditorStore.getState().document?.source ?? "";
+    expect(source).toContain("__framecraftIndex === 2");
+    expect(source).toContain('width: "210px"');
+    expect(source).not.toContain('<button style={{ width: "210px" }}');
   });
 
   it("deletes the selected element and restores it with undo", async () => {

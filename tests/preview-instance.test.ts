@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import framecraftPlugin from "../scripts/framecraft-vite-plugin.mjs";
 
 describe("preview rendered instance targeting", () => {
-  it("applies handle preview styles to the clicked instance when JSX source is repeated", () => {
+  it("applies handle preview styles to the clicked instance when JSX source is repeated", async () => {
     class ResizeObserverStub {
       observe() {}
       disconnect() {}
@@ -32,6 +32,8 @@ describe("preview rendered instance targeting", () => {
     main.setAttribute("data-fc-source", JSON.stringify(containerSource));
     first.setAttribute("data-fc-source", JSON.stringify(source));
     second.setAttribute("data-fc-source", JSON.stringify(source));
+    let secondRect = { left: 80, top: 50, right: 200, bottom: 90, width: 120, height: 40, x: 80, y: 50, toJSON: () => ({}) };
+    Object.defineProperty(second, "getBoundingClientRect", { configurable: true, value: () => secondRect });
     main.append(first, second);
     document.body.append(main);
 
@@ -40,10 +42,18 @@ describe("preview rendered instance targeting", () => {
     window.eval(transformed.tags[0].children);
 
     second.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    const selection = messages.find((message): message is { type: string; instanceId: string } =>
+    const selection = messages.find((message): message is { type: string; instanceId: string; info?: { instanceIndex?: number; instanceCount?: number } } =>
       typeof message === "object" && message !== null && "type" in message && message.type === "framecraft:select");
 
     expect(selection?.instanceId).toBeTruthy();
+    expect(selection?.info).toEqual(expect.objectContaining({ instanceIndex: 1, instanceCount: 2 }));
+
+    secondRect = { left: 310, top: 170, right: 470, bottom: 222, width: 160, height: 52, x: 310, y: 170, toJSON: () => ({}) };
+    second.setAttribute("aria-label", "geometria aggiornata");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const tracked = messages.find((message): message is { type: string; rect: typeof secondRect } =>
+      typeof message === "object" && message !== null && "type" in message && message.type === "framecraft:selection-rect");
+    expect(tracked?.rect).toEqual(expect.objectContaining({ x: 310, y: 170, width: 160, height: 52 }));
     window.dispatchEvent(new MessageEvent("message", { data: {
       type: "framecraft:preview-style",
       source,
@@ -55,7 +65,12 @@ describe("preview rendered instance targeting", () => {
     expect(first.style.translate).toBe("");
 
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", code: "Delete", bubbles: true, cancelable: true }));
-    expect(messages.some((message) => typeof message === "object" && message !== null && "type" in message && message.type === "framecraft:delete")).toBe(true);
+    // Delete carries the clicked copy with it, so the editor removes that one and not the first
+    // element that happens to share the same JSX source.
+    const deletion = messages.find((message): message is { type: string; source: typeof source; info: { instanceIndex: number; instanceCount: number } } =>
+      typeof message === "object" && message !== null && "type" in message && message.type === "framecraft:delete");
+    expect(deletion?.source).toEqual(source);
+    expect(deletion?.info).toEqual(expect.objectContaining({ instanceIndex: 1, instanceCount: 2 }));
 
     Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => second });
     Object.defineProperty(main, "getBoundingClientRect", { configurable: true, value: () => ({ left: 10, top: 20, right: 510, bottom: 420, width: 500, height: 400, x: 10, y: 20, toJSON: () => ({}) }) });

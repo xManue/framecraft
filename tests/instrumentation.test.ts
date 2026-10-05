@@ -3,6 +3,8 @@ import { parse } from "@babel/parser";
 // The preview plugin is shipped as plain ESM so imported projects do not need TypeScript.
 // @ts-expect-error no declaration is required for the runtime plugin.
 import framecraftPlugin from "../scripts/framecraft-vite-plugin.mjs";
+// @ts-expect-error no declaration is required for the runtime helper.
+import { overlayCandidate } from "../scripts/framecraft-picking.mjs";
 
 describe("preview instrumentation", () => {
   it("adds source coordinates only to intrinsic JSX elements", () => {
@@ -53,7 +55,7 @@ describe("preview instrumentation", () => {
     expect(transformed.tags[0].children).toContain("positionContainer");
     expect(transformed.tags[0].children).toContain("framecraft:drag-move");
     expect(transformed.tags[0].children).toContain("framecraft:drag-end");
-    expect(transformed.tags[0].children).toContain("framecraft:delete");
+    expect(transformed.tags[0].children).toContain('key: "delete"');
     expect(transformed.tags[0].children).toContain('event.key === "Delete"');
     expect(transformed.tags[0].children).toContain('event.key === "Backspace"');
     expect(transformed.tags[0].children).toContain("framecraft:ready");
@@ -64,6 +66,57 @@ describe("preview instrumentation", () => {
     expect(transformed.tags[0].children).toContain("instanceElements");
     expect(transformed.tags[0].children).toContain("backgroundColor");
     expect(transformed.tags[0].children).toContain("ResizeObserver");
+    expect(transformed.tags[0].children).toContain('"ContextTapped"');
+    expect(transformed.tags[0].children).toContain('"KeyDown"');
+    expect(transformed.tags[0].children).toContain('"InterfaceEvent"');
+    expect(transformed.tags[0].children).toContain('"Unloaded"');
+    expect(transformed.tags[0].children).toContain("framecraft:command-fired");
+    expect(transformed.tags[0].children).toContain("framecraft-hmi-flash-background");
+    expect(transformed.tags[0].children).toContain("prefers-reduced-motion:reduce");
+    expect(transformed.tags[0].children).toContain("style.setProperty(property, value)");
+  });
+
+  it("carries the alignment maths into the page instead of a second copy of it", () => {
+    const bridge = framecraftPlugin().transformIndexHtml("<div></div>").tags[0].children;
+    // The functions are stringified from the module the tests exercise, so the page cannot drift
+    // away from the behaviour that was checked.
+    expect(bridge).toContain("function snapOffset(");
+    expect(bridge).toContain("function gridOffset(");
+    expect(bridge).toContain("function equalGapOffset(");
+    expect(bridge).toContain("snapCandidates");
+    expect(bridge).toContain("framecraft:set-snap");
+    expect(bridge).toContain("event.shiftKey");
+    expect(bridge).toContain("event.altKey");
+    expect(bridge).toContain('lockedAxis = Math.abs(deltaX) >= Math.abs(deltaY) ? "x" : "y"');
+    expect(bridge).toContain('gap.label.textContent = value + " px = " + value + " px"');
+    // Picking several elements, and moving one by hand a pixel at a time.
+    expect(bridge).toContain("framecraft:select-many");
+    expect(bridge).toContain("framecraft:group-drag-move");
+    expect(bridge).toContain("framecraft:group-drag-end");
+    expect(bridge).toContain("framecraft:set-multi-selection");
+    expect(bridge).toContain("extraSelected");
+    expect(bridge).toContain("ArrowLeft");
+    expect(bridge).toContain("ArrowDown");
+  });
+
+  it("hands the click to a layer drawn over what was clicked, never to the backdrop under it", () => {
+    const bridge = framecraftPlugin().transformIndexHtml("<div></div>").tags[0].children;
+    expect(bridge).toContain("function overlayCandidate(");
+
+    const button = { area: 120 * 40 };
+    const caption = { name: "caption", area: 90 * 20, inside: true };
+    const badge = { name: "badge", area: 30 * 18, inside: false };
+    // A component dragged on top of a big click-through photo: the photo covers the pointer, but
+    // it is what the component sits on, so it must not take the click away from it.
+    const photo = { name: "photo", area: 900 * 600, inside: false };
+
+    expect(overlayCandidate(button, [photo])).toBeNull();
+    expect(overlayCandidate(button, [photo, caption]).name).toBe("caption");
+    // Among the layers actually drawn on it, the smallest is the one being pointed at.
+    expect(overlayCandidate(button, [caption, badge]).name).toBe("badge");
+    // A label the size of the button it covers still counts as drawn on it.
+    expect(overlayCandidate(button, [{ name: "label", area: button.area, inside: false }]).name).toBe("label");
+    expect(overlayCandidate(button, [])).toBeNull();
   });
 
   it("exposes page state setters to the preview bridge", () => {

@@ -6,3 +6,19 @@ target/
 *.tsbuildinfo
 .DS_Store
 src-tauri/gen/
+
+# le pagine rese per il confronto con le foto
+.hmi-preview/
+
+# Local secrets and private comparison material are not release assets.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+/.claude/
+/FotoStandardManu/
+/standard/
+/tests/_scratch.test.ts

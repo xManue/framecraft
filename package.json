@@ -9,6 +9,11 @@
     "build": "tsc -b && vite build --configLoader runner",
     "web:preview": "vite preview --configLoader runner --host 127.0.0.1 --port 1420",
     "test": "vitest run --config vitest.config.ts --configLoader runner",
+    "test:production": "vitest run --config vitest.production.config.ts --configLoader runner",
+    "test:recovery": "vitest run --config vitest.recovery.config.ts --configLoader runner",
+    "test:gateway": "vitest run --config vitest.gateway.config.ts --configLoader runner",
+    "test:standard": "vitest run --config vitest.standard.config.ts --configLoader runner",
+    "check:licenses": "node scripts/license-audit.mjs",
     "test:watch": "vitest --config vitest.config.ts --configLoader runner",
     "tauri": "tauri"
   },
@@ -25,6 +30,8 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "mqtt": "5.16.0",
+    "aedes": "1.2.0",
     "@babel/core": "^7.28.3",
     "@tauri-apps/cli": "^2.8.4",
     "@types/babel__traverse": "^7.28.0",

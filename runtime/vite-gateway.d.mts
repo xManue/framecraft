@@ -1,0 +1,1 @@
+export function framecraftGatewayProxy(): Record<string, { target: string; changeOrigin: boolean; configure(proxy: { on(event: string, callback: (request: { setHeader(name: string, value: string): void }) => void): void }): void }>;

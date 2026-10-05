@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectPlcVariables, mergePlcVariables, parsePlcCatalog, plcVariableIssues, renamePlcVariableUsage, serializePlcCatalog } from "../src/core/plcVariables";
+import { detectPlcVariables, mergePlcVariables, parsePlcCatalog, plcTagsInSource, plcVariableIssues, renamePlcVariableUsage, serializePlcCatalog } from "../src/core/plcVariables";
 
 describe("PLC variable catalog", () => {
   it("detects only explicit PLC/HMI variable usages", () => {
@@ -30,5 +30,18 @@ describe("PLC variable catalog", () => {
     expect(renamed).toContain(`hmi.value("Line.Speed")`);
     expect(renamed).toContain(`const untouched = "Machine.Speed"`);
     expect(renamed).toContain(`data-plc-tag='Line.Speed'`);
+  });
+
+  it("detects and renames online trend sources without changing titles or archived mappings", () => {
+    const config = { caption: "Machine.Speed", trends: [{ name: "Machine.Speed", x: { source: "online", tag: "Machine.Speed" }, y: { source: "log", tag: "Machine.Speed", logId: "process", loggedTagId: "speed" } }] };
+    const source = `<div data-hmi-function-trend='${JSON.stringify(config)}' />\n<div data-hmi-trend="{&quot;trends&quot;:[{&quot;tag&quot;:&quot;Motor.Temperature&quot;}]}"/>`;
+    expect(detectPlcVariables({ "Page.tsx": source }).map((variable) => variable.name)).toEqual(["Machine.Speed", "Motor.Temperature"]);
+    expect(plcTagsInSource(source)).toEqual(["Machine.Speed", "Motor.Temperature"]);
+    const renamed = renamePlcVariableUsage(source, "Machine.Speed", "Line.Speed&Setpoint");
+    expect(plcTagsInSource(renamed)).toEqual(["Line.Speed&Setpoint", "Motor.Temperature"]);
+    expect(renamed).toContain('"caption":"Machine.Speed"'); expect(renamed).toContain('"name":"Machine.Speed"');
+    expect(renamed).toContain('"source":"log","tag":"Machine.Speed"');
+    expect(renamePlcVariableUsage(source, "Motor.Temperature", "Motor.Actual")).toContain("&quot;Motor.Actual&quot;");
+    expect(detectPlcVariables({ "Bad.tsx": `<div data-hmi-function-trend='broken'/>` })).toEqual([]);
   });
 });

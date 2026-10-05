@@ -1,6 +1,6 @@
 import { parse } from "@babel/parser";
 import traverseModule from "@babel/traverse";
-import type { JSXAttribute, JSXElement, JSXIdentifier, JSXMemberExpression, JSXNamespacedName, ObjectExpression } from "@babel/types";
+import type { JSXAttribute, JSXElement, JSXIdentifier, JSXMemberExpression, JSXNamespacedName, JSXText, ObjectExpression } from "@babel/types";
 import type { EditorDocument, EditorNode } from "../core/types";
 
 const traverse = (traverseModule as unknown as { default?: typeof traverseModule }).default ?? traverseModule;
@@ -57,10 +57,13 @@ function details(element: JSXElement) {
     if (value !== undefined) props[name] = value;
     else dynamicProps.push(name);
   }
-  const meaningful = element.children.filter((child) => child.type !== "JSXText" || child.value.trim());
-  const textNode = meaningful.length === 1 && meaningful[0]?.type === "JSXText" ? meaningful[0] : undefined;
+  // An element that holds an icon next to a label still has a label worth editing, so the written
+  // run is looked for among the other children instead of only when it is the single child.
+  const runs = element.children.filter((child): child is JSXText => child.type === "JSXText" && Boolean(child.value.trim()));
+  const textNode = runs.length === 1 ? runs[0] : undefined;
   const dynamic = element.children.some((child) => child.type === "JSXExpressionContainer" || child.type === "JSXSpreadChild");
-  return { props, dynamicProps, styles, stylesEditable, text: textNode?.value.trim(), textEditable: Boolean(textNode), dynamic };
+  const nestedElements = element.children.some((child) => child.type === "JSXElement" || child.type === "JSXFragment");
+  return { props, dynamicProps, styles, stylesEditable, text: textNode?.value.trim(), textEditable: Boolean(textNode) || (dynamic && !nestedElements), dynamic };
 }
 
 export function parseSource(file: string, source: string, version = 1): EditorDocument {
@@ -100,7 +103,9 @@ export function parseSource(file: string, source: string, version = 1): EditorDo
             text: data.textEditable,
             style: intrinsic && data.stylesEditable,
             insert: !element.openingElement.selfClosing,
-            remove: Boolean(parentId),
+            // deleteElement validates the resulting module before anything reaches disk, so even
+            // the page's outer JSX container can safely become null.
+            remove: intrinsic,
             reorder: Boolean(parentId),
           },
         };

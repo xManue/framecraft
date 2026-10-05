@@ -24,6 +24,13 @@ function nodeOfType(source: string, type: string) {
 }
 
 describe("element property sheet", () => {
+  it("salva il nome oggetto HMI nel JSX, distinto da id, tag PLC e testo", () => {
+    const source = 'export default function Panel(){return <button id="motor" data-plc-variable="Motor.Fault">Motore</button>}';
+    const node = nodeOfType(source, "button");
+    const updated = updateStaticAttributes(source, node.source.start, node.source.end, { "data-hmi-name": "M2400" });
+    expect(nodeOfType(updated, "button").props).toMatchObject({ id: "motor", "data-plc-variable": "Motor.Fault", "data-hmi-name": "M2400" });
+    expect(updated).toContain(">Motore</button>");
+  });
   it("lists every attribute of an element, separating the editable ones from the dynamic ones", () => {
     const link = nodeOfType(page, "a");
     expect(link.props).toEqual({ href: "/home", id: "back" });
@@ -45,10 +52,11 @@ describe("element property sheet", () => {
     expect(nodeOfType(labelled, "a").props.title).toBe("Vai indietro");
   });
 
-  it("refuses to overwrite an attribute that holds an expression", () => {
+  it("lets Properties replace an attribute that holds an expression", () => {
     const link = nodeOfType(page, "a");
-    expect(() => updateStaticAttributes(page, link.source.start, link.source.end, { target: "_blank" }))
-      .toThrow(/dinamico/);
+    const updated = updateStaticAttributes(page, link.source.start, link.source.end, { target: "_blank" });
+    expect(updated).toContain('target="_blank"');
+    expect(updated).not.toContain("target={target}");
     expect(() => updateStaticAttributes(page, link.source.start, link.source.end, { style: "color: red" }))
       .toThrow(/stile/i);
   });

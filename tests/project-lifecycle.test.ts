@@ -48,7 +48,7 @@ describe("project lifecycle", () => {
     bridge.closeProject.mockReset().mockResolvedValue(undefined);
     useEditorStore.setState({
       project: undefined, document: undefined, loading: false, dirty: false, recentProjects: [],
-      pages: [], history: [], future: [], previewUrl: undefined, previewStatus: "idle", previewError: undefined, consoleEntries: [],
+      pages: [], history: [], future: [], previewUrl: undefined, previewStatus: "idle", previewError: undefined, previewRestarting: false, previewSessionId: undefined, previewProcessExited: false, consoleEntries: [],
     });
   });
 
@@ -59,7 +59,40 @@ describe("project lifecycle", () => {
     expect(bridge.createWorkingCopy).toHaveBeenCalledWith(root);
     expect(useEditorStore.getState().project?.name).toBe("panel");
     expect(useEditorStore.getState().loading).toBe(false);
-  });
+  }, 15_000);
+
+  it("creates the standard preset with all generated files before opening it", async () => {
+    await useEditorStore.getState().createStandardProject({ machineName: "Linea 1", layout: "desktop-mobile", sections: ["main", "alarms"] });
+
+    expect(bridge.createProject).toHaveBeenCalledOnce();
+    const [createdRoot, files] = bridge.createProject.mock.calls[0];
+    expect(createdRoot).toBe(root);
+    expect(files).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "src/App.tsx", content: expect.stringContaining("Linea 1") }),
+      expect.objectContaining({ path: "src/pages/UpstairPage.tsx" }),
+      expect.objectContaining({ path: "src/pages/AlarmsPage.tsx" }),
+      expect.objectContaining({ path: "panel.json" }),
+    ]));
+    expect(useEditorStore.getState().project?.name).toBe("panel");
+  }, 90_000);
+
+  it("passes the selected Settings session through the real new-panel pipeline", async () => {
+    await useEditorStore.getState().createStandardProject({
+      machineName: "Pallettizzatore Classic",
+      layout: "desktop-mobile",
+      sections: ["settings"],
+      settingsProgram: "classic",
+    });
+
+    const [, files] = bridge.createProject.mock.calls[0];
+    const paths = files.map((file: { path: string }) => file.path);
+    expect(paths).toContain("src/pages/Classic1Page.tsx");
+    expect(paths).toContain("src/pages/Classic10Page.tsx");
+    expect(paths).not.toContain("src/pages/SettingsPage.tsx");
+    const manifest = JSON.parse(files.find((file: { path: string }) => file.path === "panel.json").content);
+    expect(manifest.standard.settingsProgram).toBe("classic");
+    expect(manifest.editor.pages.slice(0, 10).map((page: { pageNumber: number }) => page.pageNumber)).toEqual([2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030]);
+  }, 90_000);
 
   it("releases the loading screen when opening fails", async () => {
     bridge.createWorkingCopy.mockRejectedValue(new Error("Cartella non accessibile"));
@@ -117,6 +150,101 @@ describe("project lifecycle", () => {
     expect(bridge.createWorkingCopy).not.toHaveBeenCalled();
     expect(useEditorStore.getState().document).toBe(document);
     expect(useEditorStore.getState().previewUrl).toBe("http://127.0.0.1:61999");
+  });
+
+  it("reloads the page while preserving URL parameters, the route and unsaved edits", () => {
+    const document = { file: "App.jsx", source: "unsaved", nodes: {}, roots: [], version: 1 };
+    const history = [{ file: "App.jsx", source: "before" }];
+    useEditorStore.setState({ project: analysis() as never, document, dirty: true, history, previewPath: "/settings", previewUrl: "http://127.0.0.1:4173/?custom=yes#screen", previewStatus: "error", previewError: "old error" });
+    useEditorStore.getState().refreshPreview();
+    const first = useEditorStore.getState().previewUrl!;
+    useEditorStore.getState().refreshPreview();
+    const state = useEditorStore.getState();
+    expect(state.previewUrl).not.toBe(first);
+    expect(new URL(state.previewUrl!).searchParams.get("custom")).toBe("yes");
+    expect(new URL(state.previewUrl!).hash).toBe("#screen");
+    expect(state).toMatchObject({ dirty: true, previewPath: "/settings", previewStatus: "starting", previewError: undefined });
+    expect(state.document).toBe(document);
+    expect(state.history).toBe(history);
+    expect(bridge.startPreview).not.toHaveBeenCalled();
+    expect(bridge.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("starts Vite when refresh is requested without an available server", async () => {
+    useEditorStore.setState({ project: analysis() as never, previewUrl: undefined, previewStatus: "error" });
+    useEditorStore.getState().refreshPreview();
+    await vi.waitFor(() => expect(useEditorStore.getState().previewRestarting).toBe(false));
+    expect(bridge.startPreview).toHaveBeenCalledExactlyOnceWith(root, false, useEditorStore.getState().previewSessionId, useEditorStore.getState().handlePreviewExit);
+    expect(useEditorStore.getState().previewUrl).toBe("http://127.0.0.1:61234");
+  });
+
+  it("does not start duplicate servers for repeated recovery requests", async () => {
+    let release!: () => void;
+    bridge.stopPreview.mockReturnValue(new Promise<void>((resolve) => { release = resolve; }));
+    useEditorStore.setState({ project: analysis() as never });
+    const pending = useEditorStore.getState().restartPreview();
+    await useEditorStore.getState().restartPreview(true);
+    useEditorStore.getState().refreshPreview();
+    expect(useEditorStore.getState().previewRestarting).toBe(true);
+    expect(bridge.stopPreview).toHaveBeenCalledOnce();
+    expect(bridge.startPreview).not.toHaveBeenCalled();
+    release();
+    await pending;
+    expect(bridge.startPreview).toHaveBeenCalledExactlyOnceWith(root, false, useEditorStore.getState().previewSessionId, useEditorStore.getState().handlePreviewExit);
+    expect(useEditorStore.getState().previewRestarting).toBe(false);
+  });
+
+  it("can retry a failed start without losing a dirty document or undo history", async () => {
+    const document = { file: "App.jsx", source: "unsaved", nodes: {}, roots: [], version: 1 };
+    const history = [{ file: "App.jsx", source: "before" }];
+    useEditorStore.setState({ project: analysis() as never, document, dirty: true, history, selectedId: "button-1" });
+    bridge.startPreview.mockRejectedValueOnce(new Error("Vite non si è avviato: config non valida"));
+    await useEditorStore.getState().restartPreview();
+    expect(useEditorStore.getState()).toMatchObject({ previewStatus: "error", previewRestarting: false, previewError: "Vite non si è avviato: config non valida", dirty: true, selectedId: "button-1" });
+    await useEditorStore.getState().restartPreview(true);
+    expect(bridge.startPreview).toHaveBeenLastCalledWith(root, true, useEditorStore.getState().previewSessionId, useEditorStore.getState().handlePreviewExit);
+    expect(useEditorStore.getState()).toMatchObject({ previewStatus: "starting", previewRestarting: false, previewError: undefined, dirty: true, selectedId: "button-1" });
+    expect(useEditorStore.getState().document).toBe(document);
+    expect(useEditorStore.getState().history).toBe(history);
+    expect(bridge.createWorkingCopy).not.toHaveBeenCalled();
+    expect(bridge.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("does not start recovery while a project is opening", async () => {
+    useEditorStore.setState({ project: analysis() as never, loading: true });
+    await useEditorStore.getState().restartPreview(true);
+    useEditorStore.getState().refreshPreview();
+    expect(bridge.startPreview).not.toHaveBeenCalled();
+    expect(bridge.stopPreview).not.toHaveBeenCalled();
+  });
+
+  it("waits for an in-flight restart before closing the managed project", async () => {
+    let release!: (session: { url: string; port: number }) => void;
+    bridge.startPreview.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+    useEditorStore.setState({ project: analysis() as never });
+    const pending = useEditorStore.getState().restartPreview();
+    await vi.waitFor(() => expect(bridge.startPreview).toHaveBeenCalledOnce());
+    const closing = useEditorStore.getState().closeProject();
+    expect(bridge.closeProject).not.toHaveBeenCalled();
+    release({ url: "http://127.0.0.1:61999", port: 61999 });
+    await Promise.all([pending, closing]);
+    expect(bridge.closeProject).toHaveBeenCalledOnce();
+    expect(useEditorStore.getState()).toMatchObject({ project: undefined, previewUrl: undefined, previewRestarting: false, previewStatus: "idle", loading: false });
+  });
+
+  it("waits for an in-flight restart before opening another project", async () => {
+    let release!: (session: { url: string; port: number }) => void;
+    bridge.startPreview.mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+    useEditorStore.setState({ project: analysis() as never });
+    const pending = useEditorStore.getState().restartPreview();
+    await vi.waitFor(() => expect(bridge.startPreview).toHaveBeenCalledOnce());
+    const opening = useEditorStore.getState().openProject(root);
+    expect(bridge.createWorkingCopy).not.toHaveBeenCalled();
+    release({ url: "http://127.0.0.1:61999", port: 61999 });
+    await Promise.all([pending, opening]);
+    expect(bridge.createWorkingCopy).toHaveBeenCalledOnce();
+    expect(bridge.startPreview).toHaveBeenCalledTimes(2);
+    expect(useEditorStore.getState().previewRestarting).toBe(false);
   });
 
   it("opens the full property sheet when the canvas asks to inspect an element", async () => {

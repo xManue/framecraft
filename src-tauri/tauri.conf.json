@@ -26,6 +26,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": ["../scripts/framecraft-vite-plugin.mjs"]
+    "resources": {
+      "../scripts/framecraft-vite-plugin.mjs": "scripts/framecraft-vite-plugin.mjs",
+      "../scripts/framecraft-snap.mjs": "scripts/framecraft-snap.mjs",
+      "../scripts/framecraft-picking.mjs": "scripts/framecraft-picking.mjs",
+      "../scripts/hmi-property-flashing.mjs": "scripts/hmi-property-flashing.mjs"
+    }
   }
 }
