@@ -18,6 +18,55 @@ beforeEach(() => {
 });
 
 describe("TraceViewer HMI", () => {
+  it("riconosce errori colorati dal terminale senza scambiare un nome tag per un errore", () => {
+    useEditorStore.getState().addPreviewOutput("stdout", "\x1b[31mError: failed to load config\x1b[0m");
+    useEditorStore.getState().addPreviewOutput("stdout", "\x1b[32m[HMI Tapped] Motor.Error=0\x1b[0m");
+    expect(useEditorStore.getState().consoleEntries.map((item) => [item.level, item.source])).toEqual([["error", "preview"], ["info", "hmi"]]);
+  });
+  it("spiega gli errori, raggruppa ripetizioni consecutive e non cambia i log originali", async () => {
+    const raw = "\x1b[31mfailed to load config from C:/panel/vite.config.mjs\x1b[0m";
+    for (let index = 0; index < 4; index++) useEditorStore.getState().addPreviewOutput("stderr", raw);
+    const entries = useEditorStore.getState().consoleEntries;
+    const container = document.createElement("div"); const root = createRoot(container);
+    try {
+      await act(async () => root.render(createElement(ConsolePanel)));
+      expect(container.querySelectorAll("article")).toHaveLength(1);
+      expect(container.querySelector("article")?.getAttribute("aria-label")).toBe("Errore");
+      expect(container.querySelector(".console-message > p")?.textContent).toContain("configurazione dell’anteprima");
+      expect(container.textContent).toContain("Ricevuto 4 volte");
+      const details = container.querySelector("details")!;
+      expect(details.open).toBe(false);
+      expect(details.querySelector("pre")?.textContent).toBe("failed to load config from C:/panel/vite.config.mjs");
+      expect(container.textContent).not.toContain("\x1b");
+      expect(useEditorStore.getState().consoleEntries).toBe(entries);
+      expect(entries.every((entry) => entry.message === raw)).toBe(true);
+      const search = container.querySelector("input")!;
+      for (const query of ["configurazione", "vite.config.mjs"]) {
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, query);
+          search.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        expect(container.querySelectorAll("article")).toHaveLength(1);
+      }
+    } finally { await act(async () => root.unmount()); }
+  });
+
+  it("non raggruppa origini diverse o livelli diversi e conserva il filtro dei problemi", async () => {
+    useEditorStore.setState({ consoleEntries: [
+      { id: "1", time: "12:00", message: "Messaggio", level: "info", source: "hmi" },
+      { id: "2", time: "12:00", message: "Messaggio", level: "error", source: "hmi" },
+      { id: "3", time: "12:00", message: "Messaggio", level: "error", source: "preview" },
+    ] });
+    const container = document.createElement("div"); const root = createRoot(container);
+    try {
+      await act(async () => root.render(createElement(ConsolePanel)));
+      expect(container.querySelectorAll("article")).toHaveLength(3);
+      await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Problemi")!.click());
+      expect(container.querySelectorAll("article")).toHaveLength(2);
+      expect(container.querySelector('[aria-label="Informazione"]')).toBeNull();
+    } finally { await act(async () => root.unmount()); }
+  });
+
   it("distingue output HMI, preview e problemi e permette di cercarli", async () => {
     useEditorStore.getState().addPreviewOutput("stdout", "[HMI Tapped] Command.Start=1");
     useEditorStore.getState().addPreviewOutput("stdout", "vite connected");

@@ -120,15 +120,20 @@ describe("desktop event lifecycle and loading screen", () => {
     try {
       await act(async () => root.render(createElement(App)));
       expect(host.textContent).toContain("C’è una bozza locale da recuperare"); expect(host.textContent).toContain("C:/panel");
-      const recover = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Riapri questa copia"))!;
+      expect(host.querySelector('[aria-label="Riepilogo della bozza"]')?.textContent).toContain("App.jsx");
+      expect([...host.querySelectorAll("details")].every((details) => !details.open)).toBe(true);
+      expect(host.textContent).toContain("Codice della bozza (per assistenza)");
+      expect(host.textContent).toContain("non occorre leggere il codice");
+      const recover = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Recupera bozza e riprendi"))!;
       await act(async () => recover.click()); expect(resume).toHaveBeenCalledWith();
       await act(async () => useEditorStore.setState({ reloadRecovery: { checkpoint, persistent: record, status: "opening" } }));
       expect([...host.querySelectorAll("button")].every((button) => button.disabled)).toBe(true);
       await act(async () => useEditorStore.setState({ reloadRecovery: { checkpoint, persistent: record, status: "conflict", diskSource: "disco modificato" } }));
       const fields = [...host.querySelectorAll("textarea")]; expect(fields).toHaveLength(2); expect(fields.every((field) => field.readOnly)).toBe(true);
       expect(fields[1].getAttribute("aria-label")).toBe("Versione attuale del file su disco");
-      await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Usa la bozza nell’editor")!.click());
-      await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Usa il file da disco")!.click());
+      expect(host.textContent).toContain("la sua cronologia non verranno riprese");
+      await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Recupera le modifiche della bozza")!.click());
+      await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Apri la pagina salvata su disco")!.click());
       expect(resume.mock.calls).toEqual([[], ["draft"], ["disk"]]);
       expect(bridge.readFile).not.toHaveBeenCalled(); expect(bridge.stopPreview).not.toHaveBeenCalled();
     } finally { await act(async () => root.unmount()); host.remove(); useEditorStore.setState({ resumePersistentRecovery: originalResume }); }
@@ -160,7 +165,7 @@ describe("desktop event lifecycle and loading screen", () => {
       expect(host.querySelector('[role="status"]')).not.toBeNull();
       expect(host.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("bozza non salvata");
       expect(host.querySelector<HTMLTextAreaElement>("textarea")?.readOnly).toBe(true);
-      expect([...host.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["Torna ai progetti"]);
+      expect([...host.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["Scarta bozza e torna ai progetti"]);
       await act(async () => useEditorStore.setState({ reloadRecovery: { checkpoint, status: "failed", error: "Verifica non riuscita" } }));
       expect(host.textContent).toContain("Verifica non riuscita");
       await act(async () => {
@@ -172,7 +177,7 @@ describe("desktop event lifecycle and loading screen", () => {
       await act(async () => retry.click());
       expect(bridge.getEditorSession).toHaveBeenCalledOnce();
       expect(host.textContent).toContain("Il backend non ha più aperto");
-      const discard = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Torna ai progetti"))!;
+      const discard = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Scarta bozza"))!;
       vi.spyOn(window, "confirm").mockReturnValue(false);
       await act(async () => discard.click()); expect(useEditorStore.getState().reloadRecovery).toBeDefined();
       vi.mocked(window.confirm).mockReturnValue(true);

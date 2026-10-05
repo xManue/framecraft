@@ -26,6 +26,7 @@ import { emptyHmiScriptCatalog, parseHmiScriptCatalog, type HmiScriptCatalog } f
 import { emptyHmiFaceplateCatalog, hmiFaceplateCatalogName, parseHmiFaceplateCatalog, type HmiFaceplateCatalog } from "../core/hmiFaceplates";
 import { emptyHmiDataLogCatalog, hmiDataLogCatalogName, parseHmiDataLogCatalog, type HmiDataLogCatalog } from "../core/hmiDataLogs";
 import { clearEditorReloadCheckpoint, installEditorReloadRecovery, readEditorReloadCheckpoint, recoverEditorReload, type EditorReloadRecovery } from "./editorRecovery";
+import { cleanDiagnosticText } from "../core/editorMessages";
 
 type LeftPanel = "project" | "components" | "pages" | "plc" | "resources" | "scripts" | "faceplates" | "logs" | "page";
 /** How large the whole editor is drawn. A panel is built standing at a machine as often as sitting
@@ -1224,7 +1225,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     retryDraftBackup: async () => { try { await flushEditorDraft(useEditorStore); } catch { /* The backup error is visible in the editor. */ } },
     discardReloadRecovery: async () => {
       if (get().reloadRecovery?.status === "opening") return;
-      if (get().reloadRecovery?.checkpoint?.dirty && !window.confirm("Vuoi scartare la bozza recuperabile e tornare ai progetti?")) return;
+      if (get().reloadRecovery?.checkpoint?.dirty && !window.confirm("Scartare la bozza e tornare ai progetti?\n\nLa copia con le modifiche non salvate verrà eliminata. I file già salvati nel progetto non verranno modificati. Se vuoi riprendere il lavoro, scegli Annulla e recupera la bozza.")) return;
       const pending = get().reloadRecovery;
       if (pending) set({ reloadRecovery: { ...pending, status: "checking" } });
       try { await clearDurableEditorDraft(useEditorStore, pending?.persistent); }
@@ -1537,8 +1538,9 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     reportedPreviewExit: (sessionId) => runtime.previewExits.get(sessionId),
     addPreviewOutput(stream, line, sessionId) {
       if (sessionId && get().previewSessionId !== sessionId) return;
-      const looksLikeError = /\b(error|failed|exception)\b/i.test(line);
-      const fatal = fatalPreviewOutput.some((pattern) => pattern.test(line));
+      const diagnosticLine = cleanDiagnosticText(line);
+      const looksLikeError = /(?:^|[\s\[])(error|failed|exception)\b/i.test(diagnosticLine);
+      const fatal = fatalPreviewOutput.some((pattern) => pattern.test(diagnosticLine));
       const level: ConsoleEntry["level"] = looksLikeError ? "error" : stream === "stderr" ? "warning" : "info";
       set((state) => {
         // Only a fatal line during startup may switch the canvas to the error state. Once the preview is
@@ -1547,7 +1549,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         return {
           previewStatus: breaksPreview ? "error" : state.previewStatus,
           previewError: breaksPreview ? line : state.previewError,
-          consoleEntries: [...state.consoleEntries, entry(level, line, line.startsWith("[HMI ") ? "hmi" : "preview")].slice(-300),
+          consoleEntries: [...state.consoleEntries, entry(level, line, diagnosticLine.startsWith("[HMI ") ? "hmi" : "preview")].slice(-300),
         };
       });
     },

@@ -9,6 +9,7 @@ import { Inspector } from "../inspector/Inspector";
 import { Workspace } from "./Workspace";
 import { densityScale, useEditorStore, type PaneSizes } from "../state/editorStore";
 import { StandalonePreview } from "../preview/StandalonePreview";
+import { consoleMessageSource, describeEditorMessage } from "../core/editorMessages";
 
 /** The bar between two panels. It is dragged in the editor's own pixels, which are not the screen's
  * once the interface is scaled up, so the pointer distance is divided back down before it is used. */
@@ -43,22 +44,26 @@ function PaneResizer({ pane, edge, scale }: { pane: keyof PaneSizes; edge: "left
     }} />;
 }
 
-function ActionToast() {
+export function ActionToast() {
   const entries = useEditorStore((state) => state.consoleEntries);
   const undoCount = useEditorStore((state) => state.history.length);
   const undo = useEditorStore((state) => state.undo);
+  const showDiagnostics = useEditorStore((state) => state.setConsoleOpen);
   const last = [...entries].reverse().find((item) => item.level !== "info");
   const [visibleId, setVisibleId] = useState<string>();
   useEffect(() => {
     if (!last) return;
     setVisibleId(last.id);
-    const timer = window.setTimeout(() => setVisibleId((current) => current === last.id ? undefined : current), last.level === "error" ? 7500 : 4500);
+    if (last.level === "error") return;
+    const timer = window.setTimeout(() => setVisibleId((current) => current === last.id ? undefined : current), last.level === "warning" ? 10000 : 4500);
     return () => window.clearTimeout(timer);
   }, [last?.id]);
   if (!last || visibleId !== last.id) return null;
+  const message = describeEditorMessage(last.message, consoleMessageSource(last) === "preview" ? "preview" : "editor", last.level);
   const Icon = last.level === "success" ? CheckCircle2 : last.level === "error" ? AlertTriangle : Info;
-  return <div className={`action-toast ${last.level}`} role={last.level === "error" ? "alert" : "status"} aria-live="polite">
-    <Icon size={18} /><span>{last.message}</span>
+  return <div className={`action-toast ${last.level}`} role={last.level === "error" ? "alert" : "status"} aria-live={last.level === "error" ? "assertive" : "polite"}>
+    <Icon size={18} /><span>{message.text}{message.nextStep && <small>{message.nextStep}</small>}</span>
+    {(last.level === "error" || last.level === "warning") && <button onClick={() => { showDiagnostics(true); setVisibleId(undefined); }}>Apri diagnostica</button>}
     {last.level === "success" && undoCount > 0 && <button onClick={() => { void undo(); setVisibleId(undefined); }}><Undo2 size={14} /> Annulla</button>}
     <button className="toast-close" onClick={() => setVisibleId(undefined)} aria-label="Chiudi messaggio"><X size={15} /></button>
   </div>;

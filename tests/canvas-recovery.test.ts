@@ -25,7 +25,9 @@ describe("recupero del canvas senza cambiare lo zoom del pannello", () => {
       expect(host.querySelector("iframe")).toBeNull();
       const alert = host.querySelector('[role="alert"]')!;
       expect(alert.textContent).toContain("Vite si è chiuso");
-      expect(alert.textContent).toContain("Riavvia Vite");
+      expect(alert.textContent).toContain("Riprova anteprima");
+      expect(alert.querySelector(".message-notice > p")?.textContent).toContain("si è fermato");
+      expect(alert.querySelector<HTMLDetailsElement>("details")?.open).toBe(false);
       expect(alert.textContent).not.toContain("Continua comunque");
     } finally { await act(async () => root.unmount()); host.remove(); }
   });
@@ -38,7 +40,7 @@ describe("recupero del canvas senza cambiare lo zoom del pannello", () => {
       expect(alert.textContent).toContain("Vite non si è avviato");
       expect(host.querySelector(".canvas-area")?.contains(alert)).toBe(true);
       expect(host.querySelector(".canvas-frame-wrap")?.contains(alert)).toBe(false);
-      const logs = [...alert.querySelectorAll("button")].find((button) => button.textContent?.includes("Log di avvio"))!;
+      const logs = [...alert.querySelectorAll("button")].find((button) => button.textContent?.includes("Apri diagnostica"))!;
       await act(async () => logs.dispatchEvent(new MouseEvent("click", { bubbles: true })));
       expect(useEditorStore.getState().consoleOpen).toBe(true);
     } finally { await act(async () => root.unmount()); host.remove(); }

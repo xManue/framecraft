@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { ElementGeometry, PreviewMessage, ResizeHandle, SelectionRect, SourceRef, TransformOperation } from "../core/types";
 import { useEditorStore } from "../state/editorStore";
+import { MessageNotice } from "../editor/MessageNotice";
 import { contentGrantLimit, fitCanvasZoom, normalizeContentHeight, normalizeContentWidth, settledContentSize } from "./sizing";
 import { panelFormat } from "./panels";
 import { stylePatch, transformedRect } from "./transformGeometry";
@@ -890,9 +891,9 @@ export function Canvas() {
   }, [commitMultiSelection, deleteSelection, insert, inspectSource, selectSource, setMultiSelection, setSelectionRect, setSelectionInfo, setSelectionStyles, syncPreviewPath, syncStatePage, updateStyles, updateText, interactionMode, requestedStatePage, snap.enabled, snap.grid, viewport, multiSelection, hmiPopupManager, hmiTimerManager]);
 
   const recoveryActions = <div className="preview-error-actions">
-    <button disabled={previewBusy} onClick={() => void restartPreview()}><RefreshCw size={14} /> {previewBusy ? "Avvio Vite in corso…" : "Riavvia Vite"}</button>
-    <button disabled={previewBusy} onClick={() => void restartPreview(true)}><RefreshCw size={14} /> Ricostruisci cache Vite</button>
-    <button onClick={() => setConsoleOpen(true)}><TerminalSquare size={14} /> Log di avvio</button>
+    <button disabled={previewBusy} onClick={() => void restartPreview()}><RefreshCw size={14} /> {previewBusy ? "Avvio dell’anteprima…" : "Riprova anteprima"}</button>
+    <button disabled={previewBusy} onClick={() => void restartPreview(true)} title="Riavvia l’anteprima ricompilando le dipendenze. Non corregge errori nel codice."><RefreshCw size={14} /> Ricompila anteprima</button>
+    <button onClick={() => setConsoleOpen(true)}><TerminalSquare size={14} /> Apri diagnostica</button>
     {previewSrc && <button disabled={previewBusy} onClick={markPreviewReady}><X size={14} /> Continua comunque</button>}
   </div>;
 
@@ -954,9 +955,9 @@ export function Canvas() {
     </div>
     {(!previewSrc || previewStatus === "error") && <div className={`preview-empty preview-state-overlay${previewStatus === "error" ? " preview-error" : ""}`} role={previewStatus === "error" ? "alert" : "status"}>
       {previewStatus === "error" ? <>
-        <AlertTriangle size={24} /><strong>{previewSrc ? "La preview segnala un errore" : "Anteprima non disponibile"}</strong>
-        <span>{previewError}</span>{recoveryActions}
-      </> : <><RefreshCw className="spin" size={22} /><strong>Avvio dell’anteprima…</strong><span>L’editor resta utilizzabile anche se Vite segnala un errore.</span></>}
+        <AlertTriangle size={24} /><strong>{previewSrc ? "L’anteprima segnala un problema" : "Anteprima non disponibile"}</strong>
+        <MessageNotice context="preview" raw={previewError ?? "L’anteprima non è stata avviata."} />{recoveryActions}
+      </> : <><RefreshCw className="spin" size={22} /><strong>Avvio dell’anteprima…</strong><span>Preparo la visualizzazione del pannello. Le modifiche non salvate restano nell’editor.</span></>}
     </div>}
   </section>;
 }

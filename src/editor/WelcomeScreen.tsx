@@ -4,6 +4,7 @@ import { desktopAvailable, desktopBridge } from "../filesystem/desktopBridge";
 import { standardProjectPageCount, standardProjectSectionChoices, type StandardProjectConfig, type StandardProjectSectionId } from "../core/standardProject";
 import { settingsProgramChoices, type SettingsProgram } from "../core/hmiSectionMenu";
 import { useEditorStore } from "../state/editorStore";
+import { MessageNotice } from "./MessageNotice";
 
 function StandardProjectWizard({ loading, onClose }: { loading: boolean; onClose: () => void }) {
   const create = useEditorStore((state) => state.createStandardProject);
@@ -89,7 +90,7 @@ export function WelcomeScreen() {
               <Plus size={17} /> Progetto React vuoto
             </button>
           </div>
-          {error && <div className="welcome-error" role="alert"><AlertCircle size={16} /><span><strong>Non riesco ad aprire il progetto</strong>{error}</span></div>}
+          {error && <div className="welcome-error" role="alert"><AlertCircle size={16} /><div><strong>Impossibile completare l’operazione</strong><MessageNotice raw={error} /></div></div>}
           {!desktopAvailable && (
             <div className="desktop-notice" role="status">
               <ShieldCheck size={17} />

@@ -122,6 +122,7 @@ describe("bozze locali persistenti dell'editor", () => {
   it("chiede conferma allo scarto e non ferma o riavvia l'anteprima", async () => {
     await offered(); vi.spyOn(window, "confirm").mockReturnValue(false);
     await useEditorStore.getState().discardReloadRecovery(); expect(bridge.clearEditorDraft).not.toHaveBeenCalled();
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("modifiche non salvate verrà eliminata"));
     vi.mocked(window.confirm).mockReturnValue(true);
     await useEditorStore.getState().discardReloadRecovery();
     expect(bridge.clearEditorDraft).toHaveBeenCalledWith(record);

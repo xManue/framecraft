@@ -3092,6 +3092,45 @@ Verifiche del 5 ottobre 2026:
   passati e build TypeScript/Vite riuscita; `test:standard` rifiuta l'assenza degli export con
   errore esplicito. La copia usa le dipendenze già installate, non è un'installazione su OS nuovo.
 
+### 88. Recupero della bozza e messaggi comprensibili senza conoscere il codice
+
+- La richiesta nasce dal comando “Mostra la bozza conservata”, che apriva soltanto il testo
+  sorgente. Ora è **Codice della bozza (per assistenza)**, in sola lettura e chiuso inizialmente:
+  ne spiega il motivo e chiarisce che non è un'immagine/anteprima del pannello.
+- Riepilogo di progetto, pagina, data e modifiche non salvate; **Recupera bozza e riprendi il
+  lavoro** è l'azione principale. La scelta che elimina il record si chiama **Scarta bozza e
+  torna ai progetti**, con conferma esplicita quando dirty. I file salvati non vengono cambiati
+  dal recupero o dallo scarto. Nel conflitto sono spiegati gli effetti di entrambe le versioni,
+  inclusa la cronologia non ripresa scegliendo la pagina su disco.
+- Nessuna finta grafica della bozza: il codice non viene eseguito nei dettagli; l'anteprima
+  reale legge i file salvati, non il buffer dirty. La schermata indica quando serve Salva.
+  Contratti backend, controlli su root/generazione, persistenza e recupero restano invariati.
+- Strato puro di presentazione per errori comuni di anteprima, percorsi Windows, file/permessi,
+  dipendenze, sintassi, spazio, recovery e backup. Prima spiegazione e prossimo passo, poi
+  dettagli tecnici espandibili. Avviso non significa automaticamente pannello guasto; per
+  cause sconosciute non vengono inventate diagnosi. I dettagli non sono una pulizia dei segreti.
+- Diagnostica con messaggi interi a capo, ricerca su spiegazione e originale, origini distinte
+  e ripetizioni consecutive raggruppate senza cancellare i record. Classificazione su testo
+  senza colori ANSI; nomi tag come `Motor.Error=0` non diventano falsi errori. Il limite esistente
+  di 300 log dell'anteprima resta uguale. Pulisci diagnostica non elimina file o bozze.
+- Toast di errore non scompare a tempo e offre **Apri diagnostica**. Avvisi di backup spiegano
+  che le ultime modifiche potrebbero non essere recuperabili: nessuna promessa di salvataggio
+  riuscito. Comandi **Riprova anteprima** e **Ricompila anteprima**, con limiti espliciti; non
+  viene suggerita la ricostruzione cache come correzione automatica di codice non valido.
+- Target nuovi almeno 44 px, focus, dettagli da tastiera e layout stretti: corretti anche
+  sovrapposizione header/log e larghezza del testo rilevati negli screenshot di collaudo.
+  Fixture locale `.hmi-preview/messages`, esclusa da Git, mouse/Invio e screenshot in browser
+  headless con profilo proprio: scelta di recupero/conflitto, codice nascosto inizialmente,
+  log originali conservati e nessun overflow orizzontale a 1280×900 e 390×844.
+- Test mirati di UI/log/recovery e 16 prove del vero store compilato dopo HMR/full reload;
+  nessun agente, dipendenza nuova, sorgente della macchina modificato o riavvio manuale
+  dell'app/anteprima dell'utente. JSON WinCC reali, foto e dati temporanei restano locali.
+  Parità WinCC/Optix/AI, driver OPC UA e gate industriali/licenze non vengono dichiarati chiusi.
+- Suite completa: **1193 test passati in 94 file**, con quattro worker e timeout invariati.
+  La prima esecuzione insieme alle build aveva due timeout da 5 s; i due file riprovati con
+  carico ridotto passano (46 test), poi passa la suite intera. Build TypeScript/Vite verificata;
+  nessun aumento dei timeout per mascherare una regressione o modifica ai test funzionali PLC.
+
 ## Da fare, dopo
 
 - **Affidabilità editor durante gli aggiornamenti**: HMR/reload coperti al punto 77 e deposito

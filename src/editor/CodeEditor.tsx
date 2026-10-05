@@ -8,7 +8,7 @@ export function CodeEditor() {
   const save = useEditorStore((state) => state.save);
   if (!document) return <section className="code-pane" />;
   return <section className="code-pane">
-    <header><span><FileCode2 size={14} />{document.file.split(/[\\/]/).at(-1)}{dirty && " •"}</span><button onClick={() => void save()}><Save size={13} /> Save</button></header>
-    <textarea aria-label="Source code" spellCheck={false} value={document.source} onChange={(event) => replace(event.target.value)} />
+    <header><span><FileCode2 size={14} />{document.file.split(/[\\/]/).at(-1)}{dirty && " •"}</span><button onClick={() => void save()}><Save size={13} /> Salva</button></header>
+    <textarea aria-label="Codice della pagina" spellCheck={false} value={document.source} onChange={(event) => replace(event.target.value)} />
   </section>;
 }

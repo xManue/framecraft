@@ -296,6 +296,33 @@ GUI/packaging, flush alla chiusura e gestione/retention delle copie restano da c
 Contratti primari: [directory locali Tauri](https://docs.rs/tauri/latest/tauri/path/struct.PathResolver.html#method.app_local_data_dir)
 e [sostituzione atomica tempfile](https://docs.rs/tempfile/latest/tempfile/struct.NamedTempFile.html#method.persist).
 
+## Recupero guidato e messaggi dell'editor
+
+La schermata di recupero mostra progetto, pagina, data della copia e stato delle modifiche.
+Il codice è consultabile in sola lettura nei dettagli per assistenza, non viene presentato
+come anteprima grafica e non va letto per riprendere il lavoro. Il pulsante di ritorno che
+scarta il record lo dichiara esplicitamente; la conferma spiega che elimina le modifiche non
+salvate della bozza senza modificare i file già salvati. Nel conflitto sono distinti effetti
+della scelta bozza e disco, inclusa la perdita della vecchia cronologia scegliendo il disco.
+Il recupero non avvia né salva: l'anteprima legge il disco, non il buffer dirty della bozza.
+
+`editorMessages.ts` è uno strato puro di presentazione: spiega i casi riconosciuti, separa
+azione e testo tecnico e rimuove sequenze ANSI/OSC dalla visualizzazione. Non modifica errori
+originali, payload di recupero, autorizzazioni o versioni; non deduce una causa per errori
+sconosciuti e distingue un avviso di compatibilità da un avvio realmente fallito. I dettagli
+sono locali e possono contenere dati di progetto: non sono una redazione automatica dei segreti.
+
+Diagnostica: ricerca su testo originale ripulito e spiegazione, filtri per origine/problemi,
+righe espandibili e raggruppamento visuale delle ripetizioni consecutive. Il limite esistente
+di 300 messaggi per output dell'anteprima non cambia; i record dentro il limite restano separati.
+Colori terminale non nascondono più gli errori nella classificazione; un nome tag come
+`Motor.Error=0` non è un errore solo per la presenza di `.Error`. La cancellazione pulisce
+l'elenco, non file o bozze. Gli errori nei toast restano fino alla chiusura dell'utente o a un
+nuovo messaggio non informativo e offrono accesso alla diagnostica; i successi restano temporanei.
+
+Il collaudo UI usa fixture sintetiche e browser headless isolato, non la finestra desktop
+dell'utente o i suoi file. Non sostituisce il collaudo recovery nel pacchetto distribuito.
+
 ## Contesti e variabili degli script
 
 Il modello di riferimento distingue due contesti per pagina, eventi e dinamizzazioni, e un

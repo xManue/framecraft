@@ -10,6 +10,8 @@ import { desktopAvailable } from "../filesystem/desktopBridge";
 import type { PreviewExit, PreviewOutput } from "../core/types";
 import { editorCheckpointFresh } from "../state/editorRecovery";
 import { installEditorDraftRecovery } from "../state/editorDraft";
+import { MessageNotice } from "../editor/MessageNotice";
+import { describeEditorMessage } from "../core/editorMessages";
 
 export function App() {
   return <EditorErrorBoundary><EditorApp /></EditorErrorBoundary>;
@@ -32,8 +34,7 @@ class EditorErrorBoundary extends Component<{ children: ReactNode }, { error?: E
     return <main className="editor-recovery" role="alert">
       <span><AlertTriangle size={26} /></span>
       <h1>Framecraft non è riuscito a mostrare il progetto</h1>
-      <p>{this.state.error.message || "Errore imprevisto dell'interfaccia."}</p>
-      {this.state.componentStack && <details className="recovery-details"><summary>Dettagli tecnici</summary><pre>{this.state.componentStack}</pre></details>}
+      <MessageNotice context="interface" raw={[this.state.error.message, this.state.componentStack].filter(Boolean).join("\n")} />
       <button onClick={() => {
         void useEditorStore.getState().closeProject().then(() => this.setState({ error: undefined }));
       }}><RotateCcw size={15} /> Torna ai progetti</button>
@@ -50,7 +51,7 @@ function ProjectLoadingScreen() {
     <LoaderCircle className="spin" size={24} />
     <strong>{project ? previewSessionId ? "Avvio dell’anteprima…" : "Preparazione dell’anteprima…" : "Apertura del progetto…"}</strong>
     <p style={{ overflowWrap: "anywhere" }}>{project && previewSessionId && previewOutput
-      ? previewOutput.replace(/\x1b\[[0-9;]*m/g, "").slice(0, 300)
+      ? describeEditorMessage(previewOutput, "preview", "info").text.slice(0, 300)
       : "Preparo la copia sicura, analizzo le pagine e avvio l’anteprima."}</p>
   </main>;
 }
@@ -64,23 +65,38 @@ function ReloadRecoveryScreen() {
   const available = recovery.status === "available";
   const conflict = recovery.status === "conflict";
   const draft = recovery.checkpoint?.document;
+  const checkpoint = recovery.checkpoint;
+  const page = checkpoint?.pages.find((item) => item.id === checkpoint.activePageId || item.file === draft?.file);
+  const projectName = checkpoint?.root.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1);
   return <main className="editor-recovery reload-recovery" role={checking ? "status" : "alert"} aria-live={checking ? "polite" : "assertive"}>
     <span>{checking ? <LoaderCircle className="spin" size={26} /> : <AlertTriangle size={26} />}</span>
     <h1>{recovery.status === "opening" ? "Apertura della copia per il recupero…" : checking ? "Recupero del progetto dopo l’aggiornamento…" : available ? "C’è una bozza locale da recuperare" : conflict ? "Il file su disco è cambiato" : "Il progetto non è ancora stato recuperato"}</h1>
-    <p>{recovery.status === "opening" ? "Riapro solo la cartella scelta per il recupero. L’anteprima resta spenta e nessun sorgente viene salvato." : checking ? "Verifico le copie disponibili senza riaprire cartelle, salvare file o riavviare l’anteprima." : available ? "Questa copia è sopravvissuta al riavvio dell’app. Puoi recuperarla oppure scartarla: il recupero non avvia il pannello e non salva i sorgenti." : recovery.error}</p>
-    {recovery.persistent && recovery.checkpoint && <p className="draft-recovery-location">{recovery.checkpoint.root}<br />Backup locale del {new Date(recovery.checkpoint.savedAt).toLocaleString()}</p>}
-    {draft && <details className="recovery-details"><summary>Mostra la bozza conservata</summary>
+    {checking ? <p>{recovery.status === "opening" ? "Riapro la cartella della bozza. Il recupero non salva la pagina e non avvia il pannello." : "Controllo la copia automatica del lavoro precedente. Non vengono salvati file né avviato il pannello."}</p>
+      : available ? <p>Framecraft ha conservato una copia automatica della pagina su cui lavoravi. Usa “Recupera bozza e riprendi il lavoro” per ritrovarla nell’editor: non occorre leggere il codice.</p>
+      : conflict ? <p>La pagina salvata è stata modificata dopo la creazione della bozza. Scegli quale versione aprire: il recupero non sovrascrive il file su disco.</p>
+      : <MessageNotice context="recovery" raw={recovery.error ?? "Verifica del recupero non riuscita."} />}
+    {checkpoint && <section className="draft-recovery-summary" aria-label="Riepilogo della bozza">
+      <dl><div><dt>Progetto</dt><dd>{projectName}</dd></div><div><dt>Pagina</dt><dd>{page?.name ?? draft?.file.split(/[\\/]/).at(-1) ?? "Ultima sessione di lavoro"}</dd></div>
+        <div><dt>Copia automatica del</dt><dd>{new Date(checkpoint.savedAt).toLocaleString("it-IT")}</dd></div>
+        <div><dt>Stato della pagina</dt><dd>{checkpoint.dirty ? "Contiene modifiche non salvate" : "Non risultavano modifiche non salvate"}</dd></div></dl>
+      <p className="draft-recovery-location">Cartella di lavoro: {checkpoint.root}</p>
+    </section>}
+    {conflict && <div className="recovery-choices"><section><strong>Bozza recuperata</strong><p>Riprende le modifiche conservate nell’editor. Dovrai salvarle per aggiornare la pagina su disco.</p></section><section><strong>Pagina salvata su disco</strong><p>Apre la versione attuale del file. Le modifiche non salvate della bozza e la sua cronologia non verranno riprese.</p></section></div>}
+    <div className="recovery-actions">
+      {available && <button className="recovery-primary" onClick={() => void resume()}><RotateCcw size={15} /> Recupera bozza e riprendi il lavoro</button>}
+      {conflict && <><button className="recovery-primary" onClick={() => void resume("draft")}>Recupera le modifiche della bozza</button><button onClick={() => void resume("disk")}>Apri la pagina salvata su disco</button></>}
+      {recovery.status === "failed" && recovery.checkpoint && (recovery.persistent || editorCheckpointFresh(recovery.checkpoint)) && <button onClick={() => void retry()}><RotateCcw size={15} /> Riprova il recupero</button>}
+      <button disabled={recovery.status === "opening"} onClick={() => void discard()}>{checkpoint ? "Scarta bozza e torna ai progetti" : "Torna ai progetti"}</button>
+    </div>
+    {checkpoint && <p className="recovery-help">Il recupero non salva né avvia l’anteprima. L’anteprima legge la pagina su disco: per mostrarvi le modifiche non salvate della bozza, usa Salva nell’editor.</p>}
+    {draft && <details className="recovery-details"><summary>Codice della bozza (per assistenza)</summary>
+      <p>Questo è il testo tecnico della pagina, non un’immagine del pannello. Serve per controllare o copiare le modifiche con chi ti assiste; non devi usarlo per recuperare il lavoro.</p>
       <p>{draft.file}</p><textarea readOnly value={draft.source} spellCheck={false} aria-label="Bozza conservata del file" />
     </details>}
-    {conflict && <details className="recovery-details"><summary>Mostra il file attuale su disco</summary>
+    {conflict && <details className="recovery-details"><summary>Codice della pagina su disco (per assistenza)</summary>
+      <p>Versione attualmente salvata, in sola lettura. Aprire questi dettagli non modifica alcun file.</p>
       <textarea readOnly value={recovery.diskSource ?? ""} spellCheck={false} aria-label="Versione attuale del file su disco" />
     </details>}
-    <div className="recovery-actions">
-      {available && <button onClick={() => void resume()}><RotateCcw size={15} /> Riapri questa copia e recupera</button>}
-      {conflict && <><button onClick={() => void resume("draft")}>Usa la bozza nell’editor</button><button onClick={() => void resume("disk")}>Usa il file da disco</button></>}
-      {recovery.status === "failed" && recovery.checkpoint && (recovery.persistent || editorCheckpointFresh(recovery.checkpoint)) && <button onClick={() => void retry()}><RotateCcw size={15} /> Riprova il recupero</button>}
-      <button disabled={recovery.status === "opening"} onClick={() => void discard()}>Torna ai progetti</button>
-    </div>
   </main>;
 }
 
@@ -169,7 +185,7 @@ function EditorApp() {
   return (
     <>
       {reloadRecovery ? <ReloadRecoveryScreen /> : loading ? <ProjectLoadingScreen /> : project ? <AppShell /> : <WelcomeScreen />}
-      {!reloadRecovery && project && backupError && <aside className="draft-backup-warning" role="alert"><p>{backupError}</p><button onClick={() => void retryBackup()}>Riprova il backup</button></aside>}
+      {!reloadRecovery && project && backupError && <aside className="draft-backup-warning" role="alert"><MessageNotice context="backup" raw={backupError} /><button onClick={() => void retryBackup()}>Riprova il backup</button></aside>}
       {paletteOpen && <CommandPalette />}
       {userAccessOpen && <UserAccessWindow />}
     </>

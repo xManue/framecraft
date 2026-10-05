@@ -40,6 +40,26 @@ npm run web:dev
 
 Run `npm test` for parser and transformation fixtures, and `npm run build` for the editor production build.
 
+## Draft recovery and diagnostics
+
+The recovery screen identifies the project, page, backup date and unsaved status. Choose
+**Recupera bozza e riprendi il lavoro** to restore the editor buffer, not to save files or start
+the panel. If the disk version has changed, choose explicitly between the draft and the saved
+page; the disk choice does not restore the draft's unsaved changes or history.
+**Scarta bozza e torna ai progetti** removes the recovery copy and asks for confirmation when
+it contains unsaved changes. It does not modify the saved project files.
+
+**Codice della bozza (per assistenza)** is a read-only technical copy, not a graphical preview.
+You do not need to open it to recover your work. The real preview reads saved files: save the
+recovered draft explicitly before expecting its unsaved changes to appear in that preview.
+
+Errors and warnings explain common problems and the next step, with the original diagnostic
+text under **Dettagli tecnici (per assistenza)**. **Apri diagnostica** shows the searchable log;
+consecutive identical messages are grouped without deleting the originals. Clearing the log
+does not delete project files or drafts. Unknown errors remain available for assistance rather
+than being assigned an unverified cause. Technical details may contain project data: review
+them before sharing outside your organization.
+
 ## Public code and private reference data
 
 The public repository deliberately excludes the real WinCC JSON exports in `standard/`, comparison

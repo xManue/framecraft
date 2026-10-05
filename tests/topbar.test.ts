@@ -249,7 +249,7 @@ describe("barra comandi principale", () => {
       const view = [...container.querySelectorAll(".topbar-menu > button")].find((button) => button.textContent?.includes("Visualizza"))!;
       await act(async () => view.dispatchEvent(new MouseEvent("click", { bubbles: true })));
       expect(container.textContent).not.toContain("Interrompi avvio");
-      const logs = [...container.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')].find((button) => button.textContent?.includes("Log di avvio"))!;
+      const logs = [...container.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')].find((button) => button.textContent?.includes("Apri diagnostica"))!;
       expect(logs.disabled).toBe(false);
       await act(async () => logs.dispatchEvent(new MouseEvent("click", { bubbles: true })));
       expect(useEditorStore.getState().consoleOpen).toBe(true);
@@ -264,16 +264,16 @@ describe("barra comandi principale", () => {
     const root = createRoot(container);
     await act(async () => root.render(createElement(TopBar)));
     expect(container.querySelectorAll(".topbar-interaction-switch button")).toHaveLength(2);
-    expect(container.textContent).not.toContain("Ricostruisci cache Vite");
+    expect(container.textContent).not.toContain("Ricompila anteprima");
     const open = () => [...container.querySelectorAll(".topbar-menu > button")].find((button) => button.textContent?.includes("Visualizza"))!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await act(async () => open());
     expect(container.textContent).toContain("Tenta l’avvio");
-    const force = [...container.querySelectorAll('button[role="menuitem"]')].find((button) => button.textContent?.includes("Ricostruisci cache Vite"))!;
+    const force = [...container.querySelectorAll('button[role="menuitem"]')].find((button) => button.textContent?.includes("Ricompila anteprima"))!;
     await act(async () => force.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(restart).toHaveBeenCalledExactlyOnceWith(true);
     expect(container.querySelector('[role="menu"]')).toBeNull();
     await act(async () => open());
-    const logs = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Log di avvio"))!;
+    const logs = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Apri diagnostica"))!;
     await act(async () => logs.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(useEditorStore.getState().consoleOpen).toBe(true);
     await act(async () => root.unmount());
@@ -288,11 +288,11 @@ describe("barra comandi principale", () => {
     await act(async () => root.render(createElement(TopBar)));
     const view = [...container.querySelectorAll(".topbar-menu > button")].find((button) => button.textContent?.includes("Visualizza"))!;
     await act(async () => view.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    for (const label of ["Aggiorna anteprima", "Avvio Vite in corso", "Ricostruisci cache Vite"]) {
+    for (const label of ["Aggiorna anteprima", "Avvio dell’anteprima", "Ricompila anteprima"]) {
       const button = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes(label))!;
       expect(button.disabled).toBe(true);
     }
-    expect([...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Log di avvio"))!.disabled).toBe(false);
+    expect([...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Apri diagnostica"))!.disabled).toBe(false);
     await act(async () => root.unmount());
     container.remove();
   });
