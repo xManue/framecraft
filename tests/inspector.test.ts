@@ -18,6 +18,14 @@ import { serializeHmiFaceplateBinding, standardHmiFaceplateCatalog } from "../sr
 import { defaultHmiTrendConfig, serializeHmiTrendConfig } from "../src/core/hmiTrend";
 import { defaultHmiFunctionTrendConfig, parseHmiFunctionTrendConfig, serializeHmiFunctionTrendConfig } from "../src/core/hmiFunctionTrend";
 
+async function activatePropertyTab(container: HTMLElement, label: string) {
+  const tab = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((button) => button.textContent === label)!;
+  await act(async () => tab.click());
+  const panel = container.querySelector<HTMLElement>("#" + tab.getAttribute("aria-controls"))!;
+  expect(panel.hidden).toBe(false);
+  return panel;
+}
+
 describe("inspector coordinates", () => {
   it("moves one visual axis while preserving the existing translation on the other", () => {
     expect(translatedCoordinate(120, 155, "10px -4px", "x")).toBe("45px -4px");
@@ -106,6 +114,7 @@ describe("scheda unica dell'elemento", () => {
         expect(section(title).getAttribute("aria-expanded")).toBe("false");
       }
       expect(container.querySelector('[aria-label="Apri il codice dell\'elemento"]')).not.toBeNull();
+      await activatePropertyTab(container, "Azioni");
       await act(async () => section("Eventi WinCC").dispatchEvent(new MouseEvent("click", { bubbles: true })));
       const objectHelp = [...container.querySelectorAll("details")].find((details) => details.querySelector("summary")?.textContent === "Leggere e modificare un oggetto · Unified");
       expect(objectHelp).toBeDefined();
@@ -115,9 +124,11 @@ describe("scheda unica dell'elemento", () => {
       expect(fontHelp).toBeDefined(); expect(fontHelp!.open).toBe(false);
       expect(fontHelp!.textContent).toContain("font.Size = 18.5"); expect(fontHelp!.textContent).toContain("non true/false");
       expect(fontHelp!.textContent).toContain("non vengono scaricati font");
+      await activatePropertyTab(container, "PLC e dati");
       const dynamicsSource = [...container.querySelectorAll(".dynamization-field")].find((label) => label.querySelector("span")?.textContent === "Sorgente")?.querySelector("select");
       expect(dynamicsSource).toBeDefined();
       expect(dynamicsSource?.textContent).toContain("Funzione");
+      await activatePropertyTab(container, "Altro");
       await act(async () => section("Layout").dispatchEvent(new MouseEvent("click", { bubbles: true })));
       expect(container.textContent).toContain("Display");
       await act(async () => section("Attributi").dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -161,7 +172,7 @@ describe("expression feedback", () => {
     const root = createRoot(container);
 
     await act(async () => root.render(createElement(Inspector)));
-    const html = container.innerHTML;
+    const html = (await activatePropertyTab(container, "PLC e dati")).innerHTML;
     expect(html).toContain("2 tag: Machine.Ready, Machine.Alarm");
     expect(html).toContain("Operatori: AND, OR, NOT");
     expect(html).toContain('tag("Nome tag")');
@@ -185,14 +196,16 @@ describe("script ed eventi WinCC", () => {
     const container = window.document.createElement("div");
     const root = createRoot(container);
     await act(async () => root.render(createElement(Inspector)));
-    expect(container.innerHTML).toContain("Codice JavaScript sicuro");
-    expect(container.innerHTML).toContain("Tag trigger");
-    expect(container.innerHTML).toContain("Ciclo ms");
-    expect(container.innerHTML).toContain("Eventi WinCC · 1");
-    expect(container.innerHTML).toContain("Script locale");
-    expect(container.innerHTML).toContain("Click destro / tocco lungo");
-    expect(container.innerHTML).toContain("Pressione");
-    expect(container.innerHTML).not.toContain("Caricamento");
+    const data = await activatePropertyTab(container, "PLC e dati");
+    expect(data.innerHTML).toContain("Codice JavaScript sicuro");
+    expect(data.innerHTML).toContain("Tag trigger");
+    expect(data.innerHTML).toContain("Ciclo ms");
+    const actions = await activatePropertyTab(container, "Azioni");
+    expect(actions.innerHTML).toContain("Eventi WinCC · 1");
+    expect(actions.innerHTML).toContain("Script locale");
+    expect(actions.innerHTML).toContain("Click destro / tocco lungo");
+    expect(actions.innerHTML).toContain("Pressione");
+    expect(actions.innerHTML).not.toContain("Caricamento");
     await act(async () => root.unmount());
     useEditorStore.setState({ document: undefined, selectedId: undefined });
   });
@@ -215,7 +228,7 @@ describe("lampeggio WinCC", () => {
     const container = window.document.createElement("div");
     const root = createRoot(container);
     await act(async () => root.render(createElement(Inspector)));
-    const html = container.innerHTML;
+    const html = (await activatePropertyTab(container, "PLC e dati")).innerHTML;
     expect(html).toContain("Lampeggio WinCC");
     expect(html).toContain("Colore principale");
     expect(html).toContain("Fuori dai limiti");
@@ -254,6 +267,7 @@ describe("istanza faceplate Unified", () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     const container = window.document.createElement("div"); const root = createRoot(container);
     await act(async () => root.render(createElement(Inspector)));
+    await activatePropertyTab(container, "PLC e dati");
     expect(container.innerHTML).toContain("Istanza faceplate");
     expect(container.innerHTML).toContain("Pack · V0.0.8");
     expect(container.innerHTML).toContain("Width · Int *");
@@ -281,7 +295,7 @@ describe("Trend Control Unified", () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     const container = window.document.createElement("div"); const root = createRoot(container);
     await act(async () => root.render(createElement(Inspector)));
-    const html = container.innerHTML;
+    const html = (await activatePropertyTab(container, "PLC e dati")).innerHTML;
     expect(html).toContain("Trend Control");
     expect(html).toContain("Campioni online reali in memoria");
     expect(html).toContain("Temperatura");
@@ -304,6 +318,7 @@ describe("Function Trend X/Y Unified", () => {
     HTMLElement.prototype.scrollTo = vi.fn(); HTMLElement.prototype.scrollIntoView = vi.fn(); Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     const container = window.document.createElement("div"); const root = createRoot(container);
     await act(async () => root.render(createElement(Inspector)));
+    await activatePropertyTab(container, "PLC e dati");
     expect(container.textContent).toContain("Function Trend X/Y"); expect(container.textContent).toContain("stesso numero di valori");
     expect(container.textContent).toContain("Asse X (orizzontale)"); expect(container.textContent).toContain("Asse Y (verticale)");
     expect(container.textContent).toContain("Tolleranza X/Y (ms)"); expect(container.textContent).toContain("Soglia Y alta");
@@ -335,6 +350,7 @@ describe("multilingual object text", () => {
     const root = createRoot(container);
     await act(async () => root.render(createElement(Inspector)));
     expect(container.innerHTML).toContain("Testo multilingua");
+    expect(container.querySelector<HTMLDetailsElement>(".multilingual-options")!.open).toBe(true);
     expect(container.innerHTML).toContain("Page.Title");
     expect(container.innerHTML).toContain("anteprima en-US");
     await act(async () => root.unmount());

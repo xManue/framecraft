@@ -40,10 +40,21 @@ function elementName(type?: string) {
   return type ? elementNames[type] ?? type : "Elemento";
 }
 
+const propertyTabs = [
+  { id: "appearance", label: "Aspetto", description: "Testo, immagini, dimensioni, colori e ordine degli elementi." },
+  { id: "actions", label: "Azioni", description: "Cosa succede al click, evidenziazioni, accesso ed eventi." },
+  { id: "data", label: "PLC e dati", description: "Variabili, dinamiche, faceplate e configurazione delle curve." },
+  { id: "details", label: "Altro", description: "Proprietà CSS, attributi e dettagli tecnici dell’elemento." },
+] as const;
+type PropertyTab = typeof propertyTabs[number]["id"];
+
 function InspectorSection({ title, icon, children, initiallyOpen = false, expandSignal }: { title: string; icon: ReactNode; children: ReactNode; initiallyOpen?: boolean; expandSignal?: number }) {
   const [open, setOpen] = useState(initiallyOpen);
-  // A double click in the canvas asks for the complete sheet, so every section opens at once.
-  useEffect(() => { if (expandSignal) setOpen(true); }, [expandSignal]);
+  const previousExpand = useRef(expandSignal);
+  useEffect(() => {
+    if (expandSignal && expandSignal !== previousExpand.current) setOpen(true);
+    previousExpand.current = expandSignal;
+  }, [expandSignal]);
   return <section className={`inspector-section ${open ? "open" : ""}`}>
     <button className="inspector-section-title" type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
       {icon}<span>{title}</span><ChevronDown size={13} />
@@ -57,11 +68,13 @@ function StyleField({ label, property, value, disabled, placeholder = "—", gro
   const updateGroup = useEditorStore((state) => state.updateMultiSelectionStyles);
   const update = (name: string, next: string | number) => group ? updateGroup({ [name]: next }) : updateOne(name, next);
   const [draft, setDraft] = useState(String(value ?? ""));
+  const cancelled = useRef(false);
   useEffect(() => { setDraft(String(value ?? "")); }, [value]);
   return <label className="property-field"><span>{label}</span><input value={draft} disabled={disabled} placeholder={placeholder} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
     if (event.key === "Enter") event.currentTarget.blur();
-    if (event.key === "Escape") { setDraft(String(value ?? "")); event.currentTarget.blur(); }
+    if (event.key === "Escape") { cancelled.current = true; setDraft(String(value ?? "")); event.currentTarget.blur(); }
   }} onBlur={() => {
+    if (cancelled.current) { cancelled.current = false; return; }
     if (draft !== String(value ?? "") && draft.trim()) void update(property, draft.trim());
   }} /></label>;
 }
@@ -71,30 +84,35 @@ function NumberStyleField({ label, property, value, fallback, unit = "px", disab
   const updateGroup = useEditorStore((state) => state.updateMultiSelectionStyles);
   const update = (name: string, next: string | number) => group ? updateGroup({ [name]: next }) : updateOne(name, next);
   const numericValue = Number.parseFloat(String(value ?? fallback ?? ""));
-  const [draft, setDraft] = useState(Number.isFinite(numericValue) ? String(rounded(numericValue)) : "");
+  const shownUnit = String(value ?? "").match(/^[+-]?[\d.]+\s*([a-z]+|%)$/i)?.[1] ?? unit;
+  const [draft, setDraft] = useState(Number.isFinite(numericValue) ? String(numericValue) : "");
+  const cancelled = useRef(false);
   useEffect(() => {
     const next = Number.parseFloat(String(value ?? fallback ?? ""));
-    setDraft(Number.isFinite(next) ? String(rounded(next)) : "");
+    setDraft(Number.isFinite(next) ? String(next) : "");
   }, [fallback, value]);
-  return <label className="property-field numeric-field"><span>{label}</span><span className="property-input-with-unit"><input type="number" step="1" value={draft} disabled={disabled} placeholder="—" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
+  return <label className="property-field numeric-field"><span>{label}</span><span className="property-input-with-unit"><input type="number" step="any" value={draft} disabled={disabled} placeholder="—" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
     if (event.key === "Enter") event.currentTarget.blur();
-    if (event.key === "Escape") event.currentTarget.blur();
+    if (event.key === "Escape") { cancelled.current = true; setDraft(Number.isFinite(numericValue) ? String(numericValue) : ""); event.currentTarget.blur(); }
   }} onBlur={() => {
+    if (cancelled.current) { cancelled.current = false; return; }
     const next = Number(draft);
-    if (draft !== "" && Number.isFinite(next) && next !== numericValue) void update(property, unit ? `${next}${unit}` : next);
-  }} /><small>{unit}</small></span></label>;
+    if (draft !== "" && Number.isFinite(next) && next !== numericValue) void update(property, shownUnit ? `${next}${shownUnit}` : next);
+  }} /><small>{shownUnit}</small></span></label>;
 }
 
 function CoordinateField({ label, axis, value, translate, disabled }: { label: string; axis: "x" | "y"; value?: number; translate?: string | number; disabled?: boolean }) {
   const update = useEditorStore((state) => state.updateStyle);
   const [draft, setDraft] = useState(value == null ? "" : String(rounded(value)));
+  const cancelled = useRef(false);
   useEffect(() => { setDraft(value == null ? "" : String(rounded(value))); }, [value]);
   return <label className="property-field numeric-field"><span>{label}</span><span className="property-input-with-unit"><input type="number" step="1" value={draft} disabled={disabled || value == null} placeholder="—" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
     if (event.key === "Enter") event.currentTarget.blur();
-    if (event.key === "Escape") event.currentTarget.blur();
+    if (event.key === "Escape") { cancelled.current = true; setDraft(value == null ? "" : String(rounded(value))); event.currentTarget.blur(); }
   }} onBlur={() => {
+    if (cancelled.current) { cancelled.current = false; return; }
     const next = Number(draft);
-    if (value != null && Number.isFinite(next) && next !== value) void update("translate", translatedCoordinate(value, next, translate, axis));
+    if (draft.trim() && value != null && Number.isFinite(next) && next !== rounded(value)) void update("translate", translatedCoordinate(value, next, translate, axis));
   }} /><small>px</small></span></label>;
 }
 
@@ -103,10 +121,13 @@ function StyleSelect({ label, property, value, options, disabled, group = false 
   const updateGroup = useEditorStore((state) => state.updateMultiSelectionStyles);
   const update = (name: string, next: string | number) => group ? updateGroup({ [name]: next }) : updateOne(name, next);
   const current = String(value ?? "");
+  const labels: Record<string, string> = property === "textAlign"
+    ? { left: "Sinistra", center: "Centro", right: "Destra", justify: "Giustificato" }
+    : property === "fontWeight" ? { "300": "Leggero", "400": "Normale", "500": "Medio", "600": "Semigrassetto", "700": "Grassetto", "800": "Molto marcato", "900": "Massimo" } : {};
   return <label className="property-field"><span>{label}</span><select value={current} disabled={disabled} onChange={(event) => void update(property, event.target.value)}>
     {!current && <option value="">—</option>}
     {current && !options.includes(current) && <option value={current}>{current}</option>}
-    {options.map((option) => <option value={option} key={option}>{option}</option>)}
+    {options.map((option) => <option value={option} key={option}>{labels[option] ?? option}</option>)}
   </select></label>;
 }
 
@@ -123,10 +144,15 @@ function ColorStyleField({ label, property, value, disabled, group = false }: { 
   const updateGroup = useEditorStore((state) => state.updateMultiSelectionStyles);
   const update = (name: string, next: string | number) => group ? updateGroup({ [name]: next }) : updateOne(name, next);
   const [draft, setDraft] = useState(String(value ?? ""));
+  const cancelled = useRef(false);
   useEffect(() => { setDraft(String(value ?? "")); }, [value]);
   return <label className="property-field color-property"><span>{label}</span><span className="color-property-control">
     <input type="color" value={hexColor(draft)} disabled={disabled} aria-label={`${label}: scegli colore`} onChange={(event) => { setDraft(event.target.value); void update(property, event.target.value); }} />
-    <input value={draft} disabled={disabled} placeholder="transparent" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => {
+    <input value={draft} disabled={disabled} placeholder="transparent" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
+      if (event.key === "Enter") event.currentTarget.blur();
+      if (event.key === "Escape") { cancelled.current = true; setDraft(String(value ?? "")); event.currentTarget.blur(); }
+    }} onBlur={() => {
+      if (cancelled.current) { cancelled.current = false; return; }
       if (draft.trim() && draft !== String(value ?? "")) void update(property, draft.trim());
     }} />
   </span></label>;
@@ -140,12 +166,22 @@ function BorderField({ label, property, value, disabled, group = false }: { labe
   const updateGroup = useEditorStore((state) => state.updateMultiSelectionStyles);
   const update = (name: string, next: string | number) => group ? updateGroup({ [name]: next }) : updateOne(name, next);
   const parts = parseBorder(value);
+  const [width, setWidth] = useState(String(parts.width));
+  const cancelled = useRef(false);
+  useEffect(() => { setWidth(String(parts.width)); }, [parts.width]);
   const write = (next: Partial<BorderParts>) => void update(property, formatBorder({ ...parts, ...next }));
   const names: Record<string, string> = { solid: "continuo", dashed: "tratteggiato", dotted: "punteggiato", double: "doppio", none: "nessuno" };
   return <div className="border-field">
     <span>{label}</span>
-    <input type="number" min="0" max="40" step="1" value={parts.width} disabled={disabled} aria-label={`${label}: spessore`}
-      onChange={(event) => write({ width: Math.max(0, Number(event.target.value)) })} />
+    <input type="number" min="0" max="40" step="any" value={width} disabled={disabled} aria-label={`${label}: spessore`}
+      onChange={(event) => setWidth(event.target.value)} onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") { cancelled.current = true; setWidth(String(parts.width)); event.currentTarget.blur(); }
+      }} onBlur={() => {
+        if (cancelled.current) { cancelled.current = false; return; }
+        const next = Number(width);
+        if (width.trim() && Number.isFinite(next) && next !== parts.width) write({ width: Math.max(0, next) });
+      }} />
     <select value={parts.style} disabled={disabled} aria-label={`${label}: stile`} onChange={(event) => write({ style: event.target.value })}>
       {borderStyles.map((option) => <option key={option} value={option}>{names[option]}</option>)}
     </select>
@@ -158,11 +194,13 @@ const internalProps = new Set(["data-fc-highlight-region", "data-fc-highlight-ta
 function AttributeField({ name, value }: { name: string; value: string | number }) {
   const update = useEditorStore((state) => state.updateAttribute);
   const [draft, setDraft] = useState(String(value));
+  const cancelled = useRef(false);
   useEffect(() => { setDraft(String(value)); }, [value]);
   return <label className="property-field"><span title={name}>{name}</span><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
     if (event.key === "Enter") event.currentTarget.blur();
-    if (event.key === "Escape") { setDraft(String(value)); event.currentTarget.blur(); }
+    if (event.key === "Escape") { cancelled.current = true; setDraft(String(value)); event.currentTarget.blur(); }
   }} onBlur={() => {
+    if (cancelled.current) { cancelled.current = false; return; }
     if (draft !== String(value)) void update(name, draft);
   }} /></label>;
 }
@@ -170,10 +208,12 @@ function AttributeField({ name, value }: { name: string; value: string | number 
 function DynamicAttributeField({ name }: { name: string }) {
   const update = useEditorStore((state) => state.updateAttribute);
   const [draft, setDraft] = useState("");
+  const cancelled = useRef(false);
   return <label className="property-field dynamic-property"><span title={name}>{name}</span><input value={draft} placeholder="sostituisci valore dinamico" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
     if (event.key === "Enter" && draft.trim()) event.currentTarget.blur();
-    if (event.key === "Escape") { setDraft(""); event.currentTarget.blur(); }
+    if (event.key === "Escape") { cancelled.current = true; setDraft(""); event.currentTarget.blur(); }
   }} onBlur={() => {
+    if (cancelled.current) { cancelled.current = false; return; }
     if (draft.trim()) void update(name, draft).then(() => setDraft(""));
   }} /></label>;
 }
@@ -272,6 +312,7 @@ function PlcBindingEditor({ node, bound }: { node: EditorNode; bound?: string })
   const removeAttribute = useEditorStore((state) => state.removeAttribute);
   const setLeftPanel = useEditorStore((state) => state.setLeftPanel);
   const [draft, setDraft] = useState(bound ?? "");
+  const cancelled = useRef(false);
   useEffect(() => { setDraft(bound ?? ""); }, [bound, node.id]);
   const typed = draft.trim();
   const known = catalog.some((variable) => variable.name === typed);
@@ -293,9 +334,9 @@ function PlcBindingEditor({ node, bound }: { node: EditorNode; bound?: string })
       onChange={(event) => setDraft(event.target.value)}
       onKeyDown={(event) => {
         if (event.key === "Enter") { event.currentTarget.blur(); }
-        if (event.key === "Escape") { setDraft(bound ?? ""); event.currentTarget.blur(); }
+        if (event.key === "Escape") { cancelled.current = true; setDraft(bound ?? ""); event.currentTarget.blur(); }
       }}
-      onBlur={() => { if (typed && typed !== bound) void bind(typed); }} />
+      onBlur={() => { if (cancelled.current) { cancelled.current = false; return; } if (typed && typed !== bound) void bind(typed); }} />
     {catalog.length > 0 && <ul className="plc-binding-list">
       {matches.map((variable) => <li key={variable.name}>
         <button type="button" className={variable.name === bound ? "bound" : ""} onClick={() => { setDraft(variable.name); void bind(variable.name); }}>
@@ -340,11 +381,12 @@ const dynamizationLabels: Record<string, string> = {
 
 function DynamizationTextField({ label, value, placeholder, onCommit, list }: { label: string; value: string; placeholder?: string; onCommit: (value: string) => void; list?: string }) {
   const [draft, setDraft] = useState(value);
+  const cancelled = useRef(false);
   useEffect(() => { setDraft(value); }, [value]);
   return <label className="dynamization-field"><span>{label}</span><input value={draft} list={list} placeholder={placeholder} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
     if (event.key === "Enter") event.currentTarget.blur();
-    if (event.key === "Escape") { setDraft(value); event.currentTarget.blur(); }
-  }} onBlur={() => draft.trim() !== value && onCommit(draft.trim())} /></label>;
+    if (event.key === "Escape") { cancelled.current = true; setDraft(value); event.currentTarget.blur(); }
+  }} onBlur={() => { if (cancelled.current) { cancelled.current = false; return; } if (draft.trim() !== value) onCommit(draft.trim()); }} /></label>;
 }
 
 function ExpressionStatus({ source }: { source: string }) {
@@ -499,7 +541,7 @@ function HmiDynamizationSection({ node, expandSignal }: { node: EditorNode; expa
     {!items.length && <p className="inspector-note">Fai cambiare colore, visibilità, testo o geometria in base a una variabile PLC.</p>}
     <div className="dynamization-list">{items.map((item, index) => <DynamizationCard key={`${item.property}-${index}`} item={item} index={index} all={items} properties={available} onWrite={write} />)}</div>
     {available.length > 0 && <div className="dynamization-add"><select value={property} aria-label="Proprietà dinamica da aggiungere" onChange={(event) => setProperty(event.target.value)}>{available.map((name) => <option key={name} value={name}>{dynamizationLabels[name] ?? name}</option>)}</select><button type="button" onClick={() => write([...items, newHmiDynamization(property, bound)])}><Plus size={12} /> Aggiungi dinamica</button></div>}
-    <p className="inspector-note">Le regole restano nel sorgente React e saranno disponibili alla conversione WinCC.</p>
+    <p className="inspector-note">Le regole vengono salvate insieme all’elemento e usate dal pannello.</p>
   </InspectorSection>;
 }
 
@@ -924,12 +966,16 @@ function usageHint(use?: ValueUse) {
   return `${role} di <${use.tag}> in ${shortFileName(use.file)}`;
 }
 
-function ListItemField({ property, hint, label }: { property: ListItemProperty; hint?: string; label?: string }) {
+function ListItemField({ property, hint, label, textFieldRef }: { property: ListItemProperty; hint?: string; label?: string; textFieldRef?: (field: HTMLInputElement | HTMLTextAreaElement | null) => void }) {
   const update = useEditorStore((state) => state.updateListItemProperty);
   const chooseImage = useEditorStore((state) => state.chooseImage);
   const [draft, setDraft] = useState(property.value);
+  const cancelled = useRef(false);
   useEffect(() => { setDraft(property.value); }, [property.start, property.value]);
-  const apply = (next: string) => { if (next !== property.value) void update(property.name, next); };
+  const apply = (next: string) => {
+    if (cancelled.current) { cancelled.current = false; return; }
+    if (next !== property.value) void update(property.name, next);
+  };
 
   if (property.kind === "boolean") {
     return <label className="property-field"><span title={property.name}>{label ?? property.name}</span>
@@ -944,7 +990,7 @@ function ListItemField({ property, hint, label }: { property: ListItemProperty; 
       <label className="property-field"><span title={`${property.name} · ${hint}`}>{label ?? property.name}</span>
         <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
           if (event.key === "Enter") event.currentTarget.blur();
-          if (event.key === "Escape") { setDraft(property.value); event.currentTarget.blur(); }
+          if (event.key === "Escape") { cancelled.current = true; setDraft(property.value); event.currentTarget.blur(); }
         }} onBlur={() => apply(draft)} />
       </label>
       <button type="button" onClick={() => void chooseImage(property.name)}><Upload size={13} /> Scegli immagine</button>
@@ -954,17 +1000,21 @@ function ListItemField({ property, hint, label }: { property: ListItemProperty; 
   // would show a tenth of it.
   if (property.kind === "text" && (property.value.length > 60 || property.value.includes("\n"))) {
     return <label className="property-stack"><span title={hint ?? property.name}>{label ?? property.name}{hint ? <em className="field-hint"> · {hint}</em> : null}</span>
-      <textarea value={draft} rows={3} spellCheck={false} aria-label={property.name}
+      <textarea ref={textFieldRef} value={draft} rows={3} spellCheck={false} aria-label={label ?? property.name}
         onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.currentTarget.blur(); }
+          if (event.key === "Escape") { cancelled.current = true; setDraft(property.value); event.currentTarget.blur(); }
+        }}
         onBlur={() => apply(draft)} />
     </label>;
   }
   return <label className="property-field"><span title={hint ? `${property.name} · ${hint}` : property.name}>{label ?? property.name}</span>
-    <input value={draft} type={property.kind === "number" ? "number" : "text"}
+    <input ref={textFieldRef} value={draft} type={property.kind === "number" ? "number" : "text"}
       onChange={(event) => setDraft(event.target.value)}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
-        if (event.key === "Escape") { setDraft(property.value); event.currentTarget.blur(); }
+        if (event.key === "Escape") { cancelled.current = true; setDraft(property.value); event.currentTarget.blur(); }
       }}
       onBlur={() => apply(draft)} />
   </label>;
@@ -1166,11 +1216,12 @@ function SelectionAreaEditor({ properties }: { properties: ListItemProperty[] })
 
 /** The row of data an element is drawn from. Editing here beats writing a guard into the JSX: it is
  * the value the list was built from, so the change reads like the panel, not like a patch. */
-function ListItemSection({ expandSignal }: { expandSignal?: number }) {
+function ListItemSection({ expandSignal, focusText, textFocusRequestedAt }: { expandSignal?: number; focusText?: (field: HTMLInputElement | HTMLTextAreaElement | null) => void; textFocusRequestedAt?: number }) {
   const binding = useEditorStore((state) => state.listBinding);
   const selectedId = useEditorStore((state) => state.selectedId);
   const remove = useEditorStore((state) => state.removeListItem);
   const duplicate = useEditorStore((state) => state.duplicateListItem);
+  const selectedText = useEditorStore((state) => state.selectionInfo?.text)?.trim();
   if (!binding || binding.nodeId !== selectedId || !binding.item) return null;
   const areaNames = new Set(["marker.x", "marker.y", "marker.width", "highlight.type", "highlight.d"]);
   const hasMarker = ["marker.x", "marker.y", "marker.width"].every((name) => binding.item!.properties.some((property) => property.name === name));
@@ -1179,15 +1230,17 @@ function ListItemSection({ expandSignal }: { expandSignal?: number }) {
   // An outline is shapeable wherever it is written, with or without the hotspot beside it.
   const hasArea = Boolean(highlightPath) && highlightType !== "none";
   const regularProperties = hasMarker || hasArea ? binding.item.properties.filter((property) => !areaNames.has(property.name)) : binding.item.properties;
-  return <InspectorSection title="Voce della lista" icon={<Database size={12} />} initiallyOpen expandSignal={expandSignal}>
+  const textProperties = regularProperties.filter((property) => property.kind === "text" && binding.usages?.[property.name]?.attribute === "");
+  const primaryText = regularProperties.find((property) => property.name === binding.textProperty)
+    ?? textProperties.find((property) => property.value === selectedText) ?? textProperties[0];
+  return <InspectorSection title="Voce della lista" icon={<Database size={12} />} initiallyOpen expandSignal={Math.max(expandSignal ?? 0, textFocusRequestedAt ?? 0)}>
     <p className="inspector-note">Voce {binding.index + 1} di {binding.count} in <code>{binding.name}</code> · {shortFileName(binding.file)}
       {binding.shared ? " · file condiviso: vale per tutti i pannelli" : ""}</p>
     {regularProperties.length
-      ? regularProperties.map((property) => <ListItemField key={property.name} property={property} hint={usageHint(binding.usages?.[property.name])} />)
+      ? regularProperties.map((property) => <ListItemField key={property.name} property={property} label={property === primaryText ? "Testo" : undefined} hint={usageHint(binding.usages?.[property.name])} textFieldRef={property === primaryText ? focusText : undefined} />)
       : <p className="inspector-note">Questa voce non contiene valori semplici da modificare.</p>}
     {hasArea && <SelectionAreaEditor properties={binding.item.properties} />}
     {hasMarker && !hasArea && <EmptyHighlightEditor properties={binding.item.properties} />}
-    <PlcListFill binding={binding} />
     <div className="list-item-actions">
       <button type="button" onClick={() => void duplicate()}><CopyPlus size={13} /> Duplica voce</button>
       <button type="button" className="danger" onClick={() => void remove()}><Trash2 size={13} /> Elimina voce</button>
@@ -1623,8 +1676,9 @@ function MultilingualTextBinding({ node }: { node: EditorNode }) {
   const key = typeof node.props["data-hmi-text"] === "string" ? String(node.props["data-hmi-text"]) : "";
   if (!node.capabilities.text && !key) return null;
   const unknown = Boolean(key) && !catalog.multilingualTexts.some((item) => item.key === key);
-  return <div className="multilingual-text-binding">
-    <span><Languages size={12} /> Testo multilingua</span>
+  return <details className="multilingual-options" open={Boolean(key)}>
+    <summary><Languages size={13} /><span>Testo multilingua{key ? ` · ${key}` : ""}</span><ChevronDown size={13} /></summary>
+    <div className="multilingual-text-binding">
     <select value={unknown ? "" : key} onChange={(event) => {
       const value = event.target.value;
       void (value ? update("data-hmi-text", value) : removeAttribute("data-hmi-text"));
@@ -1634,7 +1688,8 @@ function MultilingualTextBinding({ node }: { node: EditorNode }) {
     </select>
     {unknown && <small>La chiave «{key}» non esiste più: in Runtime resta il testo del sorgente.</small>}
     <button type="button" className="link-button" onClick={() => setPanel("resources")}>{catalog.multilingualTexts.length ? `Modifica traduzioni · anteprima ${catalog.activeLanguage}` : "Crea il primo testo in Risorse"}</button>
-  </div>;
+    </div>
+  </details>;
 }
 
 export function Inspector() {
@@ -1650,24 +1705,31 @@ export function Inspector() {
   const expandProperties = useEditorStore((state) => state.expandProperties);
   const unresolvedSelection = useEditorStore((state) => state.unresolvedSelection);
   const multiSelection = useEditorStore((state) => state.multiSelection);
+  const dirty = useEditorStore((state) => state.dirty);
+  const listBinding = useEditorStore((state) => state.listBinding);
   const node = selectedId ? document?.nodes[selectedId] : undefined;
   const inspectorRef = useRef<HTMLElement>(null);
   const textFocusRequestedAt = useEditorStore((state) => state.textFocusRequestedAt);
-  const textRef = useRef<HTMLTextAreaElement>(null);
+  const textFocusHandled = useRef<{ at: number; selection: string; field: HTMLInputElement | HTMLTextAreaElement; list: boolean } | undefined>(undefined);
+  const textCancelled = useRef(false);
+  const [tab, setTab] = useState<PropertyTab>("appearance");
+  const selectionKey = `${node?.source.file}:${node?.source.start}:${node?.type}:${selectionInfo?.listIndex}:${selectionInfo?.instanceIndex}`;
   const [text, setText] = useState(node?.text ?? selectionInfo?.text ?? "");
   useEffect(() => { setText(node?.text ?? selectionInfo?.text ?? ""); }, [node?.id, node?.text, selectionInfo?.text]);
   // The AST id includes the end offset: editing a property changes it, not the selected object.
-  useEffect(() => { inspectorRef.current?.scrollTo({ top: 0, behavior: "instant" }); },
+  useEffect(() => { setTab("appearance"); inspectorRef.current?.scrollTo({ top: 0, behavior: "instant" }); },
     [node?.source.file, node?.source.start, node?.type, selectionInfo?.listIndex, selectionInfo?.instanceIndex]);
-  // A double click on a label the preview cannot edit in place lands here instead of nowhere.
+  const focusText = (field: HTMLInputElement | HTMLTextAreaElement | null, list = false) => {
+    if (!field || tab !== "appearance" || !textFocusRequestedAt) return;
+    const previous = textFocusHandled.current;
+    if (previous?.at === textFocusRequestedAt && (previous.selection !== selectionKey || previous.list || !list || previous.field.isConnected || field.ownerDocument.activeElement !== field.ownerDocument.body)) return;
+    textFocusHandled.current = { at: textFocusRequestedAt, selection: selectionKey, field, list };
+    field.focus(); field.select(); field.scrollIntoView({ block: "center" });
+  };
   useEffect(() => {
-    if (!textFocusRequestedAt) return;
-    const field = textRef.current;
-    if (!field) return;
-    field.focus();
-    field.select();
-    field.scrollIntoView({ block: "center" });
+    if (textFocusRequestedAt) setTab("appearance");
   }, [textFocusRequestedAt]);
+  const chooseTab = (next: PropertyTab) => { setTab(next); inspectorRef.current?.scrollTo({ top: 0, behavior: "instant" }); };
 
   if (multiSelection.length > 1) return <GroupInspector items={multiSelection} />;
   if (!node && unresolvedSelection) {
@@ -1679,44 +1741,53 @@ export function Inspector() {
   }
   if (!node) return <aside ref={inspectorRef} className="inspector empty-inspector"><div className="panel-title"><span>MODIFICA ELEMENTO</span></div><GuidedPageNote /><div><Info size={20} /><strong>Clicca ciò che vuoi cambiare</strong><p>Testo, dimensioni, colori, azioni e variabile PLC compariranno qui automaticamente.</p></div></aside>;
   const locked = !node.capabilities.style;
+  const listText = listBinding?.nodeId === node.id && listBinding.item?.properties.find((property) => property.name === listBinding.textProperty);
   const style = (property: string) => node.styles[property] ?? selectionStyles[property];
   return <aside ref={inspectorRef} className="inspector has-selection">
-    <div className="panel-title"><span>MODIFICA ELEMENTO</span><button onClick={expandProperties} title="Apri tutte le sezioni (doppio click sull'elemento)" aria-label="Apri tutte le sezioni"><ChevronsUpDown size={13} /></button><button onClick={() => setMode("code")} title="Apri il codice" aria-label="Apri il codice dell'elemento"><Code2 size={13} /></button></div>
-    <div className="selection-summary"><span className="node-icon">&lt;/&gt;</span><span><strong>{elementName(node.type)}</strong><small>{selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : `Riga ${node.source.line}:${node.source.column}`} · selezionato</small></span></div>
+    <div className="inspector-navigation">
+      <div className="panel-title"><span>MODIFICA ELEMENTO</span></div>
+      <div className="selection-summary"><span className="node-icon"><SquareMousePointer size={18} /></span><span><strong>{elementName(node.type)}</strong><small>{(selectionInfo?.text ?? node.text)?.trim().slice(0, 48) || (selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : "Elemento selezionato")}</small></span></div>
+      <div className="inspector-tabs" role="tablist" aria-label="Proprietà dell’elemento">
+        {propertyTabs.map(({ id, label }, index) => <button key={id} id={`element-tab-${id}`} type="button" role="tab" aria-selected={tab === id} aria-controls={`element-panel-${id}`} tabIndex={tab === id ? 0 : -1} onClick={() => chooseTab(id)} onKeyDown={(event) => {
+          const next = event.key === "ArrowRight" ? (index + 1) % propertyTabs.length : event.key === "ArrowLeft" ? (index + propertyTabs.length - 1) % propertyTabs.length : event.key === "Home" ? 0 : event.key === "End" ? propertyTabs.length - 1 : undefined;
+          if (next === undefined) return;
+          event.preventDefault(); chooseTab(propertyTabs[next].id);
+          event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`#element-tab-${propertyTabs[next].id}`)?.focus();
+        }}>{label}</button>)}
+      </div>
+      <p className="inspector-tab-description">{propertyTabs.find((item) => item.id === tab)?.description}</p>
+    </div>
     <GuidedPageNote />
     <RepeatScope />
     <LockedElementNote />
     <SharedFileNote file={node.source.file} />
-    {node.dynamic && <div className="code-component"><Lock size={13} /><span>Il contenuto arriva da una variabile. Puoi sostituirlo con un valore fisso oppure continuare a modificare geometria e stile.</span></div>}
+    <div key={`${selectionKey}:appearance`} id="element-panel-appearance" role="tabpanel" aria-labelledby="element-tab-appearance" hidden={tab !== "appearance"}>
+    <p className="inspector-edit-hint">Invio applica, Esc annulla. Testo: Ctrl+Invio. Colori e scelte: subito.</p>
+    {node.dynamic && <div className="code-component"><Lock size={13} /><span>{listBinding?.nodeId === node.id ? "La scritta arriva dai dati della voce: modificala qui sotto, senza cambiare il codice." : "Il contenuto arriva da una variabile. Puoi sostituirlo con un valore fisso oppure continuare a modificare geometria e stile."}</span></div>}
     {node.type === "img" && <ImageSourceSection node={node} expandSignal={expandSignal} />}
-    <InspectorSection title="Contenuto" icon={<TypeIcon size={12} />} initiallyOpen expandSignal={expandSignal}>
-      {node.capabilities.text
+    <ListItemSection expandSignal={expandSignal} focusText={(field) => focusText(field, true)} textFocusRequestedAt={tab === "appearance" ? textFocusRequestedAt : undefined} />
+    <InspectorSection title="Contenuto" icon={<TypeIcon size={12} />} initiallyOpen expandSignal={Math.max(expandSignal ?? 0, textFocusRequestedAt ?? 0)}>
+      {listText ? <p className="inspector-note">La scritta si modifica nel campo Testo della voce qui sopra.</p> : node.capabilities.text
         // The field starts from what the preview shows when the source holds an expression, so the
         // comparison starts from there too: leaving the field untouched must never write anything.
-        ? <label className="property-stack"><span>Testo</span><textarea ref={textRef} value={text} aria-label="Testo dell'elemento" onChange={(event) => setText(event.target.value)} onBlur={() => text !== (node.text ?? selectionInfo?.text ?? "") && void updateText(text)} /></label>
+        ? <label className="property-stack"><span>Testo</span><textarea ref={focusText} value={text} aria-label="Testo dell'elemento" onChange={(event) => setText(event.target.value)} onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.currentTarget.blur(); }
+          if (event.key === "Escape") { textCancelled.current = true; setText(node.text ?? selectionInfo?.text ?? ""); event.currentTarget.blur(); }
+        }} onBlur={() => {
+          if (textCancelled.current) { textCancelled.current = false; return; }
+          if (text !== (node.text ?? selectionInfo?.text ?? "")) void updateText(text);
+        }} /></label>
         // Saying where the text actually lives beats an empty panel: the writing belongs to a child.
         : <p className="inspector-note">{node.children.length
           ? "Il testo di questo elemento sta dentro gli elementi figli: clicca direttamente la scritta da cambiare."
           : "Questo elemento non contiene testo."}</p>}
       <MultilingualTextBinding node={node} />
     </InspectorSection>
-    <ActionSection node={node} expandSignal={expandSignal} />
-    <HmiEventSection node={node} expandSignal={expandSignal} />
-    <HmiFaceplateSection node={node} expandSignal={expandSignal} />
-    <HmiTrendSection node={node} expandSignal={expandSignal} />
-    <HmiFunctionTrendSection node={node} expandSignal={expandSignal} />
-    <PlcSection node={node} expandSignal={expandSignal} />
-    <HmiDynamizationSection node={node} expandSignal={expandSignal} />
-    <ListItemSection expandSignal={expandSignal} />
 
     <InspectorSection title="Posizione e dimensioni" icon={<Move size={12} />} initiallyOpen expandSignal={expandSignal}>
       <div className="property-pair coordinate-pair"><CoordinateField label="X" axis="x" value={selectionRect?.x} translate={style("translate")} disabled={locked} /><CoordinateField label="Y" axis="y" value={selectionRect?.y} translate={style("translate")} disabled={locked} /></div>
       <div className="property-pair"><NumberStyleField label="Larghezza" property="width" value={style("width")} fallback={selectionRect?.width} disabled={locked} /><NumberStyleField label="Altezza" property="height" value={style("height")} fallback={selectionRect?.height} disabled={locked} /></div>
     </InspectorSection>
-    <InspectorSection title="Livelli e rotazione" icon={<SlidersHorizontal size={12} />} initiallyOpen expandSignal={expandSignal}>
-      <ElementTransformControls key={node.id} zIndex={style("zIndex")} rotate={style("rotate")} disabled={locked} />
-    </InspectorSection>
-
     <InspectorSection title="Aspetto" icon={<Palette size={12} />} initiallyOpen expandSignal={expandSignal}>
       <ColorStyleField label="Sfondo" property="backgroundColor" value={style("backgroundColor")} disabled={locked} />
       <ColorStyleField label="Colore testo" property="color" value={style("color")} disabled={locked} />
@@ -1728,6 +1799,30 @@ export function Inspector() {
       <NumberStyleField label="Opacità" property="opacity" value={style("opacity")} unit="" disabled={locked} />
     </InspectorSection>
 
+    <InspectorSection title="Livelli e rotazione" icon={<SlidersHorizontal size={12} />} initiallyOpen expandSignal={expandSignal}>
+      <ElementTransformControls key={node.id} zIndex={style("zIndex")} rotate={style("rotate")} disabled={locked} />
+    </InspectorSection>
+    </div>
+
+    <div key={`${selectionKey}:actions`} id="element-panel-actions" role="tabpanel" aria-labelledby="element-tab-actions" hidden={tab !== "actions"}>
+      <ActionSection node={node} expandSignal={expandSignal} />
+      <HmiEventSection node={node} expandSignal={expandSignal} />
+    </div>
+    <div key={`${selectionKey}:data`} id="element-panel-data" role="tabpanel" aria-labelledby="element-tab-data" hidden={tab !== "data"}>
+      <PlcSection node={node} expandSignal={expandSignal} />
+      {listBinding?.nodeId === node.id && listBinding.item && <InspectorSection title="Dati della lista" icon={<Database size={12} />} expandSignal={expandSignal}>
+        <PlcListFill binding={listBinding} />
+      </InspectorSection>}
+      <HmiDynamizationSection node={node} expandSignal={expandSignal} />
+      <HmiFaceplateSection node={node} expandSignal={expandSignal} />
+      <HmiTrendSection node={node} expandSignal={expandSignal} />
+      <HmiFunctionTrendSection node={node} expandSignal={expandSignal} />
+    </div>
+    <div key={`${selectionKey}:details`} id="element-panel-details" role="tabpanel" aria-labelledby="element-tab-details" hidden={tab !== "details"}>
+    <div className="inspector-detail-actions">
+      <button type="button" onClick={expandProperties}><ChevronsUpDown size={15} /> Espandi tutte le sezioni</button>
+      <button type="button" onClick={() => setMode("code")} aria-label="Apri il codice dell'elemento"><Code2 size={15} /> Apri il codice</button>
+    </div>
     <AttributesSection node={node} expandSignal={expandSignal} />
 
     <InspectorSection title="Posizione CSS" icon={<Move size={12} />} expandSignal={expandSignal}>
@@ -1781,7 +1876,9 @@ export function Inspector() {
     </InspectorSection>
 
     <InformationSection node={node} tag={node.type} file={node.source.file} expandSignal={expandSignal} initiallyOpen={false} />
+    </div>
 
+    <p className="inspector-save-hint">{dirty ? "La pagina ha modifiche non salvate. Usa File → Salva (Ctrl+S)." : "File → Salva registra la pagina su disco (Ctrl+S)."}</p>
     <button className="danger-action" onClick={() => void remove()} disabled={!node.capabilities.remove}><Trash2 size={14} /> Elimina {elementName(node.type).toLocaleLowerCase("it")} <kbd>Canc</kbd></button>
   </aside>;
 }

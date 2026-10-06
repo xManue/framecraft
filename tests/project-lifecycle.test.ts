@@ -259,6 +259,17 @@ describe("project lifecycle", () => {
     expect(useEditorStore.getState().propertiesExpandedAt).toBeTypeOf("number");
   });
 
+  it("focuses text on inspection without expanding the technical property sections", async () => {
+    const { parseSource } = await import("../src/source-parser/parseSource");
+    const document = parseSource("App.jsx", "export default function App() { return <main><button>Vai</button></main>; }");
+    const button = Object.values(document.nodes).find((node) => node.type === "button")!;
+    useEditorStore.setState({ document, selectedId: button.id, propertiesExpandedAt: 123, textFocusRequestedAt: undefined });
+    await useEditorStore.getState().inspectSource(button.source, "button", true);
+    expect(useEditorStore.getState().selectedId).toBe(button.id);
+    expect(useEditorStore.getState().propertiesExpandedAt).toBe(123);
+    expect(useEditorStore.getState().textFocusRequestedAt).toBeTypeOf("number");
+  });
+
   it("shows an element rendered from outside the project instead of selecting nothing", async () => {
     // A shared template catalog reached through a Vite alias renders inside the preview but is not
     // part of the working copy, so it must be reported rather than silently ignored.

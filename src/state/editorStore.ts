@@ -1770,7 +1770,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       if (sequence !== runtime.selectionSequence) return;
       // A double click on a label that cannot be edited in place must still land on its text: the
       // sheet opens with the cursor already in the field.
-      set({ propertiesExpandedAt: Date.now(), textFocusRequestedAt: focusText ? Date.now() : get().textFocusRequestedAt });
+      set(focusText ? { textFocusRequestedAt: Date.now() } : { propertiesExpandedAt: Date.now() });
     },
     /** Changes a value the selected element passes to its own handler: which page it opens, which
      * signal it writes, whether it opens or closes. It is a literal in the source, so it belongs to

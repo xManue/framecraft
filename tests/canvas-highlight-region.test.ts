@@ -55,6 +55,8 @@ beforeEach(async () => {
   drawing = view.document.querySelector("img")!;
   await act(async () => { view.eval(framecraftPlugin().transformIndexHtml("<main></main>").tags[0].children); view.document.querySelector("button")!.click(); });
   await act(async () => { const pending = [...frames.values()]; frames.clear(); for (const callback of pending) callback(0); });
+  await act(async () => host.querySelector<HTMLButtonElement>('#element-tab-actions')!.click());
+  expect(host.querySelector<HTMLElement>('#element-panel-actions')!.hidden).toBe(false);
   commands.length = 0; desktop.writeFile.mockClear();
 });
 afterEach(async () => { await act(async () => root.unmount()); preview.window.close(); host.remove(); useEditorStore.setState(initial, true); vi.unstubAllGlobals(); vi.restoreAllMocks(); });

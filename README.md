@@ -23,6 +23,26 @@ See [ARCHITETTURA-HMI.md](ARCHITETTURA-HMI.md), [LAVORO.md](LAVORO.md), and the 
 for implemented behavior, verification and remaining work. These are autonomous React panels,
 not projects for deployment inside Siemens or Rockwell proprietary runtimes.
 
+## Editing an element
+
+Click an element in **Modifica** and use the right-hand property tabs: **Aspetto** for text,
+images, size, colors, layers and rotation; **Azioni** for clicks, highlighted regions, access
+and events; **PLC e dati** for bindings, dynamics, list imports, faceplates and trends;
+**Altro** for CSS, attributes and code. These are task groups, not simple/advanced modes.
+
+Text labels from lists edit the selected data row through a single **Testo** field, preserving
+the JSX/data link. When inline editing is unavailable, double-clicking requests that text field
+without opening every technical section. Common property fields apply on Enter or focus loss;
+multiline text also accepts Ctrl+Enter.
+Escape cancels pending edits in the common text/style/geometry fields and binding inputs;
+color pickers and choices apply immediately. Existing percent/rem units are retained.
+Translations are expandable, and open initially when the element has a multilingual key.
+
+The active property tab and scroll position survive the selected element's own style edits;
+selecting another element returns to **Aspetto**. Group/external-element sheets and the
+faceplate type mini-editor retain their existing layouts. Local preview changes and saving
+the project are separate from publishing or commanding a PLC.
+
 ## Run
 
 ```bash

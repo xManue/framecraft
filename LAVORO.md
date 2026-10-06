@@ -3189,6 +3189,54 @@ Verifiche del 5 ottobre 2026:
   solo passa tutti i 32 test. Non sono aumentati timeout o indebolite asserzioni. Il checkpoint
   pubblicato non contiene le modifiche di quel blocco e la sua suite pubblica è interamente verde.
 
+### 90. Modifica elementi organizzata per attività, testo delle targhette e annullamento coerente
+
+- Segnalazione dell'utente: editor poco intuitivo, soprattutto modificando gli elementi.
+  La scheda del singolo elemento ora parte da **Aspetto**: contenuto, immagine, voce della
+  lista, posizione/dimensioni, colori, livelli e rotazione. **Azioni** contiene interazioni,
+  evidenziazioni, accesso ed eventi; **PLC e dati** contiene variabili, dinamiche, importazione
+  della lista, faceplate e trend; **Altro** raccoglie attributi, CSS e codice. Nessuna funzione
+  HMI rimossa e nessuna modalità semplice/avanzata reintrodotta. Avvisi su pagine guidate,
+  copie ripetute, elementi bloccati e file condivisi restano fuori dalle schede.
+- Intestazione riconoscibile con tipo e scritta dell'elemento; schede sempre disponibili durante
+  lo scroll. Navigazione con frecce, Home/End e focus visibile. Campi grafici e schede da 44 px;
+  etichette di misure, peso e allineamento comprensibili, senza abbreviazioni tagliate nei campi
+  affiancati. Traduzioni richiudibili se non usate, aperte per elementi realmente multilingua.
+  Non è un audit touch completo di tutti i controlli HMI.
+- Il campo **Testo** della targhetta modifica la proprietà reale della voce selezionata nel file
+  dati, senza duplicare un secondo campo o scollegare l'espressione JSX. Quando il doppio clic
+  richiede la scheda, apre e seleziona il campo appropriato, anche se i dati arrivano dopo la
+  richiesta; non espande tutti i dettagli tecnici e non ripete vecchie richieste di focus a ogni
+  aggiornamento AST, neanche passando da un testo breve al campo su più righe.
+- Scheda e scroll conservati cambiando una proprietà dello stesso oggetto; reset ad Aspetto
+  quando cambia elemento/copia. Identità di selezione distinta dall'id AST con offset finale.
+  Importazione delle righe PLC spostata in **PLC e dati → Dati della lista**, non cancellata.
+- **Esc annulla davvero** i campi comuni di testo, geometria, stile, bordo e voce della lista,
+  gli attributi e i campi di collegamento/mapping: il blur non applica più la bozza cancellata.
+  Invio o uscita dal campo applicano; testo su più righe anche con Ctrl+Invio. Colori e scelte
+  rimangono immediati. Gli editor di script e gli altri controlli specialistici non sono stati
+  uniformati tutti a questo comportamento.
+- Unità già presenti conservate (`%`, `rem`, ecc.) invece di sostituirle implicitamente con px.
+  Opacità decimale non arrotondata durante la lettura; campo X vuoto non significa zero;
+  coordinate visualizzate arrotondate ma non modificate non producono una traslazione.
+- Regressioni sul vero Inspector e store: schede visibili, tastiera, scritture AST, scroll/focus,
+  testo multilinea, Esc, unità e file dati delle targhette con modifica di una sola voce.
+  I test preesistenti di eventi, espressioni, lampeggio, faceplate, trend e disegno zona usano
+  le nuove schede visibili, mantenendo le asserzioni funzionali.
+- Collaudo Edge headless con profilo e Vite isolati: quattro schede, tastiera, Esc nel testo,
+  nuova richiesta di focus, scroll a 500 px conservato e campi entro il pannello da 240 px.
+  Screenshot della vera interfaccia con fixture sintetiche, non un collaudo desktop o PLC reale.
+  Schede gruppi/elementi esterni e mini-editor dei tipi faceplate conservano il layout precedente.
+- Verificata la copia esatta dell'indice Git senza export privati o foto: **1167 test pubblici
+  passati in 88 file**, incluse **25 nuove regressioni** dell'Inspector, build TypeScript/Vite,
+  **3 collaudi production/Vite** e **16 test di recovery sul vero store compilato** passati.
+  I dieci file di riferimento richiedono gli export locali e sono esclusi con avviso; le
+  dipendenze sono quelle già installate tramite junction, non una nuova installazione.
+  Non è una prova di fedeltà WinCC, del pacchetto desktop distribuito o di una CPU reale.
+- Nessun agente, nuova dipendenza, riavvio dell'app/anteprima dell'utente o sorgente macchina
+  modificato. Export WinCC e foto restano locali. Checkpoint separato dal trasporto asincrono
+  PLC già in lavorazione; parità WinCC/Optix/AI e gate industriali/licenze restano aperti.
+
 ## Da fare, dopo
 
 - **Affidabilità editor durante gli aggiornamenti**: HMR/reload coperti al punto 77 e deposito
