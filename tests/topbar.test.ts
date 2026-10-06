@@ -52,6 +52,30 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("barra comandi principale", () => {
+  it("descrive le disposizioni e distingue i divisori personalizzati dalla disposizione applicata", async () => {
+    useEditorStore.getState().applyWorkLayout("disegno");
+    const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+    try {
+      await act(async () => root.render(createElement(TopBar)));
+      const openView = () => [...container.querySelectorAll<HTMLButtonElement>(".topbar-menu > button")].find((button) => button.textContent?.includes("Visualizza"))!.click();
+      await act(async () => openView());
+      const layouts = container.querySelector('[aria-label="Disposizione dei pannelli"]')!;
+      expect(layouts.textContent).toContain("Cambia solo pannelli e larghezze");
+      const options = layouts.querySelectorAll<HTMLButtonElement>('button[role="menuitemradio"]');
+      expect(options).toHaveLength(3);
+      expect(options[0].getAttribute("aria-checked")).toBe("true");
+      expect(options[1].textContent).toContain("Catalogo PLC a sinistra");
+      await act(async () => useEditorStore.getState().setPaneSize("left", 250));
+      expect(layouts.textContent).toContain("Personalizzata");
+      expect([...options].every((button) => button.getAttribute("aria-checked") === "false")).toBe(true);
+      await act(async () => options[1].click());
+      expect(useEditorStore.getState()).toMatchObject({ workLayout: "plc", leftPanel: "plc", paneSizes: { left: 300, inspector: 350 }, viewMode: "visual" });
+      expect(vi.mocked(desktopBridge.writeFile)).not.toHaveBeenCalled();
+      await act(async () => openView());
+      expect(container.querySelector('[aria-label="Disposizione dei pannelli"] button[aria-checked="true"]')?.textContent).toContain("Variabili e dinamiche");
+    } finally { await act(async () => root.unmount()); container.remove(); }
+  });
+
   it.each(["visual", "split", "code"] as const)("mostra subito lo switch Modifica/Usa nella vista %s fuori dai menu", async (viewMode) => {
     useEditorStore.setState({ viewMode });
     const container = document.createElement("div"); document.body.append(container);

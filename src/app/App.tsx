@@ -151,6 +151,7 @@ function EditorApp() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (useEditorStore.getState().reloadRecovery) return;
       const target = event.target as HTMLElement | null;
+      if (target?.closest?.("dialog[open]")) return;
       // A key can arrive with the document itself as its target, and asking that for `matches` throws
       // inside the listener, which used to kill every shortcut for the rest of the session.
       const editing = Boolean(target?.matches?.("input, textarea, select, [contenteditable=true]"));

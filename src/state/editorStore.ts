@@ -58,7 +58,7 @@ interface ViewSettings {
   snap: SnapSettings;
 }
 
-const layoutPresets: Record<WorkLayout, { panes: PaneSizes; panel: LeftPanel }> = {
+export const layoutPresets: Record<WorkLayout, { panes: PaneSizes; panel: LeftPanel }> = {
   disegno: { panes: { left: 220, inspector: 300 }, panel: "components" },
   plc: { panes: { left: 300, inspector: 350 }, panel: "plc" },
   sviluppo: { panes: { left: 260, inspector: 380 }, panel: "project" },
@@ -1456,7 +1456,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         standalonePreviewOpen: false, history: [], future: [], dirty: false, loading: false, userAccessConfig: undefined, userAccessOpen: false, userAccessBusy: false, panelManifest: undefined, zonePicking: undefined, unlockedPages: [], unlockedFiles: [] });
     },
     async openFile(path) {
-      if (!/\.[jt]sx?$/.test(path)) return;
+      if (!/\.[jt]sx?$/i.test(path)) return;
       const sequence = ++runtime.selectionSequence;
       const project = get().project;
       const current = get().document;

@@ -11,6 +11,8 @@ describe("messaggi comprensibili senza alterare l'errore originale", () => {
     ["Vite non risulta attivo. Usa le opzioni nel menu Visualizza", "preview", "non è stata avviata"],
     ["Vite si è chiuso inaspettatamente", "preview", "si è fermato"],
     ["Error: EADDRINUSE 127.0.0.1:4173", "preview", "porta"],
+    ["Vite si è chiuso inaspettatamente (codice 1). Ultimo output: Error: EBUSY: resource busy or locked, watch 'C:/panel/public/framecraft-assets/image-2.png'", "preview", "file temporaneamente occupato"],
+    ["EBUSY: resource busy or locked, copyfile 'image.png'", "editor", "temporaneamente occupato"],
     ["Error: ENOENT: no such file C:/panel/Page.jsx", "recovery", "file necessario"],
     ["Bozza locale non conservata: disco pieno", "backup", "non è stata aggiornata"],
     ["EPERM: permission denied", "editor", "accedere"],

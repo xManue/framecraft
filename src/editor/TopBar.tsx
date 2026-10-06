@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { alignLabels, type AlignMode } from "../canvas/alignment";
 import { panelFormats } from "../canvas/panels";
 import type { ViewMode, Viewport } from "../core/types";
-import { snapGrids, useEditorStore, type UiDensity, type WorkLayout } from "../state/editorStore";
+import { layoutPresets, snapGrids, useEditorStore, type UiDensity, type WorkLayout } from "../state/editorStore";
 import { PlcConnectionsDialog } from "./PlcConnectionsDialog";
 
 const viewModes: { id: ViewMode; label: string; description: string; icon: typeof Eye }[] = [
@@ -20,10 +20,10 @@ const viewModes: { id: ViewMode; label: string; description: string; icon: typeo
   { id: "code", label: "Codice", description: "Sorgente della pagina", icon: Code2 },
 ];
 
-const layouts: { id: WorkLayout; label: string }[] = [
-  { id: "disegno", label: "Disegno" },
-  { id: "plc", label: "Collegamenti PLC" },
-  { id: "sviluppo", label: "Sviluppo" },
+const layouts: { id: WorkLayout; label: string; description: string; icon: typeof Eye }[] = [
+  { id: "disegno", label: "Grafica e componenti", description: "Componenti a sinistra, proprietà a destra e più spazio al disegno.", icon: Blocks },
+  { id: "plc", label: "Variabili e dinamiche", description: "Catalogo PLC a sinistra e proprietà più larghe per tag, eventi e animazioni.", icon: Gauge },
+  { id: "sviluppo", label: "File e codice", description: "File a sinistra e proprietà più larghe. Scegli un sorgente per aprirne il codice.", icon: Code2 },
 ];
 
 const densities: { id: UiDensity; label: string }[] = [
@@ -78,7 +78,12 @@ export function TopBar() {
   const restartPreview = useEditorStore((state) => state.restartPreview);
   const previewBusy = useEditorStore((state) => state.loading || state.previewRestarting);
   const workLayout = useEditorStore((state) => state.workLayout);
+  const paneSizes = useEditorStore((state) => state.paneSizes);
+  const leftPanel = useEditorStore((state) => state.leftPanel);
+  const leftPanelCollapsed = useEditorStore((state) => state.leftPanelCollapsed);
   const applyWorkLayout = useEditorStore((state) => state.applyWorkLayout);
+  const preset = layoutPresets[workLayout];
+  const layoutCustomized = leftPanelCollapsed || leftPanel !== preset.panel || paneSizes.left !== preset.panes.left || paneSizes.inspector !== preset.panes.inspector;
   const uiDensity = useEditorStore((state) => state.uiDensity);
   const setUiDensity = useEditorStore((state) => state.setUiDensity);
   const multiSelection = useEditorStore((state) => state.multiSelection);
@@ -159,7 +164,11 @@ export function TopBar() {
               <small className="topbar-menu-heading">CONTENUTO CENTRALE</small>
               {viewModes.map(({ id, label, description, icon: Icon }) => <button role="menuitemradio" aria-checked={mode === id} key={id} onClick={() => runAndClose(() => setMode(id))}><Icon size={15} /><span><strong>{label}</strong><small>{description}</small></span>{mode === id && <Check size={14} />}</button>)}
               <small className="topbar-menu-heading">AREA DI LAVORO</small>
-              <label className="topbar-menu-select"><LayoutTemplate size={15} /><span><strong>Disposizione</strong><small>Imposta i pannelli per il lavoro corrente</small></span><select value={workLayout} onChange={(event) => applyWorkLayout(event.target.value as WorkLayout)} aria-label="Disposizione dei pannelli">{layouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.label}</option>)}</select></label>
+              <div className="topbar-work-layouts" role="group" aria-label="Disposizione dei pannelli">
+                <p><LayoutTemplate size={15} aria-hidden="true" /><span><strong>Disposizione dei pannelli</strong><small>{layoutCustomized ? "Personalizzata · scegli una disposizione per riapplicarla" : layouts.find((layout) => layout.id === workLayout)?.label}</small></span></p>
+                {layouts.map(({ id, label, description, icon: Icon }) => <button type="button" role="menuitemradio" aria-checked={!layoutCustomized && workLayout === id} className={!layoutCustomized && workLayout === id ? "selected" : ""} key={id} onClick={() => runAndClose(() => applyWorkLayout(id))}><Icon size={16} aria-hidden="true" /><span><strong>{label}</strong><small>{description}</small></span>{!layoutCustomized && workLayout === id && <Check size={14} aria-hidden="true" />}</button>)}
+                <small className="work-layout-hint">Cambia solo pannelli e larghezze. Puoi ancora trascinare i divisori; grafica, codice e funzioni restano disponibili.</small>
+              </div>
               <label className="topbar-menu-select"><ZoomIn size={15} /><span><strong>Dimensione interfaccia</strong><small>Ingrandisce tutti gli strumenti dell’editor</small></span><select value={uiDensity} onChange={(event) => setUiDensity(event.target.value as UiDensity)} aria-label="Dimensione dell'interfaccia">{densities.map((density) => <option key={density.id} value={density.id}>{density.label}</option>)}</select></label>
               <small className="topbar-menu-heading">PANNELLO NEL CANVAS</small>
               <div className="topbar-zoom-grid" role="group" aria-label="Zoom pannello">
@@ -178,7 +187,7 @@ export function TopBar() {
               <button role="menuitem" disabled={!previewUrl} onClick={() => runAndClose(() => void openPreview())}><Play size={15} /><span><strong>Prova pannello</strong><small>Apri il Runtime senza strumenti di modifica</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => void checkProject())}><FileCheck2 size={15} /><span><strong>Controlla pannello</strong><small>Trova errori, tag mancanti e parti incomplete</small></span></button>
               <div className="topbar-menu-separator" />
-              <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("plc"))}><Gauge size={15} /><span><strong>Variabili PLC e simulazione</strong><small>Catalogo, import, controllo e valori di prova</small></span></button>
+              <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("plc"))}><Gauge size={15} /><span><strong>Variabili PLC e valori di prova</strong><small>Catalogo e prova locale dell’HMI, senza collegare un PLC</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setConnectionsOpen(true))}><Cable size={15} /><span><strong>Connessioni PLC</strong><small>Broker MQTT, mapping tag e gateway del pannello</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("resources"))}><Languages size={15} /><span><strong>Testi e grafiche</strong><small>Lingue, risorse e asset del progetto</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("scripts"))}><Braces size={15} /><span><strong>Moduli JavaScript</strong><small>Funzioni globali e definizioni locali compilate</small></span></button>

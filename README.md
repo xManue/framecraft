@@ -40,6 +40,27 @@ npm run web:dev
 
 Run `npm test` for parser and transformation fixtures, and `npm run build` for the editor production build.
 
+## Files, workspace and local test values
+
+**File** opens JS/JSX/TS/TSX sources beside the graphical page; **Torna alla grafica** returns
+to the visual editor. CSS, JSON, Markdown and other supported text files are read-only viewers,
+not extra code editors. Images open through the active local preview, without decoding them as
+text. Unsupported formats and read errors are explained. Closing a viewer restores focus to
+the file list; inspecting a file does not replace or save the current page's draft.
+
+**Visualizza → Disposizione dei pannelli** describes three arrangements: graphics/components,
+variables/dynamics, and files/code. They change only side panels and widths, not available
+features or the page. Resized or different panels are identified as a custom arrangement.
+
+**Valori di prova · locale** supplies manually entered values to HMI graphics, events and
+trends. It does not execute a PLC program, acquire real PLC values or command the machine.
+
+On Windows, the editor's project preview watches files by polling to avoid a native `EBUSY`
+watch failure while an image is being copied. Source and binary checks default to 100/300 ms;
+polling can use more CPU on large projects. This does not change the project's saved Vite
+configuration or production build. A stopped preview needs **Visualizza → Riprova anteprima**
+to load the updated plugin; this preserves the editor draft but does not save its changes.
+
 ## Draft recovery and diagnostics
 
 The recovery screen identifies the project, page, backup date and unsaved status. Choose
@@ -74,7 +95,8 @@ fidelity to WinCC. `npm run test:standard` requires those exports and fails clea
 Never create fake reference JSON merely to satisfy that test suite.
 
 Additional checks: `npm run test:gateway` uses a real isolated local MQTT broker/HTTP gateway;
-`npm run test:production` checks the bundled standalone generator; `cargo test --offline` in
+`npm run test:production` checks the bundled standalone generator and real Vite image watching;
+`cargo test --offline` in
 `src-tauri` checks native lifecycle/recovery/configuration persistence. They do not prove CPU/TLS
 interoperability or approval for industrial use.
 

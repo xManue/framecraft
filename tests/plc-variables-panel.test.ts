@@ -14,6 +14,19 @@ import { useEditorStore } from "../src/state/editorStore";
 import { parseHmiScriptCatalog } from "../src/core/hmiScriptModules";
 
 describe("simulazione PLC dei trend", () => {
+  it("spiega la prova locale anche quando è spenta, senza promettere un simulatore del programma PLC", async () => {
+    const before = useEditorStore.getState(); const container = document.createElement("div"); const root = createRoot(container);
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    try {
+      useEditorStore.setState({ project: undefined, document: undefined, simulation: { ...before.simulation, on: false } });
+      await act(async () => root.render(createElement(PlcVariablesPanel)));
+      expect(container.textContent).toContain("Non esegue il programma PLC");
+      expect(container.textContent).toContain("non legge né invia comandi alla macchina");
+      expect(container.querySelector(".plc-sim-run")?.textContent).toContain("Attiva valori di prova");
+      expect(container.querySelector<HTMLButtonElement>(".plc-sim-run")?.disabled).toBe(true);
+    } finally { await act(async () => root.unmount()); useEditorStore.setState(before); }
+  });
+
   it("offre i tag nei membri annidati e nelle funzioni che restituiscono dati", async () => {
     const scripts = parseHmiScriptCatalog({ globalModules: [{
       name: "Data", alias: "Data",

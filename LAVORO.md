@@ -3131,6 +3131,64 @@ Verifiche del 5 ottobre 2026:
   carico ridotto passano (46 test), poi passa la suite intera. Build TypeScript/Vite verificata;
   nessun aumento dei timeout per mascherare una regressione o modifica ai test funzionali PLC.
 
+### 89. Immagini senza crash EBUSY, proprietà stabili e strumenti di lavoro più chiari
+
+- Segnalazione reale: sostituendo un'immagine, Vite termina con `EBUSY: resource busy or locked,
+  watch` su `public/framecraft-assets/*.png`. Verificato il percorso del watcher nella versione
+  installata di Vite: su Windows l'acquisizione dell'handle `fs.watch` può fallire durante una
+  copia. Non viene attribuito il blocco a un programma specifico senza evidenza.
+- Il plugin dell'anteprima editor usa **polling solo su Windows e solo in serve**: intervalli
+  predefiniti 100 ms per sorgenti e 300 ms per binari, intervalli già configurati preservati.
+  `watch: null`, altri sistemi operativi, esclusioni Vite e build production restano invariati.
+  Non cambia la configurazione salvata del pannello; polling può aumentare il carico su progetti
+  grandi. Il plugin viene riletto al prossimo avvio: **Visualizza → Riprova anteprima**, senza
+  riavviare l'app né salvare automaticamente la bozza.
+- Errore EBUSY spiegato come file temporaneamente occupato, con attesa della copia, riprova e
+  diagnostica del file coinvolto. L'output originale resta nei dettagli tecnici; nessuna diagnosi
+  inventata di file corrotto o perdita della bozza.
+- Test con **Vite reale, filesystem e HTTP**: iniezione di EBUSY su qualunque chiamata nativa
+  `fs.watch`, importazione e riscrittura di PNG in `public/framecraft-assets`, risposta immagine
+  esatta e server ancora attivo. Con la correzione il percorso nativo fallibile non viene usato.
+  Fixture sintetiche isolate e poi rimosse; nessuna prova modifica il progetto della macchina.
+- Il reset dell'Inspector seguiva l'id AST, che include la fine del nodo e cambia anche con una
+  sua proprietà. Ora distingue l'oggetto selezionato dalla sua modifica: lo scroll resta fermo
+  durante gli aggiornamenti, ma torna all'inizio cambiando oggetto o copia renderizzata.
+  Una vecchia richiesta di focus del testo non viene rieseguita a ogni modifica dell'id.
+  Coperti due aggiornamenti AST reali, nuova richiesta di focus e cambio elemento/copia.
+- **File del progetto**: ricerca gerarchica; JS/JSX/TS/TSX aprono davvero il codice affiancato
+  alla grafica, rispettando il flush della bozza e senza abbandonarla se non è salvabile. CSS,
+  JSON, Markdown e altri testi si consultano in **sola lettura**, senza sostituire né salvare la
+  pagina aperta. Immagini dalla vera anteprima locale; formati non supportati, file vuoti e
+  problemi di lettura espliciti, con Riprova lettura. I file lunghi sono limitati in visualizzazione,
+  non nella lettura nativa. Non viene promesso un editor CSS/JSON o l'apertura di qualunque binario.
+- Consultazione con dialogo nativo fuori dal contenitore zoomato, focus ripristinato al file,
+  Escape, Tab/Shift+Tab mantenuti nella finestra. Gli shortcut globali non salvano o modificano
+  il pannello sotto un dialogo aperto. Collaudo browser ha rilevato l'uscita del focus con Tab:
+  corretta e coperta con test, senza indebolire l'asserzione.
+- **Disposizione dei pannelli**: scelte descritte Grafica e componenti, Variabili e dinamiche,
+  File e codice, stato Personalizzata se si cambiano divisori/pannelli. Cambiano solo pannelli e
+  larghezze; grafica, codice e tutte le funzioni restano disponibili. Nessuna modalità semplice/
+  avanzata reintrodotta. Guida alla prova locale visibile anche prima dell'attivazione:
+  **Valori di prova · locale**, non un simulatore del programma PLC o una connessione macchina.
+- Collaudo con Edge headless e profilo isolato: scroll a 500 px conservato, JSON letto davvero
+  tramite il bridge di test e nessun salvataggio, Tab/Shift+Tab/Escape e focus di ritorno, SVG
+  locale caricato via Vite, disposizioni, spiegazione della prova locale, sorgente affiancato e
+  ritorno alla grafica. Screenshot ispezionati a 1280×900, 980×680 e 390×844; il dialogo resta
+  nel viewport. Fixture `.hmi-preview/workspace` ignorata, non un collaudo desktop/CPU reale.
+- Nessun agente, nuova dipendenza, sorgente macchina modificato o riavvio dell'anteprima
+  dell'utente. Questo checkpoint è separato dal trasporto asincrono PLC ancora in lavorazione;
+  parità WinCC/Optix/AI e gate industriali/licenze non sono dichiarati chiusi. JSON reali e foto
+  restano locali.
+- Verificata una copia dell'esatto indice Git senza export reali o foto: **1141 test pubblici
+  passati in 87 file**, build TypeScript/Vite riuscita, **3 collaudi production/Vite** e **16 test
+  di recovery sul vero store compilato** passati. I dieci file di riferimento sono esclusi con
+  avviso in assenza degli export: non è una prova di fedeltà WinCC. La copia usa le dipendenze
+  già installate, non è una nuova installazione o un collaudo del pacchetto desktop distribuito.
+- La suite della cartella locale, che include anche il blocco PLC asincrono non staged, ha
+  1239 test passati e due timeout da 5 s in `standard-runtime.test.ts`; quel file riprovato da
+  solo passa tutti i 32 test. Non sono aumentati timeout o indebolite asserzioni. Il checkpoint
+  pubblicato non contiene le modifiche di quel blocco e la sua suite pubblica è interamente verde.
+
 ## Da fare, dopo
 
 - **Affidabilità editor durante gli aggiornamenti**: HMR/reload coperti al punto 77 e deposito

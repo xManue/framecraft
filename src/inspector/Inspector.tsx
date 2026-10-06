@@ -1656,7 +1656,9 @@ export function Inspector() {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState(node?.text ?? selectionInfo?.text ?? "");
   useEffect(() => { setText(node?.text ?? selectionInfo?.text ?? ""); }, [node?.id, node?.text, selectionInfo?.text]);
-  useEffect(() => { inspectorRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }, [node?.id]);
+  // The AST id includes the end offset: editing a property changes it, not the selected object.
+  useEffect(() => { inspectorRef.current?.scrollTo({ top: 0, behavior: "instant" }); },
+    [node?.source.file, node?.source.start, node?.type, selectionInfo?.listIndex, selectionInfo?.instanceIndex]);
   // A double click on a label the preview cannot edit in place lands here instead of nowhere.
   useEffect(() => {
     if (!textFocusRequestedAt) return;
@@ -1665,7 +1667,7 @@ export function Inspector() {
     field.focus();
     field.select();
     field.scrollIntoView({ block: "center" });
-  }, [textFocusRequestedAt, node?.id]);
+  }, [textFocusRequestedAt]);
 
   if (multiSelection.length > 1) return <GroupInspector items={multiSelection} />;
   if (!node && unresolvedSelection) {

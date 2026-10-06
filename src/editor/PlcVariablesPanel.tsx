@@ -210,13 +210,15 @@ export function PlcVariablesPanel() {
     {/* La simulazione: si scrive un valore e si guarda la pagina, senza collegare un PLC. Le regole
         sono quelle del `ValueConverter` dello standard, e quello che non si puo' risolvere lo dice. */}
     <div className="plc-sim">
+      <strong className="plc-sim-heading">Valori di prova · locale</strong>
+      <small>Prova colori, visibilità, testi, eventi e curve dell’HMI inserendo valori a mano. Non esegue il programma PLC e non legge né invia comandi alla macchina.</small>
       <button className={`plc-sim-run ${simulation.on ? "on" : ""}`} onClick={() => setSimulationOn(!simulation.on)} disabled={!project}>
-        {simulation.on ? <Square size={14} /> : <Play size={14} />}{simulation.on ? "Ferma la simulazione" : "Simula stati PLC"}
+        {simulation.on ? <Square size={14} /> : <Play size={14} />}{simulation.on ? "Ferma la prova locale" : "Attiva valori di prova"}
       </button>
       {simulation.on && <>
         <small>
           {simulatedTags.length
-            ? `${simulatedTags.length} tag usati dalla pagina, dagli script o dai Data Log. Scrivi un valore oppure un array JSON come [10,20,30] per provare le curve X/Y.`
+            ? `${simulatedTags.length} tag usati dalla pagina, dagli script o dai Data Log. Per un booleano prova 0 e 1; per le curve X/Y puoi usare un array JSON come [10,20,30]. Questi valori restano locali, non sono acquisiti dal PLC.`
             : "Questa pagina e i Data Log non usano ancora tag nelle animazioni, negli eventi o nei trend."}
         </small>
         {simulatedTags.map((tag) => <div className="plc-sim-tag" key={tag}>

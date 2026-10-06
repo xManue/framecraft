@@ -35,6 +35,9 @@ export function describeEditorMessage(raw: string, context: MessageContext = "ed
       "Verifica l’installazione di Node.js e delle dipendenze del progetto con chi ti assiste, poi riprova l’anteprima.");
   if (/EADDRINUSE|port.*already in use|porta.*occupata/i.test(details)) return message("La porta richiesta dall’anteprima è già occupata.",
     "Riprova l’anteprima. Se il problema continua, verifica nella diagnostica quale programma sta usando quella porta.");
+  if (/\bEBUSY\b|resource busy or locked/i.test(details)) return message(
+    /\bwatch\b/i.test(details) ? "L’anteprima non ha potuto sorvegliare un file temporaneamente occupato." : "Un file è temporaneamente occupato da un’altra operazione.",
+    "Attendi che la copia o l’importazione del file finisca, poi riprova. Se l’anteprima si è fermata, usa Riprova anteprima: il progetto e la bozza restano nell’editor. Se ricapita, apri la diagnostica per vedere quale file è coinvolto.");
   if (context === "recovery") {
     if (/non più autorizzat|fuori.*autorizzat/i.test(details)) return message("Una parte della bozza si trova in una cartella non autorizzata.",
       "Per recuperare la bozza serve verificare l’accesso alla cartella indicata nei dettagli; il recupero non aggiunge permessi da solo.");

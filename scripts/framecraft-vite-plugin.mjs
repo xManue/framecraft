@@ -1493,11 +1493,25 @@ const bridgeScript = sharedHelpers + String.raw`
   window.addEventListener("pagehide", () => clearInterval(statePageTimer));
 })();`;
 
+export function previewWatchConfig(server, platform = process.platform) {
+  if (platform !== "win32" || server?.watch === null) return;
+  // Windows can reject fs.watch while an imported image is still being copied.
+  // Polling avoids that handle race; Vite still excludes dependencies and build output.
+  return { server: { watch: {
+    usePolling: true,
+    interval: server?.watch?.interval ?? 100,
+    binaryInterval: server?.watch?.binaryInterval ?? 300,
+  } } };
+}
+
 export default function framecraftSourcePlugin() {
   const uninstrumented = new Set();
   return {
     name: "framecraft-source-map",
     enforce: "pre",
+    config(config, env) {
+      if (env.command === "serve") return previewWatchConfig(config.server);
+    },
     transform(code, rawId) {
       const id = rawId.split("?")[0];
       if (!/\.[jt]sx$/.test(id) || id.includes("node_modules")) return null;

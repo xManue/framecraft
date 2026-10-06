@@ -30,6 +30,56 @@ describe("inspector coordinates", () => {
 });
 
 describe("scheda unica dell'elemento", () => {
+  it("conserva scroll e focus modificando lo stesso elemento, anche dopo un doppio clic", async () => {
+    const initialState = useEditorStore.getState();
+    const file = "C:/panel/Page.tsx";
+    const source = 'export function Page(){return <main><button>Avvia</button><button>Ferma</button></main>}';
+    const parsed = parseSource(file, source);
+    const button = Object.values(parsed.nodes).find((node) => node.type === "button")!;
+    useEditorStore.setState({
+      project: { root: "C:/panel", files: [] } as never,
+      document: parsed, selectedId: button.id, propertiesExpandedAt: 0, textFocusRequestedAt: 100,
+      selectionInfo: { instanceIndex: 0, instanceCount: 2 }, selectionStyles: {},
+      unresolvedSelection: undefined, multiSelection: [], resourceCatalog: emptyHmiResourceCatalog(),
+    });
+    const scroll = vi.fn();
+    const focusScroll = vi.fn();
+    HTMLElement.prototype.scrollTo = scroll;
+    HTMLElement.prototype.scrollIntoView = focusScroll;
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    const container = window.document.createElement("div");
+    window.document.body.append(container);
+    const root = createRoot(container);
+    try {
+      await act(async () => root.render(createElement(Inspector)));
+      expect(focusScroll).toHaveBeenCalledTimes(1);
+      scroll.mockClear(); focusScroll.mockClear();
+      const inspector = container.querySelector<HTMLElement>(".inspector")!;
+      inspector.scrollTop = 620;
+      for (const replacement of ['<button style={{ color: "red" }}>Avvia</button>', '<button title="Motore M2400">Avvia motore</button>']) {
+        const next = parseSource(file, source.replace("<button>Avvia</button>", replacement), 2);
+        const selected = Object.values(next.nodes).find((node) => node.type === "button")!;
+        expect(selected.id).not.toBe(button.id);
+        await act(async () => useEditorStore.setState({ document: next, selectedId: selected.id }));
+        expect(scroll).not.toHaveBeenCalled();
+        expect(focusScroll).not.toHaveBeenCalled();
+        expect(inspector.scrollTop).toBe(620);
+      }
+      await act(async () => useEditorStore.setState({ textFocusRequestedAt: 200 }));
+      expect(focusScroll).toHaveBeenCalledTimes(1);
+      await act(async () => useEditorStore.setState({ selectionInfo: { instanceIndex: 1, instanceCount: 2 } }));
+      expect(scroll).toHaveBeenCalledTimes(1);
+      scroll.mockClear();
+      const other = Object.values(useEditorStore.getState().document!.nodes).filter((node) => node.type === "button")[1];
+      await act(async () => useEditorStore.setState({ selectedId: other.id }));
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(focusScroll).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => root.unmount()); container.remove();
+      useEditorStore.setState(initialState);
+    }
+  });
+
   it.each(["disegno", "plc", "sviluppo"] as const)("mostra le proprietà comuni e i dettagli espandibili nella disposizione %s", async (workLayout) => {
     const source = `export function Page(){return <button style={{ width: "120px", height: "40px" }} data-hmi-dynamizations='[{"property":"Visible","kind":"Tag","tag":"Machine.Ready"}]'>Avvia</button>}`;
     const document = parseSource("C:/panel/Page.tsx", source);
