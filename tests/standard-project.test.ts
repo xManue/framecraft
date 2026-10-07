@@ -7,6 +7,15 @@ import { submenuPlacement } from "../src/core/hmiSectionMenu";
 import { standardProjectFiles, standardProjectPageCount, standardProjectSectionChoices } from "../src/core/standardProject";
 
 describe("generatore nuovo pannello standard", () => {
+  it("genera un guscio mobile adattabile mantenendo la tela macchina e comandi touch", () => {
+    const files = standardProjectFiles({ machineName: "Mobile", layout: "desktop-mobile", sections: ["main"] });
+    const app = files.find((file) => file.path === "src/App.tsx")!.content, css = files.find((file) => file.path === "src/styles.css")!.content;
+    expect(app.includes("window.matchMedia('(max-width: 800px)')")).toBe(true);
+    expect(app.includes("Adatta disegno")).toBe(true); expect(app.includes('data-mobile-fit={mobileFit}')).toBe(true);
+    expect(css.includes(".hmi-shell.mobile { width: 100%" )).toBe(true); expect(css.includes("height: calc(100dvh - 172px)")).toBe(true);
+    expect(css.includes("zoom: var(--mobile-scale)")).toBe(true); expect(css.includes("min-height: 44px")).toBe(true);
+    expect(files.find((file) => file.path.startsWith("src/pages/") && file.content.includes("data-page-number={1001}"))?.content.includes("width: 1280")).toBe(true);
+  });
   it("crea guscio, tutte le pagine delle sezioni, manifesto e catalogo PLC", () => {
     const files = standardProjectFiles({
       machineName: "Linea palletizzazione 1",
@@ -94,7 +103,7 @@ describe("generatore nuovo pannello standard", () => {
     expect(hmiFlashing).toContain("prefers-reduced-motion: reduce");
     expect(hmiFlashing).toContain("framecraft-hmi-flash-background");
     expect(files.find((file) => file.path === "src/App.tsx")!.content).toContain("installFramecraftHmiRuntime");
-    expect(files.find((file) => file.path === "src/App.tsx")!.content).toContain('screenRoutes[target.match(/^\\d{4}/)?.[0] ?? ""]');
+    expect(files.find((file) => file.path === "src/App.tsx")!.content).toContain('screenRoutes[target.match(/^\\d{4,5}/)?.[0] ?? ""]');
     expect(files.find((file) => file.path === "src/App.tsx")!.content).toContain("__framecraftSetPage");
 
     const manifest = parsePanelManifest(files.find((file) => file.path === "panel.json")!.content)!;

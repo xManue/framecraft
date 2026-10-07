@@ -3375,7 +3375,45 @@ Verifiche del 5 ottobre 2026:
   scope `--omit=dev` dell'editor non equivale a certificare il servizio o una release industriale.
   Gate licenze/notice e collaudo macchina restano aperti; dettagli in LICENZE-E-PRODUZIONE.md.
 
+### 94. Pagine/categorie, inserimento e guscio mobile (2026-10-07)
+
+- Nuova finestra ampia Pagine con nome, percorso, categoria e catalogo filtrabile. Creazione
+  categoria nella stessa finestra, poi scelta della prima pagina. Focus iniziale, Escape,
+  ripristino focus, blocco doppio invio e campi conservati in caso di errore. Scorrimento del
+  catalogo separato dai comandi di conferma; verificato anche in un viewport reale da 375 px.
+- Le categorie sono quelle di `panelSections` del progetto, non un elenco globale finto.
+  Modifica AST dei dati statici senza eseguire codice; rifiuto navigazione dinamica, numerazione
+  duplicata e collisioni con file/binding già presenti. Sezioni standard invariate, nuove 10–99,
+  9 riservata ai popup. La pagina nuova viene collegata anche a menu e `screenRoutes`; categoria
+  appena creata vuota fino alla prima pagina. Lettura categorie ripristinata dopo il recupero HMR.
+- Icone dedicate ai contenuti delle pagine; sei basi vuote Main raggruppate, senza eliminare
+  varianti e relativi eventi dello standard. I componenti riusabili restano nella palette,
+  gli export delle pagine no (anche gli export default con alias). Fine drag/cancel non lascia
+  bloccato il click successivo. Click inserisce nella pagina attiva se il file aperto era rimasto
+  sul guscio/SVG; preservazione bozza quando cambia file e rifiuto drop con riferimenti scaduti.
+- I moduli `pages`, parser e trasformazione inserimento sono già caricati con lo store, non
+  richiesti alla prima operazione. L'URL segnalato su localhost:1420 non era raggiungibile al
+  controllo: causa esatta del precedente errore HTTP non riprodotta, niente riavvio della app.
+- Pipeline desktop+mobile: avvio mobile su viewport stretto, guscio largo quanto lo schermo,
+  sezioni scorrevoli, menu touch, diagnostica entro il viewport, comandi da almeno 44 px.
+  Disegno a dimensioni reali con pan oppure adattato, coordinate macchina immutate. Nessuna
+  riscrittura automatica del guscio/CSS dei progetti macchina esistenti: migrazione guidata da fare.
+- Collaudi mirati: parser/numerazione, inserimento, creazione reale categoria+pagina su filesystem
+  sintetico, focus/errori della finestra e sorgenti generati; controlli TypeScript. Browser Edge
+  isolato: finestra 1120 px desktop e 359 px dentro viewport 375, nessun salvataggio; HMI mobile
+  guscio 375, menu 440 scorrevole, disegno da 1280 a 375 con Adatta. Router della fixture visuale
+  sintetico: prova layout, non certificazione del router o PLC reale. Screenshot/fixture locali
+  ignorati. Non eseguita la suite generale, come richiesto dall'utente.
+
 ## Da fare, dopo
+
+- **Richieste attuali — Cosa fa**: controllo iniziale che abilita le reazioni e scelta click,
+  doppio click e altri eventi; Accesso utente ed Evidenzia una parte sotto Cosa fa solo con reazioni
+  abilitate; altre azioni guidate utili; visibilità e reattività per utente/permesso attivo.
+  Collegare anteprima e Runtime esportato, non soltanto l'interfaccia. Le autorizzazioni PLC
+  industriali devono restare server-side: i soli permessi nel browser non sono un confine sicuro.
+- **Mobile esistente**: aggiornamento guidato del guscio dei pannelli già creati, con confronto,
+  backup e conservazione delle personalizzazioni; collaudo touch e progetti reali ancora aperto.
 
 - **Sicurezza tooling**: migrare e collaudare Vitest/mocker/Tinypool a versioni corrette
   per gli advisory del punto 93, senza override incompatibili. Ripetere suite pubblica,

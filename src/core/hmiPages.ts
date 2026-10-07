@@ -81,9 +81,9 @@ export interface StandardPagePlan {
 export function planPageNumber(
   sectionId: string,
   taken: Iterable<number>,
-  options: { slot?: number } = {},
+  options: { slot?: number; section?: StandardSection } = {},
 ): StandardPagePlan | undefined {
-  const section = sectionById(sectionId);
+  const section = options.section?.id === sectionId ? options.section : sectionById(sectionId);
   if (!section) return undefined;
   const used = [...taken];
 

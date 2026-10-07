@@ -83,6 +83,17 @@ describe("inserting a component", () => {
     expect(state.history).toHaveLength(1);
   });
 
+  it("inserisce nella pagina visibile anche se il file aperto è rimasto sul guscio", async () => {
+    useEditorStore.setState({ document: parseSource("Overlay.jsx", overlay), pages: [{ id: "visible", name: "Pagina", route: "/pagina", file: "Page.jsx" }], activePageId: "visible", dirty: false });
+    bridge.readFile.mockResolvedValue(page);
+    try {
+      await useEditorStore.getState().insertComponent('<button type="button">Nuovo</button>');
+      expect(useEditorStore.getState().lastError).toBeUndefined();
+      expect(bridge.writeFile).toHaveBeenCalledWith("Page.jsx", expect.stringContaining("Nuovo"));
+      expect(useEditorStore.getState().document?.file).toBe("Page.jsx");
+    } finally { useEditorStore.setState({ pages: [], activePageId: undefined }); }
+  });
+
   it("imports a component taken from the project palette and removes its transport marker", async () => {
     const file = "C:/panel/pages/Page.jsx";
     useEditorStore.setState({ document: parseSource(file, page) });
@@ -110,6 +121,13 @@ describe("inserting a component", () => {
     expect(state.document?.source).toBe(overlay);
     expect(state.lastError).toMatch(/Overlay\.jsx/);
     expect(state.lastError).toMatch(/Trascina il componente/);
+  });
+
+  it("non inserisce in un altro contenitore se i riferimenti del drop sono scaduti", async () => {
+    useEditorStore.setState({ document: parseSource("Page.jsx", page), dirty: false });
+    const container = nodeOfType("Page.jsx", page, "main");
+    await useEditorStore.getState().insertComponent("<span>Non inserire</span>", { source: { ...container.source, start: container.source.start + 10 }, x: 10, y: 20, positionContainer: true });
+    expect(bridge.writeFile).not.toHaveBeenCalled(); expect(useEditorStore.getState().document?.source).toBe(page); expect(useEditorStore.getState().lastError).toContain("pagina è cambiata");
   });
 });
 

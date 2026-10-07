@@ -51,6 +51,24 @@ selecting another element returns to **Aspetto**. Group/external-element sheets 
 faceplate type mini-editor retain their existing layouts. Local preview changes and saving
 the project are separate from publishing or commanding a PLC.
 
+## Pages and categories
+
+Use **Pagine → Nuova pagina** for the full-size creation window: choose a name,
+route, category and page template. Similar empty Main bases are grouped with an
+explicit variant selector; original standard variants remain available. Template
+icons represent the contents rather than repeating the same miniature.
+
+On a standard panel, **Nuova categoria** adds a real navigation category. Add its
+first page to make it navigable. New pages are registered in the router, section
+menu and numeric screen lookup, not just the editor list. Standard sections keep
+their original numbers; custom categories use 10–99 and leave 9 to popups.
+**Aggiungi elementi** contains reusable components, not the project's page exports.
+
+New **desktop + mobile** standard panels adapt their header and navigation to a
+narrow viewport. The machine drawing keeps its 1280×694 coordinates: pan at
+**Dimensioni reali**, or choose **Adatta disegno**. This generator change does not
+silently overwrite an existing machine project's custom shell or CSS.
+
 ## Run
 
 ```bash

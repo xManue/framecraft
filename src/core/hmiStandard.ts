@@ -404,7 +404,8 @@ export interface PageNumberParts {
 export function pageNumberParts(number: number): PageNumberParts | undefined {
   if (!Number.isInteger(number)) return undefined;
   const sectionNumber = Math.floor(number / 1000);
-  if (!sectionByNumber(sectionNumber) && sectionNumber !== popupSectionNumber) return undefined;
+  // Le categorie aggiunte in Framecraft usano 10..99, senza alterare le sette sezioni WinCC.
+  if (!sectionByNumber(sectionNumber) && sectionNumber !== popupSectionNumber && !(sectionNumber >= 10 && sectionNumber <= 99)) return undefined;
   const withinSection = number - sectionNumber * 1000 - 1;
   if (withinSection < 0) return undefined;
   const slot = Math.floor(withinSection / numbering.pagesPerSlot);

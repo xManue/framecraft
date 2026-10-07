@@ -1013,11 +1013,11 @@ function appSource(machineName: string, planned: readonly PlannedSection[], mobi
   const entryIcons = usedMenuIcons.map((id) => `  ${id}: (${svgIcon(menuIcon[id])}),`).join("\n");
   const fallback = planned[0]?.route ?? "/";
   const layoutSwitch = mobile
-    ? `\n        <button type="button" className="hmi-layout-switch" onClick={() => setMobileLayout((value) => !value)}>{mobileLayout ? "Desktop" : "Mobile"}</button>`
+    ? `\n        <div className="hmi-layout-controls"><button type="button" className="hmi-layout-switch" onClick={() => setMobileLayout((value) => !value)}>{mobileLayout ? "Desktop" : "Mobile"}</button>{mobileLayout && <button type="button" className="hmi-fit-switch" aria-pressed={mobileFit} onClick={() => setMobileFit((value) => !value)}>{mobileFit ? "Dimensioni reali" : "Adatta disegno"}</button>}</div>`
     : "";
 
   return `import { useEffect, useRef, useState } from "react";
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import resourceCatalogJson from "../framecraft.resources.json";
 import { installFramecraftHmiRuntime } from "./framecraftHmiRuntime";
@@ -1034,7 +1034,7 @@ interface RuntimeResourceCatalog {
 
 const resourceCatalog = resourceCatalogJson as RuntimeResourceCatalog;
 const screenRoutes: Record<string, string> = ${screenRoutes};
-const runtimeRoute = (target: string) => screenRoutes[target.match(/^\\d{4}/)?.[0] ?? ""] ?? target;
+  const runtimeRoute = (target: string) => screenRoutes[target.match(/^\\d{4,5}/)?.[0] ?? ""] ?? target;
 
 interface PanelSection {
   id: string;
@@ -1066,7 +1066,14 @@ ${entryIcons}
 };
 
 export function App() {
-  const [mobileLayout, setMobileLayout] = useState(false);
+  const [mobileLayout, setMobileLayout] = useState(${mobile ? "() => window.matchMedia('(max-width: 800px)').matches" : "false"});
+  const [mobileFit, setMobileFit] = useState(false);
+  const [mobileScale, setMobileScale] = useState(() => Math.min(1, window.innerWidth / 1280));
+  useEffect(() => {
+    const resize = () => setMobileScale(Math.min(1, window.innerWidth / 1280));
+    window.addEventListener("resize", resize); resize();
+    return () => window.removeEventListener("resize", resize);
+  }, []);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [runtimeLanguage, setRuntimeLanguage] = useState(resourceCatalog.activeLanguage || resourceCatalog.defaultLanguage || "it-IT");
   const localizedTexts = useRef(new Map<Element, string | null>());
@@ -1133,6 +1140,7 @@ export function App() {
   }, [runtimeLanguage]);
 
   const chooseSection = (section: PanelSection) => {
+    if (!section.route) return;
     if (section.entries.length > 1) setOpenMenu(section.id === openMenu ? null : section.id);
     else navigate(section.route);
   };
@@ -1143,7 +1151,7 @@ export function App() {
   };
 
   return (
-    <div className={\`hmi-shell \${mobileLayout ? "mobile" : "desktop"}\`} data-hmi-type="HmiScreen" data-panel-layout={mobileLayout ? "mobile" : "desktop"} data-hmi-language={runtimeLanguage}>
+    <div className={\`hmi-shell \${mobileLayout ? "mobile" : "desktop"}\`} style={{ "--mobile-scale": mobileScale } as CSSProperties} data-hmi-type="HmiScreen" data-panel-layout={mobileLayout ? "mobile" : "desktop"} data-hmi-language={runtimeLanguage}>
       {/* Prima fila: orologio, primo allarme, collegamento PLC e logo. */}
       <header className="hmi-top-bar" data-hmi-type="HmiRectangle">
         <div className="hmi-clock">
@@ -1207,19 +1215,20 @@ export function App() {
             type="button"
             className={\`hmi-section\${section.id === current.id ? " active" : ""}\`}
             data-section={section.id}
+            disabled={!section.route}
             data-hmi-type="HmiButton"
             data-plc-variable="Actual_Page_Number"
             aria-haspopup={section.entries.length > 1 ? "menu" : undefined}
             aria-expanded={section.entries.length > 1 ? section.id === openMenu : undefined}
             onClick={() => chooseSection(section)}
           >
-            <span className="hmi-section-icon">{sectionIcons[section.id]}</span>
+            <span className="hmi-section-icon">{sectionIcons[section.id] ?? Object.values(sectionIcons)[0]}</span>
             <span className="hmi-section-label">{section.label}</span>
           </button>
         ))}
       </nav>
 
-      <main className="hmi-screen" data-hmi-type="HmiScreenWindow">
+      <main className="hmi-screen" data-hmi-type="HmiScreenWindow" data-mobile-fit={mobileFit}>
         <Routes>
 ${routes}
           <Route path="*" element={<Navigate to=${JSON.stringify(fallback)} replace />} />
@@ -1238,7 +1247,7 @@ ${routes}
             {openSection.entries.map((entry, index) => (
               <li key={index} style={{ height: openSection.menu!.entry.pitch }}>
                 <button type="button" data-hmi-type="HmiButton" disabled={!entry.route} onClick={() => chooseEntry(entry.route)}>
-                  <span className="hmi-submenu-icon">{entryIcons[entry.icon]}</span>
+                  <span className="hmi-submenu-icon">{entryIcons[entry.icon] ?? Object.values(entryIcons)[0]}</span>
                   {entry.label}
                 </button>
               </li>
@@ -1282,8 +1291,25 @@ ${mobileTabs}
 /* Sul mobile il sottomenu scende da sotto il navigatore, e il triangolino non serve. */
 .hmi-shell.mobile .hmi-submenu-pointer { display: none; }
 .hmi-shell.mobile .hmi-submenu-panel { left: 16px !important; top: ${mobileShell.content.top + 8}px !important; width: 300px !important; }
-.hmi-layout-switch { position: fixed; right: 10px; bottom: 10px; z-index: 40; height: 26px; padding: 0 10px; border: 1px solid #64646A; border-radius: 4px; background: #333333; color: #FFFFFF; font-size: 12px; opacity: .65; cursor: pointer; }
+.hmi-layout-controls { position: fixed; right: 10px; bottom: 10px; z-index: 40; display: flex; gap: 8px; }
+.hmi-layout-switch, .hmi-fit-switch { min-height: 44px; padding: 0 12px; border: 1px solid #64646A; border-radius: 4px; background: #333333; color: #FFFFFF; font-size: 14px; cursor: pointer; }
 .hmi-layout-switch:hover, .hmi-layout-switch:focus-visible { opacity: 1; }
+/* Il disegno resta nelle sue coordinate: si sposta nell'area contenuto, non l'intera pagina. */
+html:has(.hmi-shell.mobile), body:has(.hmi-shell.mobile), #root:has(.hmi-shell.mobile) { min-width: 0; min-height: 0; height: 100%; }
+.hmi-shell.mobile { width: 100%; min-width: 0; height: 100dvh; min-height: 320px; }
+.hmi-shell.mobile .hmi-top-bar { width: 100%; height: 56px; }
+.hmi-shell.mobile .hmi-clock { left: 8px; top: 6px; width: 142px; }.hmi-shell.mobile .hmi-clock strong { font-size: 22px; }
+.hmi-shell.mobile .hmi-plc { left: auto; right: 8px; top: 4px; width: 156px; }
+.hmi-shell.mobile .hmi-logo, .hmi-shell.mobile .hmi-user { display: none; }
+.hmi-shell.mobile .hmi-plc-diagnostics { width: min(430px, calc(100vw - 16px)); max-height: calc(100dvh - 72px); }
+.hmi-shell.mobile .hmi-lateral { top: 56px; width: 100%; height: 56px; padding: 0; overflow-x: auto; overflow-y: hidden; }
+.hmi-shell.mobile .hmi-section { flex: 0 0 auto; width: auto; min-width: 110px; min-height: 44px; padding: 0 16px; }
+.hmi-shell.mobile .hmi-screen { top: 112px; width: 100%; height: calc(100dvh - 172px); overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; zoom: 1 !important; }
+.hmi-shell.mobile .hmi-screen[data-mobile-fit="true"] .hmi-page { zoom: var(--mobile-scale); }
+.hmi-shell.mobile .hmi-submenu-panel { top: 120px !important; left: 8px !important; width: min(340px, calc(100vw - 16px)) !important; max-height: calc(100dvh - 184px); overflow-y: auto; }
+.hmi-shell.mobile .hmi-submenu-panel li { height: 48px; }.hmi-shell.mobile .hmi-submenu-panel button { min-height: 44px; }
+.hmi-shell.mobile .hmi-command-feedback { left: 8px; right: 8px; bottom: 64px; max-height: 160px; overflow: auto; }
+.hmi-shell.mobile .hmi-layout-controls { left: 0; right: 0; bottom: 0; height: 60px; padding: 8px; background: #111; justify-content: flex-end; }
 `
     : "";
 
@@ -1350,9 +1376,9 @@ button, input, select, textarea { font: inherit; }
 .hmi-gauge-scale { display: grid; grid-template-columns: repeat(6, 1fr); font-size: 11px; text-align: center; color: #E0E0E0; }
 
 /* La barra laterale: tessera 60x60 a x=${lateralBar.iconLeft}, passo ${lateralBar.pitch}. */
-.hmi-lateral { position: absolute; left: 0; top: ${bar.top}px; width: ${bar.width}px; height: ${bar.height}px; display: flex; flex-direction: column; padding-top: ${lateralBar.firstIconTop}px; background: #000000; z-index: 35; }
+.hmi-lateral { position: absolute; left: 0; top: ${bar.top}px; width: ${bar.width}px; height: ${bar.height}px; display: flex; flex-direction: column; padding-top: ${lateralBar.firstIconTop}px; background: #000000; z-index: 35; overflow-y: auto; }
 .hmi-lateral.menu-open .hmi-section { opacity: 1; }
-.hmi-section { width: 100%; height: ${lateralBar.pitch}px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: #FFFFFF; text-decoration: none; opacity: ${lateralBar.inactiveOpacity}; cursor: pointer; }
+.hmi-section { flex-shrink: 0; width: 100%; height: ${lateralBar.pitch}px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: #FFFFFF; text-decoration: none; opacity: ${lateralBar.inactiveOpacity}; cursor: pointer; }
 .hmi-section.active { opacity: 1; }
 .hmi-section:focus-visible { outline: 2px solid #FFFFFF; outline-offset: -2px; }
 .hmi-section-icon { width: ${lateralBar.iconSize}px; height: ${lateralBar.iconSize}px; display: grid; place-items: center; border-radius: 4px; }

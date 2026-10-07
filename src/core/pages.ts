@@ -200,6 +200,7 @@ export function detectPages(sources: Record<string, string>): { pages: PageDefin
 
 export function insertReactRoute(source: string, componentName: string, importPath: string, route: string): string {
   const parsed = ast(source);
+  traverse(parsed, { Program(path) { if (path.scope.hasBinding(componentName)) throw Error("Esiste già un componente con questo nome. Scegli un nome pagina diverso."); } });
   let routes: JSXElement | undefined;
   traverse(parsed, { JSXElement(path) { if (!routes && jsxName(path.node) === "Routes") routes = path.node; } });
   if (!routes?.closingElement?.start) throw new Error("Questo router non usa <Routes>: aggiungi la pagina dal codice.");

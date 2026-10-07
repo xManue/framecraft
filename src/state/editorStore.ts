@@ -27,6 +27,10 @@ import { emptyHmiFaceplateCatalog, hmiFaceplateCatalogName, parseHmiFaceplateCat
 import { emptyHmiDataLogCatalog, hmiDataLogCatalogName, parseHmiDataLogCatalog, type HmiDataLogCatalog } from "../core/hmiDataLogs";
 import { clearEditorReloadCheckpoint, installEditorReloadRecovery, readEditorReloadCheckpoint, recoverEditorReload, type EditorReloadRecovery } from "./editorRecovery";
 import { cleanDiagnosticText } from "../core/editorMessages";
+import { detectPages, insertReactRoute } from "../core/pages";
+import { insertElement, insertElementAtPosition } from "../source-parser/transformSource";
+import { parseSource } from "../source-parser/parseSource";
+import { categorySection, newPageCategory, readPageCategories, withCategoryPage, withPageCategories, type PageCategory } from "../core/pageNavigation";
 
 type LeftPanel = "project" | "components" | "pages" | "plc" | "resources" | "scripts" | "faceplates" | "logs" | "page";
 /** How large the whole editor is drawn. A panel is built standing at a machine as often as sitting
@@ -264,6 +268,9 @@ export interface EditorState {
   openPage: (page: PageDefinition) => Promise<void>;
   /** `sectionId` e' una delle sette sezioni dello standard: se c'e', la pagina nasce numerata. */
   createPage: (name: string, route: string, sectionId?: string, templateId?: StandardPageTemplateId) => Promise<void>;
+  pageCategories: PageCategory[];
+  createCategory: (name: string) => Promise<PageCategory>;
+  refreshPageCategories: () => Promise<void>;
   syncPreviewPath: (path: string) => Promise<void>;
   syncStatePage: (value: string) => void;
   markPreviewReady: () => void;
@@ -531,7 +538,7 @@ async function readPanelManifest(root: string) {
  *
  * Guarda in due posti perche' due posti ce l'hanno: i sorgenti delle pagine (dove il numero sta come
  * `data-page-number`) e il `panel.json`, che puo' dichiarare una pagina anche prima che esista. */
-async function planStandardPage(root: string, pages: PageDefinition[], manifest: PanelManifest | undefined, sectionId: string) {
+async function planStandardPage(root: string, pages: PageDefinition[], manifest: PanelManifest | undefined, sectionId: string, categories: PageCategory[]) {
   const { collectPageNumbers, planPageNumber } = await import("../core/hmiPages");
   const { manifestPageNumbers } = await import("../core/panelManifest");
   const sources: string[] = [];
@@ -539,7 +546,8 @@ async function planStandardPage(root: string, pages: PageDefinition[], manifest:
     try { sources.push(await desktopBridge.readFile(page.file)); } catch { /* Una pagina illeggibile non blocca la numerazione. */ }
   }));
   void root;
-  return planPageNumber(sectionId, [...collectPageNumbers(sources), ...manifestPageNumbers(manifest)]);
+  const category = categories.find((item) => item.id === sectionId);
+  return planPageNumber(sectionId, [...collectPageNumbers(sources), ...manifestPageNumbers(manifest)], { section: category ? categorySection(category) : undefined });
 }
 
 /** Scrive il numero nel `panel.json`. Se il pannello non ne ha uno non succede niente: la pagina
@@ -561,8 +569,10 @@ async function inspectPages(project: ProjectAnalysis) {
   await Promise.all(project.entryFiles.map(async (file) => {
     try { sources[file] = await desktopBridge.readFile(file); } catch { /* An unreadable component must not block the project. */ }
   }));
-  const { detectPages } = await import("../core/pages");
-  return detectPages(sources);
+  const model = detectPages(sources);
+  let pageCategories: PageCategory[] = [];
+  try { if (model.routerFile) pageCategories = readPageCategories(sources[model.routerFile]); } catch { /* La navigazione personalizzata mantiene le pagine libere. */ }
+  return { ...model, pageCategories };
 }
 
 function relativeImport(fromFile: string, toFile: string) {
@@ -1191,8 +1201,6 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       return { reason: "unreadable", detail };
     }
     if (!current()) return {};
-    const { parseSource } = await import("../source-parser/parseSource");
-    if (!current()) return {};
     try {
       return { document: parseSource(file, source) };
     } catch (error) {
@@ -1210,7 +1218,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     pages: [], routerEditable: false, activePageId: undefined, requestedStatePage: undefined, previewPath: "/", previewStatus: "idle", previewRestarting: false, previewProcessExited: false, interactionMode: "edit", selectionStyles: {}, editScope: "instance", plcVariables: [], resourceCatalog: emptyHmiResourceCatalog(), scriptCatalog: emptyHmiScriptCatalog(), faceplateCatalog: emptyHmiFaceplateCatalog(), dataLogCatalog: emptyHmiDataLogCatalog(), hmiIssues: [], projectComponents: [], externalRoots: [],
     simulation: { on: false, values: {}, status: {}, elements: [], unresolved: [] },
     viewMode: "visual", zoom: 0.82, fitCanvas: true, leftPanel: "pages", leftPanelCollapsed: false, multiSelection: [],
-    ...view, paletteOpen: false, userAccessOpen: false, userAccessBusy: false, panelManifest: undefined, zonePicking: undefined, unlockedPages: [], unlockedFiles: [], draggedComponent: undefined, consoleOpen: false, standalonePreviewOpen: false, loading: false, exporting: false, dirty: false, recentProjects: recent, history: [], future: [],
+    ...view, pageCategories: [], paletteOpen: false, userAccessOpen: false, userAccessBusy: false, panelManifest: undefined, zonePicking: undefined, unlockedPages: [], unlockedFiles: [], draggedComponent: undefined, consoleOpen: false, standalonePreviewOpen: false, loading: false, exporting: false, dirty: false, recentProjects: recent, history: [], future: [],
     consoleEntries: [entry("info", desktopAvailable ? "Desktop bridge ready" : "Browser mode: local project actions require the Tauri app")],
     setViewMode: (viewMode) => set({ viewMode }),
     retryReloadRecovery: async () => {
@@ -1393,7 +1401,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         const document = await documentFor(target);
         const recentProjects = [workingCopy.root, ...get().recentProjects.filter((item) => item !== root && item !== workingCopy.root && item !== workingCopy.originalRoot)].slice(0, 8);
         persistRecentProjects(recentProjects);
-        set({ project, document, plcVariables: [], resourceCatalog: emptyHmiResourceCatalog(), scriptCatalog: emptyHmiScriptCatalog(), faceplateCatalog: emptyHmiFaceplateCatalog(), dataLogCatalog: emptyHmiDataLogCatalog(), hmiIssues: [], projectComponents: [], pages: pageData.pages, routerFile: pageData.routerFile, routerEditable: pageData.routerEditable,
+        set({ project, document, plcVariables: [], resourceCatalog: emptyHmiResourceCatalog(), scriptCatalog: emptyHmiScriptCatalog(), faceplateCatalog: emptyHmiFaceplateCatalog(), dataLogCatalog: emptyHmiDataLogCatalog(), hmiIssues: [], projectComponents: [], pages: pageData.pages, pageCategories: pageData.pageCategories, routerFile: pageData.routerFile, routerEditable: pageData.routerEditable,
           activePageId: firstPage?.id, requestedStatePage: firstPage?.stateValue,
           previewUrl: undefined, previewPath: firstPage?.route ?? "/", recentProjects, history: [], future: [], dirty: false, externalRoots: [], selectedId: undefined, selectionRect: undefined, selectionStyles: {}, selectionInfo: undefined, editScope: "instance", unresolvedSelection: undefined,
           highlightPicker: undefined, standalonePreviewOpen: false, previewStatus: "starting", leftPanel: pageData.pages.length ? "pages" : "project", leftPanelCollapsed: false,
@@ -1475,6 +1483,32 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         interactionMode: "edit", selectedId: undefined, selectionRect: undefined, highlightPicker: undefined });
       await get().openFile(page.file);
     },
+    async refreshPageCategories() {
+      const { project, routerFile } = get();
+      const previousCategories = get().pageCategories;
+      if (!project || !routerFile) return;
+      try {
+        const categories = readPageCategories(await desktopBridge.readFile(routerFile));
+        if (get().project === project && get().routerFile === routerFile && get().pageCategories === previousCategories) set({ pageCategories: categories });
+      } catch { /* Una navigazione non standard conserva le pagine libere. */ }
+    },
+    async createCategory(name) {
+      const { project, routerFile } = get();
+      if (!project || !routerFile) throw new Error("Apri un pannello standard prima di creare una categoria.");
+      if (get().dirty && get().document?.file === routerFile) throw new Error("Salva prima le modifiche al codice della navigazione. La bozza resta intatta.");
+      const source = await desktopBridge.readFile(routerFile);
+      const categories = readPageCategories(source);
+      if (!categories.length) throw new Error("Le categorie richiedono la navigazione standard Framecraft. In questo progetto puoi creare pagine libere.");
+      const category = newPageCategory(categories, name);
+      const next = [...categories, category];
+      if (get().project !== project) throw Error("Il progetto è cambiato. Riapri la finestra e riprova.");
+      await desktopBridge.writeFile(routerFile, withPageCategories(source, next));
+      if (get().project !== project) return category;
+      set({ pageCategories: next });
+      if (get().document?.file === routerFile) await get().openFile(routerFile);
+      reportSuccess(`Categoria «${category.label}» creata. Aggiungi la prima pagina per renderla navigabile.`);
+      return category;
+    },
     async createPage(name, route, sectionId, templateId = "blank") {
       const { project, routerFile, pages } = get();
       if (!project || !routerFile || !get().routerEditable) throw new Error("La creazione visuale richiede React Router con un componente <Routes>.");
@@ -1488,22 +1522,27 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       const extension = project.language === "typescript" ? "tsx" : "jsx";
       const relativePath = `src/pages/${componentName}.${extension}`;
       const targetPath = joinProjectPath(project.root, relativePath);
+      if ([...project.entryFiles, ...projectFilePaths(project.files)].some((file) => file.replaceAll("\\", "/").toLowerCase() === targetPath.replaceAll("\\", "/").toLowerCase())) throw Error("Esiste già un file pagina con questo nome. Scegli un nome diverso: il file esistente non viene sovrascritto.");
       try {
+        if (get().dirty && get().document?.file === routerFile) throw new Error("Salva prima le modifiche al codice della navigazione. La bozza resta intatta.");
         const routerSource = await desktopBridge.readFile(routerFile);
-        const { insertReactRoute } = await import("../core/pages");
-        const nextRouter = insertReactRoute(routerSource, componentName, relativeImport(routerFile, targetPath), cleanRoute);
-        const plan = sectionId ? await planStandardPage(project.root, get().pages, get().panelManifest, sectionId) : undefined;
+        let nextRouter = insertReactRoute(routerSource, componentName, relativeImport(routerFile, targetPath), cleanRoute);
+        const categories = readPageCategories(routerSource);
+        if (sectionId && categories.length && !categories.some((item) => item.id === sectionId)) throw new Error("La categoria non esiste più. Riapri la finestra e selezionala di nuovo.");
+        const plan = sectionId ? await planStandardPage(project.root, get().pages, get().panelManifest, sectionId, categories) : undefined;
         if (sectionId && !plan) throw new Error("La sezione e' piena: 14 voci di menu da 40 pagine sono tutte occupate.");
         const { standardPageSource } = await import("../core/hmiPages");
         const pageSource = plan
           ? standardPageSource({ componentName, title: cleanName, plan, templateId })
           : `export function ${componentName}() {\n  return (\n    <main className="page">\n      <h1>${cleanName}</h1>\n      <p>Inizia a modificare questa pagina in Framecraft.</p>\n    </main>\n  );\n}\n`;
+        if (plan && sectionId && categories.length) nextRouter = withPageCategories(nextRouter, withCategoryPage(categories, sectionId, { label: name.trim(), route: cleanRoute, slot: plan.slot }));
+        if (get().project !== project) throw Error("Il progetto è cambiato durante la creazione. Riapri la finestra e riprova.");
         const createdPath = await desktopBridge.createFile(relativePath, pageSource);
         await desktopBridge.writeFile(routerFile, nextRouter);
         const nextProject = await desktopBridge.analyzeProject(project.root);
         const pageData = await inspectPages(nextProject);
         const createdPage = pageData.pages.find((page) => page.route === cleanRoute);
-        set({ project: nextProject, pages: pageData.pages, routerFile: pageData.routerFile, routerEditable: pageData.routerEditable,
+        set({ project: nextProject, pages: pageData.pages, pageCategories: pageData.pageCategories, routerFile: pageData.routerFile, routerEditable: pageData.routerEditable,
           previewPath: cleanRoute, activePageId: createdPage?.id, requestedStatePage: undefined });
         if (plan && createdPage) await recordPageNumber(project.root, { id: createdPage.id, name: cleanName, pageNumber: plan.number, section: sectionId });
         await get().openFile(createdPath);
@@ -2249,11 +2288,24 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       try {
         let document = get().document;
         let anchorId = get().selectedId;
+        const initialCurrent = selectionEditCurrent();
+        const activePage = get().pages.find((page) => page.id === get().activePageId);
+        const clickFile = !placement && (!anchorId || !document || !insertionTarget(document, anchorId)) ? activePage?.file : undefined;
+        if (clickFile && document?.file !== clickFile) {
+          if (document && !await flushPendingDocument(document, initialCurrent)) return;
+          const opened = await readDocument(clickFile, initialCurrent);
+          if (!initialCurrent()) return;
+          if (!opened.document) throw Error("Non riesco a leggere la pagina aperta. Controlla il codice e riprova.");
+          document = opened.document;
+          set({ document, selectedId: undefined, selectionRect: undefined, selectionStyles: {}, dirty: false });
+        }
         // A component is dropped on what the page shows, which is regularly rendered by a different
         // file than the one open in the editor. Inserting into the open file instead would write the
         // element somewhere the user is not looking, which reads exactly like nothing happening.
         if (placement && (!document || document.file !== placement.source.file)) {
-          const opened = await readDocument(placement.source.file);
+          if (document && !await flushPendingDocument(document, initialCurrent)) return;
+          const opened = await readDocument(placement.source.file, initialCurrent);
+          if (!initialCurrent()) return;
           if (!opened.document || opened.reason) {
             throw new Error(`Non posso inserire in ${fileName(placement.source.file)}: apri il file in modalità Code e correggilo, poi riprova.`);
           }
@@ -2265,12 +2317,12 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         const placementNode = placement
           ? Object.values(document.nodes).find((node) => node.source.start === placement.source.start && node.source.end === placement.source.end)
           : undefined;
+        if (placement && !placementNode) throw Error("La pagina è cambiata durante il trascinamento. Il progetto non è stato modificato: rilascia di nuovo l’elemento sulla pagina aggiornata.");
         const node = insertionTarget(document, placementNode?.id ?? anchorId);
         if (!node) {
           throw new Error(`${fileName(document.file)} non contiene un contenitore HTML in cui inserire (un disegno SVG non può ospitare un componente). Trascina il componente sul punto della pagina dove vuoi metterlo.`);
         }
         const current = selectionEditCurrent();
-        const { insertElement, insertElementAtPosition } = await import("../source-parser/transformSource");
         if (!current()) return;
         const prepared = prepareProjectComponent(document.source, document.file, jsx);
         const sourceWithElement = placement && placementNode

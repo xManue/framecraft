@@ -6,6 +6,7 @@ import { componentRegistry, type ComponentCategory } from "./registry";
 import { useEditorStore } from "../state/editorStore";
 import { projectComponentJsx } from "../core/projectIndex";
 import { componentDragDropEvent, componentDragMoveEvent, dispatchComponentDrag, passedDragThreshold } from "./componentDrag";
+import { isPaletteProjectComponent } from "./paletteItems";
 
 type PaletteCategory = "Tutti" | "Del tuo progetto" | ComponentCategory;
 type DragSession = { pointerId: number; startX: number; startY: number; jsx: string; label: string; active: boolean };
@@ -19,6 +20,8 @@ export function ComponentPalette() {
   const setDraggedComponent = useEditorStore((state) => state.setDraggedComponent);
   const setInteractionMode = useEditorStore((state) => state.setInteractionMode);
   const projectComponents = useEditorStore((state) => state.projectComponents);
+  const pages = useEditorStore((state) => state.pages);
+  const reusableComponents = useMemo(() => projectComponents.filter((item) => isPaletteProjectComponent(item, pages)), [pages, projectComponents]);
   const dragSession = useRef<DragSession | undefined>(undefined);
   const ignoreNextClick = useRef(false);
   const [dragPreview, setDragPreview] = useState<{ x: number; y: number; label: string }>();
@@ -56,12 +59,14 @@ export function ComponentPalette() {
     dragSession.current = undefined;
     setDragPreview(undefined);
     setDraggedComponent(undefined);
+    if (session.active) window.setTimeout(() => { ignoreNextClick.current = false; }, 0);
   };
 
   const cancelDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const session = dragSession.current;
     if (!session || session.pointerId !== event.pointerId) return;
     dragSession.current = undefined;
+    ignoreNextClick.current = false;
     setDragPreview(undefined);
     setDraggedComponent(undefined);
   };
@@ -74,23 +79,22 @@ export function ComponentPalette() {
     }
     void insert(jsx);
   };
-  const ownItems = useMemo(() => projectComponents.filter((item) => {
-    if (/^(App|Root|Main)$/.test(item.name)) return false;
+  const ownItems = useMemo(() => reusableComponents.filter((item) => {
     if (category !== "Tutti" && category !== "Del tuo progetto") return false;
     const text = `${item.name} ${item.file}`.toLocaleLowerCase("it");
     return text.includes(deferredQuery);
-  }), [category, deferredQuery, projectComponents]);
+  }), [category, deferredQuery, reusableComponents]);
   const items = useMemo(() => componentRegistry.all().filter((item) => {
     const matchesCategory = category === "Tutti" || item.category === category;
     const text = `${item.name} ${item.description} ${item.keywords ?? ""} ${item.category}`.toLocaleLowerCase("it");
     return matchesCategory && text.includes(deferredQuery);
   }), [category, deferredQuery]);
   return <div className="panel-content">
-    <div className="panel-title"><span>AGGIUNGI ELEMENTI</span><small>{componentRegistry.all().length + projectComponents.length}</small></div>
+    <div className="panel-title"><span>AGGIUNGI ELEMENTI</span><small>{componentRegistry.all().length + reusableComponents.length}</small></div>
     <p className="panel-help"><strong>Trascina un elemento sulla pagina</strong> e rilascialo nel punto desiderato. Un click lo aggiunge invece vicino all’elemento selezionato.</p>
     <label className="search-field"><Search size={13} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca un componente" /></label>
     <div className="component-filters" aria-label="Categorie componenti">
-      {(["Tutti", ...(projectComponents.length ? ["Del tuo progetto" as const] : []), ...componentRegistry.categories()] as const).map((item) => <button type="button" key={item}
+      {(["Tutti", ...(reusableComponents.length ? ["Del tuo progetto" as const] : []), ...componentRegistry.categories()] as const).map((item) => <button type="button" key={item}
         className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}
     </div>
     <p className="component-count">{items.length + ownItems.length} {items.length + ownItems.length === 1 ? "componente" : "componenti"}</p>
