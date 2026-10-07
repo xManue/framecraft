@@ -123,7 +123,10 @@ interoperability or approval for industrial use.
 ## Production status
 
 This checkpoint is not an industrial release. Authentication/RBAC and durable server audit/storage,
-OPC UA, async script transport and real CPU/TLS testing remain open. The license audit is offline,
+OPC UA, PLC application acknowledgements, advanced payloads and real CPU/TLS testing remain open.
+Compiled scripts, modules, timers and Scheduler now await MQTT transport without optimistic tag
+updates or replay; broker receipts are not PLC acknowledgements. See [runtime/README.md](runtime/README.md).
+The license audit is offline,
 adds no new dependency for the connection dialog, and intentionally does not approve release while
 reviews/notices remain outstanding. See [LICENZE-E-PRODUZIONE.md](LICENZE-E-PRODUZIONE.md).
 

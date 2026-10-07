@@ -16,7 +16,7 @@ import { defaultHmiTrendConfig, renderHmiTrendControls, serializeHmiTrendConfig 
 import { createHmiDataLogRuntime, emptyHmiDataLogCatalog, type HmiDataLogCatalog } from "../src/core/hmiDataLogs";
 import { defaultHmiFunctionTrendConfig, renderHmiFunctionTrendControls, serializeHmiFunctionTrendConfig } from "../src/core/hmiFunctionTrend";
 import { standardProjectFiles } from "../src/core/standardProject";
-import { createHmiGatewayClient } from "../src/core/hmiGateway";
+import { createHmiGatewayClient, HmiGatewayCommandError } from "../src/core/hmiGateway";
 
 interface GeneratedRuntime {
   installFramecraftHmiRuntime(options: { navigate: (target: string) => void; trace: (message: string) => void; error: (message: string) => void }): () => void;
@@ -148,7 +148,7 @@ function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCa
     .replace('import dataLogCatalogJson from "../framecraft.logs.json";', "const dataLogCatalogJson = globalThis.__framecraftTestDataLogCatalog;")
     .replace('import plcCatalogJson from "../framecraft.plc.json";', 'const plcCatalogJson = { variables: [{ name: "Runtime.Alternative" }, { name: "Motor.Speed" }] };')
     .replace('import runtimeCatalogJson from "../framecraft.runtime.json";', 'const runtimeCatalogJson = { gateway: { enabled: ' + gatewayEnabled + ', pollMs: 100 } };')
-    .replace('import { createHmiGatewayClient, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";', "const createHmiGatewayClient = globalThis.__framecraftTestGateway;");
+    .replace('import { createHmiGatewayClient, HmiGatewayCommandError, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";', "const createHmiGatewayClient = globalThis.__framecraftTestGateway; const HmiGatewayCommandError = globalThis.__framecraftTestGatewayError;");
   const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
   const exports: Record<string, unknown> = {};
   const module = { exports };
@@ -175,6 +175,7 @@ function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCa
   };
   (globalThis as typeof globalThis & { __framecraftTestDataLogCatalog?: unknown }).__framecraftTestDataLogCatalog = dataLogCatalog;
   (globalThis as typeof globalThis & { __framecraftTestGateway?: typeof createHmiGatewayClient }).__framecraftTestGateway = createHmiGatewayClient;
+  (globalThis as typeof globalThis & { __framecraftTestGatewayError?: typeof HmiGatewayCommandError }).__framecraftTestGatewayError = HmiGatewayCommandError;
   new Function("exports", "module", javascript)(exports, module);
   return module.exports as unknown as GeneratedRuntime;
 }
@@ -185,6 +186,17 @@ const touchPointer = (type: string, x: number, y: number) => {
   return event;
 };
 const settleEvents = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function connectedGateway(write?: (init: RequestInit) => Promise<Response>) {
+  const snapshot = { version: 1, allowWrites: true, connections: [{ id: "mqtt", state: "connected" }], tags: [{ name: "Motor.Speed", dataType: "Real", access: "read-write", writable: true, connectionId: "mqtt" }], samples: [{ tag: "Motor.Speed", connectionId: "mqtt", value: "10", qualityCode: 192, timestamp: Date.now(), receivedAt: Date.now() }] };
+  const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/snapshot")) return new Response(JSON.stringify(snapshot));
+    if (write) return write(init!);
+    return new Response(JSON.stringify({ ...JSON.parse(String(init?.body)), outcome: "delivered", delivery: "broker-ack", plcConfirmed: false }));
+  });
+  vi.stubGlobal("fetch", request);
+  return request;
+}
 
 afterEach(() => {
   delete (globalThis as typeof globalThis & { __framecraftTestExecuteHmiScript?: unknown }).__framecraftTestExecuteHmiScript;
@@ -202,6 +214,7 @@ afterEach(() => {
   delete (globalThis as typeof globalThis & { __framecraftTestFaceplateCatalog?: unknown }).__framecraftTestFaceplateCatalog;
   delete (globalThis as typeof globalThis & { __framecraftTestDataLogCatalog?: unknown }).__framecraftTestDataLogCatalog;
   delete (globalThis as typeof globalThis & { __framecraftTestGateway?: unknown }).__framecraftTestGateway;
+  delete (globalThis as typeof globalThis & { __framecraftTestGatewayError?: unknown }).__framecraftTestGatewayError;
   delete (window as Window & { __framecraftEditorPreview?: boolean }).__framecraftEditorPreview;
   document.body.innerHTML = "";
   vi.useRealTimers();
@@ -395,8 +408,8 @@ describe("Runtime del pannello standard generato", () => {
     });
     vi.stubGlobal("fetch", request);
     document.body.innerHTML = '<span data-framecraft-gateway-status></span><div class="hmi-plc-bar"><i></i></div><aside data-framecraft-command-status hidden><span></span></aside>';
-    const runtime = loadGeneratedRuntime(undefined, undefined, true), errors = vi.fn();
-    const dispose = runtime.installFramecraftHmiRuntime({ navigate: () => undefined, trace: () => undefined, error: errors });
+    const runtime = loadGeneratedRuntime(undefined, undefined, true), errors = vi.fn(), trace = vi.fn();
+    const dispose = runtime.installFramecraftHmiRuntime({ navigate: () => undefined, trace, error: errors });
     try {
       await vi.waitFor(() => expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10"));
       expect(document.querySelector("[data-framecraft-gateway-status]")!.textContent).toBe("MQTT 1/1");
@@ -406,13 +419,69 @@ describe("Runtime del pannello standard generato", () => {
       await expect(runtime.requestRuntimeTagWrite("Unknown.Tag", 1)).rejects.toThrow("non autorizzata");
       expect(document.querySelector("[data-framecraft-command-status]")!.textContent).toContain("non autorizzata");
       const button = document.createElement("button");
-      button.setAttribute("data-hmi-events", serializeHmiEvents([{ event: "Tapped", script: 'const tags = Tags.CreateTagSet(["Motor.Speed"]); tags("Motor.Speed").Value = 99; await tags.WriteAsync(); HMIRuntime.Trace("PLC_ACK");' }])); document.body.append(button);
+      button.setAttribute("data-hmi-events", serializeHmiEvents([{ event: "Tapped", script: 'const tags = Tags.CreateTagSet(["Motor.Speed"]); tags("Motor.Speed").Value = 99; await tags.WriteAsync(); HMIRuntime.Trace("TRANSPORT_RECEIPT");' }])); document.body.append(button);
       const before = request.mock.calls.filter(([input]) => String(input).endsWith("/write")).length;
-      button.click(); await vi.waitFor(() => expect(errors).toHaveBeenCalledWith(expect.stringContaining("non ancora integrata")));
-      expect(request.mock.calls.filter(([input]) => String(input).endsWith("/write"))).toHaveLength(before);
+      button.click(); await vi.waitFor(() => expect(trace).toHaveBeenCalledWith("[HMI Tapped] TRANSPORT_RECEIPT"));
+      expect(request.mock.calls.filter(([input]) => String(input).endsWith("/write"))).toHaveLength(before + 1);
       expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10");
     } finally { dispose(); }
   });
+  it("propaga il gateway a moduli, timer e Scheduler senza modificare il valore acquisito", async () => {
+    const request = connectedGateway(), catalog = parseHmiScriptCatalog({
+      globalModules: [{ name: "IO", alias: "IO", globalDefinition: { source: 'let initial = Tags("Motor.Speed").Read(); let count = 0;' }, functions: [{ name: "Send", parameters: [], source: 'count = count + 1; Tags("Motor.Speed").Write(initial + count); HMIRuntime.Trace("module-sent");' }] }],
+      scheduledTasks: [{ id: "alarm-send", name: "Invio allarme", trigger: { kind: "alarm", criterion: "priority", condition: "greater-or-equal", operand: "12" }, script: 'Tags("Motor.Speed").Write(44); HMIRuntime.Trace("task-sent");' }],
+    });
+    const button = document.createElement("button");
+    button.setAttribute("data-hmi-events", serializeHmiEvents([{ event: "Tapped", script: 'Modules.IO.Send(); HMIRuntime.Timers.SetTimeout(function() { Tags("Motor.Speed").Write(33); HMIRuntime.Trace("timer-sent"); }, 5);' }])); document.body.append(button);
+    const runtime = loadGeneratedRuntime(catalog, undefined, true), trace = vi.fn(), error = vi.fn();
+    const stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace, error });
+    try {
+      await vi.waitFor(() => expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10")); button.click();
+      await vi.waitFor(() => expect(trace).toHaveBeenCalledWith("[HMI TIMER 1] timer-sent"));
+      expect(trace).toHaveBeenCalledWith("[HMI Tapped] module-sent");
+      runtime.notifyRuntimeAlarm({ alarmClass: "Alarm", state: "Incoming", priority: 16 });
+      await vi.waitFor(() => expect(trace).toHaveBeenCalledWith("[HMI TASK Invio allarme] task-sent"));
+      expect(request.mock.calls.filter(([input]) => String(input).endsWith("/write")).map(([, init]) => JSON.parse(String(init?.body)).value)).toEqual([11, 33, 44]);
+      expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10"); expect(runtime.runtimeTagStatus()["Motor.Speed"].qualityCode).toBe(192); expect(error).not.toHaveBeenCalled();
+    } finally { stop(); }
+  });
+
+  it("mantiene i tag faceplate e le closure timer locali anche con il gateway attivo", async () => {
+    const request = connectedGateway(), owner = document.createElement("div"), button = document.createElement("button");
+    owner.setAttribute("data-hmi-faceplate", serializeHmiFaceplateBinding({ typeId: "motor", version: "1.0.0", tagBindings: {}, propertyValues: {} }));
+    button.setAttribute("data-hmi-events", serializeHmiEvents([{ event: "Tapped", script: 'Tags("LocalCounter").Write(Tags("LocalCounter").Read() + 1); HMIRuntime.Trace("local=" + Tags("LocalCounter").Read()); HMIRuntime.Timers.SetTimeout(function() { Tags("LocalCounter").Write(Tags("LocalCounter").Read() + 1); HMIRuntime.Trace("timer-local=" + Tags("LocalCounter").Read()); }, 5);' }]));
+    owner.append(button); document.body.append(owner);
+    const runtime = loadGeneratedRuntime(undefined, undefined, true), trace = vi.fn(), error = vi.fn();
+    const stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace, error });
+    try {
+      await vi.waitFor(() => expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10")); button.click();
+      await vi.waitFor(() => expect(trace).toHaveBeenCalledWith("[HMI TIMER 1] timer-local=2")); expect(trace).toHaveBeenCalledWith("[HMI Tapped] local=1");
+      expect(runtime.runtimeTagValues()).not.toHaveProperty("LocalCounter"); expect(request.mock.calls.filter(([input]) => String(input).endsWith("/write"))).toHaveLength(0); expect(error).not.toHaveBeenCalled();
+    } finally { stop(); }
+  });
+
+  it("non applica navigazioni accumulate da un elemento rimosso durante l'attesa HTTP", async () => {
+    let release!: () => void;
+    const request = connectedGateway((init) => new Promise<Response>((resolve) => { release = () => resolve(new Response(JSON.stringify({ ...JSON.parse(String(init.body)), outcome: "delivered", delivery: "broker-ack", plcConfirmed: false }))); }));
+    const button = document.createElement("button"); button.setAttribute("data-hmi-events", serializeHmiEvents([{ event: "Tapped", script: 'HMIRuntime.UI.SysFct.ChangeScreen("/stale"); Tags("Motor.Speed").Write(20); Tags("Motor.Speed").Write(30);' }])); document.body.append(button);
+    const runtime = loadGeneratedRuntime(undefined, undefined, true), trace = vi.fn(), navigate = vi.fn();
+    const stop = runtime.installFramecraftHmiRuntime({ navigate, trace, error: vi.fn() });
+    try {
+      await vi.waitFor(() => expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10")); button.click(); await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+      button.remove(); release();
+      const fresh = document.createElement("button"); fresh.setAttribute("data-hmi-events", serializeHmiEvents([{ event: "Tapped", script: 'HMIRuntime.Trace("fresh-page");' }])); document.body.append(fresh); fresh.click();
+      await vi.waitFor(() => expect(trace).toHaveBeenCalledWith("[HMI Tapped] fresh-page"));
+      expect(navigate).not.toHaveBeenCalled(); expect(request.mock.calls.filter(([input]) => String(input).endsWith("/write"))).toHaveLength(1); expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10");
+    } finally { stop(); }
+  });
+
+  it("non avvia gateway o script connessi quando il pannello è dentro l'editor", async () => {
+    const request = connectedGateway(); (window as Window & { __framecraftEditorPreview?: boolean }).__framecraftEditorPreview = true;
+    const button = document.createElement("button"); button.setAttribute("data-hmi-events", serializeHmiEvents([{ event: "Tapped", script: 'Tags("Motor.Speed").Write(20);' }, { event: "Loaded", script: 'Tags("Motor.Speed").Write(30);' }])); document.body.append(button);
+    const runtime = loadGeneratedRuntime(undefined, undefined, true), stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error: vi.fn() });
+    try { button.click(); await settleEvents(); expect(request).not.toHaveBeenCalled(); } finally { stop(); }
+  });
+
   it("applica il lampeggio nel pannello esportato e ripristina lo stile allo smontaggio", () => {
     const lamp = document.createElement("div");
     lamp.style.animation = "pulse 3s infinite";

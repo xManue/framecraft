@@ -1,6 +1,6 @@
 # Licenze e gate di produzione
 
-Aggiornamento: 5 ottobre 2026. Questa è una verifica tecnica e un registro dei punti da
+Aggiornamento: 7 ottobre 2026. Questa è una verifica tecnica e un registro dei punti da
 chiudere, **non un'approvazione legale né un rilascio industriale approvato**.
 
 ## Inventario ripetibile
@@ -36,6 +36,10 @@ L'API Font del punto 83 non aggiunge font, dipendenze o download: usa famiglie d
 browser/dispositivo e i suoi fallback. Non conferisce diritti di redistribuzione a SiemensSans
 o ad altri font citati negli export reali. L'eventuale bundling di font va autorizzato e censito
 separatamente; il controllo offline e `releaseApproved: false` restano obbligatori.
+
+Il ricontrollo offline del 7 ottobre dopo il trasporto script MQTT (punto 91) conferma
+255 pacchetti npm, 266 Cargo Windows, 1 review npm e 41 Cargo, nessuna dipendenza mancante
+e `releaseApproved: false`. Nessun nuovo pacchetto/asset; il push del codice non chiude il gate.
 
 Una decisione `review-required` non significa automaticamente uso commerciale vietato.
 Significa che il controllo non ha eliminato la necessità di esaminare la licenza reale.

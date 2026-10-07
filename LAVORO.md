@@ -3237,6 +3237,50 @@ Verifiche del 5 ottobre 2026:
   modificato. Export WinCC e foto restano locali. Checkpoint separato dal trasporto asincrono
   PLC già in lavorazione; parità WinCC/Optix/AI e gate industriali/licenze restano aperti.
 
+### 91. Script asincroni collegati al trasporto MQTT reale e standard generato
+
+- Ripreso e completato il checkpoint locale del trasporto IR. L'interprete usa un'unica
+  coroutine: sospende/riprende l'operazione, senza rieseguire effetti precedenti, inizializzatori
+  di moduli, array, switch o chiamate annidate. Mantiene coda eventi, budget operazioni e
+  timeout CPU; l'attesa di rete ha timeout separato e supporta annullamento.
+- Eventi, funzioni/inizializzatori dei moduli, timer e Scheduler del pannello autonomo usano
+  il gateway HTTP e il driver MQTT. La pipeline standard distribuisce interprete e adapter,
+  non richiede Siemens/Rockwell Runtime; configurazione e connessioni restano inizialmente
+  disabilitate. Il runtime connesso non si installa nell'anteprima dell'editor.
+- Risultati distinti: `commands` con ricevute delivered/rejected/uncertain, `reads` da campioni
+  realmente acquisiti, `writes` per modifiche locali. Nessun comando modifica la cache PLC
+  ottimisticamente; qualità sconosciuta non diventa Good. I tag locali dei faceplate restano
+  locali anche nelle closure dei timer. Le dinamizzazioni sincrone non inviano scritture di rete.
+- Verificati contratti ufficiali Siemens `TagSet.ReadAsync` e `WriteAsync`: batch parziale
+  prosegue con errori per tag, rifiuto se nessun tag riesce. Nel trasporto Framecraft l'esito
+  delivered significa consegna MQTT, **non** scrittura PLC. `WriteAsync(1)`/hmiWriteWait viene
+  respinto prima dell'invio finché non esiste un protocollo di conferma PLC. Lettura CPU forzata,
+  QCD, audit operatore e bit atomici non disponibili non vengono simulati come riusciti.
+- `ReadMaxAge` verifica cache e timestamp sorgente; non inventa una lettura CPU per recuperare
+  campioni vecchi. Stop/contesto non più attivo impediscono comandi successivi; risultati
+  accumulati di elementi rimossi non navigano un'altra pagina dopo una risposta tardiva.
+  Un invio interrotto o senza risposta resta incerto, senza retry/replay automatico.
+- **19 test TCP/HTTP passati** con broker Aedes su loopback e porte casuali. Quattro nuovi
+  test eseguono l'interprete effettivamente generato: ack trattenuto, batch reale parziale,
+  qualità sconosciuta/letture cache e annullamento HTTP senza ripubblicazione alla riapertura.
+  Nessuna CPU fisica/virtuale, macchina aziendale, servizio permanente o segreto coinvolto.
+- **61 regressioni mirate passate** su gateway, interprete e runtime generato. Incluse
+  propagazione moduli/timer/Scheduler, faceplate locali, navigazione obsoleta e anteprima
+  senza rete. Aggiunta continuazione asincrona al collaudo del generatore bundled production.
+  Build TypeScript/Vite passata; warning preesistenti sugli import misti statici/dinamici.
+- Audit licenze offline rieseguito: inventari 255 pacchetti npm (44 MQTT runtime) e 266 Cargo
+  del target Windows. Nessuna nuova dipendenza. Il gate resta **non approvato** per review/notice,
+  non bypassato; questo checkpoint non autorizza il rilascio industriale.
+- Collaudata la copia dell'esatto indice Git `1caf28f941baa702220b9c8d8318ca61a645b8d1`,
+  senza export privati, foto o segreti: **1189 test pubblici passati in 89 file**, build
+  TypeScript/Vite, **3 test production/Vite**, **19 collaudi TCP/HTTP** e **16 test recovery**
+  passati. Dipendenze già installate tramite junction, non nuova installazione. I dieci file
+  di riferimento che richiedono export WinCC locali sono esclusi con avviso. Le aggiunte
+  documentali finali non cambiano il codice verificato. Nessun riavvio dell'app/preview utente.
+- Roadmap Unified/Optix, architettura e guida runtime aggiornate senza dichiarare parità
+  completa: restano conferme PLC, OPC UA, payload avanzati, RBAC/audit/storage server,
+  TLS/CPU reali e packaging/LTS/licenze. AI facoltativa ancora secondo la propria roadmap.
+
 ## Da fare, dopo
 
 - **Affidabilità editor durante gli aggiornamenti**: HMR/reload coperti al punto 77 e deposito
@@ -3247,7 +3291,7 @@ Verifiche del 5 ottobre 2026:
 
 - **Roadmap WinCC, fase 3 da completare**: eventi specifici dei controlli, object model restante,
   JavaScript oltre il sottoinsieme IR, analisi di flusso intermodulo completa, closure/scoping
-  completi, moduli di libreria/versionati, motore allarmi reale e collegamento a un driver reale
+  completi, moduli di libreria/versionati, motore allarmi reale, conferme PLC e altri metodi/driver
   (`WCU-DYN-06`, `WCU-EVT-01/04/05/06/07/10`).
 - **Roadmap WinCC, fase 4 da completare**: altre proprietà colore specifiche oltre la prima API
   `PropertyFlashing` del punto 79, audit accessibilità generale e dimensioni minime dei target
@@ -3262,8 +3306,8 @@ Verifiche del 5 ottobre 2026:
   supporti esterni, rotazione, backup e diagnostica spazio (`WCU-TAG-08`, `WCU-DAT-01/02/03`).
 - **Interfaccia**: estendere le categorie superiori quando entrano nuove funzioni WinCC, Optix e AI,
   senza reintrodurre toolbar permanenti nel canvas o nel bordo inferiore.
-- **Connettività trasversale**: integrare il trasporto asincrono nell'interprete/command layer,
-  completare conferme PLC/payload avanzati e driver OPC UA; RBAC/audit/storage
+- **Connettività trasversale**: trasporto asincrono MQTT nella IR integrato al punto 91;
+  completare conferme PLC/payload avanzati, command layer restante e driver OPC UA; RBAC/audit/storage
   server e collaudo TLS/CPU fisiche o virtuali. Mai segreti nel browser o replay di comandi incerti.
 - **Produzione**: chiudere licenze/notice e diritti asset, collaudare upgrade Vitest, audit Rust/OS,
   packaging su runtime LTS e guasti/recovery nella finestra desktop e su progetti reali;

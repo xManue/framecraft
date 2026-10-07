@@ -28,8 +28,11 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
   const changeState = (next: "connecting" | "connected" | "disconnected" | "stopped", error?: string) => {
     if (state === next && stateError === error) return; state = next; stateError = error; options.onState?.(next, error);
   };
-  const json = async (suffix: string, init?: RequestInit) => {
+  const json = async (suffix: string, init?: RequestInit, signal?: AbortSignal) => {
     const controller = new AbortController(); pending.add(controller);
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) controller.abort();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await (options.request ?? fetch)(path + suffix, { ...init, signal: controller.signal, credentials: "same-origin", cache: "no-store", redirect: "error" });
@@ -48,7 +51,7 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
         } finally { reader.releaseLock(); }
       } else { text = await response.text(); if (text.length > limit) throw new Error("Risposta gateway troppo grande."); }
       return { ok: response.ok, data: JSON.parse(text) as unknown };
-    } finally { clearTimeout(timeout); pending.delete(controller); }
+    } finally { clearTimeout(timeout); signal?.removeEventListener("abort", abort); pending.delete(controller); }
   };
   const parse = (data: unknown): HmiGatewaySnapshot => {
     if (!data || typeof data !== "object") throw new Error("Snapshot gateway non valido.");
@@ -90,7 +93,19 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
     get state() { return state; },
     start() { if (running) return; running = true; const token = ++generation; changeState("connecting"); void poll(token); },
     stop() { running = false; generation++; clearTimeout(timer); for (const controller of pending) controller.abort(); snapshot = undefined; last = ""; changeState("stopped"); },
-    async write(tag: string, value: string | number | boolean): Promise<HmiGatewayWriteResult> {
+    async read(tag: string, options: { mode?: number; maxAge?: number; signal?: AbortSignal } = {}): Promise<HmiGatewaySample> {
+      if (options.signal?.aborted || !running || state !== "connected" || !snapshot) throw new HmiGatewayCommandError("Gateway non disponibile per la lettura.", "rejected");
+      if (options.mode === 1 || options.maxAge === 0) throw new HmiGatewayCommandError("MQTT non supporta la lettura forzata dalla CPU: sono disponibili soltanto i campioni ricevuti.", "rejected");
+      if (options.mode !== undefined && options.mode !== 0 || options.maxAge !== undefined && (!Number.isInteger(options.maxAge) || options.maxAge < 0 || options.maxAge > 0xffffffff)) throw new HmiGatewayCommandError("Parametri di lettura non validi.", "rejected");
+      const definition = snapshot.tags.find((item) => item.name === tag);
+      if (!definition || definition.access === "write" || !snapshot.connections.some((item) => item.id === definition.connectionId && item.state === "connected")) throw new HmiGatewayCommandError("Tag non leggibile o connessione MQTT non disponibile.", "rejected");
+      const sample = snapshot.samples.find((item) => item.tag === tag);
+      if (!sample || sample.value === undefined || sample.lastError) throw new HmiGatewayCommandError(sample?.errorDescription ?? "Nessun campione MQTT disponibile per questo tag.", "rejected");
+      if (options.maxAge !== undefined && Math.max(Date.now() - sample.receivedAt, Date.now() - (sample.sourceTimestamp ?? sample.receivedAt)) > options.maxAge) throw new HmiGatewayCommandError("Il campione MQTT e' piu' vecchio del limite richiesto; nessuna lettura CPU simulata.", "rejected");
+      return { ...sample };
+    },
+    async write(tag: string, value: string | number | boolean, signal?: AbortSignal): Promise<HmiGatewayWriteResult> {
+      if (signal?.aborted) throw new HmiGatewayCommandError("Contesto interrotto; comando non inviato.", "rejected");
       if (!running || state !== "connected" || !snapshot) throw new HmiGatewayCommandError("Gateway non disponibile; comando non accodato.", "rejected");
       const definition = snapshot.tags.find((item) => item.name === tag);
       if (!snapshot.allowWrites || !definition?.writable || definition.access === "read") throw new HmiGatewayCommandError("Scrittura gateway non autorizzata per questo tag.", "rejected");
@@ -98,7 +113,7 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
       if (!["string", "number", "boolean"].includes(typeof value) || typeof value === "number" && !Number.isFinite(value)) throw new HmiGatewayCommandError("Valore comando non valido.", "rejected");
       const id = crypto.randomUUID().replaceAll("-", ""), token = generation;
       try {
-        const result = await json("/write", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, tag, value }) });
+        const result = await json("/write", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, tag, value }) }, signal);
         if (!running || token !== generation) throw new Error("Sessione interrotta.");
         const data = result.data as Record<string, unknown>;
         if (!data || typeof data !== "object") throw new Error("Risposta comando non valida.");

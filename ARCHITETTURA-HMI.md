@@ -176,10 +176,15 @@ Il browser del pannello non deve contenere segreti.
 Il collegamento industriale resta **parziale**: driver MQTT Node e gateway HTTP alimentano il
 browser con letture tipizzate, qualità e timestamp; i comandi autorizzati passano al servizio
 senza aggiornamento ottimistico o replay automatico. Sono collaudati su broker TCP locale,
-HTTP e sorgenti generati, non su CPU reali/TLS. Mancano configurazione grafica, driver OPC UA,
-autenticazione/RBAC/audit server e scritture di rete asincrone dall'interprete script; in modalità
-connessa quelle legacy sono bloccate, non simulate come riuscite. Una ricevuta MQTT non è una
-conferma PLC. Servizio e client vengono copiati dallo standard, disabilitati inizialmente.
+HTTP e sorgenti generati, non su CPU reali/TLS. La configurazione grafica è disponibile in
+`Pannello → Connessioni PLC`; gli script evento, moduli, timer e Scheduler ora sospendono la IR
+fino all'esito del trasporto senza rigiocare gli effetti. Le letture provengono dai campioni
+acquisiti, le scritture non aggiornano la cache. Cambio contesto/stop impediscono ulteriori
+effetti; un invio interrotto resta incerto e non viene ritentato. `hmiWriteWait`, lettura CPU
+forzata, QCD/audit operatore e bit atomici non disponibili non vengono simulati come riusciti.
+Mancano driver OPC UA, conferme applicative PLC, autenticazione/RBAC/audit server e payload
+avanzati. Una ricevuta MQTT non è una conferma PLC. Servizio, client e interprete vengono
+copiati dallo standard, con connessioni disabilitate inizialmente. Vedi `runtime/README.md`.
 Importare sorgenti vendor può aiutare la migrazione, ma round-trip verso IDE, licenze/token vendor
 e deploy sui loro Runtime non sono requisiti del prodotto.
 
@@ -475,8 +480,9 @@ altri controlli restano da coprire. Tranche e verifiche sono ai punti 79 e 82 di
 
 Non e' un motore JavaScript completo: restano classi, spread e funzioni come valori, closure generiche,
 scoping di blocco/hoisting completo e librerie versionate. L'isolamento completo dei contesti
-JavaScript per istanza faceplate, lo Scheduler server industriale e il trasporto asincrono dei driver
-richiedono altro lavoro. Stato e verifiche delle tranche sono registrati in `LAVORO.md`, punti 71, 74 e 76;
+JavaScript per istanza faceplate e lo Scheduler server industriale richiedono altro lavoro.
+Il trasporto MQTT è integrato nelle continuazioni della IR, non equivale a un motore JavaScript
+completo o alla conferma PLC. Stato e verifiche sono in `LAVORO.md`, punti 71, 74, 76 e 91;
 `WCU-EVT-05/07` rimangono parziali e non certificano un HMI collegato alla macchina.
 
 Il plugin desktop e i tre helper vengono mappati esplicitamente in `$RESOURCE/scripts`, dove

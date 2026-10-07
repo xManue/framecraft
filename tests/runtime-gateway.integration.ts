@@ -6,10 +6,12 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import { createMqttGateway } from "../runtime/gateway.mjs";
 import { createHmiGatewayClient, type HmiGatewaySnapshot } from "../src/core/hmiGateway";
 import { standardProjectFiles } from "../src/core/standardProject";
 import { parseConnectionConfiguration, serializeConnectionConfiguration } from "../src/core/plcConnections";
+import { inspectHmiScript, type HmiScriptTransport } from "../src/core/hmiScript";
 
 const api = "/_framecraft/plc/v1", token = "test_gateway_token_not_a_real_secret_0123456789", origin = "http://127.0.0.1:4173";
 const variables = [{ name: "Motor.Speed", dataType: "Real", access: "read-write" as const }, { name: "Motor.On", dataType: "Bool", access: "read" as const }];
@@ -31,7 +33,87 @@ async function fixture(allowWrites = true) {
 }
 function command(id = "command_0123456789", value = 55) { return { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, tag: "Motor.Speed", value }) }; }
 
+function generatedScriptRuntime() {
+  const source = standardProjectFiles({ machineName: "Script MQTT", layout: "desktop", sections: ["main"] }).find((file) => file.path === "src/framecraftScriptRuntime.ts")!.content;
+  const exports = {}, module = { exports };
+  new Function("exports", "module", transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText)(exports, module);
+  return module.exports as typeof import("../src/core/hmiScript");
+}
+function scriptClient(test: Awaited<ReturnType<typeof fixture>>) {
+  const client = createHmiGatewayClient({ pollMs: 100, request: (input, init) => fetch(test.gateway.address + String(input), { ...init, headers: { ...init?.headers, Authorization: "Bearer " + token, Origin: origin } }) });
+  const transport: HmiScriptTransport = {
+    async read(request, signal) {
+      const sample = await client.read(request.tag, { mode: request.mode, maxAge: request.maxAge, signal });
+      return { value: sample.value!, status: { qualityCode: sample.qualityCode, qualityKnown: sample.qualityCode !== undefined, timeStamp: sample.timestamp } };
+    },
+    async write(request, signal) { return client.write(request.tag, request.value as string | number | boolean, signal); },
+  };
+  client.start(); return { client, transport };
+}
+const scriptProgram = (source: string) => { const inspected = inspectHmiScript(source); expect(inspected.error).toBeUndefined(); return inspected.program!; };
+
 describe("bridge MQTT HTTP reale", () => {
+  it("sospende l'interprete distribuito fino all'ack reale, senza rigiocare effetti o anticipare il valore PLC", async () => {
+    const test = await fixture(), { client, transport } = scriptClient(test), runtime = generatedScriptRuntime();
+    const blocked: Array<(error?: Error | null) => void> = []; let attempts = 0;
+    test.broker.authorizePublish = (source, packet, callback) => { if (source?.id === "gateway-test" && packet.topic === "command") { attempts++; blocked.push(callback); } else callback(null); };
+    try {
+      await test.publisher.publishAsync("speed", JSON.stringify({ value: 10, quality: 192, time: 1_000 }), { qos: 1 });
+      await vi.waitFor(async () => expect((await client.read("Motor.Speed")).value).toBe("10"));
+      const scope = runtime.createHmiScriptScope(scriptProgram("let counter = 0;"));
+      const pending = runtime.executeHmiScriptAsync(scriptProgram('counter = counter + 1; const set = Tags.CreateTagSet([["Motor.Speed", 55]]); await set.WriteAsync(); counter = counter + 1; await set.ReadAsync(); return set("Motor.Speed").Value;'), {}, { transport, globalScope: scope });
+      await vi.waitFor(() => expect(attempts).toBe(1)); expect(scope.values.get("counter")).toBe(1);
+      expect(test.gateway.snapshot().samples[0]?.value).toBe("10"); blocked.shift()!(null);
+      const result = await pending;
+      expect(result).toMatchObject({ returned: 10, reads: { "Motor.Speed": "10" }, writes: {}, commands: [{ tag: "Motor.Speed", outcome: "delivered", delivery: "broker-ack", plcConfirmed: false }] });
+      expect(result.error).toBeUndefined(); expect(scope.values.get("counter")).toBe(2); expect(attempts).toBe(1);
+      expect((await client.read("Motor.Speed")).value).toBe("10");
+    } finally { for (const callback of blocked) callback(new Error("Fine fixture.")); client.stop(); await test.close(); }
+  });
+
+  it("mantiene fulfilled un batch reale parziale, per-tag error e nessun hmiWriteWait simulato", async () => {
+    const test = await fixture(), { client, transport } = scriptClient(test), runtime = generatedScriptRuntime(); let attempts = 0;
+    test.broker.authorizePublish = (source, packet, callback) => { if (source?.id === "gateway-test" && packet.topic === "command") attempts++; callback(null); };
+    try {
+      await vi.waitFor(() => expect(client.state).toBe("connected"));
+      const result = await runtime.executeHmiScriptAsync(scriptProgram('const set = Tags.CreateTagSet([["Motor.Speed", 44], ["Motor.On", true]]); await set.WriteAsync(); return JSON.stringify([set.LastError, set("Motor.On").LastError]);'), {}, { transport });
+      expect(result.error).toBeUndefined(); expect(JSON.parse(String(result.returned))).toEqual([0x80040004, 0x80040002]);
+      expect(result.commands?.map((item) => item.outcome)).toEqual(["delivered", "rejected"]); expect(result.writes).toEqual({}); expect(attempts).toBe(1);
+      const wait = await runtime.executeHmiScriptAsync(scriptProgram('const set = Tags.CreateTagSet([["Motor.Speed", 99]]); await set.WriteAsync(1);'), {}, { transport });
+      expect(wait.error).toContain("conferma PLC"); expect(wait.commands?.[0].outcome).toBe("rejected"); expect(attempts).toBe(1);
+    } finally { client.stop(); await test.close(); }
+  });
+
+  it("legge i soli campioni ricevuti, conserva qualità sconosciuta e rifiuta letture CPU o troppo vecchie", async () => {
+    const test = await fixture(), { client, transport } = scriptClient(test), runtime = generatedScriptRuntime();
+    try {
+      await test.publisher.publishAsync("on", "true", { qos: 1 });
+      await test.publisher.publishAsync("speed", JSON.stringify({ value: 12, quality: 192, time: Date.now() - 60_000 }), { qos: 1 });
+      await vi.waitFor(async () => expect((await client.read("Motor.On")).value).toBe("true"));
+      await vi.waitFor(async () => expect((await client.read("Motor.Speed")).value).toBe("12"));
+      const result = await runtime.executeHmiScriptAsync(scriptProgram('const set = Tags.CreateTagSet(["Motor.On", "Missing"]); await set.ReadAsync(); return set("Motor.On").Value;'), {}, { transport });
+      expect(result.error).toBeUndefined(); expect(result.returned).toBe(true); expect(result.tagStatus["Motor.On"]).toMatchObject({ qualityCode: 0, qualityKnown: false }); expect(result.tagStatus.Missing.lastError).toBe(0x80040002);
+      expect((await runtime.executeHmiScriptAsync(scriptProgram('const set = Tags.CreateTagSet(["Motor.Speed"]); await set.ReadAsync(1);'), {}, { transport })).error).toContain("forzata");
+      expect((await runtime.executeHmiScriptAsync(scriptProgram('const set = Tags.CreateTagSet(["Motor.Speed"]); set.ReadMaxAge(50);'), {}, { transport })).error).toContain("vecchio");
+      expect((await client.read("Motor.Speed")).value).toBe("12");
+    } finally { client.stop(); await test.close(); }
+  });
+
+  it("interrompe una scrittura HTTP in volo senza eseguire il comando seguente o ripubblicare alla riapertura", async () => {
+    const test = await fixture(), { client, transport } = scriptClient(test), runtime = generatedScriptRuntime(), abort = new AbortController();
+    const blocked: Array<(error?: Error | null) => void> = []; let attempts = 0;
+    test.broker.authorizePublish = (source, packet, callback) => { if (source?.id === "gateway-test" && packet.topic === "command") { attempts++; blocked.push(callback); } else callback(null); };
+    try {
+      await vi.waitFor(() => expect(client.state).toBe("connected"));
+      const pending = runtime.executeHmiScriptAsync(scriptProgram('Tags("Motor.Speed").Write(1); Tags("Motor.Speed").Write(2);'), {}, { transport, signal: abort.signal });
+      await vi.waitFor(() => expect(attempts).toBe(1)); abort.abort(); client.stop();
+      const result = await pending; expect(result.commands?.[0].outcome).toBe("uncertain"); expect(result.error).toBeTruthy(); expect(result.commands).toHaveLength(1);
+      test.clients.get("gateway-test")!.conn.destroy(); for (const callback of blocked.splice(0)) callback(new Error("Comando di collaudo scartato."));
+      await vi.waitFor(() => expect(test.gateway.snapshot().connections[0].state).toBe("connected"), { timeout: 3_000 });
+      client.start(); await vi.waitFor(() => expect(client.state).toBe("connected")); expect(attempts).toBe(1);
+    } finally { for (const callback of blocked) callback(new Error("Fine fixture.")); client.stop(); await test.close(); }
+  });
+
   it("esegue il mapping serializzato dall’editor connessioni sul broker e gateway reali", async () => {
     const test = await fixture(); const reservation = createServer();
     await new Promise<void>((resolve) => reservation.listen(0, "127.0.0.1", resolve));

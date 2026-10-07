@@ -39,6 +39,13 @@ describe("collaudo separato della generazione Runtime di produzione", () => {
     }
     const contexts = modules.get("src/framecraftScriptModules.ts")!.createHmiScriptContextManager as typeof import("../src/core/hmiScriptModules").createHmiScriptContextManager;
     const execute = modules.get("src/framecraftScriptRuntime.ts")!.executeHmiScript as typeof import("../src/core/hmiScript").executeHmiScript;
+    const executeAsync = modules.get("src/framecraftScriptRuntime.ts")!.executeHmiScriptAsync as typeof import("../src/core/hmiScript").executeHmiScriptAsync;
+    let writes = 0;
+    const transported = await executeAsync(inspectHmiScript('const set = Tags.CreateTagSet([["Speed", 55]]); await set.WriteAsync(); await set.ReadAsync(); return set("Speed").Value;').program!, { Speed: "1" }, { transport: {
+      async write(request) { writes++; return { tag: request.tag, outcome: "delivered", delivery: "broker-ack", plcConfirmed: false }; },
+      async read() { return { value: "10", status: { qualityKnown: false, timeStamp: 123 } }; },
+    } });
+    expect(transported).toMatchObject({ returned: 10, writes: {}, reads: { Speed: "10" }, commands: [{ outcome: "delivered", plcConfirmed: false }] }); expect(transported.error).toBeUndefined(); expect(writes).toBe(1);
     const catalog = parseHmiScriptCatalog({ globalModules: [
       { name: "Counter", alias: "Counter", globalDefinition: { source: "export let count = 0; let privateValue = 42;" }, functions: [{ name: "Next", parameters: [], source: "count = count + 1; return count;" }] },
       { name: "Values", alias: "Values", globalDefinition: { source: "export const source = Tags('Speed');" }, functions: [] },

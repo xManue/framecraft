@@ -6,6 +6,50 @@ const snapshot: HmiGatewaySnapshot = { version: 1, allowWrites: true, connection
 const response = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 
 describe("client gateway del Runtime browser", () => {
+  it("legge soltanto campioni reali e non assegna una qualità buona mancante", async () => {
+    const request = vi.fn(async () => response(snapshot));
+    const client = createHmiGatewayClient({ request });
+    try {
+      client.start(); await vi.waitFor(() => expect(client.state).toBe("connected"));
+      const before = request.mock.calls.length;
+      expect(await client.read("Speed")).toMatchObject({ value: "10", receivedAt: 1000 });
+      expect((await client.read("Speed")).qualityCode).toBeUndefined(); expect(request.mock.calls.length).toBe(before);
+      await expect(client.read("Unknown")).rejects.toMatchObject({ outcome: "rejected" });
+      await expect(client.read("Speed", { mode: 1 })).rejects.toThrow("forzata dalla CPU");
+      await expect(client.read("Speed", { maxAge: 0 })).rejects.toThrow("forzata dalla CPU");
+      await expect(client.read("Speed", { maxAge: 100 })).rejects.toThrow("vecchio");
+    } finally { client.stop(); }
+  });
+  it("per maxAge controlla anche il timestamp sorgente, non solo l'arrivo al broker", async () => {
+    const sample = { ...snapshot.samples[0], value: "", receivedAt: Date.now(), sourceTimestamp: Date.now() - 5000 };
+    const client = createHmiGatewayClient({ request: async () => response({ ...snapshot, samples: [sample] }) });
+    try {
+      client.start(); await vi.waitFor(() => expect(client.state).toBe("connected"));
+      expect((await client.read("Speed")).value).toBe("");
+      await expect(client.read("Speed", { maxAge: 1000 })).rejects.toThrow("vecchio");
+      expect((await client.read("Speed", { maxAge: 6000 })).sourceTimestamp).toBe(sample.sourceTimestamp);
+    } finally { client.stop(); }
+  });
+  it("non riusa una lettura dopo la perdita del gateway", async () => {
+    const client = createHmiGatewayClient({ request: async () => response(snapshot) });
+    client.start(); await vi.waitFor(() => expect(client.state).toBe("connected")); client.stop();
+    await expect(client.read("Speed")).rejects.toMatchObject({ outcome: "rejected" });
+  });
+  it("interrompe la sola richiesta del contesto senza fermare gli altri lettori", async () => {
+    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/snapshot")) return response(snapshot);
+      return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("Abort")), { once: true }));
+    });
+    const client = createHmiGatewayClient({ request }); const abort = new AbortController();
+    try {
+      client.start(); await vi.waitFor(() => expect(client.state).toBe("connected"));
+      const pending = expect(client.write("Speed", 20, abort.signal)).rejects.toMatchObject({ outcome: "uncertain" });
+      await vi.waitFor(() => expect(request.mock.calls.some(([input]) => String(input).endsWith("/write"))).toBe(true)); abort.abort(); await pending;
+      expect(client.state).toBe("connected"); expect((await client.read("Speed")).value).toBe("10");
+      await expect(client.write("Speed", 30, abort.signal)).rejects.toMatchObject({ outcome: "rejected" });
+      expect(request.mock.calls.filter(([input]) => String(input).endsWith("/write"))).toHaveLength(1);
+    } finally { client.stop(); }
+  });
   it("blocca endpoint cross-origin e intervalli invalidi", () => {
     expect(() => createHmiGatewayClient({ path: "https://external.invalid" })).toThrow("stessa origine");
     expect(() => createHmiGatewayClient({ path: "//external.invalid" })).toThrow("stessa origine");

@@ -244,7 +244,7 @@ import faceplateCatalogJson from "../framecraft.faceplates.json";
 import dataLogCatalogJson from "../framecraft.logs.json";
 import plcCatalogJson from "../framecraft.plc.json";
 import runtimeCatalogJson from "../framecraft.runtime.json";
-import { createHmiGatewayClient, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";
+import { createHmiGatewayClient, HmiGatewayCommandError, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";
 
 type HmiEventType = "Activated" | "ContextTapped" | "Deactivated" | "Down" | "KeyDown" | "KeyUp" | "Loaded" | "Tapped" | "Up" | "Change" | "GestureDetected" | "Unloaded" | "HotKey" | "InterfaceEvent" | "Initialized" | "CommandFired";
 type HmiGesture = "Unknown" | "SwipeRight" | "SwipeLeft" | "SwipeUp" | "SwipeDown";
@@ -313,11 +313,11 @@ export function applyRuntimeTagSample(sample: HmiGatewaySample) {
   if (sample.value !== undefined) updateRuntimeValue(sample.tag, sample.value, "framecraft:tag-read");
   else for (const listener of tagListeners) listener(sample.tag, values[sample.tag]);
 }
-export async function requestRuntimeTagWrite(tag: string, value: string | number | boolean) {
+export async function requestRuntimeTagWrite(tag: string, value: string | number | boolean, signal?: AbortSignal) {
   if (!gatewayConfig.enabled) { updateRuntimeValue(tag, value, "framecraft:tag-write"); return { tag, outcome: "local", delivery: "local", plcConfirmed: false }; }
   try {
-    if (!gatewayClient) throw new Error("Gateway non disponibile; comando non accodato.");
-    const result = await gatewayClient.write(tag, value);
+    if (!gatewayClient) throw new HmiGatewayCommandError("Gateway non disponibile; comando non accodato.", "rejected");
+    const result = await gatewayClient.write(tag, value, signal);
     window.dispatchEvent(new CustomEvent("framecraft:command-result", { detail: result })); return result;
   } catch (error) {
     window.dispatchEvent(new CustomEvent("framecraft:command-result", { detail: { tag, outcome: error && typeof error === "object" && "outcome" in error ? error.outcome : "rejected", plcConfirmed: false, error: error instanceof Error ? error.message : String(error) } }));
@@ -334,7 +334,23 @@ function mergeScriptTagStatus(status: typeof tagStatus) {
 function scriptWriteFailures(localTags?: Set<string>): Record<string, { code: number; description: string }> | undefined {
   if (!gatewayConfig.enabled) return undefined;
   return new Proxy(Object.create(null), { get: (_target, tag) => typeof tag === "string" && !localTags?.has(tag)
-    ? { code: 0x80040002, description: "Scrittura PLC da script non ancora integrata con il trasporto reale; usa requestRuntimeTagWrite e attendi il suo esito." } : undefined });
+    ? { code: 0x80040002, description: "Una dinamizzazione sincrona non puo' attendere il gateway PLC; usa uno script evento asincrono." } : undefined });
+}
+
+function gatewayScriptTransport() {
+  return {
+    async read(request: { tag: string; mode: number; maxAge?: number }, signal: AbortSignal) {
+      if (!gatewayClient) throw new HmiGatewayCommandError("Gateway non disponibile per la lettura.", "rejected");
+      const sample = await gatewayClient.read(request.tag, { mode: request.mode, maxAge: request.maxAge, signal });
+      return { value: sample.value!, status: { qualityCode: sample.qualityCode, qualityKnown: sample.qualityCode !== undefined, timeStamp: sample.timestamp, lastError: 0, errorDescription: "" } };
+    },
+    async write(request: { tag: string; value: string | number | boolean | null; mode: number; qcd?: boolean; operatorReason?: string }, signal: AbortSignal) {
+      if (request.mode !== 0) throw new HmiGatewayCommandError("MQTT non puo' attendere la conferma PLC; nessun comando inviato.", "rejected");
+      if (request.qcd || request.operatorReason !== undefined) throw new HmiGatewayCommandError("Il gateway MQTT non supporta la scrittura QCD o i messaggi operatore con audit server; nessun comando inviato.", "rejected");
+      if (request.value === null) throw new HmiGatewayCommandError("Il comando MQTT richiede un valore scalare non nullo.", "rejected");
+      return requestRuntimeTagWrite(request.tag, request.value, signal);
+    },
+  };
 }
 
 export function requestRuntimeDataLog(logId?: string, loggedTagId?: string) {
@@ -449,6 +465,11 @@ function applyDynamicValue(element: Element, property: string, value: string): b
 export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void {
   if ((window as Window & { __framecraftEditorPreview?: boolean }).__framecraftEditorPreview) return () => undefined;
   let runtimeActive = true;
+  const scriptAbort = new AbortController();
+  const scriptOptions = (local?: { names: ReadonlySet<string>; values: Record<string, string> }) => ({
+    ...(gatewayConfig.enabled ? { transport: gatewayScriptTransport() } : {}), signal: scriptAbort.signal,
+    isActive: () => runtimeActive, localTags: local?.names, localTagValues: local?.values,
+  });
   const scriptContexts = createHmiScriptContextManager();
   let scriptPage: string | undefined;
   const retiredScriptScreens = new Set<() => void>();
@@ -584,19 +605,23 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     }
     scriptPage = page;
     scriptDependencies.clear();
-    for (const context of ["events", "dynamizations"] as const) for (const error of scriptContexts.initialize(scriptCatalog, page, context, values, { tagStatus })) (options.error ?? console.error)("[HMI SCRIPT " + context + "] " + error);
+    if (!gatewayConfig.enabled) for (const context of ["events", "dynamizations"] as const) for (const error of scriptContexts.initialize(scriptCatalog, page, context, values, { tagStatus })) (options.error ?? console.error)("[HMI SCRIPT " + context + "] " + error);
   };
   const timerManager = createHmiTimerManager((callback, timer, context) => {
     eventQueue = eventQueue.then(async () => {
-      if (!runtimeActive) return;
+      if (!runtimeActive || context?.isActive && !context.isActive()) return;
       const program = callback.kind === "inline" ? callback.program : { version: 1, statements: [{ kind: "module-call", call: callback.call }] };
-      const result = await executeHmiScriptAsync(program as never, values, { tagStatus, writeFailures: scriptWriteFailures(), ...(context ?? scriptContexts.options(scriptCatalog, window.location.pathname, "events")), timerManager, popupManager, screenItems: context?.screenItems ?? propertyFlashing.context() });
-      if (!runtimeActive) return;
+      const result = await executeHmiScriptAsync(program as never, { ...values, ...context?.localTagValues }, { tagStatus, ...scriptOptions(), ...(context ?? scriptContexts.options(scriptCatalog, window.location.pathname, "events")), timerManager, popupManager, screenItems: context?.screenItems ?? propertyFlashing.context() });
+      if (!runtimeActive || context?.isActive && !context.isActive()) return;
       mergeScriptTagStatus(result.tagStatus);
       for (const message of result.traces) (options.trace ?? console.info)("[HMI TIMER " + timer.id + "] " + message);
       for (const message of result.operatorMessages) (options.trace ?? console.info)("[HMI OPERATORE] " + message.tag + ": " + message.oldValue + " -> " + message.newValue + " · " + message.reason);
       if (result.error) (options.error ?? console.error)("[HMI TIMER " + timer.id + "] " + result.error);
-      for (const [tag, value] of Object.entries(result.writes)) setRuntimeTagValue(tag, value);
+      for (const [tag, value] of Object.entries(result.writes)) {
+        if (context?.localTags?.has(tag) && context.localTagValues) context.localTagValues[tag] = value;
+        else setRuntimeTagValue(tag, value);
+      }
+      renderRuntimeFaceplates();
       for (const target of result.navigation) navigateTarget(target);
     }).catch((error) => (options.error ?? console.error)("[HMI TIMER " + timer.id + "] " + (error instanceof Error ? error.message : String(error))));
   }, (error, timer) => (options.error ?? console.error)("[HMI TIMER " + timer.id + "] " + (error instanceof Error ? error.message : String(error))));
@@ -606,7 +631,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       (options.error ?? console.error)("[HMI TASK " + task.name + "] script non compilato: salvalo da Framecraft.");
       return;
     }
-    const result = await executeHmiScriptAsync(task.program as never, values, { tagStatus, writeFailures: scriptWriteFailures(), ...scriptContexts.options(scriptCatalog, undefined, "scheduler"), locals: { taskId: task.id, scheduledAt: Date.now(), trigger: cause, ...(alarm ? { alarmClass: alarm.alarmClass, alarmState: alarm.state, alarmPriority: alarm.priority, alarmName: alarm.name ?? "", alarmText: alarm.text ?? "" } : {}) }, timerManager, popupManager, screenItems: propertyFlashing.context() });
+    const result = await executeHmiScriptAsync(task.program as never, values, { tagStatus, ...scriptOptions(), ...scriptContexts.options(scriptCatalog, undefined, "scheduler"), locals: { taskId: task.id, scheduledAt: Date.now(), trigger: cause, ...(alarm ? { alarmClass: alarm.alarmClass, alarmState: alarm.state, alarmPriority: alarm.priority, alarmName: alarm.name ?? "", alarmText: alarm.text ?? "" } : {}) }, timerManager, popupManager, screenItems: propertyFlashing.context() });
     if (!runtimeActive) return;
     mergeScriptTagStatus(result.tagStatus);
     for (const message of result.traces) (options.trace ?? console.info)("[HMI TASK " + task.name + "] " + message);
@@ -672,7 +697,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       element.dispatchEvent(new CustomEvent("framecraft:faceplate-event", { bubbles: true, detail: { name: item.name, parameters: "parameters" in item && item.parameters && typeof item.parameters === "object" ? item.parameters : {} } }));
     }
   };
-  const applyEventResult = (label: string, result: Awaited<ReturnType<typeof executeHmiScriptAsync>>, local?: { names: Set<string>; values: Record<string, string> }) => {
+  const applyEventResult = (label: string, result: Awaited<ReturnType<typeof executeHmiScriptAsync>>, local?: { names: ReadonlySet<string>; values: Record<string, string> }) => {
     mergeScriptTagStatus(result.tagStatus);
     for (const message of result.traces) (options.trace ?? console.info)("[HMI " + label + "] " + message);
     for (const message of result.operatorMessages) (options.trace ?? console.info)("[HMI OPERATORE] " + message.tag + ": " + message.oldValue + " -> " + message.newValue + " · " + message.reason);
@@ -684,7 +709,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     renderRuntimeFaceplates();
     for (const target of result.navigation) navigateTarget(target);
   };
-  const executeEvent = async (element: Element | null, eventType: HmiEventType, context: { gesture?: HmiGesture; key?: string; command?: string; interfaceEvent?: string } = {}, scriptContext = scriptContexts.options(scriptCatalog, window.location.pathname, "events")) => {
+  const executeEvent = async (element: Element | null, eventType: HmiEventType, context: { gesture?: HmiGesture; key?: string; command?: string; interfaceEvent?: string } = {}, scriptContext = scriptContexts.options(scriptCatalog, window.location.pathname, "events"), sourcePage = window.location.pathname) => {
     if (!element || !runtimeActive) return;
     if (!["Initialized", "Loaded", "Unloaded"].includes(eventType) && !propertyFlashingSurface.allowsInteraction(element)) return;
     for (const binding of bindings(element).filter((item) => item.event === eventType)) {
@@ -695,8 +720,9 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       const locals = { ...(context.gesture ? { gesture: context.gesture } : {}), ...(context.key ? { key: context.key } : {}), ...(context.command ? { command: context.command } : {}), ...(context.interfaceEvent ? { interfaceEvent: context.interfaceEvent } : {}) };
       const owner = element.closest("[data-hmi-faceplate]");
       const local = owner ? faceplateLocalState(owner) : undefined;
-      const result = await executeHmiScriptAsync(binding.program as never, { ...values, ...(local?.values ?? {}) }, { locals: Object.keys(locals).length ? locals : undefined, tagStatus, writeFailures: scriptWriteFailures(local?.names), ...scriptContext, timerManager, popupManager, screenItems: propertyFlashing.context(screenItemId(element)) });
-      if (!runtimeActive) return;
+      const isActive = () => runtimeActive && (eventType === "Unloaded" || element.isConnected && sourcePage === window.location.pathname);
+      const result = await executeHmiScriptAsync(binding.program as never, { ...values, ...(local?.values ?? {}) }, { locals: Object.keys(locals).length ? locals : undefined, tagStatus, ...scriptOptions(local), ...scriptContext, isActive, timerManager, popupManager, screenItems: propertyFlashing.context(screenItemId(element)) });
+      if (!isActive()) return;
       applyEventResult(eventType, result, local);
       dispatchFaceplateEvents(element, result.faceplateEvents);
     }
@@ -709,15 +735,18 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       (options.error ?? console.error)("[HMI FACEPLATE " + name + "] script non compilato: salvalo da Framecraft.");
       return;
     }
-    const result = await executeHmiScriptAsync(handler.program as never, values, { locals: { ...parameters, interfaceEvent: name }, tagStatus, writeFailures: scriptWriteFailures(), ...(eventContexts.get(element) ?? scriptContexts.options(scriptCatalog, window.location.pathname, "events")), timerManager, popupManager, screenItems: propertyFlashing.context(screenItemId(element)) });
-    if (!runtimeActive) return;
+    const sourcePage = window.location.pathname;
+    const isActive = () => runtimeActive && element.isConnected && sourcePage === window.location.pathname;
+    const result = await executeHmiScriptAsync(handler.program as never, values, { locals: { ...parameters, interfaceEvent: name }, tagStatus, ...scriptOptions(), ...(eventContexts.get(element) ?? scriptContexts.options(scriptCatalog, window.location.pathname, "events")), isActive, timerManager, popupManager, screenItems: propertyFlashing.context(screenItemId(element)) });
+    if (!isActive()) return;
     applyEventResult("FACEPLATE " + name, result);
     dispatchFaceplateEvents(element.parentElement ?? element, result.faceplateEvents);
   };
   const run = (element: Element | null, eventType: HmiEventType, context: { gesture?: HmiGesture; key?: string; command?: string; interfaceEvent?: string } = {}) => {
     if (!runtimeActive) return;
     const scriptContext = element && eventContexts.get(element) || scriptContexts.options(scriptCatalog, window.location.pathname, "events");
-    eventQueue = eventQueue.then(() => executeEvent(element, eventType, context, scriptContext)).catch((error) => {
+    const sourcePage = window.location.pathname;
+    eventQueue = eventQueue.then(() => executeEvent(element, eventType, context, scriptContext, sourcePage)).catch((error) => {
       (options.error ?? console.error)(\`[HMI \${eventType}] \${error instanceof Error ? error.message : String(error)}\`);
     });
   };
@@ -872,7 +901,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     scanLoaded(); syncCycles(); requestRefresh(); renderRuntimeFaceplates(); renderTrendControls(); renderGatewayStatus(gatewayClient?.state ?? "stopped");
   });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-hmi-events", "data-hmi-dynamizations", "data-hmi-faceplate", "data-hmi-trend", "data-hmi-function-trend"] });
-  for (const error of scriptContexts.initialize(scriptCatalog, undefined, "scheduler", values, { tagStatus })) (options.error ?? console.error)("[HMI SCRIPT scheduler] " + error);
+  if (!gatewayConfig.enabled) for (const error of scriptContexts.initialize(scriptCatalog, undefined, "scheduler", values, { tagStatus })) (options.error ?? console.error)("[HMI SCRIPT scheduler] " + error);
   scanLoaded();
   syncCycles();
   installScheduledTasks();
@@ -881,6 +910,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   const trendTimer = setInterval(renderTrendControls, 250);
   requestRefresh();
   return () => {
+    scriptAbort.abort();
     gatewayClient?.stop(); gatewayClient = undefined; gatewayReport = undefined; gatewaySnapshot = undefined;
     window.removeEventListener("framecraft:command-result", commandResult);
     tagListeners.delete(tagChanged);

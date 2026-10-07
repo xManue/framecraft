@@ -85,6 +85,8 @@ export interface HmiScriptExecution {
   operatorMessages: HmiScriptOperatorMessage[];
   faceplateEvents: HmiScriptFaceplateEvent[];
   tagStatus: Record<string, HmiScriptTagStatus>;
+  reads?: Record<string, string>;
+  commands?: HmiScriptCommandResult[];
   steps: number;
   error?: string;
 }
@@ -173,6 +175,33 @@ export interface HmiScriptTagStatus {
 
 export interface HmiScriptTagFailure { code?: number; description?: string }
 
+export interface HmiScriptCommandResult {
+  tag: string;
+  outcome: "delivered" | "rejected" | "uncertain";
+  delivery?: "broker-ack" | "transport";
+  plcConfirmed: false;
+  id?: string;
+  error?: string;
+}
+export type HmiScriptTransportRequest =
+  | { kind: "read"; tag: string; mode: number; maxAge?: number }
+  | { kind: "write"; tag: string; value: HmiScriptScalar; mode: number; qcd?: boolean; operatorReason?: string };
+export interface HmiScriptTransport {
+  read(request: Extract<HmiScriptTransportRequest, { kind: "read" }>, signal: AbortSignal): Promise<{ value: string; status: HmiScriptTagStatus }>;
+  write(request: Extract<HmiScriptTransportRequest, { kind: "write" }>, signal: AbortSignal): Promise<HmiScriptCommandResult>;
+}
+type ScriptCoroutine<T> = Generator<HmiScriptTransportRequest, T, unknown>;
+
+function* mapScriptValues<T, U>(items: readonly T[], mapper: (item: T) => ScriptCoroutine<U>): ScriptCoroutine<U[]> {
+  const result: U[] = [];
+  for (const item of items) result.push(yield* mapper(item));
+  return result;
+}
+function* findScriptValue<T>(items: readonly T[], predicate: (item: T) => ScriptCoroutine<unknown>): ScriptCoroutine<T | undefined> {
+  for (const item of items) if (yield* predicate(item)) return item;
+  return undefined;
+}
+
 export interface HmiScriptExecutionOptions {
   returnByReference?: boolean;
   maxSteps?: number;
@@ -198,6 +227,14 @@ export interface HmiScriptExecutionOptions {
   callStack?: readonly string[];
   /** Usato soltanto dall'esecutore Promise esportato; quello sincrono rifiuta le operazioni async. */
   allowAsync?: boolean;
+  transport?: HmiScriptTransport;
+  localTags?: ReadonlySet<string>;
+  localTagValues?: Record<string, string>;
+  signal?: AbortSignal;
+  isActive?: () => boolean;
+  transportTimeoutMs?: number;
+  /** Interno: il tempo in attesa della rete non consuma il budget CPU, anche nei moduli. */
+  suspensionClock?: { elapsed: number };
 }
 
 export interface HmiScriptRuntimeFunction {
@@ -221,7 +258,7 @@ export interface HmiScriptTimerManager {
   clear(mode: "timeout" | "interval", id: number): boolean;
 }
 
-export interface HmiScriptTimerContext {
+export interface HmiScriptTimerContext extends Pick<HmiScriptExecutionOptions, "transport" | "transportTimeoutMs" | "localTags" | "localTagValues" | "signal" | "isActive"> {
   screenItems?: HmiScriptScreenItemManager;
   functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>;
   variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>;
@@ -1428,7 +1465,7 @@ function dataArrayMethod(target: RuntimeValue, method: string, args: RuntimeValu
   throw new Error("Metodo Array " + method + " non supportato.");
 }
 
-export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Record<string, string>>, options: HmiScriptExecutionOptions = {}): HmiScriptExecution {
+function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<Record<string, string>>, options: HmiScriptExecutionOptions = {}): ScriptCoroutine<HmiScriptExecution> {
   const values = { ...input };
   const localScope = options.initializingScope ?? createHmiScriptScope(undefined, options.closureScope ?? options.globalScope);
   const locals = localScope.values;
@@ -1445,12 +1482,16 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
   const navigation: string[] = [];
   const operatorMessages: HmiScriptOperatorMessage[] = [];
   const faceplateEvents: HmiScriptFaceplateEvent[] = [];
+  const reads: Record<string, string> = {};
+  const commands: HmiScriptCommandResult[] = [];
+  const clock = options.suspensionClock ?? { elapsed: 0 };
+  options = { ...options, suspensionClock: clock };
+  const suspendedAtStart = clock.elapsed;
   const started = Date.now();
+  const elapsed = () => Date.now() - started - (clock.elapsed - suspendedAtStart);
   const maxSteps = options.maxSteps ?? 500;
-  // I loop non entrano nella IR e il limite principale resta quello delle operazioni. Cento
-  // millisecondi evita che una normale preemption del processo interrompa uno script lineare.
-  // La IR non ammette loop, rete o eval e resta protetta dal budget operazioni. 100 ms erano
-  // troppo pochi su pannelli lenti quando un'operazione legittima deve creare una finestra DOM.
+  // La IR vieta loop/eval e limita le operazioni. Le attese del trasporto non consumano
+  // il budget CPU; 500 ms consentono anche la creazione legittima di finestre DOM.
   const timeoutMs = options.timeoutMs ?? 500;
   const statusByTag: Record<string, RuntimeTagStatus> = {};
   const statusFor = (name: string): RuntimeTagStatus => {
@@ -1474,28 +1515,78 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
     : caught instanceof Error ? caught.message : String(caught);
   let steps = 0;
   const tick = () => {
+    if (options.signal?.aborted || options.isActive && !options.isActive()) throw new Error("Il contesto script non e' piu' attivo; nessun nuovo comando viene inviato.");
+    for (let scope: HmiScriptScope | undefined = localScope; scope; scope = scope.parent) if (!scope.active) throw new Error("Il contesto script non e' piu' attivo.");
     steps += 1;
     if (steps > maxSteps) throw new Error(`Script interrotto dopo ${maxSteps} operazioni.`);
-    if (Date.now() - started > timeoutMs) throw new Error(`Script interrotto dopo ${timeoutMs} ms.`);
+    if (elapsed() > timeoutMs) throw new Error(`Script interrotto dopo ${timeoutMs} ms.`);
   };
+  const mergeNested = (nested: HmiScriptExecution) => {
+    steps += nested.steps;
+    Object.assign(values, nested.reads, nested.writes);
+    Object.assign(reads, nested.reads);
+    Object.assign(writes, nested.writes);
+    Object.assign(statusByTag, nested.tagStatus);
+    commands.push(...nested.commands ?? []);
+    traces.push(...nested.traces);
+    navigation.push(...nested.navigation);
+    operatorMessages.push(...nested.operatorMessages);
+    faceplateEvents.push(...nested.faceplateEvents);
+  };
+  const remote = (name: string) => Boolean(options.transport && !options.localTags?.has(name));
+  function* readRemote(name: string, mode = 0, maxAge?: number): ScriptCoroutine<void> {
+    tick();
+    try {
+      const sample = (yield { kind: "read", tag: name, mode, ...(maxAge !== undefined ? { maxAge } : {}) }) as { value: string; status: HmiScriptTagStatus };
+      if (!sample || typeof sample.value !== "string" || !sample.status || typeof sample.status !== "object") throw new Error("Risposta lettura del trasporto non valida.");
+      const status = sample.status;
+      if (status.lastError) throw hmiFault(status.lastError, status.errorDescription ?? "Lettura del trasporto non riuscita.");
+      if (status.qualityCode !== undefined && (!Number.isInteger(status.qualityCode) || status.qualityCode < 0 || status.qualityCode > 0xffffffff)
+        || status.timeStamp !== undefined && typeof status.timeStamp !== "string" && !Number.isFinite(status.timeStamp)) throw new Error("Qualita' o timestamp del trasporto non validi.");
+      values[name] = sample.value; reads[name] = sample.value;
+      Object.assign(statusFor(name), { qualityCode: status.qualityKnown === false ? 0 : status.qualityCode ?? 0, qualityKnown: status.qualityKnown ?? status.qualityCode !== undefined,
+        timeStamp: status.timeStamp ?? 0, lastError: 0, errorDescription: "" });
+    } catch (caught) {
+      Object.assign(statusFor(name), { lastError: 0x80040002, errorDescription: faultMessage(caught), qualityCode: 0, timeStamp: 0 });
+      throw caught;
+    }
+  }
+  function* writeRemote(request: Extract<HmiScriptTransportRequest, { kind: "write" }>): ScriptCoroutine<HmiScriptCommandResult> {
+    tick();
+    let receipt: HmiScriptCommandResult;
+    try {
+      if (request.mode === 1) throw Object.assign(new Error("hmiWriteWait richiede una conferma PLC che questo trasporto non supporta; nessun comando inviato."), { outcome: "rejected" });
+      const response = (yield request) as HmiScriptCommandResult;
+      if (!response || response.tag !== request.tag || response.plcConfirmed !== false || !["delivered", "rejected", "uncertain"].includes(response.outcome)
+        || response.outcome === "delivered" && !["broker-ack", "transport"].includes(response.delivery ?? "")) throw new Error("Ricevuta del trasporto non valida.");
+      receipt = { ...response };
+    } catch (caught) {
+      receipt = { tag: request.tag, outcome: caught && typeof caught === "object" && "outcome" in caught && caught.outcome === "rejected" ? "rejected" : "uncertain", plcConfirmed: false, error: faultMessage(caught) };
+    }
+    commands.push(receipt);
+    const status = statusFor(request.tag);
+    status.lastError = receipt.outcome === "delivered" ? 0 : receipt.outcome === "uncertain" ? 0x80040003 : 0x80040002;
+    status.errorDescription = receipt.error ?? (receipt.outcome === "delivered" ? "" : "Comando " + receipt.outcome + ".");
+    return receipt;
+  }
   const tagName = (value: RuntimeValue) => {
     if (isTagReference(value)) return value.tag;
     if (typeof value === "string" && value.trim()) return value.trim();
     throw new Error("Il nome del tag non e' valido.");
   };
-  const initializeScope = (scope: HmiScriptScope) => {
+  const initializeScope = function* (scope: HmiScriptScope): ScriptCoroutine<void> {
     if (!scope.active) throw new Error("Il contesto script non e' piu' attivo.");
     if (scope.status === "failed") throw new Error(scope.error ?? "Definizione globale non inizializzata.");
     if (scope.status === "initializing") throw new Error("Inizializzazione ricorsiva del contesto script.");
     if (scope.status === "new" && scope.initializer) {
       scope.status = "initializing";
-      const initialized = executeHmiScript(scope.initializer, values, { ...options, locals: undefined, globalScope: undefined, closureScope: undefined, initializingScope: scope, maxSteps: Math.max(1, maxSteps - steps), timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)) });
-      steps += initialized.steps;
+      const initialized = (yield* executeHmiScriptCoroutine(scope.initializer, values, { ...options, locals: undefined, globalScope: undefined, closureScope: undefined, initializingScope: scope, maxSteps: Math.max(1, maxSteps - steps), timeoutMs: Math.max(1, timeoutMs - elapsed()) }));
+      mergeNested(initialized);
       if (initialized.error) { scope.status = "failed"; scope.error = initialized.error; throw new Error(initialized.error); }
       scope.status = "ready";
     }
   };
-  const evaluate = (expression: HmiScriptExpression): RuntimeValue => {
+  const evaluate = function* (expression: HmiScriptExpression): ScriptCoroutine<RuntimeValue> {
     tick();
     if (expression.kind === "literal") return expression.value;
     if (expression.kind === "local") {
@@ -1510,33 +1601,33 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
     if (expression.kind === "module-variable") {
       const binding = options.variables?.[expression.name];
       if (!binding?.globalScope || !binding.definition.exports?.some((entry) => entry.local === binding.name && expression.name.endsWith(`.${entry.name}`))) throw new Error(`Variabile pubblica HMI ${expression.name} non esportata o modulo non disponibile.`);
-      initializeScope(binding.globalScope);
+      (yield* initializeScope(binding.globalScope));
       if (!binding.globalScope.values.has(binding.name)) throw new Error(`Variabile pubblica HMI ${expression.name} non inizializzata.`);
       return binding.globalScope.values.get(binding.name)!;
     }
     if (expression.kind === "array" || expression.kind === "object") {
       if ((expression.kind === "array" ? expression.items.length : expression.entries.length) > 1024) throw new Error("Una raccolta dati supera il limite di 1024 elementi.");
       const result: DataReference = expression.kind === "array"
-        ? { data: expression.items.map(evaluate) }
-        : { data: Object.assign(Object.create(null), Object.fromEntries(expression.entries.map((item) => [dataKey(item.name), evaluate(item.value)]))) };
+        ? { data: (yield* mapScriptValues(expression.items, evaluate)) }
+        : { data: Object.assign(Object.create(null), Object.fromEntries((yield* mapScriptValues(expression.entries, function* (item) { return [dataKey(item.name), (yield* evaluate(item.value))]; })))) };
       checkData(result, tick);
       return result;
     }
-    if (expression.kind === "array-method") return dataArrayMethod(evaluate(expression.object), expression.method, expression.arguments.map(evaluate), tick);
+    if (expression.kind === "array-method") return dataArrayMethod((yield* evaluate(expression.object)), expression.method, (yield* mapScriptValues(expression.arguments, evaluate)), tick);
     if (expression.kind === "screen-item") {
       if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
-      const name = scalar(evaluate(expression.name));
+      const name = scalar((yield* evaluate(expression.name)));
       if (typeof name !== "string" || !name.trim() || name.length > 128) throw new Error("Items richiede un nome oggetto HMI non vuoto, fino a 128 caratteri.");
       return options.screenItems.resolve(expression.scope, name);
     }
     if (expression.kind === "property-flashing") {
       if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
-      const target = evaluate(expression.item);
+      const target = (yield* evaluate(expression.item));
       if (!target || typeof target !== "object" || !("screenItemId" in target)) throw new Error("PropertyFlashing richiede un oggetto Screen/Faceplate, non dati o tag.");
-      return options.screenItems.propertyFlashing(target, expression.arguments.map((argument) => scalar(evaluate(argument))));
+      return options.screenItems.propertyFlashing(target, (yield* mapScriptValues(expression.arguments, function* (argument) { return scalar((yield* evaluate(argument))); })));
     }
     if (expression.kind === "data-call") {
-      const argument = evaluate(expression.arguments[0]);
+      const argument = (yield* evaluate(expression.arguments[0]));
       if (expression.name === "JSON.parse") {
         const text = String(scalar(argument) ?? "null");
         if (text.length > 20000) throw new Error("Il JSON supera 20000 caratteri.");
@@ -1550,7 +1641,7 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
           : entries.map(([key, value]) => ({ data: [key, value] })) };
     }
     if (expression.kind === "member") {
-      const object = evaluate(expression.object), key = dataKey(evaluate(expression.key));
+      const object = (yield* evaluate(expression.object)), key = dataKey((yield* evaluate(expression.key)));
       if (isDataReference(object)) return dataGet(object, key);
       if (object && typeof object === "object" && "screenItemId" in object) {
         if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
@@ -1584,26 +1675,31 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
     if (expression.kind === "tag-ref") return { tag: expression.name };
     if (expression.kind === "tag-set") {
       const pending: Record<string, HmiScriptScalar> = {};
-      for (const entry of expression.entries) if (entry.value) pending[entry.name] = scalar(evaluate(entry.value));
+      for (const entry of expression.entries) if (entry.value) pending[entry.name] = scalar((yield* evaluate(entry.value)));
       const names = expression.entries.map((entry) => entry.name);
       return { tagSet: { names, pending, status: Object.fromEntries(names.map((name) => [name, statusFor(name)])), lastError: 0, errorDescription: "" } };
     }
     if (expression.kind === "tag-set-item") {
-      const set = evaluate(expression.set);
+      const set = (yield* evaluate(expression.set));
       if (!isTagSetReference(set)) throw new Error("La variabile non contiene un TagSet.");
-      const name = tagName(evaluate(expression.tag));
+      const name = tagName((yield* evaluate(expression.tag)));
       if (!set.tagSet.names.includes(name)) throw new Error(`Il tag ${name} non appartiene al TagSet.`);
       return { tag: name, tagSet: set.tagSet };
     }
     if (expression.kind === "tag-read") {
-      const reference = evaluate(expression.tag);
+      const reference = (yield* evaluate(expression.tag));
       const name = tagName(reference);
+      if (remote(name)) {
+        yield* readRemote(name);
+        if (isTagReference(reference) && reference.tagSet) delete reference.tagSet.pending[name];
+        return normal(values[name]);
+      }
       if (isTagReference(reference) && reference.tagSet && Object.prototype.hasOwnProperty.call(reference.tagSet.pending, name)) return reference.tagSet.pending[name];
       if (!Object.prototype.hasOwnProperty.call(values, name) || values[name].trim() === "") throw new Error(`Il tag ${name} non ha un valore di prova.`);
       return normal(values[name]);
     }
     if (expression.kind === "runtime-property") {
-      const object = evaluate(expression.object);
+      const object = (yield* evaluate(expression.object));
       if (isTagSetReference(object)) {
         if (expression.property === "Count") return object.tagSet.names.length;
         if (expression.property === "LastError") return object.tagSet.lastError;
@@ -1621,7 +1717,7 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
       throw new Error(`${expression.property} richiede un tag o un TagSet.`);
     }
     if (expression.kind === "unary") {
-      const value = evaluate(expression.value);
+      const value = (yield* evaluate(expression.value));
       if (expression.operator === "typeof" && typeof value === "object") return "object";
       if (expression.operator === "!") return !truthy(value);
       if (expression.operator === "+") return number(value);
@@ -1629,9 +1725,9 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
       if (expression.operator === "~") return ~number(value);
       return typeof scalar(value);
     }
-    if (expression.kind === "conditional") return evaluate(truthy(evaluate(expression.test)) ? expression.consequent : expression.alternate);
+    if (expression.kind === "conditional") return (yield* evaluate(truthy((yield* evaluate(expression.test))) ? expression.consequent : expression.alternate));
     if (expression.kind === "call") {
-      const args = expression.arguments.map(evaluate);
+      const args = (yield* mapScriptValues(expression.arguments, evaluate));
       const first = args[0];
       if (expression.name === "Boolean") return truthy(first);
       if (expression.name === "Number") return number(first);
@@ -1656,11 +1752,11 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
       const stack = options.callStack ?? [];
       if (stack.includes(expression.name)) throw new Error(`Chiamata ricorsiva non ammessa: ${[...stack, expression.name].join(" -> ")}.`);
       if (stack.length >= 16) throw new Error("Troppi livelli di chiamata fra funzioni HMI.");
-      const args = expression.arguments.map(evaluate);
-      const nested = executeHmiScript(definition.program, values, {
+      const args = (yield* mapScriptValues(expression.arguments, evaluate));
+      const nested = (yield* executeHmiScriptCoroutine(definition.program, values, {
         ...options,
         maxSteps: Math.max(1, maxSteps - steps),
-        timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)),
+        timeoutMs: Math.max(1, timeoutMs - elapsed()),
         locals: Object.fromEntries(definition.parameters.map((parameter, index) => [parameter, args[index] ?? null])),
         globalScope: definition.globalScope,
         closureScope: undefined,
@@ -1668,58 +1764,51 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
         tagStatus: { ...options.tagStatus, ...statusByTag },
         callStack: [...stack, expression.name],
         returnByReference: true,
-      });
-      steps += nested.steps;
-      Object.assign(values, nested.writes);
-      Object.assign(writes, nested.writes);
-      Object.assign(statusByTag, nested.tagStatus);
-      traces.push(...nested.traces);
-      navigation.push(...nested.navigation);
-      operatorMessages.push(...nested.operatorMessages);
-      faceplateEvents.push(...nested.faceplateEvents);
+      }));
+      mergeNested(nested);
       if (nested.error) throw new Error(`${expression.name}: ${nested.error}`);
       return "returnedReference" in nested ? nested.returnedReference ?? null : "returned" in nested ? nested.returned ?? null : null;
     }
     if (expression.kind === "popup-open") {
       if (!options.popupManager) throw new Error("Il contesto corrente non dispone di un gestore popup faceplate.");
-      const faceplateType = String(scalar(evaluate(expression.faceplateType)) ?? "").trim();
-      const title = String(scalar(evaluate(expression.title)) ?? "");
+      const faceplateType = String(scalar((yield* evaluate(expression.faceplateType))) ?? "").trim();
+      const title = String(scalar((yield* evaluate(expression.title))) ?? "");
       if (!faceplateType) throw new Error("Il tipo faceplate del popup non puo' essere vuoto.");
-      const coordinate = (value: HmiScriptExpression | undefined, fallback: number, label: string, unsigned = false) => {
+      const coordinate = function* (value: HmiScriptExpression | undefined, fallback: number, label: string, unsigned = false): ScriptCoroutine<number> {
         if (!value) return fallback;
-        const parsed = number(evaluate(value));
+        const parsed = number((yield* evaluate(value)));
         if (!Number.isInteger(parsed) || (unsigned && parsed < 0) || parsed < -2147483648 || parsed > 4294967295) throw new Error(`${label} del popup non e' valido.`);
         return parsed;
       };
-      const interfaceValues = Object.fromEntries(expression.interfaceValues.map((item) => item.kind === "tag" ? [item.name, { Tag: item.tag }] : [item.name, scalar(evaluate(item.value))]));
-      const popupWindowName = expression.popupWindowName ? String(scalar(evaluate(expression.popupWindowName)) ?? "").trim() || undefined : undefined;
+      const interfaceValues = Object.fromEntries((yield* mapScriptValues(expression.interfaceValues, function* (item) { return item.kind === "tag" ? [item.name, { Tag: item.tag }] : [item.name, scalar((yield* evaluate(item.value)))]; })));
+      const popupWindowName = expression.popupWindowName ? String(scalar((yield* evaluate(expression.popupWindowName))) ?? "").trim() || undefined : undefined;
       return options.popupManager.open({
         scope: expression.scope, faceplateType, title, interfaceValues,
-        parentBound: expression.scope === "faceplate" ? !truthy(expression.independentWindow ? evaluate(expression.independentWindow) : false) : expression.parentBound,
-        invisible: expression.invisible ? truthy(evaluate(expression.invisible)) : false,
+        parentBound: expression.scope === "faceplate" ? !truthy(expression.independentWindow ? (yield* evaluate(expression.independentWindow)) : false) : expression.parentBound,
+        invisible: expression.invisible ? truthy((yield* evaluate(expression.invisible))) : false,
         ...(popupWindowName ? { popupWindowName } : {}),
-        adaptWindow: expression.adaptWindow ? truthy(evaluate(expression.adaptWindow)) : true,
-        left: coordinate(expression.left, 10, "Left"), top: coordinate(expression.top, 10, "Top"),
-        width: coordinate(expression.width, 100, "Width", true), height: coordinate(expression.height, 100, "Height", true),
+        adaptWindow: expression.adaptWindow ? truthy((yield* evaluate(expression.adaptWindow))) : true,
+        left: (yield* coordinate(expression.left, 10, "Left")), top: (yield* coordinate(expression.top, 10, "Top")),
+        width: (yield* coordinate(expression.width, 100, "Width", true)), height: (yield* coordinate(expression.height, 100, "Height", true)),
       });
     }
     if (expression.kind === "popup-property") {
       if (!options.popupManager) throw new Error("Il contesto corrente non dispone di un gestore popup faceplate.");
-      const popup = evaluate(expression.popup);
+      const popup = (yield* evaluate(expression.popup));
       if (!isPopupReference(popup)) throw new Error(`${expression.property} richiede una finestra popup faceplate.`);
       return options.popupManager.get(popup, expression.property);
     }
     if (expression.kind === "timer-set") {
-      const delay = number(evaluate(expression.delay));
+      const delay = number((yield* evaluate(expression.delay)));
       if (!Number.isInteger(delay) || delay < 0 || delay > 0xffffffff) throw new Error("Il ritardo del timer deve essere un UInt32 in millisecondi.");
       if (!options.timerManager) throw new Error("Il contesto corrente non dispone di un gestore timer.");
-      return options.timerManager.set(expression.mode, expression.callback, delay, { functions: options.functions, variables: options.variables, globalScope: options.globalScope, screenItems: options.screenItems, ...(expression.callback.kind === "inline" ? { closureScope: localScope } : {}) });
+      return options.timerManager.set(expression.mode, expression.callback, delay, { functions: options.functions, variables: options.variables, globalScope: options.globalScope, screenItems: options.screenItems, transport: options.transport, transportTimeoutMs: options.transportTimeoutMs, localTags: options.localTags, localTagValues: options.localTagValues, signal: options.signal, isActive: options.isActive, ...(expression.callback.kind === "inline" ? { closureScope: localScope } : {}) });
     }
-    const left = evaluate(expression.left);
+    const left = (yield* evaluate(expression.left));
     if (expression.operator === "&&" && !truthy(left)) return false;
     if (expression.operator === "||" && truthy(left)) return true;
     if (expression.operator === "??" && left !== null) return left;
-    const right = evaluate(expression.right);
+    const right = (yield* evaluate(expression.right));
     switch (expression.operator) {
       case "&&": return truthy(right);
       case "||": case "??": return right;
@@ -1746,34 +1835,39 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
       default: throw new Error(`Operatore ${expression.operator} non supportato.`);
     }
   };
-  const modeValue = (mode: HmiScriptExpression | undefined, operation: "read" | "write") => {
+  const modeValue = function* (mode: HmiScriptExpression | undefined, operation: "read" | "write"): ScriptCoroutine<number> {
     if (!mode) return 0;
-    const value = number(evaluate(mode));
+    const value = number((yield* evaluate(mode)));
     if (!Number.isInteger(value) || value < 0 || value > 1) throw new Error(`${operation === "read" ? "hmiReadType" : "hmiWriteType"} deve valere 0 oppure 1.`);
     return value;
   };
-  const maxAgeValue = (maxAge: HmiScriptExpression | undefined) => {
+  const maxAgeValue = function* (maxAge: HmiScriptExpression | undefined): ScriptCoroutine<number | undefined> {
     if (!maxAge) return undefined;
-    const value = number(evaluate(maxAge));
+    const value = number((yield* evaluate(maxAge)));
     if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) throw new Error("maxAge deve essere un UInt32 espresso in millisecondi.");
     return value;
   };
-  const targetOf = (expression: HmiScriptExpression) => {
-    const target = evaluate(expression);
+  const targetOf = function* (expression: HmiScriptExpression): ScriptCoroutine<{ target: RuntimeValue; names: string[]; state: TagSetState | undefined }> {
+    const target = (yield* evaluate(expression));
     if (isTagSetReference(target)) return { target, names: target.tagSet.names, state: target.tagSet };
     if (isTagReference(target)) return { target, names: [target.tag], state: target.tagSet };
     throw new Error("L'operazione richiede un tag o un TagSet.");
   };
-  const readTarget = (expression: HmiScriptExpression, mode?: HmiScriptExpression, maxAge?: HmiScriptExpression): RuntimeValue => {
-    if (maxAge) maxAgeValue(maxAge);
-    else modeValue(mode, "read");
-    const { target, names, state } = targetOf(expression);
+  const readTarget = function* (expression: HmiScriptExpression, mode?: HmiScriptExpression, maxAge?: HmiScriptExpression): ScriptCoroutine<RuntimeValue> {
+    const age = maxAge ? yield* maxAgeValue(maxAge) : undefined;
+    const readMode = maxAge ? 0 : yield* modeValue(mode, "read");
+    const { target, names, state } = (yield* targetOf(expression));
     let succeeded = 0;
     const failed: string[] = [];
     for (const name of names) {
       const configuredFailure = options.readFailures?.[name];
       const missing = !Object.prototype.hasOwnProperty.call(values, name) || values[name].trim() === "";
       const status = state?.status[name] ?? statusFor(name);
+      if (remote(name) && !configuredFailure) {
+        try { yield* readRemote(name, readMode, age); Object.assign(status, statusFor(name)); if (state) delete state.pending[name]; succeeded++; }
+        catch (caught) { status.lastError = 0x80040002; status.errorDescription = faultMessage(caught); status.qualityCode = 0; status.timeStamp = 0; failed.push(name); }
+        continue;
+      }
       if (configuredFailure || missing) {
         status.lastError = configuredFailure?.code ?? 0x80040002;
         status.errorDescription = configuredFailure?.description ?? `Il tag ${name} non ha un valore di prova.`;
@@ -1793,7 +1887,10 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
       state.lastError = failed.length ? 0x80040004 : 0;
       state.errorDescription = failed.length ? `Lettura non riuscita per: ${failed.join(", ")}.` : "";
     }
-    if (!succeeded && failed.length) throw hmiFault(names.length > 1 ? 0x80040004 : 0x80040002, `Nessun tag leggibile: ${failed.join(", ")}.`);
+    if (!succeeded && failed.length) {
+      const reasons = [...new Set(failed.map((name) => (state?.status[name] ?? statusFor(name)).errorDescription).filter(Boolean))];
+      throw hmiFault(names.length > 1 ? 0x80040004 : 0x80040002, `Nessun tag leggibile: ${failed.join(", ")}.${reasons.length ? " " + reasons.join("; ") : ""}`);
+    }
     return target;
   };
   const recordOperatorMessage = (name: string, reason: string, oldValue: string, newValue: string) => {
@@ -1803,9 +1900,9 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
       ...(options.operatorContext?.host ? { host: options.operatorContext.host } : {}),
       ...(unit ? { unit } : {}) });
   };
-  const writeTarget = (expression: HmiScriptExpression, mode?: HmiScriptExpression, qcd = false, operatorReason?: string): RuntimeValue => {
-    modeValue(mode, "write");
-    const { target, names, state } = targetOf(expression);
+  const writeTarget = function* (expression: HmiScriptExpression, mode?: HmiScriptExpression, qcd = false, operatorReason?: string): ScriptCoroutine<RuntimeValue> {
+    const writeMode = yield* modeValue(mode, "write");
+    const { target, names, state } = (yield* targetOf(expression));
     const pending = state?.pending ?? {};
     const attempted = names.filter((name) => Object.prototype.hasOwnProperty.call(pending, name));
     let succeeded = 0;
@@ -1813,6 +1910,12 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
     for (const name of attempted) {
       const configuredFailure = options.writeFailures?.[name];
       const status = state?.status[name] ?? statusFor(name);
+      if (remote(name) && !configuredFailure) {
+        const receipt = yield* writeRemote({ kind: "write", tag: name, value: pending[name], mode: writeMode, ...(qcd ? { qcd: true } : {}), ...(operatorReason !== undefined ? { operatorReason } : {}) });
+        Object.assign(status, statusFor(name));
+        if (receipt.outcome === "delivered") succeeded++; else failed.push(name);
+        continue;
+      }
       if (configuredFailure) {
         status.lastError = configuredFailure.code ?? 0x80040002;
         status.errorDescription = configuredFailure.description ?? `Scrittura non riuscita per ${name}.`;
@@ -1832,26 +1935,26 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
       state.errorDescription = failed.length ? `Scrittura non riuscita per: ${failed.join(", ")}.` : "";
     }
     if (attempted.length && !succeeded) {
-      const reasons = [...new Set(failed.map((name) => options.writeFailures?.[name]?.description).filter(Boolean))];
+      const reasons = [...new Set(failed.map((name) => (state?.status[name] ?? statusFor(name)).errorDescription).filter(Boolean))];
       throw hmiFault(attempted.length > 1 ? 0x80040004 : 0x80040002, `Nessun tag scrivibile: ${failed.join(", ")}.${reasons.length ? " " + reasons.join("; ") : ""}`);
     }
     return target;
   };
   type Flow = { returned: true; value?: RuntimeValue } | undefined;
-  const run = (statements: readonly HmiScriptStatement[]): Flow => {
+  const run = function* (statements: readonly HmiScriptStatement[]): ScriptCoroutine<Flow> {
     for (const statement of statements) {
       tick();
       if (statement.kind === "declare") {
-        locals.set(statement.name, statement.value ? evaluate(statement.value) : null);
+        locals.set(statement.name, statement.value ? (yield* evaluate(statement.value)) : null);
         if (statement.constant) localScope.constants.add(statement.name);
       }
       else if (statement.kind === "assign") {
         const owner = ownerOf(statement.name);
         if (!owner) throw new Error(`Variabile locale ${statement.name} non definita.`);
         if (owner.constants.has(statement.name)) throw new Error(`La costante ${statement.name} non puo' essere riassegnata.`);
-        owner.values.set(statement.name, evaluate(statement.value));
+        owner.values.set(statement.name, (yield* evaluate(statement.value)));
       } else if (statement.kind === "member-set") {
-        const object = evaluate(statement.object), key = dataKey(evaluate(statement.key)), value = evaluate(statement.value);
+        const object = (yield* evaluate(statement.object)), key = dataKey((yield* evaluate(statement.key))), value = (yield* evaluate(statement.value));
         if (isDataReference(object)) dataSet(object, key, value, tick);
         else if (object && typeof object === "object" && "screenItemId" in object) {
           if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
@@ -1873,62 +1976,70 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
           }
         } else throw new Error("L'assegnazione richiede dati strutturati, un oggetto HMI, un popup o una voce TagSet.");
       } else if (statement.kind === "return") {
-        const value = statement.value ? evaluate(statement.value) : undefined;
+        const value = statement.value ? (yield* evaluate(statement.value)) : undefined;
         return { returned: true, ...(value !== undefined ? { value: options.returnByReference ? value : scalar(value) } : {}) };
       }
-      else if (statement.kind === "expression") evaluate(statement.value);
-      else if (statement.kind === "trace") traces.push(String(scalar(evaluate(statement.value))));
-      else if (statement.kind === "navigate") navigation.push(String(scalar(evaluate(statement.target))));
-      else if (statement.kind === "module-call") { evaluate(statement.call); }
-      else if (statement.kind === "timer-set") { evaluate(statement.timer); }
+      else if (statement.kind === "expression") (yield* evaluate(statement.value));
+      else if (statement.kind === "trace") traces.push(String(scalar((yield* evaluate(statement.value)))));
+      else if (statement.kind === "navigate") navigation.push(String(scalar((yield* evaluate(statement.target)))));
+      else if (statement.kind === "module-call") { (yield* evaluate(statement.call)); }
+      else if (statement.kind === "timer-set") { (yield* evaluate(statement.timer)); }
       else if (statement.kind === "timer-clear") {
-        const id = number(evaluate(statement.id));
+        const id = number((yield* evaluate(statement.id)));
         if (!Number.isInteger(id) || id < 1) throw new Error("L'ID del timer deve essere un intero positivo.");
         if (!options.timerManager) throw new Error("Il contesto corrente non dispone di un gestore timer.");
         options.timerManager.clear(statement.mode, id);
       }
       else if (statement.kind === "popup-set") {
         if (!options.popupManager) throw new Error("Il contesto corrente non dispone di un gestore popup faceplate.");
-        const popup = evaluate(statement.popup);
+        const popup = (yield* evaluate(statement.popup));
         if (!isPopupReference(popup)) throw new Error(`${statement.property} richiede una finestra popup faceplate.`);
-        options.popupManager.set(popup, statement.property, scalar(evaluate(statement.value)));
+        options.popupManager.set(popup, statement.property, scalar((yield* evaluate(statement.value))));
       }
       else if (statement.kind === "popup-close") {
         if (!options.popupManager) throw new Error("Il contesto corrente non dispone di un gestore popup faceplate.");
-        const popup = statement.popup ? evaluate(statement.popup) : undefined;
+        const popup = statement.popup ? (yield* evaluate(statement.popup)) : undefined;
         if (popup !== undefined && !isPopupReference(popup)) throw new Error("Close richiede una finestra popup faceplate.");
         options.popupManager.close(popup as HmiScriptPopupReference | undefined);
       }
       else if (statement.kind === "raise-faceplate-event") {
-        const name = String(scalar(evaluate(statement.name)) ?? "").trim();
+        const name = String(scalar((yield* evaluate(statement.name))) ?? "").trim();
         if (!name) throw new Error("Il nome dell'evento faceplate non puo' essere vuoto.");
-        const parameters = Object.fromEntries(statement.parameters.map((parameter) => [parameter.name, scalar(evaluate(parameter.value))]));
+        const parameters = Object.fromEntries((yield* mapScriptValues(statement.parameters, function* (parameter) { return [parameter.name, scalar((yield* evaluate(parameter.value)))]; })));
         faceplateEvents.push({ name, parameters });
       }
       else if (statement.kind === "write") {
-        const name = tagName(evaluate(statement.tag));
-        const value = String(scalar(evaluate(statement.value)) ?? "");
+        const name = tagName((yield* evaluate(statement.tag)));
+        const primitive = scalar((yield* evaluate(statement.value)));
+        const value = String(primitive ?? "");
+        if (remote(name)) {
+          const receipt = yield* writeRemote({ kind: "write", tag: name, value: primitive, mode: 0 });
+          if (receipt.outcome !== "delivered") throw hmiFault(statusFor(name).lastError, statusFor(name).errorDescription);
+          continue;
+        }
+        const failure = options.writeFailures?.[name];
+        if (failure) { Object.assign(statusFor(name), { lastError: failure.code ?? 0x80040002, errorDescription: failure.description ?? "Scrittura non riuscita." }); throw hmiFault(statusFor(name).lastError, statusFor(name).errorDescription); }
         values[name] = value; writes[name] = value;
       } else if (statement.kind === "tag-set-read") {
         if (statement.async && !options.allowAsync) throw new Error("Lo script usa una lettura asincrona: eseguilo con executeHmiScriptAsync().");
-        readTarget(statement.set, statement.mode, statement.maxAge);
+        (yield* readTarget(statement.set, statement.mode, statement.maxAge));
       } else if (statement.kind === "tag-set-add") {
-        const set = evaluate(statement.set);
+        const set = (yield* evaluate(statement.set));
         if (!isTagSetReference(set)) throw new Error("Add richiede un TagSet.");
         for (const entry of statement.entries) {
           if (!set.tagSet.names.includes(entry.name)) {
             set.tagSet.names.push(entry.name);
             set.tagSet.status[entry.name] = statusFor(entry.name);
           }
-          if (entry.value) set.tagSet.pending[entry.name] = scalar(evaluate(entry.value));
+          if (entry.value) set.tagSet.pending[entry.name] = scalar((yield* evaluate(entry.value)));
         }
       } else if (statement.kind === "tag-set-remove") {
-        const set = evaluate(statement.set);
+        const set = (yield* evaluate(statement.set));
         if (!isTagSetReference(set)) throw new Error("Remove richiede un TagSet.");
         set.tagSet.names = set.tagSet.names.filter((name) => !statement.names.includes(name));
         for (const name of statement.names) { delete set.tagSet.pending[name]; delete set.tagSet.status[name]; }
       } else if (statement.kind === "tag-set-clear") {
-        const set = evaluate(statement.set);
+        const set = (yield* evaluate(statement.set));
         if (!isTagSetReference(set)) throw new Error("Clear richiede un TagSet.");
         set.tagSet.names = [];
         set.tagSet.pending = {};
@@ -1936,11 +2047,11 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
         set.tagSet.lastError = 0;
         set.tagSet.errorDescription = "";
       } else if (statement.kind === "tag-set-stage") {
-        const set = evaluate(statement.set);
+        const set = (yield* evaluate(statement.set));
         if (!isTagSetReference(set)) throw new Error("L'assegnazione Value richiede un TagSet.");
-        const name = tagName(evaluate(statement.tag));
+        const name = tagName((yield* evaluate(statement.tag)));
         if (!set.tagSet.names.includes(name)) throw new Error(`Il tag ${name} non appartiene al TagSet.`);
-        const value = scalar(evaluate(statement.value));
+        const value = scalar((yield* evaluate(statement.value)));
         if (statement.property === "Value") set.tagSet.pending[name] = value;
         else if (statement.property === "QualityCode") {
           const qualityCode = number(value);
@@ -1952,15 +2063,15 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
         }
       } else if (statement.kind === "tag-set-write") {
         if (statement.async && !options.allowAsync) throw new Error("Lo script usa WriteAsync(): eseguilo con executeHmiScriptAsync().");
-        writeTarget(statement.set, statement.mode, statement.qcd);
+        (yield* writeTarget(statement.set, statement.mode, statement.qcd));
       } else if (statement.kind === "qcd-write") {
-        const target = evaluate(statement.target);
+        const target = (yield* evaluate(statement.target));
         if (isTagSetReference(target)) {
           if (statement.arguments.length > 1) throw new Error("TagSet.WriteQCD accetta soltanto il tipo di scrittura facoltativo.");
-          writeTarget(statement.target, statement.arguments[0], true);
+          (yield* writeTarget(statement.target, statement.arguments[0], true));
         } else if (isTagReference(target)) {
           const name = target.tag;
-          const args = statement.arguments.map((argument) => scalar(evaluate(argument)));
+          const args = (yield* mapScriptValues(statement.arguments, function* (argument) { return scalar((yield* evaluate(argument))); }));
           if (args[1] !== undefined) {
             const mode = number(args[1]);
             if (!Number.isInteger(mode) || mode < 0 || mode > 1) throw new Error("hmiWriteType deve valere 0 oppure 1.");
@@ -1970,6 +2081,12 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
           if (value === undefined) throw new Error(`Il tag ${name} non ha un valore da scrivere.`);
           const failure = options.writeFailures?.[name];
           const status = target.tagSet?.status[name] ?? statusFor(name);
+          if (remote(name) && !failure) {
+            const receipt = yield* writeRemote({ kind: "write", tag: name, value: args[0] ?? value, mode: Number(args[1] ?? 0), qcd: true });
+            Object.assign(status, statusFor(name));
+            if (receipt.outcome !== "delivered") throw hmiFault(status.lastError, status.errorDescription);
+            continue;
+          }
           if (failure) {
             status.lastError = failure.code ?? 0x80040002;
             status.errorDescription = failure.description ?? `Scrittura non riuscita per ${name}.`;
@@ -1988,19 +2105,25 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
           values[name] = String(value); writes[name] = String(value);
         } else throw new Error("WriteQCD richiede un tag o un TagSet.");
       } else if (statement.kind === "operator-write") {
-        const target = evaluate(statement.target);
-        const reason = String(scalar(evaluate(statement.reason)) ?? "");
+        const target = (yield* evaluate(statement.target));
+        const reason = String(scalar((yield* evaluate(statement.reason))) ?? "");
         if (!reason.trim()) throw new Error("Il motivo del messaggio operatore non puo' essere vuoto.");
         if (isTagSetReference(target)) {
           if (statement.value) throw new Error("TagSet.WriteWithOperatorMessage accetta soltanto il motivo.");
-          writeTarget(statement.target, { kind: "literal", value: 1 }, false, reason);
+          (yield* writeTarget(statement.target, { kind: "literal", value: 1 }, false, reason));
         } else if (isTagReference(target)) {
           if (!statement.value) throw new Error("Tag.WriteWithOperatorMessage richiede valore e motivo.");
           const name = target.tag;
           const oldValue = values[name] ?? "";
-          const value = String(scalar(evaluate(statement.value)) ?? "");
+          const value = String(scalar((yield* evaluate(statement.value))) ?? "");
           const failure = options.writeFailures?.[name];
           const status = target.tagSet?.status[name] ?? statusFor(name);
+          if (remote(name) && !failure) {
+            const receipt = yield* writeRemote({ kind: "write", tag: name, value, mode: 1, operatorReason: reason });
+            Object.assign(status, statusFor(name));
+            if (receipt.outcome !== "delivered") throw hmiFault(status.lastError, status.errorDescription);
+            continue;
+          }
           if (failure) {
             status.lastError = failure.code ?? 0x80040002;
             status.errorDescription = failure.description ?? `Scrittura non riuscita per ${name}.`;
@@ -2013,47 +2136,57 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
       } else if (statement.kind === "tag-set-promise") {
         if (!options.allowAsync) throw new Error("Lo script usa una Promise TagSet: eseguilo con executeHmiScriptAsync().");
         try {
-          const target = statement.operation === "read" ? readTarget(statement.set, statement.mode, statement.maxAge) : writeTarget(statement.set, statement.mode, statement.qcd);
+          const target = statement.operation === "read" ? (yield* readTarget(statement.set, statement.mode, statement.maxAge)) : (yield* writeTarget(statement.set, statement.mode, statement.qcd));
           if (statement.success) {
             if (statement.success.name) locals.set(statement.success.name, target);
-            run(statement.success.statements);
+            (yield* run(statement.success.statements));
             if (statement.success.name) locals.delete(statement.success.name);
           }
         } catch (caught) {
           if (!statement.failure) throw caught;
           if (statement.failure.name) locals.set(statement.failure.name, faultCode(caught));
-          run(statement.failure.statements);
+          (yield* run(statement.failure.statements));
           if (statement.failure.name) locals.delete(statement.failure.name);
         }
       } else if (statement.kind === "bit") {
-        const name = tagName(evaluate(statement.tag));
-        const bit = number(evaluate(statement.bit));
+        const name = tagName((yield* evaluate(statement.tag)));
+        const bit = number((yield* evaluate(statement.bit)));
         if (!Number.isInteger(bit) || bit < 0 || bit > 31) throw new Error(`Il bit ${bit} non e' compreso tra 0 e 31.`);
+        const failure = options.writeFailures?.[name];
+        if (remote(name) || failure) {
+          const error = failure?.description ?? "Operazione atomica sui bit non supportata dal trasporto MQTT; nessun comando inviato.";
+          Object.assign(statusFor(name), { lastError: failure?.code ?? 0x80040002, errorDescription: error });
+          if (remote(name)) commands.push({ tag: name, outcome: "rejected", plcConfirmed: false, error });
+          throw hmiFault(statusFor(name).lastError, error);
+        }
         const current = Number(values[name] ?? "0");
         if (!Number.isFinite(current)) throw new Error(`Il tag ${name} non contiene un numero.`);
         const mask = 1 << bit;
         const next = statement.operation === "set" ? current | mask : statement.operation === "reset" ? current & ~mask : current ^ mask;
         values[name] = String(next); writes[name] = String(next);
       } else if (statement.kind === "if") {
-        const flow = run(truthy(evaluate(statement.test)) ? statement.consequent : statement.alternate);
+        const flow = (yield* run(truthy((yield* evaluate(statement.test))) ? statement.consequent : statement.alternate));
         if (flow) return flow;
       } else if (statement.kind === "switch") {
-        const value = scalar(evaluate(statement.value));
-        const entry = statement.cases.find((candidate) => candidate.test && scalar(evaluate(candidate.test)) === value)
+        const value = scalar((yield* evaluate(statement.value)));
+        const entry = (yield* findScriptValue(statement.cases, function* (candidate) { return candidate.test && scalar((yield* evaluate(candidate.test))) === value; }))
           ?? statement.cases.find((candidate) => !candidate.test);
-        if (entry) { const flow = run(entry.statements); if (flow) return flow; }
+        if (entry) { const flow = (yield* run(entry.statements)); if (flow) return flow; }
       } else if (statement.kind === "try") {
         let flow: Flow;
         try {
-          flow = run(statement.statements);
-        } catch (caught) {
-          if (!statement.failure) throw caught;
-          if (statement.failure.name) locals.set(statement.failure.name, faultCode(caught));
-          flow = run(statement.failure.statements);
-          if (statement.failure.name) locals.delete(statement.failure.name);
+          try {
+            flow = (yield* run(statement.statements));
+          } catch (caught) {
+            if (!statement.failure) throw caught;
+            if (statement.failure.name) locals.set(statement.failure.name, faultCode(caught));
+            try { flow = (yield* run(statement.failure.statements)); }
+            finally { if (statement.failure.name) locals.delete(statement.failure.name); }
+          }
+        } finally {
+          const finalFlow = (yield* run(statement.final));
+          if (finalFlow) return finalFlow;
         }
-        const finalFlow = run(statement.final);
-        if (finalFlow) return finalFlow;
         if (flow) return flow;
       }
     }
@@ -2061,26 +2194,60 @@ export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Reco
   };
   try {
     for (let scope = localScope.parent; scope; scope = scope.parent) {
-      initializeScope(scope);
+      (yield* initializeScope(scope));
     }
     if (!localScope.active) throw new Error("Il contesto script non e' piu' attivo.");
-    const flow = run(program.statements);
-    return { ...(flow?.returned && flow.value !== undefined ? options.returnByReference ? { returnedReference: flow.value } : { returned: scalar(flow.value) } : {}), writes, traces, navigation, operatorMessages, faceplateEvents, tagStatus: { ...statusByTag }, steps };
+    const flow = (yield* run(program.statements));
+    return { ...(flow?.returned && flow.value !== undefined ? options.returnByReference ? { returnedReference: flow.value } : { returned: scalar(flow.value) } : {}), writes, traces, navigation, operatorMessages, faceplateEvents, tagStatus: { ...statusByTag }, steps, ...(options.transport ? { reads, commands } : {}) };
   } catch (caught) {
-    return { writes, traces, navigation, operatorMessages, faceplateEvents, tagStatus: { ...statusByTag }, steps, error: faultMessage(caught) };
+    return { writes, traces, navigation, operatorMessages, faceplateEvents, tagStatus: { ...statusByTag }, steps, error: faultMessage(caught), ...(options.transport ? { reads, commands } : {}) };
   }
 }
 
-/** Il simulatore non possiede un driver PLC da attendere, ma conserva il confine Promise reale:
- * chiamante ed eventi proseguono nel microtask successivo e le future integrazioni driver possono
- * sostituire le operazioni locali senza cambiare il contratto salvato negli attributi. */
+export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Record<string, string>>, options: HmiScriptExecutionOptions = {}): HmiScriptExecution {
+  const iterator = executeHmiScriptCoroutine(program, input, options);
+  let current = iterator.next();
+  while (!current.done) current = iterator.throw(Object.assign(new Error("Il trasporto PLC richiede executeHmiScriptAsync(); nessun comando inviato."), { outcome: "rejected" }));
+  return current.value;
+}
+
+async function performScriptTransport(request: HmiScriptTransportRequest, options: HmiScriptExecutionOptions): Promise<unknown> {
+  if (!options.transport || options.signal?.aborted || options.isActive && !options.isActive()) throw Object.assign(new Error("Contesto non attivo; comando non inviato."), { outcome: "rejected" });
+  const timeoutMs = options.transportTimeoutMs ?? 15_000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 70_000) throw Object.assign(new Error("Timeout del trasporto script non valido."), { outcome: "rejected" });
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel!: () => void;
+  const interrupted = new Promise<never>((_, reject) => {
+    cancel = () => { controller.abort(); reject(Object.assign(new Error("Attesa trasporto interrotta; un comando inviato non deve essere ripetuto automaticamente."), { outcome: request.kind === "write" ? "uncertain" : "rejected" })); };
+    options.signal?.addEventListener("abort", cancel, { once: true });
+    timer = setTimeout(cancel, timeoutMs);
+  });
+  try {
+    const operation = request.kind === "read" ? options.transport.read(request, controller.signal) : options.transport.write(request, controller.signal);
+    return await Promise.race([operation, interrupted]);
+  } finally { clearTimeout(timer); options.signal?.removeEventListener("abort", cancel); }
+}
+
 export async function executeHmiScriptAsync(program: HmiScriptProgram, input: Readonly<Record<string, string>>, options: HmiScriptExecutionOptions = {}): Promise<HmiScriptExecution> {
   await Promise.resolve();
-  return executeHmiScript(program, input, { ...options, allowAsync: true });
+  const clock = { elapsed: 0 };
+  options = { ...options, allowAsync: true, suspensionClock: clock };
+  const iterator = executeHmiScriptCoroutine(program, input, options);
+  let current = iterator.next();
+  while (!current.done) {
+    const started = Date.now();
+    let response: unknown, failure: unknown, failed = false;
+    try { response = await performScriptTransport(current.value, options); }
+    catch (caught) { failed = true; failure = caught; }
+    finally { clock.elapsed += Date.now() - started; }
+    current = failed ? iterator.throw(failure) : iterator.next(response);
+  }
+  return current.value;
 }
 
 /** Il progetto generato non porta con se' Babel: riceve il programma gia' compilato nell'attributo
  * e solo questo piccolo esecutore. Le funzioni sono le stesse usate dai test dell'editor. */
 export function hmiScriptRuntimeModuleSource(): string {
-  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectTimerCallbacks)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
+  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectTimerCallbacks)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
 }
