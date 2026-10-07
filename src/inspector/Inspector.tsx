@@ -16,7 +16,8 @@ import { hmiFlashingContrast, hmiFlashingProperties } from "../core/hmiFlashing"
 import { inspectHmiExpression } from "../core/hmiExpression";
 import { inspectHmiScript } from "../core/hmiScript";
 import { hmiScriptFunctions, hmiScriptGlobalDefinition, hmiScriptVariables } from "../core/hmiScriptModules";
-import { hmiEventLabels, hmiEventsAttribute, hmiEventTypesFor, newHmiEvent, parseHmiEvents, serializeHmiEvents, type HmiEventBinding, type HmiEventType } from "../core/hmiEvents";
+import { hmiEventLabels, hmiEventsAttribute, hmiEventTypesFor, parseHmiEvents, serializeHmiEvents, type HmiEventBinding, type HmiEventType } from "../core/hmiEvents";
+import { guidedActionLabels, guidedActionScript, newGuidedAction, readGuidedAction, type GuidedActionKind } from "../core/hmiActions";
 import { hmiFaceplateAttribute, hmiFaceplateBindingIssues, parseHmiFaceplateBinding, serializeHmiFaceplateBinding, type HmiFaceplateEventBinding, type HmiFaceplateEventDefinition, type HmiFaceplateInstanceBinding } from "../core/hmiFaceplates";
 import { defaultHmiTrendConfig, hmiTrendAttribute, hmiTrendIssues, hmiTrendModes, parseHmiTrendConfig, serializeHmiTrendConfig, type HmiTrendArea, type HmiTrendAxis, type HmiTrendConfig, type HmiTrendMode, type HmiTrendSeries } from "../core/hmiTrend";
 import { defaultHmiFunctionTrendConfig, hmiFunctionTrendAttribute, hmiFunctionTrendIssues, parseHmiFunctionTrendConfig, serializeHmiFunctionTrendConfig, type HmiFunctionTrendConfig, type HmiFunctionTrendSeries, type HmiFunctionTrendSource } from "../core/hmiFunctionTrend";
@@ -190,7 +191,7 @@ function BorderField({ label, property, value, disabled, group = false }: { labe
   </div>;
 }
 
-const internalProps = new Set(["data-fc-highlight-region", "data-fc-highlight-target", "data-fc-highlight-color", "data-fc-highlight-width", "data-fc-highlight-original-click", "data-fc-highlight-id", "data-fc-user-access", "data-fc-user-name", "data-fc-user-role", "data-fc-user-pin", "data-fc-user-logged-out", "data-fc-user-requires", "data-fc-user-granted", hmiDynamizationAttribute]);
+const internalProps = new Set(["data-fc-highlight-region", "data-fc-highlight-target", "data-fc-highlight-color", "data-fc-highlight-width", "data-fc-highlight-original-click", "data-fc-highlight-id", "data-fc-highlight-event", "data-fc-reacts", "data-fc-user-access", "data-fc-user-name", "data-fc-user-role", "data-fc-user-pin", "data-fc-user-logged-out", "data-fc-user-event", "data-fc-user-requires", "data-fc-user-granted", "data-fc-user-visible-requires", "data-fc-user-visible-granted", hmiDynamizationAttribute]);
 
 function AttributeField({ name, value }: { name: string; value: string | number }) {
   const update = useEditorStore((state) => state.updateAttribute);
@@ -776,6 +777,8 @@ function HmiFunctionTrendSection({ node, expandSignal }: { node: EditorNode; exp
 }
 
 function HmiEventCard({ binding, index, all, allowed, onWrite }: { binding: HmiEventBinding; index: number; all: readonly HmiEventBinding[]; allowed: readonly HmiEventType[]; onWrite: (items: HmiEventBinding[]) => void }) {
+  const pages = useEditorStore((state) => state.pages);
+  const action = readGuidedAction(binding.script);
   const scriptCatalog = useEditorStore((state) => state.scriptCatalog);
   const scope = useEditorStore((state) => state.previewPath);
   const [script, setScript] = useState(binding.script);
@@ -783,10 +786,21 @@ function HmiEventCard({ binding, index, all, allowed, onWrite }: { binding: HmiE
   const inspection = inspectHmiScript(script, hmiScriptFunctions(scriptCatalog, scope, "events"), hmiScriptGlobalDefinition(scriptCatalog, scope, "events")?.program, [], hmiScriptVariables(scriptCatalog));
   const patch = (values: Partial<HmiEventBinding>) => onWrite(all.map((item, current) => current === index ? { ...item, ...values } : item));
   return <article className="dynamization-card hmi-event-card">
-    <div className="dynamization-card-head"><span><MousePointerClick size={13} /><strong>{binding.event}</strong></span><button type="button" onClick={() => onWrite(all.filter((_, current) => current !== index))} title="Rimuovi evento" aria-label={`Rimuovi evento ${binding.event}`}><Trash2 size={12} /></button></div>
+    <div className="dynamization-card-head"><span><MousePointerClick size={13} /><strong>{action ? guidedActionLabels[action.kind] : "Azione personalizzata"}</strong></span><button type="button" onClick={() => onWrite(all.filter((_, current) => current !== index))} title="Rimuovi azione" aria-label={`Rimuovi azione ${index + 1}`}><Trash2 size={12} /></button></div>
     <label className="dynamization-field"><span>Quando</span><select value={binding.event} onChange={(event) => patch({ event: event.target.value as HmiEventType })}>
       {[...new Set([binding.event, ...allowed])].map((event) => <option key={event} value={event}>{hmiEventLabels[event]}</option>)}
     </select></label>
+    {binding.event === "DoubleTapped" && <p className="inspector-note">Il doppio click è un’estensione Framecraft. Se configuri anche il click singolo, il browser esegue prima i due click singoli.</p>}
+    <label className="dynamization-field"><span>Cosa succede</span><select value={action?.kind ?? "script"} onChange={(event) => patch({ script: event.target.value === "script" ? binding.script + "\n// Azione personalizzata" : guidedActionScript(event.target.value as GuidedActionKind, event.target.value === "navigate" ? pages[0]?.stateValue ?? pages[0]?.route ?? "/" : event.target.value === "trace" ? "Evento eseguito" : action && !["trace", "navigate"].includes(action.kind) ? action.target : "NomeElemento") })}>
+      {Object.entries(guidedActionLabels).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}<option value="script">Script personalizzato</option>
+    </select></label>
+    {action ? <>
+      {action.kind === "navigate" ? <label className="dynamization-field"><span>Pagina</span><select value={action.target} onChange={(event) => patch({ script: guidedActionScript(action.kind, event.target.value) })}>
+        {!pages.some((page) => (page.stateValue ?? page.route) === action.target) && <option value={action.target}>{action.target}</option>}
+        {pages.filter((page) => page.stateValue || page.route).map((page) => <option key={page.id} value={page.stateValue ?? page.route}>{page.name}</option>)}
+      </select></label> : <DynamizationTextField label={action.kind === "trace" ? "Messaggio" : "Nome oggetto nella pagina"} value={action.target} onCommit={(target) => patch({ script: guidedActionScript(action.kind, target) })} />}
+      <p className="inspector-note">{action.kind === "trace" ? "Scrive un messaggio nella diagnostica: non apre un avviso e non conferma un comando PLC." : action.kind === "navigate" ? "Apre la pagina scelta nel pannello." : "Usa il Nome oggetto dell’elemento di destinazione. La modifica dura nella pagina aperta e non cambia il progetto."}</p>
+    </> : <>
     <label className="hmi-event-script"><span>Script locale</span><textarea value={script} spellCheck={false}
       placeholder={'HMIRuntime.Tags.SysFct.SetTagValue("Command", 1);'}
       onChange={(event) => setScript(event.target.value)} onBlur={() => script.trim() !== binding.script && patch({ script: script.trim() })}
@@ -799,26 +813,29 @@ function HmiEventCard({ binding, index, all, allowed, onWrite }: { binding: HmiE
     {binding.event === "CommandFired" && <p className="dynamization-expression-help">Lo script riceve <code>command</code> con il comando emesso dal controllo.</p>}
     {binding.event === "InterfaceEvent" && <p className="dynamization-expression-help">Lo script riceve <code>interfaceEvent</code> con il nome dell’evento del faceplate o custom control.</p>}
     <p className="dynamization-expression-help">In modalità <strong>Usa pannello</strong> scritture, trace e cambio pagina vengono eseguiti nella simulazione e registrati nella diagnostica. Le funzioni di <strong>Pannello → Moduli JavaScript</strong> si chiamano con <code>Modules.Alias.Funzione(...)</code> o <code>Local.Funzione(...)</code>. Sono ammessi anche <code>ReadAsync</code>/<code>WriteAsync</code> con <code>then/catch</code> oppure <code>await</code> e <code>try/catch</code>. I timer usano <code>HMIRuntime.Timers.SetTimeout</code>/<code>SetInterval</code> con callback inline o di modulo e si fermano con <code>ClearTimeout</code>/<code>ClearInterval</code>. Per dati con qualità e data/ora usa <code>WriteQCD</code>; per una modifica tracciata con motivo usa <code>WriteWithOperatorMessage</code>.</p>
+    </>}
   </article>;
 }
 
-function HmiEventSection({ node, expandSignal }: { node: EditorNode; expandSignal?: number }) {
+function HmiEventSection({ node }: { node: EditorNode }) {
   const update = useEditorStore((state) => state.updateAttribute);
   const removeAttribute = useEditorStore((state) => state.removeAttribute);
   const items = parseHmiEvents(node.props[hmiEventsAttribute]);
   const allowed = hmiEventTypesFor(node);
   const write = (next: HmiEventBinding[]) => void (next.length ? update(hmiEventsAttribute, serializeHmiEvents(next)) : removeAttribute(hmiEventsAttribute));
   const legacy = typeof node.props["data-hmi-event"] === "string" ? String(node.props["data-hmi-event"]) : "";
-  return <InspectorSection title={`Eventi WinCC${items.length ? ` · ${items.length}` : ""}`} icon={<MousePointerClick size={12} />} initiallyOpen={items.length > 0} expandSignal={expandSignal}>
+  return <div className="element-reaction-actions">
     <DynamizationTextField label="Nome oggetto per gli script" value={String(node.props["data-hmi-name"] ?? node.props.id ?? "")} placeholder="es. M2400" onCommit={(name) => void (name ? update("data-hmi-name", name) : removeAttribute("data-hmi-name"))} />
+    <details className="dynamization-expression-help"><summary>Guida alle azioni personalizzate · Unified</summary>
     <details className="dynamization-expression-help"><summary>Leggere e modificare un oggetto · Unified</summary><p>Usa <code>item</code> per questo componente, <code>Screen.Items("M2400")</code> per un nome nella pagina oppure <code>Faceplate.Items("Nome")</code> dentro l’istanza faceplate.</p><p><code>const motore = Screen.Items("M2400"); motore.Text = "Motore pronto"; motore.BackColor = HMIRuntime.Math.RGB(0, 128, 0); motore.Enabled = false; HMIRuntime.Trace(motore.Name);</code></p><p>Sono disponibili <code>Left</code>, <code>Top</code>, <code>Width</code>, <code>Height</code>, <code>Visible</code>, <code>Enabled</code> e i tre colori. <code>Text</code> è disponibile quando il contenuto testuale è univoco; icone e componenti figli non vengono cancellati. Il nome è in sola lettura. Boolean e numeri sono tipizzati.</p><p>Le modifiche sono temporanee durante la prova, non cambiano il JSX e non scrivono tag PLC. Tornando alla modifica grafica vengono ripristinati i valori della pagina.</p></details>
     <details className="dynamization-expression-help"><summary>Lampeggio da script · Unified</summary><p>Usa un nome univoco nella pagina per chiamare <code>Screen.Items("M2400")</code>, oppure <code>item</code> per l’oggetto dell’evento. Dentro un faceplate usa <code>Faceplate.Items("Nome")</code>.</p><p><code>item.PropertyFlashing("BackColor", true, HMIRuntime.Math.RGB(255, 0, 0), HMIRuntime.Math.RGB(0, 0, 0), UI.Enums.HmiFlashingRate.Fast);</code></p><p>Per fermarlo: <code>item.PropertyFlashing("BackColor", false);</code>. Sono disponibili anche <code>ForeColor</code> e <code>BorderColor</code>. Senza colori espliciti usa quelli già configurati nel lampeggio dichiarativo. Il colore base non cambia; la riduzione movimento resta rispettata.</p></details>
     <details className="dynamization-expression-help"><summary>Carattere da script · Unified</summary><p>Usa <code>item.Font</code> o il <code>Font</code> dell’oggetto trovato con <code>Screen.Items</code>/<code>Faceplate.Items</code>.</p><p><code>const font = item.Font; font.Name = "Arial"; font.Size = 18.5; font.Weight = 700; font.Italic = true; font.Underline = false; font.StrikeOut = 0;</code></p><p><code>Size</code> è un Float in DIU, anche decimale; <code>Italic</code>/<code>Underline</code> sono Boolean. <code>Weight</code> usa 0, 300, 400, 600 o 700; <code>StrikeOut</code> usa 0 oppure 1, non true/false. Il font viene applicato al testo univoco o al campo input senza cambiare icone e valori PLC. La famiglia deve essere disponibile sul dispositivo: non vengono scaricati font. Anche queste modifiche sono temporanee durante la prova.</p></details>
-    {!items.length && <p className="inspector-note">Esegui uno script sicuro sugli eventi disponibili per questo tipo di oggetto WinCC.</p>}
+    </details>
+    {!items.length && <p className="inspector-note">Aggiungi un’azione, poi scegli quando deve partire: click, doppio click o gli altri eventi disponibili per l’elemento.</p>}
     {legacy && <p className="inspector-note">L'elemento importato dichiara già gli eventi <code>{legacy}</code>. Aggiungi qui il comportamento modificabile ed eseguibile.</p>}
     <div className="dynamization-list">{items.map((binding, index) => <HmiEventCard key={`${binding.event}-${index}`} binding={binding} index={index} all={items} allowed={allowed} onWrite={write} />)}</div>
-    <button className="dynamization-add-rule hmi-event-add" type="button" onClick={() => write([...items, newHmiEvent(allowed.includes("Tapped") ? "Tapped" : allowed[0] ?? "Tapped")])}><Plus size={12} /> Aggiungi evento</button>
-  </InspectorSection>;
+    <button className="dynamization-add-rule hmi-event-add" type="button" onClick={() => write([...items, newGuidedAction("trace", "Evento eseguito", allowed.includes("Tapped") ? "Tapped" : allowed[0] ?? "Tapped")])}><Plus size={12} /> Aggiungi azione</button>
+  </div>;
 }
 
 function InformationSection({ node, tag, file, expandSignal, initiallyOpen = true }: { node?: EditorNode; tag?: string; file: string; expandSignal?: number; initiallyOpen?: boolean }) {
@@ -919,11 +936,15 @@ function HighlightInteractionEditor({ node, copies }: { node: EditorNode; copies
   const targetId = typeof node.props["data-fc-highlight-target"] === "string" ? node.props["data-fc-highlight-target"] : undefined;
   const savedColor = typeof node.props["data-fc-highlight-color"] === "string" ? node.props["data-fc-highlight-color"] : "#f59e0b";
   const savedWidth = typeof node.props["data-fc-highlight-width"] === "string" ? Number(node.props["data-fc-highlight-width"]) : 3;
+  type HighlightEvent = "Tapped" | "DoubleTapped" | "Down" | "Up" | "ContextTapped";
+  const savedEvent = String(node.props["data-fc-highlight-event"] ?? "Tapped") as HighlightEvent;
+  const [event, setEvent] = useState(savedEvent);
   const [color, setColor] = useState(savedColor);
   const [width, setWidth] = useState(savedWidth);
   const [zoneShape, setZoneShape] = useState<"rectangle" | "polygon">("rectangle");
   const region = readHighlightRegion(node.props["data-fc-highlight-region"]);
   useEffect(() => { setColor(savedColor); setWidth(savedWidth); }, [node.id, savedColor, savedWidth]);
+  useEffect(() => setEvent(savedEvent), [node.id, savedEvent]);
   const isPicking = picker?.trigger.file === node.source.file && picker.trigger.start === node.source.start;
   // An element that already carries a highlight stays editable whatever else is true of it: the
   // interaction exists, and refusing to show it would only hide something the user can undo.
@@ -931,17 +952,17 @@ function HighlightInteractionEditor({ node, copies }: { node: EditorNode; copies
   if (blocked) return <p className="inspector-note">{blocked}</p>;
 
   return <section className="inspector-section interaction-editor">
-    <div className="inspector-static-title"><MousePointerClick size={12} /> Interazione</div>
     <div className="interaction-card">
-      <div className="interaction-card-title"><span><Highlighter size={14} /></span><div><strong>Evidenzia una parte</strong><small>{region ? "Zona disegnata e modificabile" : targetId ? "Elemento collegato e modificabile" : "Al click sul pulsante"}</small></div></div>
+      <div className="interaction-card-title"><span><Highlighter size={14} /></span><div><strong>Evidenzia una parte</strong><small>{region ? "Zona disegnata e modificabile" : targetId ? "Elemento collegato e modificabile" : "Scegli una parte o disegna una zona"}</small></div></div>
+      <label className="user-access-field"><span>Quando evidenzia</span><select value={event} onChange={(change) => setEvent(change.target.value as HighlightEvent)}>{(["Tapped", "DoubleTapped", "Down", "Up", "ContextTapped"] as const).map((item) => <option key={item} value={item}>{hmiEventLabels[item]}</option>)}</select></label>
       <label className="interaction-color"><span>Colore</span><span className="color-control"><input type="color" value={color} onChange={(event) => setColor(event.target.value)} aria-label="Colore evidenziazione" /><code>{color}</code></span></label>
       <label className="interaction-width"><span>Spessore</span><input type="range" min="1" max="8" value={width} onChange={(event) => setWidth(Number(event.target.value))} /><output>{width}px</output></label>
       {isPicking ? <button className="interaction-action secondary" onClick={cancelSelection}><X size={14} /> Annulla selezione</button> : <>
-        {targetId && <button className="interaction-action primary" onClick={() => void updateInteraction({ color, width })}><Save size={14} /> Applica modifiche</button>}
+        {targetId && <button className="interaction-action primary" onClick={() => void updateInteraction({ color, width, event })}><Save size={14} /> Applica modifiche</button>}
         <label className="interaction-zone-shape"><span>Forma zona</span><select value={zoneShape} onChange={(event) => setZoneShape(event.target.value as "rectangle" | "polygon")} aria-label="Forma della zona da evidenziare"><option value="rectangle">Rettangolo</option><option value="polygon">Contorno a punti</option></select></label>
-        <button type="button" className="interaction-action primary" onClick={() => beginSelection({ color, width }, zoneShape)}><SquareMousePointer size={14} /> {region ? "Ridisegna zona" : "Disegna zona"}</button>
+        <button type="button" className="interaction-action primary" onClick={() => beginSelection({ color, width, event }, zoneShape)}><SquareMousePointer size={14} /> {region ? "Ridisegna zona" : "Disegna zona"}</button>
         <p className="interaction-zone-help">Trascina sulla foto per un rettangolo, oppure clicca gli angoli di un contorno e premi Invio. Esc annulla.</p>
-        <button type="button" className="interaction-action secondary" onClick={() => beginSelection({ color, width })}><MousePointerClick size={14} /> {targetId ? "Cambia parte" : "Scegli la parte"}</button>
+        <button type="button" className="interaction-action secondary" onClick={() => beginSelection({ color, width, event })}><MousePointerClick size={14} /> {targetId ? "Cambia parte" : "Scegli la parte"}</button>
         {targetId && <button className="interaction-remove" onClick={() => void removeInteraction()}><Trash2 size={13} /> Rimuovi interazione</button>}
       </>}
     </div>
@@ -1471,6 +1492,9 @@ function UserAccessEditor({ node }: { node: EditorNode }) {
   return <div className="interaction-card user-access-card configured">
     <div className="interaction-card-title"><span><ShieldCheck size={14} /></span><div><strong>Apre la pagina di accesso</strong><small>{config ? `${config.accounts.length} account · ${config.permissions.length} permessi` : "Login, utente attivo e logout"}</small></div></div>
     <UserAccessField label="Testo da disconnesso" attribute="data-fc-user-logged-out" value={String(node.props["data-fc-user-logged-out"] ?? "Nessun utente")} />
+    <label className="user-access-field"><span>Quando apre l’accesso</span><select value={String(node.props["data-fc-user-event"] ?? "Tapped")} onChange={(event) => void useEditorStore.getState().updateAttribute("data-fc-user-event", event.target.value)}>
+      {["Tapped", "DoubleTapped", "ContextTapped", "Down", "Up"].map((event) => <option key={event} value={event}>{hmiEventLabels[event as HmiEventType]}</option>)}
+    </select></label>
     <button type="button" className="interaction-action primary" onClick={() => void open()}><Users size={14} /> Gestisci account e permessi…</button>
     <button type="button" className="interaction-remove user-access-remove" onClick={() => void remove()}><Trash2 size={13} /> Rimuovi accesso utente</button>
   </div>;
@@ -1478,32 +1502,32 @@ function UserAccessEditor({ node }: { node: EditorNode }) {
 
 /** Any element can be reserved to a permission, not only the one that opens the login: this is where
  * a command is handed to the maintainer and taken away from the operator. */
-function PermissionGateEditor({ node }: { node: EditorNode }) {
+function PermissionGateEditor({ node, reacts }: { node: EditorNode; reacts: boolean }) {
   const config = useEditorStore((state) => state.userAccessConfig);
   const refresh = useEditorStore((state) => state.refreshUserAccess);
   const open = useEditorStore((state) => state.openUserAccess);
   const update = useEditorStore((state) => state.updateAttribute);
   const removeAttribute = useEditorStore((state) => state.removeAttribute);
   const required = String(node.props["data-fc-user-requires"] ?? "");
+  const visibility = String(node.props["data-fc-user-visible-requires"] ?? "");
   useEffect(() => { if (!config) void refresh(); }, [config, refresh]);
   // Without the ready access installed there is nothing to require, and offering it would only
   // produce an attribute no runtime reads.
-  if (!config && !required) return null;
   const permissions = config?.permissions ?? [];
-  if (!permissions.length && !required) return null;
-  const unknown = required && !permissions.some((permission) => permission.id === required);
+  const rule = (attribute: string, label: string, value: string) => {
+    const unknown = value && !permissions.some((permission) => permission.id === value);
+    return <label className="user-access-field"><span>{label}</span><select aria-label={label} value={value} onChange={(event) => void (event.target.value ? update(attribute, event.target.value) : removeAttribute(attribute))}>
+      <option value="">Tutti · anche senza accesso</option>
+      {unknown && <option value={value}>Permesso non disponibile: {value}</option>}
+      {permissions.map((permission) => <option key={permission.id} value={permission.id}>{permission.label}</option>)}
+    </select>{unknown && <small>Il permesso non esiste: questa regola nega l’accesso a tutti finché non la correggi.</small>}</label>;
+  };
   return <div className="interaction-card permission-gate-card">
-    <div className="interaction-card-title"><span><KeyRound size={14} /></span><div><strong>Permesso richiesto</strong><small>Chi non ce l’ha lo vede, ma non lo può usare</small></div></div>
-    <label className="user-access-field"><span>Serve il permesso</span>
-      <select value={unknown ? "" : required} onChange={(event) => {
-        const value = event.target.value;
-        void (value ? update("data-fc-user-requires", value) : removeAttribute("data-fc-user-requires"));
-      }}>
-        <option value="">Nessuno · sempre disponibile</option>
-        {permissions.map((permission) => <option key={permission.id} value={permission.id}>{permission.label}</option>)}
-      </select>
-    </label>
-    {unknown && <p className="inspector-note">Questo elemento chiede «{required}», che non esiste più fra i permessi: resta bloccato per tutti.</p>}
+    <div className="interaction-card-title"><span><KeyRound size={14} /></span><div><strong>Chi vede e usa l’elemento</strong><small>Regole separate per l’utente attivo</small></div></div>
+    {rule("data-fc-user-visible-requires", "Visibile a chi ha il permesso", visibility)}
+    {(reacts || required) && rule("data-fc-user-requires", "Utilizzabile da chi ha il permesso", required)}
+    {!permissions.length && <p className="inspector-note">Apri account e permessi, aggiungi i permessi e assegnali agli utenti; poi torna qui a sceglierli.</p>}
+    <p className="inspector-note">In Modifica l’elemento resta visibile e selezionabile. Queste regole gestiscono il pannello, non sostituiscono autorizzazioni e sicurezza sul server PLC.</p>
     <button type="button" className="interaction-action" onClick={() => void open()}><Users size={14} /> Apri account e permessi</button>
   </div>;
 }
@@ -1512,6 +1536,8 @@ function PermissionGateEditor({ node }: { node: EditorNode }) {
  * canvas can show what an element looks like but never what it does, and on an HMI panel that is
  * most of what there is to know about a button. */
 function ActionSection({ node, expandSignal }: { node: EditorNode; expandSignal?: number }) {
+  const update = useEditorStore((state) => state.updateAttribute);
+  const [busy, setBusy] = useState(false);
   const source = useEditorStore((state) => state.document?.source);
   const callSites = useEditorStore((state) => state.callSites);
   const copies = useEditorStore((state) => state.selectionInfo?.instanceCount ?? 1);
@@ -1533,19 +1559,27 @@ function ActionSection({ node, expandSignal }: { node: EditorNode; expandSignal?
   const highlighted = typeof node.props["data-fc-highlight-target"] === "string";
   const visibleActions = report?.actions.filter((action) => action.trigger !== "Alla pressione di un tasto"
     || !report.actions.some((candidate) => candidate.trigger === "Al click" && candidate.summary === action.summary)) ?? [];
+  const configured = highlighted || node.props["data-fc-user-access"] !== undefined || parseHmiEvents(node.props[hmiEventsAttribute]).length > 0 || visibleActions.length > 0;
+  const reacts = String(node.props["data-fc-reacts"]) === "false" ? false : String(node.props["data-fc-reacts"]) === "true" || configured;
   return <InspectorSection title="Cosa fa" icon={<Zap size={12} />} initiallyOpen expandSignal={expandSignal}>
+    <button type="button" role="switch" aria-checked={reacts} className={`element-reactions-switch ${reacts ? "enabled" : ""}`} disabled={busy} onClick={async () => { setBusy(true); try { await update("data-fc-reacts", reacts ? "false" : "true"); } finally { setBusy(false); } }}>
+      <Zap size={15} /><span><strong>{reacts ? "Reazioni abilitate" : "Abilita reazioni"}</strong><small>{reacts ? "Scegli gli eventi e le azioni qui sotto" : "L’elemento può diventare interattivo"}</small></span><span className="element-reactions-indicator" aria-hidden="true" />
+    </button>
+    {!reacts && <p className="inspector-note">Non esegue azioni. Abilita le reazioni per configurarle; quelle già presenti sono conservate.</p>}
+    {reacts && <>
     {!report ? <p className="inspector-note">Lettura del codice…</p>
       : <>
-          {!visibleActions.length && <p className="inspector-note">Nessuna azione: questo elemento non reagisce al click e non porta da nessuna parte.</p>}
           {report.owner && <p className="inspector-note">L’azione è del contenitore &lt;{report.owner.type}&gt; alla riga {report.owner.line}. Modificandola qui cambia quel contenitore.</p>}
           {dataRow && <p className="inspector-note">Agisce sulla voce {dataRow.index + 1} di <code>{dataRow.name}</code>: i suoi valori si modificano in Aspetto → Testo e dati.</p>}
           {visibleActions.map((action, position) => <ActionCard key={`${action.trigger}-${position}`} action={action} copies={copies} dataRow={dataRow} />)}
         </>}
+    <HmiEventSection node={node} />
     <UserAccessEditor node={node} />
-    <PermissionGateEditor node={node} />
     {/* The highlight is the one behaviour the editor itself creates, so it is set up in the very
         place that answers "what does this do" instead of in a panel of its own. */}
     {(highlighted || node.type === "button") && <HighlightInteractionEditor node={node} copies={copies} />}
+    </>}
+    <PermissionGateEditor node={node} reacts={reacts} />
   </InspectorSection>;
 }
 
@@ -1810,7 +1844,6 @@ export function Inspector() {
 
     <div key={`${selectionKey}:actions`} id="element-panel-actions" role="tabpanel" aria-labelledby="element-tab-actions" hidden={tab !== "actions"}>
       <ActionSection node={node} expandSignal={expandSignal} />
-      <HmiEventSection node={node} expandSignal={expandSignal} />
     </div>
     <div key={`${selectionKey}:data`} id="element-panel-data" role="tabpanel" aria-labelledby="element-tab-data" hidden={tab !== "data"}>
       <PlcSection node={node} expandSignal={expandSignal} />

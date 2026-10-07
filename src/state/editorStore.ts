@@ -67,7 +67,7 @@ export const layoutPresets: Record<WorkLayout, { panes: PaneSizes; panel: LeftPa
   plc: { panes: { left: 300, inspector: 350 }, panel: "plc" },
   sviluppo: { panes: { left: 260, inspector: 380 }, panel: "project" },
 };
-type HighlightSettings = { color: string; width: number };
+type HighlightSettings = { color: string; width: number; event?: "Tapped" | "DoubleTapped" | "Down" | "Up" | "ContextTapped" };
 /** The outline drawn over the running panel while it is being shaped. The corners and the midpoints
  * of its sides travel with it: the preview draws them as handles, so the shape is made on the
  * machine it belongs to instead of in a thumbnail beside it. */
@@ -717,7 +717,7 @@ function withHandles(preview?: HighlightPreview): HighlightPreview | undefined {
 function highlightSettings(settings: HighlightSettings) {
   if (!/^#[0-9a-f]{6}$/i.test(settings.color)) throw new Error("Scegli un colore valido per l'evidenziazione.");
   if (!Number.isFinite(settings.width)) throw new Error("Scegli uno spessore valido per l'evidenziazione.");
-  return { color: settings.color.toLowerCase(), width: Math.min(8, Math.max(1, Math.round(settings.width))) };
+  return { color: settings.color.toLowerCase(), width: Math.min(8, Math.max(1, Math.round(settings.width))), ...(settings.event ? { event: settings.event } : {}) };
 }
 
 const createEditorState: StateCreator<EditorState> = (set, get) => {
@@ -867,7 +867,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
 
   /** Writes a file that is not the one open in the editor: the data a list is built from regularly
    * lives in its own module. History still records it, so Ctrl+Z brings it back. */
-  async function applyToFile(file: string, next: string, valid = () => true, expected?: string) {
+  async function applyToFile(file: string, next: string, valid = () => true, expected?: string, pushHistory = true) {
     if (!valid()) return false;
     refuseIfGuided();
     await refuseIfTemplateOwns(file);
@@ -879,7 +879,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     next = matchLineEndings(next);
     if (previous === next) return true;
     if (desktopAvailable) await desktopBridge.writeFile(file, next);
-    set((state) => ({ history: [...state.history, { file, source: previous }].slice(-100), future: [] }));
+    if (pushHistory) set((state) => ({ history: [...state.history, { file, source: previous }].slice(-100), future: [] }));
     runtime.listBindingRequest = undefined;
     runtime.projectIndexRequest = undefined;
     runtime.callSiteRequest = undefined;
@@ -1046,13 +1046,17 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
 
   /** Writes the panel runtime with the accounts it has to know, and makes sure the file that starts
    * React loads it exactly once. Everything that changes accounts goes through here. */
-  async function writeUserAccessRuntime(config: UserAccessConfig) {
+  async function writeUserAccessRuntime(config: UserAccessConfig, reactionEdit = false) {
     const project = get().project;
     if (!project) throw new Error("Apri un progetto prima di gestire gli accessi.");
     const { normalizeUserAccessConfig, relativeModulePath, serializeUserAccessRuntime, userAccessImport } = await import("../core/userAccess");
+    const current = () => get().project === project;
+    const assertCurrent = () => { if (!current()) throw new Error("Il progetto è cambiato: la modifica degli accessi è stata interrotta."); };
+    assertCurrent();
     const normalized = normalizeUserAccessConfig(config);
     const runtimePath = joinProjectPath(project.root, userAccessRelativePath);
     await desktopBridge.createFile(userAccessRelativePath, serializeUserAccessRuntime(normalized));
+    assertCurrent();
 
     const ordered = project.entryFiles.filter((file) => insideProject(project.root, file)).sort((left, right) => {
       const rank = (file: string) => /[\\/]main\.(tsx?|jsx?)$/i.test(file) ? 0 : /[\\/]index\.(tsx?|jsx?)$/i.test(file) ? 1 : 2;
@@ -1062,6 +1066,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     let entrySource = "";
     for (const file of ordered) {
       const source = get().document?.file === file ? get().document?.source ?? "" : await desktopBridge.readFile(file).catch(() => "");
+      assertCurrent();
       if (!source) continue;
       const startsReact = /createRoot\s*\(|ReactDOM\.render\s*\(|hydrateRoot\s*\(/.test(source);
       if (startsReact || !entryFile) { entryFile = file; entrySource = source; }
@@ -1070,8 +1075,15 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     if (!entryFile) throw new Error("Non trovo il file che avvia React: verifica che il file di ingresso del progetto (per esempio src/main.jsx o src/main.tsx) esista e sia leggibile.");
     const imported = userAccessImport(entrySource, relativeModulePath(entryFile, runtimePath));
     if (imported !== entrySource) {
-      await declared(async () => { if (get().document?.file === entryFile) await applySource(imported); else await applyToFile(entryFile, imported); });
+      await declared(async () => {
+        assertCurrent();
+        if (get().document?.file === entryFile) {
+          if (get().document?.source !== entrySource) throw new Error("Il file di ingresso è cambiato: riprova senza sovrascrivere le modifiche.");
+          await applySource(imported, !reactionEdit, get().document, current);
+        } else await applyToFile(entryFile, imported, current, entrySource, !reactionEdit);
+      });
     }
+    assertCurrent();
     set({ userAccessConfig: normalized });
     return normalized;
   }
@@ -2040,22 +2052,27 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         const { removeStaticAttributes } = await import("../source-parser/transformSource");
         if (!current()) return;
         if (!await applySource(removeStaticAttributes(document.source, node.source.start, node.source.end, [
-          "data-fc-user-access", "data-fc-user-name", "data-fc-user-role", "data-fc-user-pin", "data-fc-user-logged-out",
+          "data-fc-user-access", "data-fc-user-name", "data-fc-user-role", "data-fc-user-pin", "data-fc-user-logged-out", "data-fc-user-event",
         ]), true, document, current)) return;
         reportSuccess("Accesso utente rimosso da questo elemento. Il componente pronto resta disponibile per gli altri pulsanti.");
       } catch (error) { reportError(error); }
     },
     async updateAttribute(name, value) {
-      const { document, selectedId } = get(); if (!document || !selectedId) return;
+      const { document, selectedId, project } = get(); if (!document || !selectedId) return;
       const current = selectionEditCurrent();
       try {
         const node = document.nodes[selectedId];
         const { count, index, isolate } = repetition();
         const { updateStaticAttributes, updateStaticAttributesForInstance } = await import("../source-parser/transformSource");
+        const portableReaction = ["data-fc-reacts", "data-fc-user-requires", "data-fc-user-visible-requires", "data-fc-user-event"].includes(name);
+        const accessConfig = portableReaction ? get().userAccessConfig ?? await readUserAccessConfig() ?? { permissions: [], accounts: [], autoLogoutMinutes: 0 } : undefined;
         if (!current()) return;
-        if (!await applySource(isolate
+        const parsed = await applySource(isolate
           ? updateStaticAttributesForInstance(document.source, node.source.start, node.source.end, { [name]: value }, index!)
-          : updateStaticAttributes(document.source, node.source.start, node.source.end, { [name]: value }), true, document, current)) return;
+          : updateStaticAttributes(document.source, node.source.start, node.source.end, { [name]: value }), true, document, current);
+        if (!parsed || !current(parsed)) return;
+        if (accessConfig && project && get().project === project) await writeUserAccessRuntime(accessConfig, true);
+        if (portableReaction) { reportSuccess(name === "data-fc-reacts" ? (value === "false" ? "Reazioni disattivate. Le azioni configurate sono conservate." : "Reazioni abilitate. Scegli quando e cosa deve fare l’elemento.") : "Regola dell’elemento aggiornata."); return; }
         reportSuccess(`${name} aggiornato su ${scopeNote(node.type, count, index)}.`);
       } catch (error) { reportError(error); }
     },

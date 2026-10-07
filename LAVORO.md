@@ -3443,13 +3443,44 @@ Verifiche del 5 ottobre 2026:
 - L'utente eliminerà i vecchi progetti: migrazione guidata non più richiesta. Nessuna cancellazione
   effettuata, nessuna riscrittura dei loro gusci/CSS. Fixture e screenshot restano locali ignorati.
 
+### 97. Cosa fa: reazioni, azioni guidate e regole utente (2026-10-07)
+
+- Primo comando in Cosa fa: interruttore Abilita reazioni. Spegnerlo conserva gestori/azioni ma
+  blocca eventi e gestori nativi sul nodo e sui suoi figli; gli elementi precedenti con azioni
+  restano attivi finché non disabilitati esplicitamente. Accesso utente ed Evidenzia una parte
+  compaiono soltanto quando le reazioni sono abilitate. Eventi e guida Unified sotto Cosa fa,
+  non più sezione separata sempre visibile. Focus riconoscibile e campi guidati prima del codice.
+- Ogni nuova azione ha Quando e Cosa succede: pagina del progetto, mostra/nascondi o
+  abilita/disabilita un oggetto nominato, messaggio in diagnostica, script personalizzato.
+  Script guidati compilati nella IR sicura esistente: nessun eval o nuova scrittura PLC implicita.
+  DoubleTapped eseguito in anteprima e Runtime generato, con rimozione del listener al dispose;
+  estensione Framecraft, non evento dichiarato come nativo WinCC. I click singoli precedono il
+  doppio click se configurati insieme; doppio tocco subordinato al browser/dispositivo.
+- Accesso ed evidenziazione scelgono click/doppio click/pressione/rilascio/click destro. Cambiare
+  evento dell'evidenziazione ripristina il gestore originale precedente e conserva quello nuovo;
+  non simula click, non sposta un comando PLC al nuovo evento. Rimuovere ripristina il sorgente.
+- Permessi distinti data-fc-user-visible-requires e data-fc-user-requires; visibilità disponibile
+  anche su elementi passivi. Regole sul nodo e antenati, mancanti negate, aggiornate al cambio
+  utente e su elementi montati/navigazione. Modifica resta visibile/selezionabile. Rimozione della
+  regola/dispose/HMR ripuliscono gli stati; interblocchi disabled originali non riabilitati.
+  Sessioni esistenti riallineate ai permessi dell'account nel file, non a permessi vecchi salvati.
+- Il guard portabile viene importato nell'ingresso React anche usando solo lo switch, senza
+  account/PIN predefiniti. Conservati sorgente modificato, import e azioni; messaggi leggibili.
+  Switch e installazione sono una sola modifica annullabile; annulla/ripeti del file di ingresso
+  verificati. Importazioni asincrone rifiutate se ingresso/progetto cambiano durante la lettura.
+  Runtime generato ricontrolla le regole prima delle azioni accodate e dei nuovi comandi asincroni.
+- Verifiche mirate: azioni guidate, accessi/guard/entry, nuovo flusso Inspector, gestori originali
+  evidenziazione, casi pertinenti Inspector/bridge/Runtime ed evidenziazione di zone. TypeScript;
+  Edge isolato scheda reale a 320 e 240 px, switch e assenza di debordi. Dati sintetici soltanto,
+  fixture e screenshot ignorati. Nessun riavvio dell'app dell'utente, nessun test generale.
+- Limiti: account e PIN locali nel browser non sono una barriera di sicurezza industriale.
+  Restano auth/RBAC/audit server-side, OPC UA, commissioning PLC/dispositivi fisici e parità
+  completa Unified/Optix; non dichiarati risolti da questo lavoro.
+
 ## Da fare, dopo
 
-- **Richieste attuali — Cosa fa**: controllo iniziale che abilita le reazioni e scelta click,
-  doppio click e altri eventi; Accesso utente ed Evidenzia una parte sotto Cosa fa solo con reazioni
-  abilitate; altre azioni guidate utili; visibilità e reattività per utente/permesso attivo.
-  Collegare anteprima e Runtime esportato, non soltanto l'interfaccia. Le autorizzazioni PLC
-  industriali devono restare server-side: i soli permessi nel browser non sono un confine sicuro.
+- **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
+  I permessi/PIN nel browser non sostituiscono un confine sicuro né interblocchi PLC.
 - **Mobile**: collaudo su dispositivi touch fisici e sui nuovi progetti reali; nessuna migrazione
   dei vecchi pannelli richiesta dall'utente. Le verifiche browser non sostituiscono il collaudo macchina.
 

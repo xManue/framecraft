@@ -251,7 +251,7 @@ import runtimeCatalogJson from "../framecraft.runtime.json";
 import { createHmiGatewayClient, HmiGatewayCommandError, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";
 import type { ConnectionDiagnostic } from "./framecraftGateway";
 
-type HmiEventType = "Activated" | "ContextTapped" | "Deactivated" | "Down" | "KeyDown" | "KeyUp" | "Loaded" | "Tapped" | "Up" | "Change" | "GestureDetected" | "Unloaded" | "HotKey" | "InterfaceEvent" | "Initialized" | "CommandFired";
+type HmiEventType = "Activated" | "ContextTapped" | "Deactivated" | "Down" | "KeyDown" | "KeyUp" | "Loaded" | "Tapped" | "DoubleTapped" | "Up" | "Change" | "GestureDetected" | "Unloaded" | "HotKey" | "InterfaceEvent" | "Initialized" | "CommandFired";
 type HmiGesture = "Unknown" | "SwipeRight" | "SwipeLeft" | "SwipeUp" | "SwipeDown";
 interface ScriptProgram { version: 1; statements: unknown[] }
 interface EventBinding { event: HmiEventType; script: string; program?: ScriptProgram }
@@ -716,6 +716,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   };
   const executeEvent = async (element: Element | null, eventType: HmiEventType, context: { gesture?: HmiGesture; key?: string; command?: string; interfaceEvent?: string } = {}, scriptContext = scriptContexts.options(scriptCatalog, window.location.pathname, "events"), sourcePage = window.location.pathname) => {
     if (!element || !runtimeActive) return;
+    if (!propertyFlashingSurface.allowsReactions(element)) return;
     if (!["Initialized", "Loaded", "Unloaded"].includes(eventType) && !propertyFlashingSurface.allowsInteraction(element)) return;
     for (const binding of bindings(element).filter((item) => item.event === eventType)) {
       if (!binding.program || binding.program.version !== 1 || !Array.isArray(binding.program.statements)) {
@@ -725,7 +726,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       const locals = { ...(context.gesture ? { gesture: context.gesture } : {}), ...(context.key ? { key: context.key } : {}), ...(context.command ? { command: context.command } : {}), ...(context.interfaceEvent ? { interfaceEvent: context.interfaceEvent } : {}) };
       const owner = element.closest("[data-hmi-faceplate]");
       const local = owner ? faceplateLocalState(owner) : undefined;
-      const isActive = () => runtimeActive && (eventType === "Unloaded" || element.isConnected && sourcePage === window.location.pathname);
+      const isActive = () => runtimeActive && propertyFlashingSurface.allowsReactions(element) && (eventType === "Unloaded" || element.isConnected && sourcePage === window.location.pathname);
       const result = await executeHmiScriptAsync(binding.program as never, { ...values, ...(local?.values ?? {}) }, { locals: Object.keys(locals).length ? locals : undefined, tagStatus, ...scriptOptions(local), ...scriptContext, isActive, timerManager, popupManager, screenItems: propertyFlashing.context(screenItemId(element)) });
       if (!isActive()) return;
       applyEventResult(eventType, result, local);
@@ -741,7 +742,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       return;
     }
     const sourcePage = window.location.pathname;
-    const isActive = () => runtimeActive && element.isConnected && sourcePage === window.location.pathname;
+    const isActive = () => runtimeActive && propertyFlashingSurface.allowsReactions(element) && element.isConnected && sourcePage === window.location.pathname;
     const result = await executeHmiScriptAsync(handler.program as never, values, { locals: { ...parameters, interfaceEvent: name }, tagStatus, ...scriptOptions(), ...(eventContexts.get(element) ?? scriptContexts.options(scriptCatalog, window.location.pathname, "events")), isActive, timerManager, popupManager, screenItems: propertyFlashing.context(screenItemId(element)) });
     if (!isActive()) return;
     applyEventResult("FACEPLATE " + name, result);
@@ -759,6 +760,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   const down = (event: Event) => run(target(event), "Down");
   const up = (event: Event) => run(target(event), "Up");
   const tapped = (event: Event) => run(target(event), "Tapped");
+  const doubleTapped = (event: Event) => run(target(event), "DoubleTapped");
   const changed = (event: Event) => run(target(event), "Change");
   const activated = (event: Event) => run(target(event), "Activated");
   const deactivated = (event: Event) => run(target(event), "Deactivated");
@@ -921,6 +923,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   document.addEventListener("pointerdown", down, true);
   document.addEventListener("pointerup", up, true);
   document.addEventListener("click", tapped, true);
+  document.addEventListener("dblclick", doubleTapped, true);
   document.addEventListener("change", changed, true);
   document.addEventListener("focusin", activated, true);
   document.addEventListener("focusout", deactivated, true);
@@ -957,6 +960,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     document.removeEventListener("pointerdown", down, true);
     document.removeEventListener("pointerup", up, true);
     document.removeEventListener("click", tapped, true);
+    document.removeEventListener("dblclick", doubleTapped, true);
     document.removeEventListener("change", changed, true);
     document.removeEventListener("focusin", activated, true);
     document.removeEventListener("focusout", deactivated, true);

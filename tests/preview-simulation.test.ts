@@ -34,6 +34,18 @@ const touchPointer = (type: string, x: number, y: number) => {
 };
 
 describe("la simulazione degli stati PLC nell'anteprima", () => {
+  it("inoltra il doppio click solo con reazioni e permessi abilitati e lascia selezionabile la modalità modifica", () => {
+    document.body.innerHTML = '<div data-fc-reacts="false"><button data-hmi-events=\'[{"event":"DoubleTapped","script":"HMIRuntime.Trace(1);"}]\'>Prova</button></div>';
+    const messages = bridge(); const button = document.querySelector("button")!; const owner = button.parentElement!;
+    send({ type: "framecraft:set-mode", mode: "navigate" });
+    button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); expect(messages.filter((message) => message.type === "framecraft:hmi-event")).toHaveLength(0);
+    owner.dataset.fcReacts = "true"; button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    expect(messages.find((message) => message.type === "framecraft:hmi-event")).toMatchObject({ eventType: "DoubleTapped" });
+    owner.dataset.fcUserVisibleRequires = "parametri"; button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); expect(messages.filter((message) => message.type === "framecraft:hmi-event")).toHaveLength(1);
+    owner.dataset.fcUserVisibleGranted = "true"; button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); expect(messages.filter((message) => message.type === "framecraft:hmi-event")).toHaveLength(2);
+    send({ type: "framecraft:set-mode", mode: "edit" });
+    button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); expect(messages.filter((message) => message.type === "framecraft:hmi-event")).toHaveLength(2);
+  });
   it("raccoglie gli oggetti dinamizzati, li anima e li rimette com'erano", () => {
     document.body.innerHTML = "";
     const pack = document.createElement("div");

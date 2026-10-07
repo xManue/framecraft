@@ -330,7 +330,16 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     }
     if (entries.length) propertyBefore.set(element, entries);
   };
+  const allowsReactions = (element) => {
+    for (let current = element; current?.nodeType === 1; current = current.parentElement) {
+      if (current.getAttribute("data-fc-reacts") === "false") return false;
+      if (current.getAttribute("data-fc-user-requires") && current.getAttribute("data-fc-user-granted") !== "true") return false;
+      if (current.getAttribute("data-fc-user-visible-requires") && current.getAttribute("data-fc-user-visible-granted") !== "true") return false;
+    }
+    return true;
+  };
   const allowsInteraction = (element) => {
+    if (!allowsReactions(element)) return false;
     for (let current = element; current?.nodeType === 1; current = current.parentElement) {
       const properties = propertyOverrides.get(identifyItem(current));
       if (properties?.get("Enabled") === false || properties?.get("Visible") === false) return false;
@@ -441,6 +450,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       for (const id of changed) { const element = targets.get(id); if (element) render(element); }
     },
     allowsInteraction,
+    allowsReactions,
     setDeclarative(element, visuals) { declarative.set(element, visuals); targets.set(identifyItem(element), element); render(element); },
     suspend() { if (++suspendDepth !== 1) return; for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); },
     resume() { suspendDepth = Math.max(0, suspendDepth - 1); if (suspendDepth) return; for (const element of new Set([...declarative.keys(), ...[...scripted.keys(), ...propertyOverrides.keys()].map((id) => targets.get(id)).filter(Boolean)])) render(element); },

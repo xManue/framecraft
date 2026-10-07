@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { parse } from "@babel/parser";
 import { parseSource } from "../src/source-parser/parseSource";
-import { addHighlightInteraction } from "../src/source-parser/transformSource";
+import { addHighlightInteraction, removeHighlightTrigger, updateHighlightTrigger } from "../src/source-parser/transformSource";
 
 const page = `export default function Page() {
   return (
@@ -15,13 +15,13 @@ const page = `export default function Page() {
 }`;
 
 /** The click the panel will really run, taken out of the source exactly as it was written. */
-function clickHandler(source: string) {
+function clickHandler(source: string, name = "onClick") {
   const ast = parse(source, { sourceType: "module", plugins: ["jsx"] });
   const stack: unknown[] = [ast.program];
   while (stack.length) {
     const node = stack.pop() as { type?: string; name?: { name?: string }; value?: { expression?: { start: number; end: number } } } & Record<string, unknown>;
     if (!node || typeof node !== "object") continue;
-    if (node.type === "JSXAttribute" && node.name?.name === "onClick" && node.value?.expression) {
+    if (node.type === "JSXAttribute" && node.name?.name === name && node.value?.expression) {
       return new Function(`return (${source.slice(node.value.expression.start, node.value.expression.end)});`)() as (event: unknown) => void;
     }
     for (const value of Object.values(node)) {
@@ -41,6 +41,22 @@ function highlighted(targetType: "path" | "div") {
 }
 
 describe("the highlight a panel really paints", () => {
+  it("changes highlight event without moving or losing original click and double-click commands", () => {
+    const original = 'export function Page(){return <main><button onClick={() => window.clickCommand()} onDoubleClick={() => window.doubleCommand()}>Prova</button><div>Parte</div></main>}';
+    const nodes = Object.values(parseSource("Page.jsx", original).nodes); const button = nodes.find((node) => node.type === "button")!; const target = nodes.find((node) => node.type === "div")!;
+    const options = { targetId: "part", color: "#22c55e", width: 3 };
+    const first = addHighlightInteraction(original, button.source.start, button.source.end, target.source.start, target.source.end, options);
+    const selected = Object.values(parseSource("Page.jsx", first).nodes).find((node) => node.type === "button")!;
+    const second = updateHighlightTrigger(first, selected.source.start, selected.source.end, { ...options, event: "DoubleTapped" });
+    document.body.innerHTML = '<div data-fc-highlight-id="part">Parte</div>';
+    let clicks = 0; let doubles = 0;
+    Object.assign(window, { clickCommand: () => clicks++, doubleCommand: () => doubles++ });
+    clickHandler(second)({}); expect(clicks).toBe(1); expect(doubles).toBe(0); expect(document.querySelector<HTMLElement>("div")!.dataset.fcHighlightActive).toBeUndefined();
+    clickHandler(second, "onDoubleClick")({}); expect(clicks).toBe(1); expect(doubles).toBe(1); expect(document.querySelector<HTMLElement>("div")!.dataset.fcHighlightActive).toBe("true");
+    const current = Object.values(parseSource("Page.jsx", second).nodes).find((node) => node.type === "button")!;
+    const restored = removeHighlightTrigger(second, current.source.start, current.source.end);
+    expect(restored).toContain('onClick={() => window.clickCommand()}'); expect(restored).toContain('onDoubleClick={() => window.doubleCommand()}'); expect(restored).not.toContain("data-fc-highlight-target");
+  });
   beforeEach(() => {
     // jsdom does no layout, and the handler scrolls the part it lights up into view.
     Element.prototype.scrollIntoView = () => {};

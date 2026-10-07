@@ -76,7 +76,7 @@ describe("ready-made user access", () => {
     install(panelConfig);
 
     expect(command.dataset.fcUserGranted).toBe("false");
-    expect(command.disabled).toBe(true);
+    expect(command.getAttribute("aria-disabled")).toBe("true");
     expect(command.getAttribute("title")).toContain("Cambiare i parametri");
 
     trigger.click();
@@ -102,8 +102,45 @@ describe("ready-made user access", () => {
     expect(document.querySelector(".fcua-permissions")?.textContent).toContain("Cambiare i parametri");
     document.querySelector<HTMLButtonElement>(".fcua-danger")!.click();
     expect(trigger.querySelector("strong")?.textContent).toBe("Nessun utente");
-    expect(command.disabled).toBe(true);
+    expect(command.getAttribute("aria-disabled")).toBe("true");
     expect(document.querySelectorAll(".fcua-account").length).toBe(2);
+  });
+
+  it("keeps base disabled state, updates permissions on new pages and lets editing see hidden elements", async () => {
+    const command = document.createElement("button"); command.disabled = true; command.title = "Interblocco macchina"; command.dataset.fcUserRequires = "comandi";
+    const passive = document.createElement("span"); passive.dataset.fcUserVisibleRequires = "parametri";
+    document.body.append(command, passive); install(panelConfig);
+    expect(command.disabled).toBe(true); expect(passive.dataset.fcUserVisibleGranted).toBe("false");
+    localStorage.setItem("framecraft.operator-session", JSON.stringify({ id: "linea", name: "Linea", permissions: ["parametri"] }));
+    window.dispatchEvent(new Event("framecraft:user-changed"));
+    expect(command.disabled).toBe(true); expect(command.title).toBe("Interblocco macchina");
+    expect(passive.dataset.fcUserVisibleGranted).toBe("false");
+    const nested = document.createElement("div"); nested.dataset.fcUserRequires = "parametri"; nested.innerHTML = "<button>Comando</button>";
+    document.body.append(nested); await Promise.resolve();
+    expect(nested.dataset.fcUserGranted).toBe("false");
+    const click = vi.fn(); nested.addEventListener("dblclick", click); nested.firstElementChild!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    expect(click).not.toHaveBeenCalled();
+    document.documentElement.dataset.framecraftMode = "edit"; await Promise.resolve();
+    expect(nested.getAttribute("aria-disabled")).toBeNull();
+    nested.firstElementChild!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); expect(click).toHaveBeenCalledTimes(1);
+    document.documentElement.removeAttribute("data-framecraft-mode");
+    localStorage.setItem("framecraft.operator-session", JSON.stringify({ id: "mario", name: "Mario" })); window.dispatchEvent(new Event("framecraft:user-changed"));
+    expect(passive.dataset.fcUserVisibleGranted).toBe("true"); expect(nested.dataset.fcUserGranted).toBe("true");
+    localStorage.removeItem("framecraft.operator-session"); window.dispatchEvent(new Event("framecraft:user-changed"));
+    expect(passive.dataset.fcUserVisibleGranted).toBe("false");
+    nested.removeAttribute("data-fc-user-requires"); await Promise.resolve(); expect(nested.getAttribute("aria-disabled")).toBeNull();
+    passive.removeAttribute("data-fc-user-visible-requires"); await Promise.resolve(); expect(passive.hasAttribute("data-fc-user-visible-granted")).toBe(false);
+  });
+
+  it("opens user access only on the chosen event and blocks switched-off native handlers", () => {
+    const trigger = document.createElement("button"); trigger.dataset.fcUserAccess = "true"; trigger.dataset.fcUserEvent = "DoubleTapped";
+    document.body.append(trigger); install(panelConfig);
+    trigger.click(); expect(document.querySelector(".fcua-page")).toBeNull();
+    trigger.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true })); expect(document.querySelector(".fcua-page")).not.toBeNull();
+    document.querySelector<HTMLButtonElement>(".fcua-close")!.click();
+    trigger.dataset.fcReacts = "false";
+    const native = vi.fn(); trigger.addEventListener("dblclick", native);
+    trigger.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); expect(native).not.toHaveBeenCalled(); expect(document.querySelector(".fcua-page")).toBeNull();
   });
 
   it("lets an account with no PIN in, and still opens a panel configured before the accounts existed", () => {
@@ -165,6 +202,29 @@ describe("ready-made user access", () => {
     expect(state.lastError).toContain("file di ingresso");
     expect(state.lastError).not.toMatch(/modalit[aà]/i);
     expect(state.userAccessBusy).toBe(false);
+  });
+
+  it("installs the reaction guard without default accounts and preserves the edited React entry", async () => {
+    const mainFile = "C:/panel/src/main.jsx";
+    const main = 'import { createRoot } from "react-dom/client"; createRoot(document.getElementById("root")).render(<button onClick={() => console.log("originale")}>Prova</button>);';
+    const parsed = parseSource(mainFile, main); const button = Object.values(parsed.nodes).find((node) => node.type === "button")!;
+    bridge.readFile.mockImplementation(async (file: string) => { if (file.endsWith("user-access.js")) throw Error("ENOENT"); return main; });
+    useEditorStore.setState({
+      project: { root: "C:/panel", name: "panel", framework: "vite", language: "javascript", packageManager: "npm", entryFiles: [mainFile], files: [], scripts: {}, dependencies: ["react"], hasNodeModules: true, missingDependencies: [] },
+      document: parsed, selectedId: button.id, selectionInfo: undefined, selectionStyles: {}, interactionMode: "edit", editScope: "instance", dirty: false, history: [], future: [], consoleEntries: [], lastError: undefined, userAccessConfig: undefined, panelManifest: undefined,
+    });
+    await useEditorStore.getState().updateAttribute("data-fc-reacts", "false");
+    expect(useEditorStore.getState().lastError).toBeUndefined();
+    const source = useEditorStore.getState().document!.source;
+    expect(source).toContain('data-fc-reacts="false"'); expect(source).toContain('onClick={() => console.log("originale")}'); expect(source).toContain('import "./framecraft/user-access.js"');
+    const runtime = bridge.createFile.mock.calls[0][1] as string;
+    expect(parseUserAccessRuntime(runtime)).toEqual({ accounts: [], permissions: [], autoLogoutMinutes: 0 });
+    expect(runtime).toContain('getAttribute("data-fc-reacts")');
+    expect(useEditorStore.getState().history).toHaveLength(1);
+    await useEditorStore.getState().undo();
+    expect(useEditorStore.getState().document!.source).toBe(main);
+    await useEditorStore.getState().redo();
+    expect(useEditorStore.getState().document!.source).toBe(source);
   });
 
   it("installs the ready action from the selected element", async () => {

@@ -538,7 +538,8 @@ export function describeInteractions(source: string, start: number, end: number,
     const actions: InteractionAction[] = [];
     const userAccess = staticValue(source, element, "data-fc-user-access");
     if (userAccess) {
-      actions.push({ trigger: "Al click", summary: "apre la pagina di accesso del pannello", details: ["Scelta dell’account, PIN, utente attivo con i suoi permessi e uscita dal pannello."], values: [], dataProperties: [], handlers: [] });
+      const event = staticValue(source, element, "data-fc-user-event");
+      actions.push({ trigger: event === "DoubleTapped" ? "Al doppio click" : event === "Down" ? "Alla pressione" : event === "Up" ? "Al rilascio" : event === "ContextTapped" ? "Al click destro" : "Al click", summary: "apre la pagina di accesso del pannello", details: ["Scelta dell’account, PIN, utente attivo con i suoi permessi e uscita dal pannello."], values: [], dataProperties: [], handlers: [] });
     }
     const requires = staticValue(source, element, "data-fc-user-requires");
     if (requires) {
@@ -547,7 +548,8 @@ export function describeInteractions(source: string, start: number, end: number,
     const highlight = staticValue(source, element, "data-fc-highlight-target");
     if (highlight) {
       const color = staticValue(source, element, "data-fc-highlight-color");
-      actions.push({ trigger: "Al click", summary: `evidenzia la parte collegata${color ? ` con il colore ${color}` : ""}`, details: [], values: [], dataProperties: [], handlers: [] });
+      const event = staticValue(source, element, "data-fc-highlight-event");
+      actions.push({ trigger: event === "DoubleTapped" ? "Al doppio click" : event === "Down" ? "Alla pressione" : event === "Up" ? "Al rilascio" : event === "ContextTapped" ? "Al click destro" : "Al click", summary: `evidenzia la parte collegata${color ? ` con il colore ${color}` : ""}`, details: [], values: [], dataProperties: [], handlers: [] });
     }
 
     for (const name of ["href", "to"]) {
@@ -570,7 +572,8 @@ export function describeInteractions(source: string, start: number, end: number,
       if (!name.startsWith("on") || !attribute.value || attribute.value.type !== "JSXExpressionContainer") continue;
       const expression = attribute.value.expression;
       if (expression.type === "JSXEmptyExpression" || expression.start == null || expression.end == null) continue;
-      if (highlight && name === "onClick") continue;
+      const highlightHandler = ({ Tapped: "onClick", DoubleTapped: "onDoubleClick", Down: "onPointerDown", Up: "onPointerUp", ContextTapped: "onContextMenu" } as Record<string, string>)[String(staticValue(source, element, "data-fc-highlight-event") ?? "Tapped")];
+      if (highlight && name === highlightHandler) continue;
 
       // A component prop keeps its own name: "Su onPartToggle" says more than a guessed sentence.
       const trigger = triggers[name] ?? `Su ${name}`;

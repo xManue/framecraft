@@ -101,7 +101,7 @@ function installUserAccess(config: UserAccessConfig) {
   if (typeof document === "undefined") return;
   const storageKey = "framecraft.operator-session";
   const selector = "[data-fc-user-access]";
-  const gateSelector = "[data-fc-user-requires]";
+  const gateSelector = "[data-fc-user-requires], [data-fc-user-visible-requires]";
   const permissions = Array.isArray(config?.permissions) ? config.permissions : [];
   const accounts = Array.isArray(config?.accounts) ? config.accounts : [];
   const idleLimit = Number(config?.autoLogoutMinutes) > 0 ? Number(config.autoLogoutMinutes) * 60000 : 0;
@@ -109,29 +109,54 @@ function installUserAccess(config: UserAccessConfig) {
   const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => replacements[character]);
   type Session = { id?: string; name: string; role?: string; permissions?: string[]; loginAt?: string };
   const session = (): Session | null => {
-    try { return JSON.parse(localStorage.getItem(storageKey) || "null") as Session | null; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || "null") as Session | null;
+      if (!saved || typeof saved.name !== "string") return null;
+      const account = accounts.find((item) => item.id === saved.id);
+      if (accounts.length && !account) return null;
+      return { ...saved, ...(account ? { name: account.name, role: account.role } : {}), permissions: (account?.permissions ?? saved.permissions ?? []).filter((id) => permissions.some((permission) => permission.id === id)) };
+    }
     catch { return null; }
   };
   const labelOf = (trigger: HTMLElement) => trigger.querySelector<HTMLElement>("[data-fc-user-name], strong") || trigger;
   const permissionLabel = (id: string) => permissions.find((permission) => permission.id === id)?.label || id;
 
-  /** An element asks for a permission by name; without it the panel leaves it visible but inert, so
-   * the operator sees the machine has the command and understands it is not theirs to press. */
+  const gateBefore = new Map<HTMLElement, { aria: string | null; title: string | null; notice: string }>();
+  const gatedElements = new Set<HTMLElement>();
+  const editMode = () => document.documentElement.dataset.framecraftMode === "edit";
   const applyGates = () => {
     const active = session();
     const granted = new Set(active?.permissions || []);
-    document.querySelectorAll<HTMLElement>(gateSelector).forEach((element) => {
+    const elements = new Set([...document.querySelectorAll<HTMLElement>(gateSelector), ...gatedElements]);
+    elements.forEach((element) => {
+      gatedElements.add(element);
       const required = (element.dataset.fcUserRequires || "").split(",").map((value) => value.trim()).filter(Boolean);
       const missing = required.filter((permission) => !granted.has(permission));
-      element.dataset.fcUserGranted = missing.length ? "false" : "true";
-      element.classList.toggle("fcua-locked", missing.length > 0);
-      if ("disabled" in element) (element as HTMLButtonElement).disabled = missing.length > 0;
-      if (missing.length) {
-        element.setAttribute("aria-disabled", "true");
-        element.setAttribute("title", `Serve il permesso: ${missing.map(permissionLabel).join(", ")}`);
+      const visibleRequired = (element.dataset.fcUserVisibleRequires || "").split(",").map((value) => value.trim()).filter(Boolean);
+      const visible = visibleRequired.every((permission) => granted.has(permission));
+      const usable = missing.length ? "false" : "true";
+      if (element.dataset.fcUserGranted !== usable) element.dataset.fcUserGranted = usable;
+      if (element.dataset.fcUserVisibleGranted !== String(visible)) element.dataset.fcUserVisibleGranted = String(visible);
+      const locked = missing.length > 0 && !editMode() && element.isConnected;
+      element.classList.toggle("fcua-locked", locked);
+      if (locked) {
+        if (!gateBefore.has(element)) gateBefore.set(element, { aria: element.getAttribute("aria-disabled"), title: element.getAttribute("title"), notice: "" });
+        const before = gateBefore.get(element)!;
+        before.notice = `Serve il permesso: ${missing.map(permissionLabel).join(", ")}`;
+        if (element.getAttribute("aria-disabled") !== "true") element.setAttribute("aria-disabled", "true");
+        if (element.getAttribute("title") !== before.notice) element.setAttribute("title", before.notice);
       } else {
-        element.removeAttribute("aria-disabled");
-        if (element.getAttribute("title")?.startsWith("Serve il permesso")) element.removeAttribute("title");
+        const before = gateBefore.get(element);
+        if (before) {
+          if (element.getAttribute("aria-disabled") === "true") before.aria === null ? element.removeAttribute("aria-disabled") : element.setAttribute("aria-disabled", before.aria);
+          if (element.getAttribute("title") === before.notice) before.title === null ? element.removeAttribute("title") : element.setAttribute("title", before.title);
+          gateBefore.delete(element);
+        }
+      }
+      if (!element.isConnected || !element.hasAttribute("data-fc-user-requires") && !element.hasAttribute("data-fc-user-visible-requires")) {
+        gatedElements.delete(element);
+        element.removeAttribute("data-fc-user-granted");
+        element.removeAttribute("data-fc-user-visible-granted");
       }
     });
   };
@@ -139,11 +164,12 @@ function installUserAccess(config: UserAccessConfig) {
   const updateLabels = () => {
     const active = session();
     document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
-      element.dataset.fcAuthenticated = active ? "true" : "false";
+      if (element.dataset.fcAuthenticated !== String(Boolean(active))) element.dataset.fcAuthenticated = String(Boolean(active));
       const label = labelOf(element);
       const text = active?.name || element.dataset.fcUserLoggedOut || "Nessun utente";
-      if (!label.childElementCount) label.textContent = text;
-      element.setAttribute("aria-label", active ? `Utente ${active.name}. Apri gestione accesso` : "Accedi al pannello");
+      if (!label.childElementCount && label.textContent !== text) label.textContent = text;
+      const description = active ? `Utente ${active.name}. Apri gestione accesso` : "Accedi al pannello";
+      if (element.getAttribute("aria-label") !== description) element.setAttribute("aria-label", description);
     });
     applyGates();
   };
@@ -159,8 +185,6 @@ function installUserAccess(config: UserAccessConfig) {
     if (next) localStorage.setItem(storageKey, JSON.stringify(next));
     else localStorage.removeItem(storageKey);
     window.dispatchEvent(new CustomEvent("framecraft:user-changed", { detail: next }));
-    updateLabels();
-    startIdleTimer();
   };
 
   function logout(reason?: string) {
@@ -296,16 +320,23 @@ function installUserAccess(config: UserAccessConfig) {
   const style = document.createElement("style");
   style.textContent = `.fcua-page{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;background:#0d141c;font:16px Inter,Arial,sans-serif;color:#edf2f7;overflow:auto}.fcua-bar{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 24px;border-bottom:1px solid #33414f;background:#131c26}.fcua-bar small{display:block;color:#9cc9e8;font-size:11px;font-weight:700;letter-spacing:.11em}.fcua-bar h1{margin:4px 0 0;font-size:24px}.fcua-close{width:52px;height:52px;border:1px solid #3c4a58;border-radius:8px;background:transparent;color:#c3ced8;font-size:30px;line-height:1;cursor:pointer}.fcua-close:hover{background:#22303c;color:white}.fcua-body{flex:1 1 auto;width:min(760px,100%);margin:0 auto;padding:26px 24px 34px;display:flex;flex-direction:column;gap:18px;align-items:stretch}.fcua-body h2{margin:0;font-size:21px}.fcua-hint{margin:0;color:#a8b6c4;font-size:14px;line-height:1.5}.fcua-notice{margin:0;padding:11px 14px;border-left:3px solid #63b3ed;border-radius:5px;background:#16232f;color:#cfe3f3;font-size:14px}.fcua-accounts{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}.fcua-account{display:flex;align-items:center;gap:14px;padding:16px;border:1px solid #3a4757;border-radius:10px;background:#18212b;color:inherit;font:inherit;text-align:left;cursor:pointer}.fcua-account:hover{border-color:#63b3ed;background:#1e2a36}.fcua-account-text{flex:1 1 auto}.fcua-account-text strong{display:block;font-size:17px}.fcua-account-text small{display:block;margin-top:3px;color:#a8b6c4;font-size:13px}.fcua-account-badge{padding:4px 9px;border-radius:99px;background:#25313d;color:#cfe3f3;font-size:11px;font-weight:700;letter-spacing:.06em}.fcua-avatar{width:48px;height:48px;flex:0 0 auto;display:grid;place-items:center;border-radius:50%;background:#2b6cb0;color:white;font-size:18px;font-weight:700}.fcua-avatar.large{width:62px;height:62px;font-size:23px}.fcua-identity{display:flex;align-items:center;gap:15px}.fcua-identity strong{display:block;font-size:20px}.fcua-identity small{display:block;margin-top:4px;color:#a8b6c4;font-size:14px}.fcua-back{align-self:flex-start;padding:9px 13px;border:1px solid #3c4a58;border-radius:7px;background:transparent;color:#cfe3f3;font:inherit;cursor:pointer}.fcua-back:hover{background:#1e2a36}.fcua-pin-form{display:grid;gap:15px;max-width:340px}.fcua-pin-form label{display:grid;gap:7px}.fcua-pin-form span{font-size:13px;color:#c5d0da}.fcua-pin-form input{height:52px;padding:0 14px;border:1px solid #536272;border-radius:7px;background:#0a1017;color:white;font-size:22px;letter-spacing:.3em}.fcua-pin-form input:disabled{opacity:.5}.fcua-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.fcua-keypad button{height:58px;border:1px solid #3c4a58;border-radius:8px;background:#18212b;color:#edf2f7;font-size:20px;font-weight:600;cursor:pointer}.fcua-keypad button:hover{background:#24313e}.fcua-primary,.fcua-danger,.fcua-secondary{min-height:52px;padding:0 20px;border:0;border-radius:7px;font-size:16px;font-weight:700;cursor:pointer}.fcua-primary{background:#3182ce;color:white}.fcua-primary:hover{background:#4299e1}.fcua-secondary{border:1px solid #536272;background:transparent;color:#e2e8f0}.fcua-secondary:hover{background:#1e2a36}.fcua-danger{background:#c53030;color:white}.fcua-danger:hover{background:#e53e3e}.fcua-session-actions{display:flex;flex-wrap:wrap;gap:11px}.fcua-error{min-height:20px;margin:0;color:#feb2b2;font-size:14px}.fcua-permissions{padding:15px 17px;border:1px solid #33414f;border-radius:9px;background:#141d26}.fcua-permissions small{color:#9cc9e8;font-size:11px;font-weight:700;letter-spacing:.1em}.fcua-permissions ul{margin:9px 0 0;padding-left:19px;display:grid;gap:6px;color:#d4dee7;font-size:14px}.fcua-permissions p{margin:8px 0 0}.fcua-locked{opacity:.42;cursor:not-allowed;filter:grayscale(.6)}.fcua-page input:focus,.fcua-page button:focus-visible{outline:3px solid #63b3ed;outline-offset:2px}`;
   style.textContent += `.fcua-page,.fcua-page *{box-sizing:border-box}.fcua-close{flex-shrink:0}.fcua-account-text{min-width:0;overflow-wrap:anywhere}
+    html:not([data-framecraft-mode="edit"]) [data-fc-user-visible-granted="false"]{display:none!important}
     @media(max-width:600px){.fcua-bar{padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;gap:12px}.fcua-bar h1{font-size:20px}.fcua-body{min-width:0;padding:18px 16px calc(24px + env(safe-area-inset-bottom,0px))}.fcua-accounts{grid-template-columns:minmax(0,1fr)}.fcua-pin-form{width:100%;min-width:0}.fcua-pin-form input{width:100%;min-width:0}.fcua-permissions{overflow-wrap:anywhere}.fcua-session-actions>*{flex:1 1 auto}}`;
   document.head.append(style);
 
-  const onClick = (event: MouseEvent) => {
+  const eventTypes: Record<string, string> = { click: "Tapped", dblclick: "DoubleTapped", pointerdown: "Down", pointerup: "Up", contextmenu: "ContextTapped", keydown: "KeyDown", keyup: "KeyUp", change: "Change", focusin: "Activated", focusout: "Deactivated" };
+  const onReaction = (event: Event) => {
+    if (editMode()) return;
     const element = event.target instanceof Element ? event.target : null;
-    const locked = element?.closest<HTMLElement>(gateSelector);
-    // A command the account is not allowed to use must not fire, whatever the panel wired to it.
-    if (locked && locked.dataset.fcUserGranted === "false") { event.preventDefault(); event.stopImmediatePropagation(); return; }
+    const granted = new Set(session()?.permissions || []);
+    for (let current = element; current; current = current.parentElement) {
+      const required = [current.getAttribute("data-fc-user-requires"), current.getAttribute("data-fc-user-visible-requires")].filter(Boolean).join(",").split(",").map((value) => value.trim()).filter(Boolean);
+      if (current.getAttribute("data-fc-reacts") === "false" || required.some((id) => !granted.has(id))) { event.preventDefault(); event.stopImmediatePropagation(); return; }
+    }
     const found = element?.closest<HTMLElement>(selector);
     if (!found) return;
+    if (eventTypes[event.type] !== (found.dataset.fcUserEvent || "Tapped")) return;
+    if (found.closest('[disabled], [hidden], [inert], [aria-disabled="true"]')) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     openPage(found);
@@ -313,7 +344,8 @@ function installUserAccess(config: UserAccessConfig) {
   const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && page) closePage(); };
   // Only a session that is running is worth watching: without one there is nothing to close.
   const onActivity = () => { if (idleTimer) startIdleTimer(); };
-  document.addEventListener("click", onClick, true);
+  const guardedEvents = [...Object.keys(eventTypes), "mousedown", "mouseup", "touchstart", "touchend", "input", "submit", "framecraft:interface-event", "framecraft:faceplate-event", "framecraft:command-fired"];
+  guardedEvents.forEach((type) => document.addEventListener(type, onReaction, true));
   document.addEventListener("keydown", onEscape);
   document.addEventListener("pointerdown", onActivity, true);
   document.addEventListener("keydown", onActivity, true);
@@ -322,19 +354,35 @@ function installUserAccess(config: UserAccessConfig) {
    * down first: otherwise each reload would add another listener and another login page. */
   const scope = globalThis as { __framecraftUserAccess?: { dispose: () => void } };
   scope.__framecraftUserAccess?.dispose();
+  const onChanged = () => { updateLabels(); startIdleTimer(); };
+  const observer = new MutationObserver(() => updateLabels());
+  observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-framecraft-mode", "data-fc-user-requires", "data-fc-user-visible-requires", "data-fc-user-access", "data-fc-user-logged-out"] });
+  window.addEventListener("framecraft:user-changed", onChanged);
+  window.addEventListener("storage", onChanged);
+  const onReady = () => { updateLabels(); startIdleTimer(); };
   scope.__framecraftUserAccess = {
     dispose() {
       if (idleTimer) clearTimeout(idleTimer);
       closePage();
       style.remove();
-      document.removeEventListener("click", onClick, true);
+      guardedEvents.forEach((type) => document.removeEventListener(type, onReaction, true));
+      observer.disconnect();
+      window.removeEventListener("framecraft:user-changed", onChanged);
+      window.removeEventListener("storage", onChanged);
+      document.removeEventListener("DOMContentLoaded", onReady);
+      for (const [element, before] of gateBefore) {
+        if (element.getAttribute("aria-disabled") === "true") before.aria === null ? element.removeAttribute("aria-disabled") : element.setAttribute("aria-disabled", before.aria);
+        if (element.getAttribute("title") === before.notice) before.title === null ? element.removeAttribute("title") : element.setAttribute("title", before.title);
+        element.classList.remove("fcua-locked");
+      }
+      for (const element of gatedElements) { element.removeAttribute("data-fc-user-granted"); element.removeAttribute("data-fc-user-visible-granted"); }
       document.removeEventListener("keydown", onEscape);
       document.removeEventListener("pointerdown", onActivity, true);
       document.removeEventListener("keydown", onActivity, true);
     },
   };
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { updateLabels(); startIdleTimer(); }, { once: true });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", onReady, { once: true });
   else { updateLabels(); startIdleTimer(); }
 }
 

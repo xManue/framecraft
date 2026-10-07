@@ -30,6 +30,22 @@ images, size, colors, layers and rotation; **Azioni** for clicks, highlighted re
 and events; **PLC e dati** for bindings, dynamics, list imports, faceplates and trends;
 **Altro** for CSS, attributes and code. These are task groups, not simple/advanced modes.
 
+In **Azioni → Cosa fa**, start with **Abilita reazioni**. Switching reactions off keeps the
+configured actions but blocks their execution. Each action has **Quando** (click, double click,
+press/release and the events supported by the object) and **Cosa succede**. Guided actions open
+a project page, show/hide or enable/disable a named screen item, or write a diagnostic message;
+custom scripts remain available. **Accesso utente** and **Evidenzia una parte** appear only with
+reactions enabled, and their event can also be chosen. Double-click is a Framecraft extension;
+when both single and double click are configured, the browser runs the single clicks first.
+Double touch depends on browser/device support for `dblclick`.
+
+**Chi vede e usa l’elemento** provides separate permissions for visibility and use. Assign
+permissions to accounts in the account window, then choose them on the element. Visibility
+also applies to passive elements. Editing keeps protected elements visible/selectable; runtime
+updates rules on login, logout and navigation without re-enabling a disabled machine control.
+These browser/local-PIN rules are UI restrictions, not server-side authentication or PLC RBAC.
+Do not use them as the security boundary for real machine commands.
+
 Text labels from lists edit the selected data row through a single **Testo** field, preserving
 the JSX/data link. The label comes first; other row properties are under **Altri dati dell’elemento**.
 Use **Applica testo** to apply the draft or **Annulla** to restore the current text. A visible

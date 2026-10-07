@@ -89,7 +89,7 @@ describe("scheda unica dell'elemento", () => {
   });
 
   it.each(["disegno", "plc", "sviluppo"] as const)("mostra le proprietà comuni e i dettagli espandibili nella disposizione %s", async (workLayout) => {
-    const source = `export function Page(){return <button style={{ width: "120px", height: "40px" }} data-hmi-dynamizations='[{"property":"Visible","kind":"Tag","tag":"Machine.Ready"}]'>Avvia</button>}`;
+    const source = `export function Page(){return <button data-fc-reacts="true" style={{ width: "120px", height: "40px" }} data-hmi-dynamizations='[{"property":"Visible","kind":"Tag","tag":"Machine.Ready"}]'>Avvia</button>}`;
     const document = parseSource("C:/panel/Page.tsx", source);
     const node = Object.values(document.nodes).find((item) => item.type === "button")!;
     const initialState = useEditorStore.getState();
@@ -115,7 +115,7 @@ describe("scheda unica dell'elemento", () => {
       }
       expect(container.querySelector('[aria-label="Apri il codice dell\'elemento"]')).not.toBeNull();
       await activatePropertyTab(container, "Azioni");
-      await act(async () => section("Eventi WinCC").dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(container.querySelector('[role="switch"]')?.getAttribute("aria-checked")).toBe("true");
       const objectHelp = [...container.querySelectorAll("details")].find((details) => details.querySelector("summary")?.textContent === "Leggere e modificare un oggetto · Unified");
       expect(objectHelp).toBeDefined();
       expect(objectHelp!.open).toBe(false);
@@ -201,7 +201,7 @@ describe("script ed eventi WinCC", () => {
     expect(data.innerHTML).toContain("Tag trigger");
     expect(data.innerHTML).toContain("Ciclo ms");
     const actions = await activatePropertyTab(container, "Azioni");
-    expect(actions.innerHTML).toContain("Eventi WinCC · 1");
+    expect(actions.innerHTML).toContain("Azione personalizzata");
     expect(actions.innerHTML).toContain("Script locale");
     expect(actions.innerHTML).toContain("Click destro / tocco lungo");
     expect(actions.innerHTML).toContain("Pressione");

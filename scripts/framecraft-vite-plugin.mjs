@@ -549,6 +549,7 @@ const bridgeScript = sharedHelpers + String.raw`
   };
   const emitHmiEvent = (element, eventType, context = {}) => {
     if (mode !== "navigate" || !element) return;
+    if (!propertyFlashingSurface.allowsReactions(element)) return;
     if (!["Initialized", "Loaded", "Unloaded"].includes(eventType) && !propertyFlashingSurface.allowsInteraction(element)) return;
     const configured = hmiEventsOf(element);
     if (!configured.raw || !configured.items.some((item) => item?.event === eventType)) return;
@@ -1439,6 +1440,7 @@ const bridgeScript = sharedHelpers + String.raw`
   document.addEventListener("pointerdown", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Down"), true);
   document.addEventListener("pointerup", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Up"), true);
   document.addEventListener("click", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Tapped"), true);
+  document.addEventListener("dblclick", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "DoubleTapped"), true);
   document.addEventListener("change", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Change"), true);
   document.addEventListener("focusin", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Activated"), true);
   document.addEventListener("focusout", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Deactivated"), true);

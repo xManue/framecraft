@@ -711,6 +711,18 @@ code, kbd { font-family: "JetBrains Mono", Consolas, monospace; }
 .property-source { min-height: 28px; margin-top: 4px; padding: 0 7px; display: flex; align-items: center; gap: 6px; color: var(--subtle); border-radius: 4px; background: var(--surface-2); font: 9px Consolas, monospace; }
 .interaction-editor { padding: 0 10px 11px; }
 .interaction-card { display: grid; gap: 8px; padding: 9px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-2); }
+.element-reactions-switch { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 52px; padding: 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface-2); color: var(--text); text-align: left; cursor: pointer; }
+.element-reactions-switch > span:first-of-type { flex: 1; min-width: 0; }
+.element-reactions-switch strong,.element-reactions-switch small { display: block; }
+.element-reactions-switch small { margin-top: 4px; color: var(--muted); font-size: 10px; }
+.element-reactions-switch.enabled { border-color: var(--accent); }
+.element-reactions-indicator { width: 28px; height: 16px; padding: 3px; border-radius: 10px; background: var(--border-strong); }
+.element-reactions-indicator::after { content: ""; display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--text); }
+.enabled .element-reactions-indicator { background: var(--accent); }
+.enabled .element-reactions-indicator::after { transform: translateX(12px); }
+.element-reactions-switch:focus-visible,.element-reaction-actions select:focus-visible,.permission-gate-card select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.element-reactions-switch:disabled { cursor: wait; opacity: .65; }
+.element-reaction-actions { display: grid; gap: 10px; min-width: 0; }
 .user-access-card { margin-top: 8px; padding: 11px; border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 20%, var(--surface-2)); }
 .user-access-card > p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .user-access-card .interaction-card-title > span { color: #79c69b; background: rgba(83,193,125,.11); }

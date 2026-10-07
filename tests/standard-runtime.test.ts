@@ -567,6 +567,31 @@ describe("Runtime del pannello standard generato", () => {
     dispose();
   });
 
+  it("esegue il doppio click e ferma reazioni native, lifecycle e azioni già accodate quando disabilitate", async () => {
+    const owner = document.createElement("div");
+    const button = document.createElement("button");
+    button.setAttribute("data-hmi-events", serializeHmiEvents([
+      { event: "DoubleTapped", script: 'HMIRuntime.Trace("doppio");' },
+      { event: "Tapped", script: 'HMIRuntime.Trace("singolo");' },
+      { event: "Loaded", script: 'HMIRuntime.Trace("caricato");' },
+    ]));
+    owner.dataset.fcReacts = "false"; owner.append(button); document.body.append(owner);
+    const traces: string[] = []; const native = vi.fn();
+    const runtime = loadGeneratedRuntime(); const dispose = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), error: vi.fn(), trace: (value) => { traces.push(value); } });
+    button.addEventListener("click", native);
+    button.click(); button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); await settleEvents();
+    expect(traces).toEqual([]); expect(native).not.toHaveBeenCalled();
+    owner.dataset.fcReacts = "true";
+    button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); await settleEvents();
+    expect(traces).toEqual(["[HMI DoubleTapped] doppio"]);
+    button.click(); owner.dataset.fcReacts = "false"; await settleEvents();
+    expect(traces).toEqual(["[HMI DoubleTapped] doppio"]);
+    owner.dataset.fcReacts = "true"; owner.dataset.fcUserRequires = "parametri";
+    button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); await settleEvents(); expect(traces).toHaveLength(1);
+    owner.dataset.fcUserGranted = "true"; button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); await settleEvents(); expect(traces).toHaveLength(2);
+    dispose(); button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); await settleEvents(); expect(traces).toHaveLength(2);
+  });
+
   it("esegue PropertyFlashing da eventi e dinamiche del Runtime senza modificare i colori base", async () => {
     const lamp = document.createElement("span"); lamp.dataset.hmiName = "M2400";
     lamp.style.backgroundColor = "rgb(12, 34, 56)"; lamp.style.animation = "pulse 3s infinite";

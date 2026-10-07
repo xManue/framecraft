@@ -5,7 +5,7 @@ export const hmiEventsAttribute = "data-hmi-events";
 export const hmiEventTypes = [
   "Activated", "ContextTapped", "Deactivated", "Down", "KeyDown", "KeyUp", "Loaded",
   "Tapped", "Up", "Change", "GestureDetected", "Unloaded", "HotKey", "InterfaceEvent",
-  "Initialized", "CommandFired",
+  "Initialized", "CommandFired", "DoubleTapped",
 ] as const;
 export type HmiEventType = typeof hmiEventTypes[number];
 export const hmiGestures = ["Unknown", "SwipeRight", "SwipeLeft", "SwipeUp", "SwipeDown"] as const;
@@ -54,6 +54,7 @@ export const hmiEventLabels: Record<HmiEventType, string> = {
   KeyUp: "Tasto rilasciato",
   Loaded: "Caricamento",
   Tapped: "Click / tocco",
+  DoubleTapped: "Doppio click / doppio tocco",
   Up: "Rilascio",
   Change: "Valore cambiato",
   GestureDetected: "Gesture",
@@ -70,12 +71,12 @@ export function hmiEventTypesFor(target: { type: string; props: Readonly<Record<
   const element = target.type.toLowerCase();
   const hmiType = String(target.props["data-hmi-type"] ?? "");
   if (hmiType === "HmiScreen" || target.props["data-hmi-screen"] !== undefined) {
-    return ["ContextTapped", "HotKey", "Loaded", "Tapped", "Unloaded", "GestureDetected"];
+    return ["ContextTapped", "HotKey", "Loaded", "Tapped", "DoubleTapped", "Unloaded", "GestureDetected"];
   }
   if (/CustomWebControl|Faceplate/i.test(hmiType)) return ["Activated", "Deactivated", "InterfaceEvent"];
   if (/Control|Trend|Alarm/i.test(hmiType)) return ["Activated", "Deactivated", "Initialized", "CommandFired", "InterfaceEvent"];
-  const common: HmiEventType[] = ["Activated", "ContextTapped", "Deactivated", "KeyDown", "KeyUp", "Tapped", "GestureDetected"];
-  if (element === "button" || hmiType === "HmiButton") return [...common.slice(0, 3), "Down", "KeyDown", "KeyUp", "Tapped", "Up", "GestureDetected"];
+  const common: HmiEventType[] = ["Activated", "ContextTapped", "Deactivated", "KeyDown", "KeyUp", "Tapped", "DoubleTapped", "GestureDetected"];
+  if (element === "button" || hmiType === "HmiButton") return [...common.slice(0, 3), "Down", "KeyDown", "KeyUp", "Tapped", "DoubleTapped", "Up", "GestureDetected"];
   if (["input", "select", "textarea"].includes(element) || /IOField|Slider|Switch|ComboBox|ListBox|RadioButton/i.test(hmiType)) return [...common, "Change"];
   return common;
 }

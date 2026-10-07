@@ -54,19 +54,26 @@ function highlightHandler(targetId: string, color: string, width: number, origin
   return `{(event) => { ${original}const target = document.querySelector(${JSON.stringify(`[data-fc-highlight-id="${targetId}"]`)}); if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return; const names = ${JSON.stringify(highlightProperties)}; const active = target.dataset.fcHighlightActive === "true"; if (active) { const previous = JSON.parse(target.dataset.fcHighlightPrevious || "{}"); for (const name of names) target.style[name] = previous[name] || ""; } else { const previous = {}; for (const name of names) previous[name] = target.style[name] || ""; target.dataset.fcHighlightPrevious = JSON.stringify(previous); const painted = target.ownerSVGElement ? ${shapeStyle} : ${boxStyle}; for (const name of names) target.style[name] = painted[name] || previous[name] || ""; target.scrollIntoView({ behavior: "smooth", block: "center" }); } target.dataset.fcHighlightActive = String(!active); }}`;
 }
 
-function triggerAttributes(targetId: string, color: string, width: number, originalClick?: string, region?: HighlightRegion) {
+const highlightEvents = { Tapped: "onClick", DoubleTapped: "onDoubleClick", Down: "onPointerDown", Up: "onPointerUp", ContextTapped: "onContextMenu" } as const;
+function highlightEvent(element: JSXElement): keyof typeof highlightEvents {
+  const value = attributeNamed(element, "data-fc-highlight-event")?.value;
+  const event = value?.type === "StringLiteral" ? value.value : "Tapped";
+  return Object.hasOwn(highlightEvents, event) ? event as keyof typeof highlightEvents : "Tapped";
+}
+function triggerAttributes(targetId: string, color: string, width: number, originalClick?: string, region?: HighlightRegion, event: keyof typeof highlightEvents = "Tapped") {
   return {
     "data-fc-highlight-target": JSON.stringify(targetId),
     "data-fc-highlight-color": JSON.stringify(color),
     "data-fc-highlight-width": JSON.stringify(String(width)),
     ...(originalClick ? { "data-fc-highlight-original-click": `{${JSON.stringify(originalClick)}}` } : {}),
     ...(region ? { "data-fc-highlight-region": `{${JSON.stringify(JSON.stringify(region))}}` } : {}),
-    onClick: highlightHandler(targetId, color, width, originalClick, region),
+    "data-fc-highlight-event": JSON.stringify(event),
+    [highlightEvents[event]]: highlightHandler(targetId, color, width, originalClick, region),
   };
 }
 
-function clickExpression(source: string, element: JSXElement) {
-  const value = attributeNamed(element, "onClick")?.value;
+function clickExpression(source: string, element: JSXElement, event: keyof typeof highlightEvents = "Tapped") {
+  const value = attributeNamed(element, highlightEvents[event])?.value;
   if (!value || value.type !== "JSXExpressionContainer" || value.expression.type === "JSXEmptyExpression" || value.expression.start == null || value.expression.end == null) return undefined;
   return source.slice(value.expression.start, value.expression.end);
 }
@@ -83,12 +90,31 @@ export interface HighlightOptions {
   color: string;
   width: number;
   region?: HighlightRegion;
+  event?: keyof typeof highlightEvents;
 }
 
 function highlightAttributes(options: HighlightOptions, original?: string) {
   const region = options.region === undefined ? undefined : readHighlightRegion(options.region);
   if (options.region !== undefined && !region) throw new Error("Disegna una zona valida con almeno tre punti non allineati.");
-  return triggerAttributes(options.targetId, options.color, options.width, original, region);
+  if (options.event && !Object.hasOwn(highlightEvents, options.event)) throw new Error("Scegli un evento valido per l’evidenziazione.");
+  return triggerAttributes(options.targetId, options.color, options.width, original, region, options.event);
+}
+
+function prepareHighlight(magic: MagicString, source: string, trigger: JSXElement, options: HighlightOptions) {
+  const previous = highlightEvent(trigger);
+  const event = options.event ?? previous;
+  const configured = Boolean(attributeNamed(trigger, "data-fc-highlight-target"));
+  const original = configured && event === previous ? storedOriginalClick(trigger) : clickExpression(source, trigger, event);
+  if (configured && event !== previous) {
+    const handler = attributeNamed(trigger, highlightEvents[previous]);
+    const saved = storedOriginalClick(trigger);
+    if (handler?.start != null && handler.end != null) saved ? magic.overwrite(handler.start, handler.end, `${highlightEvents[previous]}={${saved}}`) : magic.remove(handler.start, handler.end);
+  }
+  if (!original) {
+    const saved = attributeNamed(trigger, "data-fc-highlight-original-click");
+    if (saved?.start != null && saved.end != null) magic.remove(saved.start, saved.end);
+  }
+  return highlightAttributes({ ...options, event }, original);
 }
 
 function clearHighlightRegion(magic: MagicString, trigger: JSXElement, options: HighlightOptions) {
@@ -105,24 +131,23 @@ export function addHighlightTarget(source: string, start: number, end: number, t
 
 export function addHighlightTrigger(source: string, start: number, end: number, options: HighlightOptions): string {
   const trigger = elementAt(source, start, end);
-  const original = attributeNamed(trigger, "data-fc-highlight-target") ? storedOriginalClick(trigger) : clickExpression(source, trigger);
   const magic = new MagicString(source);
   clearHighlightRegion(magic, trigger, options);
-  updateAttributes(magic, trigger, highlightAttributes(options, original));
+  updateAttributes(magic, trigger, prepareHighlight(magic, source, trigger, options));
   return magic.toString();
 }
 
 export function addHighlightInteraction(source: string, triggerStart: number, triggerEnd: number, targetStart: number, targetEnd: number, options: HighlightOptions): string {
   const trigger = elementAt(source, triggerStart, triggerEnd);
   const target = triggerStart === targetStart && triggerEnd === targetEnd ? trigger : elementAt(source, targetStart, targetEnd);
-  const original = attributeNamed(trigger, "data-fc-highlight-target") ? storedOriginalClick(trigger) : clickExpression(source, trigger);
   const magic = new MagicString(source);
   clearHighlightRegion(magic, trigger, options);
+  const attributes = prepareHighlight(magic, source, trigger, options);
   if (trigger === target) {
-    updateAttributes(magic, trigger, { "data-fc-highlight-id": JSON.stringify(options.targetId), ...highlightAttributes(options, original) });
+    updateAttributes(magic, trigger, { "data-fc-highlight-id": JSON.stringify(options.targetId), ...attributes });
   } else {
     updateAttributes(magic, target, { "data-fc-highlight-id": JSON.stringify(options.targetId) });
-    updateAttributes(magic, trigger, highlightAttributes(options, original));
+    updateAttributes(magic, trigger, attributes);
   }
   return magic.toString();
 }
@@ -135,7 +160,7 @@ export function updateHighlightTrigger(source: string, start: number, end: numbe
   const raw = saved?.type === "JSXExpressionContainer" && saved.expression.type === "StringLiteral" ? saved.expression.value : saved?.type === "StringLiteral" ? saved.value : undefined;
   const region = options.region ?? (raw === undefined ? undefined : readHighlightRegion(raw));
   if (raw !== undefined && !region) throw new Error("La zona salvata non è valida: ridisegnala prima di applicare le modifiche.");
-  updateAttributes(magic, trigger, highlightAttributes({ ...options, region }, storedOriginalClick(trigger)));
+  updateAttributes(magic, trigger, prepareHighlight(magic, source, trigger, { ...options, region }));
   return magic.toString();
 }
 
@@ -144,13 +169,14 @@ export function removeHighlightTrigger(source: string, start: number, end: numbe
   if (!attributeNamed(trigger, "data-fc-highlight-target")) return source;
   const magic = new MagicString(source);
   const original = storedOriginalClick(trigger);
-  for (const name of ["data-fc-highlight-target", "data-fc-highlight-color", "data-fc-highlight-width", "data-fc-highlight-original-click", "data-fc-highlight-region"]) {
+  const event = highlightEvent(trigger);
+  for (const name of ["data-fc-highlight-target", "data-fc-highlight-color", "data-fc-highlight-width", "data-fc-highlight-original-click", "data-fc-highlight-region", "data-fc-highlight-event"]) {
     const attribute = attributeNamed(trigger, name);
     if (attribute?.start != null && attribute.end != null) magic.remove(attribute.start, attribute.end);
   }
-  const click = attributeNamed(trigger, "onClick");
+  const click = attributeNamed(trigger, highlightEvents[event]);
   if (click?.start != null && click.end != null) {
-    if (original) magic.overwrite(click.start, click.end, `onClick={${original}}`);
+    if (original) magic.overwrite(click.start, click.end, `${highlightEvents[event]}={${original}}`);
     else magic.remove(click.start, click.end);
   }
   return magic.toString();
