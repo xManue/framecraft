@@ -55,6 +55,7 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks();
   route = categories[0].route; viewportWidth = contentWidth = 375; drawingWidth = 1280;
   mediaListeners.clear(); Observer.instances = [];
+  sessionStorage.clear();
   vi.stubGlobal("ResizeObserver", Observer);
   vi.stubGlobal("matchMedia", vi.fn(() => ({ get matches() { return viewportWidth < 1280; }, addEventListener: (_event: string, callback: () => void) => mediaListeners.add(callback), removeEventListener: (_event: string, callback: () => void) => mediaListeners.delete(callback) })));
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.classList.contains("hmi-screen") || this.classList.contains("hmi-lateral") ? contentWidth : 0; });
@@ -63,6 +64,23 @@ beforeEach(() => {
 });
 afterEach(async () => { if (root) await act(async () => root!.unmount()); host?.remove(); root = undefined; host = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe("guscio mobile realmente generato", () => {
+  it("mantiene Mobile dopo il ricaricamento causato dal cambio pagina finché non lo cambi manualmente", async () => {
+    viewportWidth = contentWidth = 1440;
+    await mount(); expect(shell().dataset.panelLayout).toBe("desktop");
+    await mode("mobile"); expect(shell().dataset.panelLayout).toBe("mobile");
+    await act(async () => root!.unmount()); root = undefined; host?.remove();
+    route = categories[1].route;
+    await mount(); expect(shell().dataset.panelLayout).toBe("mobile");
+    expect(document.querySelector<HTMLSelectElement>(".hmi-layout-switch")!.value).toBe("mobile");
+    await mode("desktop"); await act(async () => root!.unmount()); root = undefined; host?.remove();
+    route = categories[2].route; viewportWidth = contentWidth = 375;
+    await mount(); expect(shell().dataset.panelLayout).toBe("desktop");
+    await mode("auto"); await act(async () => root!.unmount()); root = undefined; host?.remove();
+    await mount(); expect(shell().dataset.panelLayout).toBe("mobile");
+    expect(document.querySelector<HTMLSelectElement>(".hmi-layout-switch")!.value).toBe("auto");
+    viewportWidth = 1440; await act(async () => mediaListeners.forEach((callback) => callback()));
+    expect(shell().dataset.panelLayout).toBe("desktop");
+  });
   it("segue il ridimensionamento, conserva la scelta manuale e torna in automatico", async () => {
     await mount(); expect(shell().dataset.panelLayout).toBe("mobile");
     viewportWidth = 1440; await act(async () => mediaListeners.forEach((callback) => callback()));
@@ -75,6 +93,17 @@ describe("guscio mobile realmente generato", () => {
     await mode("auto"); expect(shell().dataset.panelLayout).toBe("mobile");
     viewportWidth = 812; await act(async () => mediaListeners.forEach((callback) => callback()));
     expect(shell().dataset.panelLayout).toBe("mobile"); expect(navigate).not.toHaveBeenCalled();
+  });
+  it("riallinea scelta e viewport tornando indietro su una pagina conservata dal browser", async () => {
+    viewportWidth = 1440; await mount(); await mode("mobile");
+    const key = "framecraft.panel-layout:Synthetic mobile";
+    sessionStorage.setItem(key, "desktop"); viewportWidth = 375;
+    const event = new Event("pageshow"); Object.defineProperty(event, "persisted", { value: true });
+    await act(async () => window.dispatchEvent(event)); expect(shell().dataset.panelLayout).toBe("desktop");
+    sessionStorage.setItem(key, "auto");
+    await act(async () => window.dispatchEvent(event)); expect(shell().dataset.panelLayout).toBe("mobile");
+    expect(document.querySelector<HTMLSelectElement>(".hmi-layout-switch")!.value).toBe("auto");
+    await mode("mobile"); expect(sessionStorage.getItem(key)).toBe("mobile");
   });
   it("adatta alla finestra contenuto e ricalcola la scala anche su pagine più larghe", async () => {
     await mount(); expect(scale()).toBeCloseTo(375 / 1280);

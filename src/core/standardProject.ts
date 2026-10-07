@@ -1017,7 +1017,7 @@ function appSource(machineName: string, planned: readonly PlannedSection[], mobi
   const entryIcons = usedMenuIcons.map((id) => `  ${id}: (${svgIcon(menuIcon[id])}),`).join("\n");
   const fallback = planned[0]?.route ?? "/";
   const layoutSwitch = mobile
-    ? `\n        <div className="hmi-layout-controls"><label><span className="hmi-layout-label">Layout pannello</span><select className="hmi-layout-switch" value={layoutMode} onChange={(event) => setLayoutMode(event.target.value as typeof layoutMode)}><option value="auto">Automatico</option><option value="desktop">Desktop</option><option value="mobile">Mobile</option></select></label>{mobileLayout && <button type="button" className="hmi-fit-switch" aria-pressed={mobileFit} title="Adatta riduce anche i comandi del disegno. Usa Dimensioni reali per controlli più grandi." onClick={() => setMobileFit((value) => !value)}>{mobileFit ? "Dimensioni reali" : "Adatta disegno"}</button>}</div>`
+    ? `\n        <div className="hmi-layout-controls"><label><span className="hmi-layout-label">Layout pannello</span><select className="hmi-layout-switch" value={layoutMode} onChange={(event) => chooseLayoutMode(event.target.value as PanelLayoutMode)}><option value="auto">Automatico</option><option value="desktop">Desktop</option><option value="mobile">Mobile</option></select></label>{mobileLayout && <button type="button" className="hmi-fit-switch" aria-pressed={mobileFit} title="Adatta riduce anche i comandi del disegno. Usa Dimensioni reali per controlli più grandi." onClick={() => setMobileFit((value) => !value)}>{mobileFit ? "Dimensioni reali" : "Adatta disegno"}</button>}</div>`
     : "";
 
   return `import { useEffect, useRef, useState } from "react";
@@ -1070,7 +1070,20 @@ ${entryIcons}
 };
 
 export function App() {
-  const [layoutMode, setLayoutMode] = useState<"auto" | "desktop" | "mobile">(${mobile ? '"auto"' : '"desktop"'});
+  type PanelLayoutMode = "auto" | "desktop" | "mobile";
+  const layoutPreferenceKey = document.querySelector<HTMLMetaElement>('meta[name="framecraft-panel-layout-key"]')?.content || ${JSON.stringify(`framecraft.panel-layout:${machineName}`)};
+  const [layoutMode, setLayoutMode] = useState<PanelLayoutMode>(() => {
+    ${mobile ? `try {
+      const saved = sessionStorage.getItem(layoutPreferenceKey);
+      if (saved === "auto" || saved === "desktop" || saved === "mobile") return saved;
+    } catch { /* Storage unavailable: keep the selector usable. */ }
+    return "auto";` : 'return "desktop";'}
+  });
+  const chooseLayoutMode = (value: PanelLayoutMode) => {
+    if (!["auto", "desktop", "mobile"].includes(value)) return;
+    try { sessionStorage.setItem(layoutPreferenceKey, value); } catch { /* The in-memory choice still works. */ }
+    setLayoutMode(value);
+  };
   const [compactScreen, setCompactScreen] = useState(() => window.matchMedia('(max-width: 1279px)').matches);
   const mobileLayout = layoutMode === "mobile" || layoutMode === "auto" && compactScreen;
   const [mobileFit, setMobileFit] = useState(false);
@@ -1079,9 +1092,18 @@ export function App() {
   useEffect(() => {
     const query = window.matchMedia('(max-width: 1279px)');
     const changed = () => setCompactScreen(query.matches);
+    const resumed = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      changed();
+      ${mobile ? `try {
+        const saved = sessionStorage.getItem(layoutPreferenceKey);
+        if (saved === "auto" || saved === "desktop" || saved === "mobile") setLayoutMode(saved);
+      } catch { /* Retain the current choice if storage is unavailable. */ }` : ""}
+    };
     query.addEventListener("change", changed); changed();
-    return () => query.removeEventListener("change", changed);
-  }, []);
+    window.addEventListener("pageshow", resumed);
+    return () => { query.removeEventListener("change", changed); window.removeEventListener("pageshow", resumed); };
+  }, [layoutPreferenceKey]);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [runtimeLanguage, setRuntimeLanguage] = useState(resourceCatalog.activeLanguage || resourceCatalog.defaultLanguage || "it-IT");
   const localizedTexts = useRef(new Map<Element, string | null>());

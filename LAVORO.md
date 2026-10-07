@@ -3477,6 +3477,26 @@ Verifiche del 5 ottobre 2026:
   Restano auth/RBAC/audit server-side, OPC UA, commissioning PLC/dispositivi fisici e parità
   completa Unified/Optix; non dichiarati risolti da questo lavoro.
 
+### 98. Mobile mantenuto durante cambio pagina e ricaricamento (2026-10-07)
+
+- Causa verificata: scegliere una pagina dall'editor cambia src dell'iframe e ricarica
+  il documento. Il guscio ripartiva da Automatico; su una finestra larga diventava Desktop.
+- Nuovi desktop+mobile: scelta validata in sessionStorage, mantenuta nella stessa scheda
+  anche dopo ricaricamento. Mobile e Desktop restano manuali; Automatico segue il viewport.
+  Nessuna attivazione del mobile nei pannelli solo desktop. Storage bloccato non rompe il selettore.
+- Anteprima dei pannelli già creati: il ponte ripristina il selettore tramite evento change,
+  aggiornando lo stato React effettivo, non solo il valore del campo. Chiave distinta per progetto,
+  condivisa con il guscio generato. Nessuna riscrittura degli export precedenti.
+- Indietro/Avanti con pagina conservata dal browser: riallineamento all'ultima scelta e al
+  viewport; listener/observer ripuliti senza interrompere il ripristino dalla cache.
+- Regressione del ricaricamento riprodotta prima del fix. Verifiche mirate: quattro casi sul
+  vero App generato, cinque sul ponte (ripristino React, isolamento, storage e cleanup), TypeScript.
+  Edge isolato: due flussi con tre ricaricamenti reali ciascuno, da 1440 a 375 px; Mobile mantenuto,
+  Desktop mantenuto anche a 375 px, ritorno esplicito ad Automatico. Il caso cache della cronologia
+  è simulato nei test, non dichiarato collaudato nel browser. Router e dati della fixture sintetici.
+- Nessun riavvio dell'app dell'utente, nessun test generale; fixture e screenshot locali ignorati.
+  Collaudo di progetti reali, touch fisico e PLC restano separati da queste verifiche browser.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

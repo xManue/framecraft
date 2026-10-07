@@ -4,10 +4,47 @@ import { equalGapOffset, gridOffset, snapOffset } from "./framecraft-snap.mjs";
 import { overlayCandidate } from "./framecraft-picking.mjs";
 import { createHmiPropertyFlashingDomSurface } from "./hmi-property-flashing.mjs";
 
+export function installPanelLayoutPreference(root, key, storage = () => root.defaultView.sessionStorage) {
+  const valid = (value) => ["auto", "desktop", "mobile"].includes(value);
+  const view = root.defaultView;
+  if (!view) return () => {};
+  let remembered;
+  try { const value = storage().getItem(key); if (valid(value)) remembered = value; } catch {}
+  let seen = new WeakSet();
+  let disposed = false;
+  const remember = (event) => {
+    const control = event.target;
+    if (!control?.matches?.("select.hmi-layout-switch") || !valid(control.value)) return;
+    remembered = control.value;
+    try { storage().setItem(key, remembered); } catch {}
+  };
+  const restore = () => {
+    if (disposed) return;
+    for (const control of root.querySelectorAll("select.hmi-layout-switch")) {
+      if (seen.has(control)) continue;
+      seen.add(control);
+      if (!valid(remembered) || control.value === remembered || ![...control.options].some((option) => option.value === remembered)) continue;
+      control.value = remembered;
+      control.dispatchEvent(new view.Event("change", { bubbles: true }));
+    }
+  };
+  const resumed = (event) => {
+    if (!event.persisted) return;
+    try { const value = storage().getItem(key); if (valid(value)) remembered = value; } catch {}
+    seen = new WeakSet(); restore();
+  };
+  root.addEventListener("change", remember, true);
+  view.addEventListener("pageshow", resumed);
+  const observer = new view.MutationObserver(restore);
+  observer.observe(root.documentElement, { childList: true, subtree: true });
+  restore();
+  return () => { disposed = true; observer.disconnect(); root.removeEventListener("change", remember, true); view.removeEventListener("pageshow", resumed); };
+}
+
 // The bridge is shipped to the previewed project as source text, so the maths it needs is not
 // imported by it but written into it. Stringifying the real functions keeps one copy: what the
 // tests check is exactly what runs inside the page.
-const sharedHelpers = [snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface].map((helper) => String(helper)).join("\n");
+const sharedHelpers = [snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installPanelLayoutPreference].map((helper) => String(helper)).join("\n");
 
 const bridgeScript = sharedHelpers + String.raw`
 (() => {
@@ -15,6 +52,9 @@ const bridgeScript = sharedHelpers + String.raw`
   // Il Runtime generato e il ponte dell'editor vivono nella stessa pagina durante l'anteprima.
   // Questo segnale fa eseguire eventi e dinamiche una volta sola, dal lato editor.
   window.__framecraftEditorPreview = true;
+  const layoutPreferenceKey = document.querySelector('meta[name="framecraft-panel-layout-key"]')?.content || "framecraft.preview.panel-layout";
+  const stopLayoutPreference = installPanelLayoutPreference(document, layoutPreferenceKey);
+  window.addEventListener("pagehide", (event) => { if (!event.persisted) stopLayoutPreference(); });
   const attribute = "data-fc-source";
   let inlineTarget = null;
   let selectedSource = null;
@@ -1508,9 +1548,13 @@ export function previewWatchConfig(server, platform = process.platform) {
 
 export default function framecraftSourcePlugin() {
   const uninstrumented = new Set();
+  let panelLayoutKey = "framecraft.preview.panel-layout";
   return {
     name: "framecraft-source-map",
     enforce: "pre",
+    configResolved(config) {
+      panelLayoutKey = "framecraft.preview.panel-layout:" + config.root.replaceAll("\\", "/");
+    },
     config(config, env) {
       if (env.command === "serve") return previewWatchConfig(config.server);
     },
@@ -1531,7 +1575,10 @@ export default function framecraftSourcePlugin() {
       }
     },
     transformIndexHtml(html) {
-      return { html, tags: [{ tag: "script", attrs: { type: "module" }, children: bridgeScript, injectTo: "body" }] };
+      return { html, tags: [
+        { tag: "script", attrs: { type: "module" }, children: bridgeScript, injectTo: "body" },
+        { tag: "meta", attrs: { name: "framecraft-panel-layout-key", content: panelLayoutKey }, injectTo: "head" },
+      ] };
     },
   };
 }

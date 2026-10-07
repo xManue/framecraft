@@ -83,7 +83,9 @@ their original numbers; custom categories use 10–99 and leave 9 to popups.
 New **desktop + mobile** standard panels offer **Automatico**, **Desktop** and
 **Mobile** in the layout selector. Automatic mode follows viewport changes,
 including orientation, and switches to mobile below the desktop shell's 1280 px.
-Manual mode stays selected while navigating. Header, configured user access,
+Manual mode stays selected across page changes and reloads in the same browser
+tab, until another mode is chosen. The editor preview also remembers the selector
+on already-created panels without rewriting their files. Header, configured user access,
 scrolling section navigation and menus remain available on small screens.
 The machine drawing keeps its coordinates: pan at **Dimensioni reali**, or choose
 **Adatta disegno**, calculated from the actual content area and page width.
