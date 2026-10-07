@@ -3328,7 +3328,58 @@ Verifiche del 5 ottobre 2026:
   industriali restano aperti. UI/UX ha guidato priorità della scritta, conferme esplicite,
   feedback vicino al campo, focus e comandi da 44 px, conservando lo stile dell'editor.
 
+### 93. Connessioni MQTT più robuste, diagnostica con rimedi e mini guida nel pannello
+
+- La mini guida è accanto alla configurazione: **Pannello → Connessioni PLC → Guida rapida**.
+  Cinque passi brevi e approfondimenti su mapping, qualità, comandi, errori/log e produzione.
+  Disponibile anche con catalogo illeggibile; aprirla non salva, non avvia rete e non manda comandi.
+  UI/UX ha guidato aiuto contestuale, focus, dettagli espandibili e nuovi comandi da 44 px,
+  conservando il tema scuro. Prova Edge headless isolata a 1254 px e 375 px tramite iframe:
+  guida/focus, intestazione, scroll e footer visibili, zero salvataggi. Screenshot ispezionati.
+  Non è una verifica della finestra desktop utente; profili, immagini e fixture restano ignorati.
+- Driver MQTT: timeout di ogni tentativo, compresi lettura certificati, CONNECT e SUBACK dopo
+  una riconnessione; recupero transitorio con client nuovo, arresto su credenziali/TLS/versione/
+  client ID rifiutati o subscribe negata. Cause statiche comprensibili, conseguenze e rimedi;
+  il testo grezzo del server e i percorsi privati non entrano nei messaggi. MQTT 5 session takeover
+  esplicito non innesca contesa continua. Observer difettosi non interrompono il trasporto.
+- Comandi separati: non inviato, rifiutato esplicitamente dal broker o esito incerto. Puback/
+  Pubrec negativo non diventa consegnato; un'anomalia dopo Pubrec o risposta persa rimane incerta.
+  Nessun replay, coda offline, aggiornamento ottimistico o falsa conferma PLC. Gateway/client
+  validano tipo e permessi prima dell'invio; Real/Float fuori Float32 o underflow a zero rifiutati.
+  Dati Bad/invalidi conservano l'ultimo valore valido; UTF-8, mapping, qualità e timestamp
+  verificati, dati fuori ordine ignorati, scadenza anche per un tag mai ricevuto.
+- Gateway HTTP: diagnostica strutturata bounded, errori token/origine/limiti distinti, attesa body
+  limitata, avvio/arresto concorrenti serializzati. Cache e diagnostica consegnate ai callback
+  come copie. Il timeout del client configurato nell'editor ora viene passato al Runtime standard.
+  Stato PLC in alto espandibile: connessioni, ultimi dieci eventi, Come risolvere e guida compatta.
+  Nessun HTML eseguibile da etichette/errori e nessun avviso ripetuto ad ogni polling.
+- Registro locale asincrono in `.framecraft-runtime/logs/gateway` e `logs/mqtt`, tre file da
+  1 MiB per servizio e coda limitata a 256 eventi. Errori ripetuti raggruppati; disco non disponibile
+  o overflow segnalati senza bloccare il trasporto. Nessun segreto, endpoint/topic, payload o
+  valore comando; nomi connessioni/tag possono essere aziendali e vanno protetti. Rotazione
+  scarta il più vecchio: non è audit persistente/antimanomissione. CLI `--json` coerente anche
+  disabilitata/in errore; campioni stdout solo con `--samples` esplicito, mai nel registro su disco.
+- La pipeline **crea nuovo pannello standard** distribuisce moduli, tipi, logger e guida, client
+  aggiornato e `.gitignore` per registri/segreti/chiavi. Niente retrofit di progetti macchina,
+  endpoint inventati o modifiche ai JSON reali. Il Runtime connesso non si installa nell'anteprima.
+  Documenti e roadmap Unified/Optix aggiornati: **OPC UA non implementato**, profili conservati
+  senza conversioni; MQTT rimane parziale per conferme applicative, payload avanzati, RBAC/audit
+  server, storage industriale e compatibilità con broker/CPU/trust effettivi della macchina.
+- Test con MQTT.js reale, broker Aedes TCP/TLS, peer MQTT 5 controllati per ACK negativi, HTTP e
+  processi dei sorgenti generati. CA e certificati server/client effimeri via OpenSSL (Git su
+  Windows), scadenza/hostname/trust/mTLS verificati, senza installare certificati di sistema.
+  Nessuna CPU fisica/virtuale aziendale o credenziale reale coinvolta; no agenti o riavvio app utente.
+- Audit npm online autorizzato: patch mirata `source-map-js` 1.2.1 → 1.2.2 nel solo lockfile.
+  Restano due pacchetti critici e uno moderato nel tooling Vitest/Tinypool/mocker; upgrade runner
+  da collaudare, non aggirato con override o `audit fix --force`. Zero segnalazioni note nello
+  scope `--omit=dev` dell'editor non equivale a certificare il servizio o una release industriale.
+  Gate licenze/notice e collaudo macchina restano aperti; dettagli in LICENZE-E-PRODUZIONE.md.
+
 ## Da fare, dopo
+
+- **Sicurezza tooling**: migrare e collaudare Vitest/mocker/Tinypool a versioni corrette
+  per gli advisory del punto 93, senza override incompatibili. Ripetere suite pubblica,
+  integration/build e audit dell'artefatto distribuito; i log MQTT non chiudono questo gate.
 
 - **Affidabilità editor durante gli aggiornamenti**: HMR/reload coperti al punto 77 e deposito
   locale persistente al punto 78. Collaudare incidente e recovery nella finestra desktop reale

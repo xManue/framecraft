@@ -1,11 +1,50 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHmiGatewayClient, type HmiGatewaySnapshot } from "../src/core/hmiGateway";
+import { connectionDiagnostic } from "../runtime/connection-diagnostics.mjs";
 const snapshot: HmiGatewaySnapshot = { version: 1, allowWrites: true, connections: [{ id: "test", state: "connected" }],
   tags: [{ name: "Speed", dataType: "Real", access: "read-write", connectionId: "test", writable: true }],
   samples: [{ tag: "Speed", connectionId: "test", value: "10", receivedAt: 1_000 }] };
 const response = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 
 describe("client gateway del Runtime browser", () => {
+  it.each(["connecting", "connected", "diagnostic"])("stop dall'observer %s non acquisisce dopo l'arresto né lascia polling", async (point) => {
+    const onSnapshot = vi.fn(), request = vi.fn(async () => response({ ...snapshot, diagnostics: [{ ...connectionDiagnostic("CONNECTED"), id: "observer_event_0123456789" }] }));
+    const client = createHmiGatewayClient({ pollMs: 100, request, onSnapshot, onState: (state) => { if (state === point) client.stop(); }, onDiagnostic: () => { if (point === "diagnostic") client.stop(); } });
+    try {
+      client.start(); await vi.waitFor(() => expect(client.state).toBe("stopped")); await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(onSnapshot).not.toHaveBeenCalled(); expect(request).toHaveBeenCalledTimes(point === "connecting" ? 0 : 1); await expect(client.read("Speed")).rejects.toMatchObject({ outcome: "rejected" });
+    } finally { client.stop(); }
+  });
+  it("espone rimedi di autenticazione e non usa il testo grezzo restituito dal servizio", async () => {
+    const onDiagnostic = vi.fn(), onState = vi.fn(), client = createHmiGatewayClient({ onDiagnostic, onState, pollMs: 60000, request: async () => response({ error: "PRIVATE_GATEWAY_TOKEN" }, 401) });
+    try {
+      client.start(); await vi.waitFor(() => expect(client.state).toBe("disconnected"));
+      expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ code: "GATEWAY_AUTH", action: expect.stringContaining("stesso token") }));
+      expect(JSON.stringify(onState.mock.calls)).not.toContain("PRIVATE_GATEWAY_TOKEN");
+    } finally { client.stop(); }
+  });
+  it("valida i messaggi del servizio, notifica una volta e non consegna la cache ai callback", async () => {
+    const event = { ...connectionDiagnostic("AUTH_DENIED", { protocol: "mqtt", connectionId: "test" }), id: "synthetic_event_0123456789", message: "PRIVATE_ERROR_MESSAGE" };
+    const onDiagnostic = vi.fn(), client = createHmiGatewayClient({ onDiagnostic, pollMs: 100, onSnapshot: (value) => { value.samples[0].value = "999"; value.connections[0].state = "error"; }, request: async () => response({ ...snapshot, diagnostics: [event] }) });
+    try {
+      client.start(); await vi.waitFor(() => expect(client.state).toBe("connected")); await vi.waitFor(() => expect(onDiagnostic).toHaveBeenCalledOnce());
+      expect((await client.read("Speed")).value).toBe("10"); await new Promise((resolve) => setTimeout(resolve, 150)); expect(onDiagnostic).toHaveBeenCalledOnce();
+      expect(JSON.stringify(onDiagnostic.mock.calls)).not.toContain("PRIVATE_ERROR_MESSAGE");
+    } finally { client.stop(); }
+  });
+  it("rifiuta prima di HTTP un valore Real fuori intervallo e non legge un valore Bad", async () => {
+    const request = vi.fn(async () => response({ ...snapshot, samples: [{ ...snapshot.samples[0], qualityCode: 0 }] })), client = createHmiGatewayClient({ request });
+    try {
+      client.start(); await vi.waitFor(() => expect(client.state).toBe("connected"));
+      await expect(client.write("Speed", 1e39)).rejects.toMatchObject({ outcome: "rejected", diagnostic: { code: "WRITE_INVALID" } });
+      await expect(client.read("Speed")).rejects.toMatchObject({ outcome: "rejected" }); expect(request.mock.calls).toHaveLength(1);
+    } finally { client.stop(); }
+  });
+  it("registro e codici di diagnostica fuori contratto invalidano lo snapshot", async () => {
+    const client = createHmiGatewayClient({ pollMs: 60000, request: async () => response({ ...snapshot, diagnostics: [{ ...connectionDiagnostic("AUTH_DENIED"), code: "SCRIPT_OR_PRIVATE_MESSAGE" }] }) });
+    try { client.start(); await vi.waitFor(() => expect(client.state).toBe("disconnected")); await expect(client.write("Speed", 20)).rejects.toMatchObject({ outcome: "rejected" }); }
+    finally { client.stop(); }
+  });
   it("legge soltanto campioni reali e non assegna una qualità buona mancante", async () => {
     const request = vi.fn(async () => response(snapshot));
     const client = createHmiGatewayClient({ request });

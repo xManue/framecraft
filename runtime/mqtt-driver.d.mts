@@ -1,3 +1,4 @@
+import type { ConnectionDiagnostic } from "./connection-diagnostics.mjs";
 export interface MqttBinding {
   tag: string; topic?: string; qos?: 0 | 1 | 2; encoding?: "json" | "text";
   valuePath?: string; qualityPath?: string; timestampPath?: string; timestampUnit?: "ms" | "s";
@@ -17,7 +18,8 @@ export interface MqttTagSample {
 }
 export interface MqttConnectionCallbacks {
   onSample?: (sample: MqttTagSample) => void;
-  onState?: (event: { id: string; state: string; error?: string }) => void;
+  onState?: (event: { id: string; state: string; error?: string; diagnostic?: ConnectionDiagnostic }) => void;
+  onDiagnostic?: (event: ConnectionDiagnostic) => void;
   onError?: (message: string) => void;
   resolveSecret?: (name: string) => string | undefined;
 }

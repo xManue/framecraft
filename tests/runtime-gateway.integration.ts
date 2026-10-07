@@ -140,7 +140,7 @@ describe("bridge MQTT HTTP reale", () => {
       for (const file of files) { const target = path.resolve(root, file.path); if (path.relative(root, target).startsWith("..")) throw new Error("Fixture fuori dal progetto."); await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, file.content); }
       const catalog = { ...test.catalog, connections: test.catalog.connections.map((connection) => ({ ...connection, clientId: "generated-gateway-test" })) };
       await writeFile(path.join(root, "framecraft.connections.json"), JSON.stringify(catalog)); await writeFile(path.join(root, "framecraft.plc.json"), JSON.stringify({ version: 1, variables }));
-      child = spawn(process.execPath, [path.join(root, "runtime/start-gateway.mjs")], { cwd: root, env: { ...process.env, GATEWAY_TEST_TOKEN: token }, stdio: ["pipe", "pipe", "pipe"] });
+      child = spawn(process.execPath, [path.join(root, "runtime/start-gateway.mjs"), "--json"], { cwd: root, env: { ...process.env, GATEWAY_TEST_TOKEN: token }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
       let output = "", errors = ""; child.stdout!.on("data", (chunk) => { output += String(chunk); }); child.stderr!.on("data", (chunk) => { errors += String(chunk); });
       exited = new Promise<void>((resolve, reject) => { child!.once("exit", () => resolve()); child!.once("error", reject); });
       await vi.waitFor(() => expect(output).toContain('"type":"gateway"'), { timeout: 8_000 });
@@ -148,7 +148,7 @@ describe("bridge MQTT HTTP reale", () => {
       expect(event.address).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
       await test.publisher.publishAsync("speed", JSON.stringify({ value: 123, quality: 192, time: 2_000 }), { qos: 1 });
       await vi.waitFor(async () => { const response = await fetch(event.address + api + "/snapshot", { headers: { Authorization: "Bearer " + token, Origin: origin } }); expect((await response.json()).samples[0]?.value).toBe("123"); });
-      expect(errors).toBe(""); expect(output).not.toContain(token);
+      expect(errors).toContain('"code":"INSECURE_TRANSPORT"'); expect(errors).not.toContain('"level":"error"'); expect(output).not.toContain(token);
     } finally {
       if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGTERM"); if (exited) await exited; await test.close();
       const resolved = await realpath(root), intended = await realpath(base); if (path.dirname(resolved) !== intended || !path.basename(resolved).startsWith("generated-gateway-")) throw new Error("Cleanup fixture non valido."); await rm(resolved, { recursive: true, force: true });
@@ -206,7 +206,7 @@ describe("bridge MQTT HTTP reale", () => {
   });
   it("rifiuta gateway esposto, token in chiaro o mancante e origini ambigue", () => {
     const base = { version: 1 as const, connections: [], gateway: { enabled: true, port: 0, tokenEnv: "TEST", allowedOrigins: [origin] } };
-    expect(() => createMqttGateway(base, variables, { resolveSecret: () => "short" })).toThrow("troppo corto");
+    expect(() => createMqttGateway(base, variables, { resolveSecret: () => "short" })).toThrow("Credenziale del servizio mancante");
     expect(() => createMqttGateway({ ...base, gateway: { ...base.gateway, tokenEnv: "VITE_GATEWAY_TOKEN" } }, variables, { resolveSecret: () => token })).toThrow("mai VITE_");
     expect(() => createMqttGateway({ ...base, gateway: { ...base.gateway, host: "0.0.0.0" as "127.0.0.1" } }, variables, { resolveSecret: () => token })).toThrow("loopback");
     expect(() => createMqttGateway({ ...base, gateway: { ...base.gateway, allowedOrigins: [origin + "/path"] } }, variables, { resolveSecret: () => token })).toThrow("origini");

@@ -2,6 +2,7 @@ node_modules/
 dist/
 target/
 .framecraft/
+.framecraft-runtime/
 *.log
 *.tsbuildinfo
 .DS_Store

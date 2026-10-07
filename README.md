@@ -122,11 +122,13 @@ them it explicitly reports the excluded reference test files; this is not a clai
 fidelity to WinCC. `npm run test:standard` requires those exports and fails clearly when absent.
 Never create fake reference JSON merely to satisfy that test suite.
 
-Additional checks: `npm run test:gateway` uses a real isolated local MQTT broker/HTTP gateway;
+Additional checks: `npm run test:gateway` uses isolated local MQTT TCP/TLS brokers, controlled
+MQTT 5 peers, HTTP gateways and generated-service processes. OpenSSL creates ephemeral CA,
+server and client certificates for TLS/mTLS faults; no system trust store is changed.
 `npm run test:production` checks the bundled standalone generator and real Vite image watching;
 `cargo test --offline` in
-`src-tauri` checks native lifecycle/recovery/configuration persistence. They do not prove CPU/TLS
-interoperability or approval for industrial use.
+`src-tauri` checks native lifecycle/recovery/configuration persistence. These checks do not
+prove interoperability with a real machine or its broker/trust, or approval for industrial use.
 
 ## Production status
 
@@ -134,6 +136,11 @@ This checkpoint is not an industrial release. Authentication/RBAC and durable se
 OPC UA, PLC application acknowledgements, advanced payloads and real CPU/TLS testing remain open.
 Compiled scripts, modules, timers and Scheduler now await MQTT transport without optimistic tag
 updates or replay; broker receipts are not PLC acknowledgements. See [runtime/README.md](runtime/README.md).
+MQTT attempts, including reconnect/subscription, are bounded. Credentials, certificate,
+mapping, stale-data and command errors include their impact and how to resolve them.
+**Pannello → Connessioni PLC → Guida rapida** contains the short user guide; generated panels
+also expose diagnostics from the top PLC status. Rotating local logs never store secrets or
+command values; their limits and incomplete-log warnings are documented in the runtime guide.
 The license audit is offline,
 adds no new dependency for the connection dialog, and intentionally does not approve release while
 reviews/notices remain outstanding. See [LICENZE-E-PRODUZIONE.md](LICENZE-E-PRODUZIONE.md).

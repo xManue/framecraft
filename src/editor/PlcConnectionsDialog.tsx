@@ -1,4 +1,4 @@
-import { Cable, Check, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
+import { BookOpen, Cable, Check, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { normalizeMqttTagValue, type PlcConnectionConfig } from "../../runtime/connection-config.mjs";
@@ -10,6 +10,7 @@ import {
 } from "../core/plcConnections";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
+import { PlcConnectionGuide } from "./PlcConnectionGuide";
 
 type FieldProps = {
   label: string; path: string; value?: string | number; onChange(value: string): void;
@@ -49,6 +50,8 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
   const [confirm, setConfirm] = useState<"close" | "reload">();
   const [focusPath, setFocusPath] = useState<string>();
   const dialog = useRef<HTMLElement>(null);
+  const guide = useRef<HTMLDetailsElement>(null);
+  const guideId = useId();
   const mounted = useRef(true); const sequence = useRef(0);
   const onCloseRef = useRef(onClose); onCloseRef.current = onClose;
   const dirty = !!model && JSON.stringify(model) !== base;
@@ -77,7 +80,11 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); event.stopImmediatePropagation(); handlers.current.save(); return; }
       if (event.key === "Tab") {
         const scope = dialog.current?.querySelector<HTMLElement>('[role="alertdialog"]') ?? dialog.current;
-        const controls = [...(scope?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]') ?? [])].filter((element) => !element.closest("fieldset:disabled") && (!element.closest("details:not([open])") || element.tagName === "SUMMARY"));
+        const controls = [...(scope?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]') ?? [])].filter((element) => {
+          if (element.closest("fieldset:disabled")) return false;
+          for (let parent = element.parentElement; parent && parent !== scope; parent = parent.parentElement) if (parent.tagName === "DETAILS" && !(parent as HTMLDetailsElement).open && parent.querySelector(":scope > summary") !== element) return false;
+          return true;
+        });
         const first = controls[0], last = controls.at(-1);
         if (controls.length && (event.shiftKey && (document.activeElement === first || !scope?.contains(document.activeElement)) || !event.shiftKey && (document.activeElement === last || !scope?.contains(document.activeElement)))) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
       }
@@ -135,8 +142,9 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
 
   return createPortal(<div className="connections-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
     <section ref={dialog} className="connections-dialog" role="dialog" aria-modal="true" aria-labelledby="plc-connections-title" aria-describedby="plc-connections-purpose" aria-busy={phase === "loading" || phase === "saving"}>
-      <header><div><h2 id="plc-connections-title"><Cable size={20} aria-hidden="true" /> Connessioni PLC</h2><p id="plc-connections-purpose">{initialProject?.name} · configurazione offline del servizio MQTT e dei tag del pannello</p></div><button type="button" data-close-connections disabled={phase === "saving"} onClick={requestClose} aria-label="Chiudi Connessioni PLC"><X size={20} /></button></header>
+      <header><div><h2 id="plc-connections-title"><Cable size={20} aria-hidden="true" /> Connessioni PLC</h2><p id="plc-connections-purpose">{initialProject?.name} · configurazione offline del servizio MQTT e dei tag del pannello</p></div><div className="connection-header-actions"><button type="button" aria-controls={guideId} disabled={!!confirm} onClick={() => { if (guide.current) { guide.current.open = true; guide.current.scrollIntoView?.({ block: "nearest" }); guide.current.querySelector("summary")?.focus(); } }}><BookOpen size={18} aria-hidden="true" /> Guida rapida</button><button type="button" data-close-connections disabled={phase === "saving"} onClick={requestClose} aria-label="Chiudi Connessioni PLC"><X size={20} /></button></div></header>
       <div className="connections-body">
+        <PlcConnectionGuide ref={guide} id={guideId} />
         {phase === "loading" && <p role="status">Lettura dei cataloghi del progetto…</p>}
         {error && <div className="connection-error-banner" role="alert">{error}</div>}
         {status && <div className="connection-success" role="status"><Check size={18} />{status}</div>}
@@ -183,7 +191,7 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
               return <article className="connection-binding" key={index}><div className="connection-grid">
                 {field("Tag PLC " + (index + 1), path + "tag", b.tag, (tag) => binding(index, { tag }), { choices: [{ value: "", label: "Scegli un tag" }, ...[...availableTags, ...model.variables.filter((v) => v.name === b.tag && !availableTags.some((a) => a.name === v.name))].map((v) => ({ value: v.name, label: v.name + " · " + v.dataType + " · " + v.access, disabled: !supportedType(v.dataType) || current.bindings.some((other, i) => i !== index && other.tag === v.name) }))], hint: "Tipo e permessi vengono dal catalogo; UDT e array non sono supportati da questo driver scalare." })}
                 {field("Topic di lettura " + (index + 1), path + "topic", b.topic, (value) => binding(index, { topic: value || undefined }), { disabled: variable?.access === "write", placeholder: "impianto/stazione/stato", hint: "Topic concreto, senza + o #. Nessuna sottoscrizione generica." })}
-                {field("Formato payload " + (index + 1), path + "encoding", b.encoding ?? "json", (value) => binding(index, { encoding: value as "json" | "text" }), { choices: encodings })}
+                {field("Formato payload " + (index + 1), path + "encoding", b.encoding ?? "json", (value) => binding(index, { encoding: value as "json" | "text", ...(value === "text" ? { valuePath: undefined, qualityPath: undefined, timestampPath: undefined, timestampUnit: undefined } : {}) }), { choices: encodings, hint: "Testo scalare rimuove dal draft i percorsi JSON di valore, qualità e timestamp. Senza qualità pubblicata il dato resta sconosciuto, non Good." })}
                 {field("Valore nel JSON " + (index + 1), path + "valuePath", b.valuePath, (value) => binding(index, { valuePath: value || undefined }), { disabled: b.encoding === "text", placeholder: "/value", hint: "JSON Pointer. Vuoto: l’intero payload è un valore scalare." })}
               </div><details><summary>Qualità, timestamp e topic comando del tag {index + 1}</summary><div className="connection-grid">
                 {field("Qualità nel JSON " + (index + 1), path + "qualityPath", b.qualityPath, (value) => binding(index, { qualityPath: value || undefined }), { disabled: b.encoding === "text", placeholder: "/qualityCode" })}

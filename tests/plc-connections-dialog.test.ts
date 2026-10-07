@@ -32,6 +32,15 @@ beforeEach(() => {
 afterEach(async () => { if (root) await act(async () => root.unmount()); host?.remove(); vi.restoreAllMocks(); });
 
 describe("Connessioni PLC: interfaccia e persistenza reali", () => {
+  it("apre la mini guida senza salvare o avviare rete ed è accessibile anche se il catalogo è in errore", async () => {
+    const data = fixture(); data.files.connections = '{"password":"NEVER_RENDER_SECRET';
+    vi.mocked(desktopBridge.readConnectionConfiguration).mockResolvedValue(data); await mount();
+    const help = button("Guida rapida"), guide = document.getElementById(help.getAttribute("aria-controls")!) as HTMLDetailsElement;
+    expect(guide.open).toBe(false); await click(help); expect(guide.open).toBe(true); expect(document.activeElement).toBe(guide.querySelector("summary"));
+    expect(guide.textContent).toContain("OPC UA non è ancora collegabile"); expect(guide.textContent).toContain("Non ripeterlo alla cieca");
+    expect(guide.textContent).toContain(".framecraft-runtime/logs"); expect(document.body.textContent).not.toContain("NEVER_RENDER_SECRET");
+    expect(desktopBridge.saveConnectionConfiguration).not.toHaveBeenCalled(); expect(desktopBridge.writeFile).not.toHaveBeenCalled();
+  });
   it("si apre solo dal menu Pannello mantenendo il canvas e non avviando la rete", async () => {
     const restart = vi.spyOn(useEditorStore.getState(), "restartPreview").mockResolvedValue(undefined);
     const preview = vi.spyOn(useEditorStore.getState(), "openStandalonePreview").mockResolvedValue(undefined);
@@ -68,6 +77,13 @@ describe("Connessioni PLC: interfaccia e persistenza reali", () => {
     expect(button("Salva configurazione").disabled).toBe(true); await change("connections.1.url", "mqtts://other.invalid"); await click(button("Associa tag"));
     expect(input("connections.1.bindings.0.tag").value).toBe("Motor.Speed"); expect(input("connections.1.bindings.0.topic").value).toBe("");
     await change("connections.1.bindings.0.topic", "actual/topic"); expect(button("Salva configurazione").disabled).toBe(false);
+  });
+  it("scegliere testo scalare toglie i percorsi JSON dal solo draft e non inventa qualità", async () => {
+    await mount(); await change("connections.0.bindings.0.qualityPath", "/quality"); await change("connections.0.bindings.0.timestampPath", "/time");
+    await change("connections.0.bindings.0.encoding", "text"); expect(input("connections.0.bindings.0.valuePath").value).toBe(""); expect(input("connections.0.bindings.0.qualityPath").value).toBe("");
+    expect(input("connections.0.bindings.0.timestampPath").value).toBe(""); expect(desktopBridge.saveConnectionConfiguration).not.toHaveBeenCalled();
+    await click(button("Salva configurazione")); const binding = JSON.parse(vi.mocked(desktopBridge.saveConnectionConfiguration).mock.calls[0][2].connections).connections[0].bindings[0];
+    expect(binding).toMatchObject({ encoding: "text" }); expect(binding.valuePath).toBeUndefined(); expect(binding.qualityPath).toBeUndefined(); expect(binding.timestampPath).toBeUndefined();
   });
   it("wildcard e variabili VITE impediscono la scrittura e gli errori portano al campo", async () => {
     await mount(); await change("connections.0.passwordEnv", "VITE_PASSWORD"); expect(button("Salva configurazione").disabled).toBe(true); expect(input("connections.0.passwordEnv").getAttribute("aria-invalid")).toBe("true");

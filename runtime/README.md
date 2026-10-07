@@ -5,8 +5,11 @@ sottoscrizioni, cache tipizzata, qualità e timestamp, timeout e riconnessione. 
 trasferisce i campioni al browser e inoltra i comandi autorizzati. Non serve un Runtime Siemens
 o Rockwell; OPC UA è ancora da implementare.
 
-Il collaudo `npm run test:gateway` nel repository avvia un broker Aedes locale, HTTP e processi
-Node separati anche per i sorgenti generati. Non prova CPU fisiche/virtuali aziendali o TLS reale.
+Il collaudo `npm run test:gateway` nel repository usa Aedes su TCP/TLS, gateway HTTP, peer TCP
+controllati per i rifiuti MQTT 5 e processi Node separati anche per i sorgenti generati. Certificati
+CA/server/client effimeri verificano TLS e mTLS, trust rifiutato, scadenza e hostname errato;
+non vengono installati nel trust del sistema. Serve OpenSSL (su Windows è usato quello di Git,
+se presente). Queste prove locali non dimostrano compatibilità con CPU/broker/trust aziendali.
 
 ## Abilitazione in un pannello standard
 
@@ -18,7 +21,9 @@ a usare la simulazione esplicita, non si collega automaticamente al servizio.
 1. Dichiarare i tag e il loro accesso in `framecraft.plc.json`.
 2. Aprire **Pannello → Connessioni PLC** nell'editor. Aggiungere il broker, scegliere i tag
    dichiarati e i topic reali, configurare valore/qualità/timestamp e i riferimenti ambiente/TLS.
-   Le opzioni avanzate comprendono QoS, timeout e permessi di scrittura. OPC UA non è disponibile.
+   **Guida rapida** apre cinque passi e approfondimenti nello stesso dialogo, anche se il
+   catalogo non è leggibile; non salva né avvia rete. Le opzioni avanzate comprendono QoS,
+   timeout e permessi di scrittura. OPC UA non è disponibile.
 3. Abilitare esplicitamente servizio, connessione e client del pannello, poi **Salva configurazione**.
    Questo salva `framecraft.connections.json` e `framecraft.runtime.json`, non avvia alcun servizio,
    non verifica credenziali/CPU/certificati e non scrive tag PLC. Il client mantiene il percorso
@@ -70,24 +75,72 @@ mapping approvati della macchina. Partire con le scritture disabilitate.
 L'origine comprende schema, host e porta esatti del pannello. Per test con una porta diversa
 aggiornare l'allowlist. Nessun CORS indiscriminato. Il gateway ascolta solo sul loopback; il token
 identifica il proxy/stazione, **non sostituisce l'autenticazione dell'operatore e i ruoli server**.
-`npm --prefix runtime run mqtt` resta disponibile per sola diagnostica JSON su stdout.
+`npm --prefix runtime run mqtt` resta disponibile per diagnostica: messaggi leggibili nella
+console e stati strutturati. `-- --json` rende le righe stdout/stderr JSON; `-- --samples`
+abilita esplicitamente i campioni su stdout, che possono contenere dati aziendali. I valori
+non entrano nel registro su disco. Non avviare due servizi con lo stesso client ID.
+Anche `npm --prefix runtime run gateway -- --json` supporta diagnostica JSON; per raccogliere
+solo JSON senza il preambolo npm, eseguire direttamente `node runtime/start-gateway.mjs --json`.
 
 ## Acquisizione e qualità
 
 Le connessioni richiedono `enabled` esplicito e tag dichiarati. Credenziali tramite riferimenti
 ambiente; TLS verifica i certificati. `tls.caFile`, `certificateFile` e `privateKeyFile` consentono
-trust personalizzato e certificati client. Insecure richiede `allowInsecure: true` esplicito e una
-valutazione del rischio; non è il default di produzione.
+trust personalizzato e certificati client. MQTT/WS senza TLS richiede `allowInsecure: true`
+esplicito e genera un avviso. Questo flag **non disabilita la verifica dei certificati** di
+MQTTS/WSS; non usare trasporto in chiaro per aggirare trust o autenticazione.
 
 Topic concreti, QoS 0/1/2 e JSON Pointer, senza codice eseguibile. Timestamp numerici con unità
 `ms` o `s` dichiarata. Senza qualità nel payload il dato rimane di qualità sconosciuta, non Good
 inventato; `receivedAt` è distinto dal timestamp sorgente. Errori conservano l'ultimo valore ma
-lo marcano Bad; `staleAfterMs` opzionale va scelto sull'acquisizione reale. La cache non è uno
+lo marcano Bad; qualità Bad dalla sorgente conserva l'ultimo valore valido. UTF-8 invalido,
+mapping/qualità/timestamp errati e overflow/underflow Real/Float sono rifiutati. `staleAfterMs`
+opzionale va scelto sull'acquisizione reale e segnala anche un tag mai ricevuto. La cache non è uno
 storico completo e il polling può perdere campioni intermedi veloci.
 
 Tipi attuali: Bool, String/WString, interi 8/16/32 bit, Real/LReal/Float/Double.
 Massimo 1000 connessioni e 5000 tag nel gateway, payload e richieste limitati. Array, strutture,
 wildcard, mapping avanzati e Last Will sono ancora da aggiungere.
+
+Ogni tentativo, iniziale o successivo, limita l'attesa di certificati, CONNECT e SUBACK.
+Dopo una perdita transitoria il servizio crea una connessione e una sottoscrizione nuove:
+non riutilizza i comandi pendenti. Primo avvio fallito, credenziali/TLS/versione/client ID
+rifiutati o sottoscrizione negata terminano il collegamento: correggere la causa e riavviare
+manualmente. Il conflitto di client ID è riconoscibile esplicitamente con MQTT 5 reason 142;
+una semplice chiusura MQTT 3 non dimostra da sola quel conflitto.
+
+## Diagnostica e registro locale
+
+Nel pannello autonomo aprire **lo stato PLC in alto**: stato delle singole connessioni, ultimi
+eventi, conseguenze e **Come risolvere**. La guida compatta è nello stesso riquadro. Gli errori
+del gateway (servizio/proxy/token/origine) sono distinti da quelli del broker
+(rete/autenticazione/subscribe/certificati) e dei tag (mapping/tipo/qualità/scadenza).
+
+Il servizio Node mostra gli stessi rimedi in console e conserva JSONL locali nella cartella
+del pannello, separati per servizio:
+
+- Gateway: `.framecraft-runtime/logs/gateway/connections-0.jsonl`.
+- Diagnostica MQTT: `.framecraft-runtime/logs/mqtt/connections-0.jsonl`.
+
+Ogni servizio ruota tre file da massimo 1 MiB: `0` corrente, `1` e `2` precedenti. La rotazione
+elimina il file più vecchio; non è uno storico permanente. La coda disco è limitata a 256 eventi;
+errori ripetuti per codice/tag vengono raggruppati per cinque secondi con conteggio. Disco
+bloccato/pieno o sovraccarico producono un avviso in console e non interrompono il trasporto;
+il registro può essere incompleto. Il gateway conserva al massimo 100 eventi in memoria;
+il riquadro ne mostra gli ultimi dieci, non ripete un evento a ogni polling.
+
+Non vengono conservati URL/topic, password, token, percorsi di certificati, messaggi grezzi
+del server, payload o valori dei comandi. Restano nomi di tag/connessioni, codice, ora, gravità,
+conseguenza e rimedio: possono essere informazioni aziendali. La directory è esclusa da Git
+nei nuovi pannelli standard, insieme a file ambiente/chiavi. Proteggere cartella e accessi
+con ACL Windows o permessi Unix; non pubblicare log senza revisione. Usare una sola istanza
+per directory di log. Non è audit industriale, storage durevole o garanzia antimanomissione.
+
+Rimedi tipici: `NETWORK_*` → broker/indirizzo/porta/DNS/firewall; `AUTH_DENIED` o
+`SUBSCRIPTION_DENIED` → variabili ambiente e ACL broker; `TLS_*` → CA/nome/scadenza/orologio,
+mai disabilitare la verifica; `BAD_*` o `STALE_SAMPLE` → publisher/topic/tipo/percorsi JSON/frequenza;
+`GATEWAY_AUTH` → stesso token privato nel servizio e proxy, mai nel browser. Un problema di
+configurazione può impedire l'avvio: controllare la console del servizio, non solo il pannello.
 
 ## Comandi senza false conferme
 
@@ -118,6 +171,12 @@ vengono rigiocati. `then/catch`, `await/try-catch` e batch parziali mantengono g
 se almeno un tag viene consegnato il batch prosegue, ma `LastError` segnala quelli falliti.
 Il risultato dell'interprete separa `commands`, `reads` e scritture locali `writes`.
 I tag dei faceplate e le loro closure timer rimangono locali, senza comandi MQTT.
+
+Valore/tipo/permessi o collegamento non pronto: **non inviato**. Un rifiuto esplicito PUBLISH
+MQTT 5 (PUBACK/PUBREC negativo) è **rifiutato**, con il rimedio broker; timeout/perdita della
+risposta o ACK anomalo dopo PUBREC sono **incerti**. Il rifiuto non viene trasformato in
+consegna. Reason 16 segnala assenza di destinatari, non esecuzione PLC. Anche QoS 2 non
+giustifica un replay automatico del comando applicativo dopo un errore.
 
 La lettura è dalla cache dei campioni ricevuti. `ReadMaxAge` verifica età di ricezione e timestamp
 sorgente; `ReadAsync(1)` e `ReadMaxAge(0)` non fingono una lettura forzata CPU. **`WriteAsync(1)`

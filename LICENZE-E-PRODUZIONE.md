@@ -41,6 +41,11 @@ Il ricontrollo offline del 7 ottobre dopo il trasporto script MQTT (punto 91) co
 255 pacchetti npm, 266 Cargo Windows, 1 review npm e 41 Cargo, nessuna dipendenza mancante
 e `releaseApproved: false`. Nessun nuovo pacchetto/asset; il push del codice non chiude il gate.
 
+Il ricontrollo offline del punto 93 (MQTT, log e mini guida) conferma 255 pacchetti npm,
+44 nello scope MQTT, 266 Cargo Windows, 1 review npm e 41 Cargo, zero dipendenze mancanti.
+La patch compatibile `source-map-js` 1.2.2 non cambia le licenze rilevate. Il gate mantiene
+`releaseApproved: false`; i registri locali ruotati non chiudono audit/storage industriale.
+
 Una decisione `review-required` non significa automaticamente uso commerciale vietato.
 Significa che il controllo non ha eliminato la necessità di esaminare la licenza reale.
 Le alternative OR riconosciute possono essere scelte; gli obblighi AND non vengono cancellati.
@@ -70,21 +75,32 @@ Riferimenti primari: [licenza MQTT.js 5.16.0](https://github.com/mqttjs/MQTT.js/
 
 ## Audit vulnerabilità autorizzato
 
-Controllo online precedente, non ripetuto nel ricontrollo offline del 2 ottobre 2026.
+Ricontrollo online del 7 ottobre 2026, dopo affidabilità MQTT e guida connessioni (punto 93).
 
 Il controllo online è stato autorizzato dall'utente; npm ha inviato nomi/versioni delle dipendenze
 a `registry.npmjs.org`, non sorgenti, tag PLC o credenziali. Non è stato eseguito `npm audit fix`.
 
-- `npm audit --json`: due segnalazioni moderate (`vitest@3.2.7`, `@vitest/mocker`), riferite alla
-  stessa vulnerabilità di lettura di file attraverso redirect mock; nessuna alta o critica.
+- Il controllo iniziale ha rilevato anche `source-map-js@1.2.1` (alto) e Tinypool (critico).
+  Aggiornato soltanto `source-map-js` a **1.2.2**, compatibile con gli intervalli del lockfile,
+  senza script install, nuove dipendenze o upgrade major. Quel pacchetto non è più segnalato
+  nel ricontrollo. Riferimento: [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
+- `npm audit --json` dopo la patch: **tre pacchetti segnalati**, due critici (`vitest@3.2.7`
+  e `tinypool`, gravità attribuita dal report npm), uno moderato (`@vitest/mocker`), nessun alto.
+  Vitest eredita anche la gravità delle dipendenze; non sono tre compromissioni accertate.
 - `npm audit --omit=dev --json`: zero vulnerabilità note nel sottoinsieme delle dipendenze npm
   di produzione dell'editor. Il controllo completo comprende anche MQTT installato per test/generazione.
-- Correzione da implementare e collaudare: Vitest almeno 4.1.11 (3.x non riceve il fix), senza
-  aggiornamenti major automatici dell'intero progetto. La proposta npm a 5.x non è stata applicata.
+- Correzione tooling da implementare e collaudare separatamente: Vitest almeno 4.1.11 per il
+  mocker e Tinypool almeno 2.1.2 per entrambi gli advisory rilevati, rispettando i contratti del
+  runner. Non forzati override incompatibili o aggiornamenti major automatici; la proposta
+  npm `vitest@5.0.3` non è stata applicata. I rischi dev/CI restano un gate aperto.
 - Il problema riguarda il dev server del mocker esposto e le condizioni descritte nel
   [bollettino ufficiale Vitest GHSA-82fw-gwwq-j7x9](https://github.com/vitest-dev/vitest/security/advisories/GHSA-82fw-gwwq-j7x9).
   Non è una prova che un PLC o il pannello siano stati compromessi. Mantenere i server di sviluppo
   sul loopback e non includere Vitest nel servizio MQTT.
+- Tinypool: [worker options](https://github.com/tinylibs/tinypool/security/advisories/GHSA-5gmw-xhrv-c9v3)
+  e [run options](https://github.com/tinylibs/tinypool/security/advisories/GHSA-85c8-ppgw-ccpr).
+  Gli advisory descrivono gadget che sfruttano prototype pollution preesistente; non sono
+  la prova di un incidente in questo checkout. Non includere runner/tooling nei servizi distribuiti.
 - Nessuna scansione RustSec o verifica di vulnerabilità del WebView/OS è stata completata in questa
   tranche. Zero segnalazioni npm non significa assenza di vulnerabilità o approvazione al rilascio.
 
@@ -99,8 +115,9 @@ Prima di autorizzare una release:
    nel browser non equivalgono a permessi verificati sul backend.
 4. Conferma applicativa/idempotenza per i comandi PLC. Broker ack non è PLC ack; timeout può voler
    dire esito incerto. Nessun retry/replay automatico di comandi incerti. Interlock e safety nel PLC.
-5. Integrare il trasporto asincrono nell'interprete prima di abilitare scritture PLC da script
-   legacy; oggi sono bloccate in modalità connessa. Confermare contratto e sequenze sulla macchina.
+5. Trasporto asincrono IR integrato nel punto 91: collaudare contratto e sequenze sulla macchina,
+   anche per moduli/timer/Scheduler. Restano conferme applicative, OPC UA, QCD/audit server e
+   bit atomici reali; non dichiarare disponibili metodi o driver non implementati.
 6. Storage industriale, backup, retention, rotazione, spazio, allarmi e recupero verificati.
 7. HTTPS/reverse proxy protetto e servizio gestito, health check/restart, segreti fuori dal bundle,
    privilegi minimi e separazione di rete. Vite dev/preview non è il deployment industriale.

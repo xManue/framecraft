@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
+import path from "node:path";
 import { build } from "vite";
 import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import editorConfig from "../vite.config";
@@ -29,14 +30,18 @@ describe("collaudo separato della generazione Runtime di produzione", () => {
     expect(files.find((file) => file.path === "runtime/gateway.mjs")?.content).toContain("export function createMqttGateway");
     expect(JSON.parse(files.find((file) => file.path === "framecraft.runtime.json")!.content).gateway.enabled).toBe(false);
     const modules = new Map<string, Record<string, unknown>>();
-    expect(evaluateModule(files.find((file) => file.path === "src/framecraftGateway.ts")!.content).createHmiGatewayClient).toBeTypeOf("function");
+    for (const name of ["runtime/connection-config.mjs", "runtime/connection-diagnostics.mjs"]) modules.set(name, evaluateModule(files.find((file) => file.path === name)!.content));
+    expect(files.find((file) => file.path === "runtime/runtime-log.mjs")?.content).toContain("export function createRuntimeLogger");
+    expect(files.find((file) => file.path === ".gitignore")?.content).toContain(".framecraft-runtime/");
     for (const file of files.filter((file) => /^src\/framecraft.+\.ts$/.test(file.path) && file.path !== "src/framecraftHmiRuntime.ts")) {
       expect(() => modules.set(file.path, evaluateModule(file.content, (id) => {
-        const dependency = modules.get(`src/${id.replace(/^\.\//, "")}.ts`);
+        const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file.path), id));
+        const dependency = modules.get(resolved) ?? modules.get(resolved + ".ts");
         if (!dependency) throw new Error(`Dipendenza generata mancante: ${file.path} -> ${id}`);
         return dependency;
       })), file.path).not.toThrow();
     }
+    expect(modules.get("src/framecraftGateway.ts")!.createHmiGatewayClient).toBeTypeOf("function");
     const contexts = modules.get("src/framecraftScriptModules.ts")!.createHmiScriptContextManager as typeof import("../src/core/hmiScriptModules").createHmiScriptContextManager;
     const execute = modules.get("src/framecraftScriptRuntime.ts")!.executeHmiScript as typeof import("../src/core/hmiScript").executeHmiScript;
     const executeAsync = modules.get("src/framecraftScriptRuntime.ts")!.executeHmiScriptAsync as typeof import("../src/core/hmiScript").executeHmiScriptAsync;

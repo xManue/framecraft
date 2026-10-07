@@ -17,6 +17,7 @@ import { createHmiDataLogRuntime, emptyHmiDataLogCatalog, type HmiDataLogCatalog
 import { defaultHmiFunctionTrendConfig, renderHmiFunctionTrendControls, serializeHmiFunctionTrendConfig } from "../src/core/hmiFunctionTrend";
 import { standardProjectFiles } from "../src/core/standardProject";
 import { createHmiGatewayClient, HmiGatewayCommandError } from "../src/core/hmiGateway";
+import { connectionDiagnostic } from "../runtime/connection-diagnostics.mjs";
 
 interface GeneratedRuntime {
   installFramecraftHmiRuntime(options: { navigate: (target: string) => void; trace: (message: string) => void; error: (message: string) => void }): () => void;
@@ -424,6 +425,21 @@ describe("Runtime del pannello standard generato", () => {
       button.click(); await vi.waitFor(() => expect(trace).toHaveBeenCalledWith("[HMI Tapped] TRANSPORT_RECEIPT"));
       expect(request.mock.calls.filter(([input]) => String(input).endsWith("/write"))).toHaveLength(before + 1);
       expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10");
+    } finally { dispose(); }
+  });
+  it("mostra diagnostica e rimedi nel pannello generato senza HTML attivo o errori per ogni poll", async () => {
+    const connectionId = '<img src=x onerror="alert(1)">';
+    const diagnostic = { ...connectionDiagnostic("AUTH_DENIED", { connectionId, timestamp: 1000 }), id: "runtime_event_0123456789" };
+    const snapshot = { version: 1, allowWrites: false, connections: [{ id: connectionId, state: "error", diagnostic }], tags: [], samples: [], diagnostics: [diagnostic] };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(snapshot))));
+    document.body.innerHTML = '<span data-framecraft-gateway-status></span><p data-framecraft-plc-summary></p><div data-framecraft-plc-connections></div><ol data-framecraft-plc-events></ol>';
+    const runtime = loadGeneratedRuntime(undefined, undefined, true), errors = vi.fn(), dispose = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error: errors });
+    try {
+      await vi.waitFor(() => expect(document.querySelector("[data-framecraft-plc-events]")!.textContent).toContain("Come risolvere:"));
+      expect(document.querySelector("[data-framecraft-plc-connections]")!.textContent).toContain("Da controllare"); expect(document.querySelector("[data-framecraft-plc-events]")!.textContent).toContain("permessi");
+      expect(document.querySelector("[data-framecraft-plc-events] img")).toBeNull(); expect(document.querySelector("[data-framecraft-plc-events]")!.textContent).toContain(connectionId);
+      await new Promise((resolve) => setTimeout(resolve, 300)); expect(document.querySelectorAll("[data-framecraft-plc-events] li")).toHaveLength(1); expect(errors).toHaveBeenCalledOnce();
+      expect(document.querySelector("[data-framecraft-plc-summary]")!.textContent).toContain("0/1 connessioni");
     } finally { dispose(); }
   });
   it("propaga il gateway a moduli, timer e Scheduler senza modificare il valore acquisito", async () => {

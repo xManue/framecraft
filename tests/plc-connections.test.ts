@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { ConnectionConfigurationError, validateConnectionCatalog, validateMqttConnection } from "../runtime/connection-config.mjs";
 import { connectionConfigurationIssues, defaultConnectionCatalog, newMqttConnection, parseConnectionConfiguration, serializeConnectionConfiguration, type ConnectionConfigurationSnapshot } from "../src/core/plcConnections";
+import { normalizeMqttTagValue } from "../runtime/connection-config.mjs";
 
 const variables = [{ name: "Motor.Speed", dataType: "Real", access: "read-write" as const, address: "", description: "" }];
 function snapshot(): ConnectionConfigurationSnapshot {
   return { generation: 1, files: { connections: JSON.stringify({ ...defaultConnectionCatalog(), custom: { machine: "A" }, connections: [{ ...newMqttConnection([]), url: "mqtts://broker.invalid", bindings: [{ tag: variables[0].name, topic: "machine/speed", valuePath: "/value" }] }] }), runtime: JSON.stringify({ version: 1, custom: { keep: true }, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }), plc: JSON.stringify({ version: 1, variables }) } };
 }
 describe("configurazione PLC condivisa editor/Runtime", () => {
+  it("rifiuta overflow Float32, nomi di controllo e percorsi JSON nel testo scalare", () => {
+    expect(() => normalizeMqttTagValue(1e39, "Real")).toThrow("fuori dal tipo"); expect(normalizeMqttTagValue(1e39, "LReal")).toBe(1e39);
+    expect(() => normalizeMqttTagValue(1e-50, "Real")).toThrow("fuori dal tipo"); expect(normalizeMqttTagValue(1e-50, "LReal")).toBe(1e-50);
+    const model = parseConnectionConfiguration(snapshot()); model.catalog.connections[0].id = "bad\nname";
+    expect(connectionConfigurationIssues(model).some((issue) => issue.path.endsWith(".id"))).toBe(true);
+    model.catalog.connections[0].id = "valid"; model.catalog.connections[0].bindings[0].encoding = "text";
+    expect(connectionConfigurationIssues(model).some((issue) => issue.path.endsWith(".valuePath"))).toBe(true);
+  });
   it("parte disabilitata e non inventa broker, origini o tag", () => {
     const model = parseConnectionConfiguration({ generation: 1, files: { connections: null, runtime: null, plc: null } });
     expect(model.catalog.gateway.enabled).toBe(false); expect(model.catalog.connections).toEqual([]); expect(model.catalog.gateway.allowedOrigins).toEqual([]); expect(model.variables).toEqual([]);

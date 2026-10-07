@@ -33,6 +33,16 @@ describe("generatore nuovo pannello standard", () => {
     expect(JSON.parse(files.find((file) => file.path === "runtime/package.json")!.content)).toMatchObject({ scripts: { mqtt: "node start-mqtt.mjs" }, dependencies: { mqtt: "5.16.0" } });
     expect(files.find((file) => file.path === "runtime/mqtt-driver.mjs")!.content).toContain('import { connect } from "mqtt"');
     expect(files.find((file) => file.path === "runtime/gateway.mjs")!.content).toContain("export function createMqttGateway");
+    expect(files.find((file) => file.path === "runtime/connection-diagnostics.mjs")!.content).toContain("Come risolvere:");
+    expect(files.find((file) => file.path === "runtime/connection-diagnostics.d.mts")!.content).toContain("ConnectionDiagnostic");
+    expect(files.find((file) => file.path === "runtime/runtime-log.mjs")!.content).toContain("export function createRuntimeLogger");
+    expect(files.find((file) => file.path === "runtime/runtime-log.d.mts")!.content).toContain("createRuntimeLogger");
+    expect(files.find((file) => file.path === "src/framecraftGateway.ts")!.content).toContain('from "../runtime/connection-diagnostics.mjs"');
+    expect(files.find((file) => file.path === "src/framecraftGateway.ts")!.content).not.toContain("../../runtime/");
+    expect(files.find((file) => file.path === ".gitignore")!.content).toContain(".framecraft-runtime/");
+    expect(files.find((file) => file.path === ".gitignore")!.content).toContain("*.key");
+    expect(files.find((file) => file.path === "src/App.tsx")!.content).toContain("Guida rapida e posizione dei log");
+    expect(files.find((file) => file.path === "src/framecraftHmiRuntime.ts")!.content).toContain("timeoutMs: gatewayConfig.timeoutMs");
     expect(JSON.parse(files.find((file) => file.path === "framecraft.runtime.json")!.content).gateway).toMatchObject({ enabled: false });
     expect(files.find((file) => file.path === "vite.config.ts")!.content).toContain("framecraftGatewayProxy");
     expect(JSON.parse(files.find((file) => file.path === "framecraft.faceplates.json")!.content)).toMatchObject({

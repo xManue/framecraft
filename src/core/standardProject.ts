@@ -14,6 +14,10 @@ import { hmiTrendRuntimeModuleSource } from "./hmiTrend";
 import { hmiFunctionTrendRuntimeModuleSource } from "./hmiFunctionTrend";
 import { emptyHmiDataLogCatalog, hmiDataLogRuntimeModuleSource } from "./hmiDataLogs";
 import mqttDriverSource from "../../runtime/mqtt-driver.mjs?raw";
+import connectionDiagnosticSource from "../../runtime/connection-diagnostics.mjs?raw";
+import connectionDiagnosticTypes from "../../runtime/connection-diagnostics.d.mts?raw";
+import runtimeLogSource from "../../runtime/runtime-log.mjs?raw";
+import runtimeLogTypes from "../../runtime/runtime-log.d.mts?raw";
 import mqttStartSource from "../../runtime/start-mqtt.mjs?raw";
 import mqttReadmeSource from "../../runtime/README.md?raw";
 import mqttDriverTypes from "../../runtime/mqtt-driver.d.mts?raw";
@@ -245,6 +249,7 @@ import dataLogCatalogJson from "../framecraft.logs.json";
 import plcCatalogJson from "../framecraft.plc.json";
 import runtimeCatalogJson from "../framecraft.runtime.json";
 import { createHmiGatewayClient, HmiGatewayCommandError, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";
+import type { ConnectionDiagnostic } from "./framecraftGateway";
 
 type HmiEventType = "Activated" | "ContextTapped" | "Deactivated" | "Down" | "KeyDown" | "KeyUp" | "Loaded" | "Tapped" | "Up" | "Change" | "GestureDetected" | "Unloaded" | "HotKey" | "InterfaceEvent" | "Initialized" | "CommandFired";
 type HmiGesture = "Unknown" | "SwipeRight" | "SwipeLeft" | "SwipeUp" | "SwipeDown";
@@ -291,7 +296,7 @@ const scheduledTasks = ((scriptCatalogJson as { scheduledTasks?: ScheduledTask[]
 const values: Record<string, string> = Object.create(null);
 const tagStatus: Record<string, { qualityCode?: number; qualityKnown?: boolean; timeStamp?: string | number; lastError?: number; errorDescription?: string }> = Object.create(null);
 const tagListeners = new Set<(tag: string, previous?: string) => void>();
-const gatewayConfig = runtimeCatalogJson.gateway;
+const gatewayConfig = runtimeCatalogJson.gateway as { enabled: boolean; path: string; pollMs: number; timeoutMs?: number };
 let gatewayClient: ReturnType<typeof createHmiGatewayClient> | undefined;
 let gatewayReport: ((message: string) => void) | undefined;
 let gatewaySnapshot: HmiGatewaySnapshot | undefined;
@@ -846,16 +851,46 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   window.addEventListener("framecraft:command-result", commandResult);
   tagListeners.add(tagChanged);
   gatewayReport = options.error ?? console.error;
+  const recentDiagnostics: ConnectionDiagnostic[] = [];
   const renderGatewayStatus = (state: string) => {
     const connected = gatewaySnapshot?.connections.filter((connection) => connection.state === "connected").length ?? 0;
     const total = gatewaySnapshot?.connections.length ?? 0;
-    const label = !gatewayConfig.enabled ? "PLC: da configurare" : state !== "connected" ? "Gateway non collegato" : !total ? "Nessuna connessione" : "MQTT " + connected + "/" + total;
+    const invalid = gatewaySnapshot?.samples.filter((sample) => sample.lastError || sample.qualityCode !== undefined && (sample.qualityCode & 0xc0) === 0).length ?? 0;
+    const label = !gatewayConfig.enabled ? "PLC: da configurare" : state !== "connected" ? "Gateway non collegato" : !total ? "Nessuna connessione" : "MQTT " + connected + "/" + total + (invalid ? " · tag Bad" : "");
     for (const element of document.querySelectorAll<HTMLElement>("[data-framecraft-gateway-status]")) {
       if (element.textContent !== label) element.textContent = label;
-      element.title = "Stato del trasporto MQTT, non conferma di esecuzione PLC.";
+      element.title = "Apri lo stato PLC per diagnostica e guida. Stato del trasporto MQTT, non conferma di esecuzione PLC.";
     }
     for (const element of document.querySelectorAll<HTMLElement>(".hmi-plc-bar i")) {
       element.style.width = total && state === "connected" ? String(connected / total * 100) + "%" : "0%";
+    }
+    for (const element of document.querySelectorAll<HTMLElement>("[data-framecraft-plc-summary]")) {
+      const text = !gatewayConfig.enabled ? "Collegamento disabilitato. Configura Pannello → Connessioni PLC e avvia il servizio Node; salvare non apre la rete." : state !== "connected" ? "Il pannello non raggiunge il gateway. Controlla servizio, porta e proxy; i valori non sono aggiornati e i comandi non vengono accodati." : connected + "/" + total + " connessioni disponibili. " + invalid + " tag non validi. Connesso non equivale a qualità Good o esecuzione PLC.";
+      if (element.textContent !== text) element.textContent = text;
+    }
+    for (const list of document.querySelectorAll<HTMLElement>("[data-framecraft-plc-connections]")) {
+      const signature = JSON.stringify(gatewaySnapshot?.connections ?? []);
+      if (list.dataset.signature === signature) continue; list.dataset.signature = signature;
+      const names: Record<string, string> = { connected: "Connessa", connecting: "Collegamento in corso", reconnecting: "Riconnessione in corso", error: "Da controllare", stopped: "Arrestata" };
+      list.replaceChildren(...(gatewaySnapshot?.connections ?? []).map((connection) => {
+        const item = document.createElement("p"), title = document.createElement("strong");
+        title.textContent = connection.id + " · " + (names[connection.state] ?? connection.state); item.append(title);
+        if (connection.diagnostic) { const detail = document.createElement("span"); detail.textContent = connection.diagnostic.message + " Come risolvere: " + connection.diagnostic.action; item.append(detail); }
+        return item;
+      }));
+    }
+    for (const list of document.querySelectorAll<HTMLElement>("[data-framecraft-plc-events]")) {
+      const events = recentDiagnostics.slice(-10).reverse(), signature = JSON.stringify(events);
+      if (list.dataset.signature === signature) continue; list.dataset.signature = signature;
+      list.replaceChildren(...events.map((event) => {
+        const item = document.createElement("li"), title = document.createElement("strong"), detail = document.createElement("p"), action = document.createElement("p"), code = document.createElement("small");
+        item.dataset.level = event.level;
+        title.textContent = [event.connectionId, event.tag, event.title].filter(Boolean).join(" · ");
+        detail.textContent = event.message + " " + event.impact; action.textContent = "Come risolvere: " + event.action;
+        code.textContent = new Date(event.timestamp).toLocaleTimeString() + " · " + event.code + (event.technicalCode ? " / " + event.technicalCode : "") + (event.occurrences && event.occurrences > 1 ? " · " + event.occurrences + " eventi uguali" : "");
+        item.append(title, detail, action, code); return item;
+      }));
+      if (!events.length) { const empty = document.createElement("li"); empty.textContent = "Nessun evento ricevuto. Controlla anche i log del servizio se non è avviato o non è raggiungibile."; list.append(empty); }
     }
   };
   if (gatewayConfig.enabled) {
@@ -866,8 +901,13 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       }
     };
     unavailable();
-    gatewayClient = createHmiGatewayClient({ path: gatewayConfig.path, pollMs: gatewayConfig.pollMs,
-      onState: (state, error) => { if (state === "disconnected") { unavailable(); if (error) gatewayReport?.(error); } renderGatewayStatus(state); },
+    gatewayClient = createHmiGatewayClient({ path: gatewayConfig.path, pollMs: gatewayConfig.pollMs, timeoutMs: gatewayConfig.timeoutMs,
+      onState: (state) => { if (state === "disconnected") { gatewaySnapshot = undefined; unavailable(); } renderGatewayStatus(state); },
+      onDiagnostic: (event) => {
+        recentDiagnostics.push({ ...event }); if (recentDiagnostics.length > 100) recentDiagnostics.shift();
+        if (event.level !== "info") gatewayReport?.([event.connectionId, event.tag, event.title, event.message, event.impact, "Come risolvere: " + event.action].filter(Boolean).join(" · "));
+        renderGatewayStatus(gatewayClient?.state ?? "connecting");
+      },
       onSnapshot: (snapshot) => {
         gatewaySnapshot = snapshot;
         for (const sample of snapshot.samples) applyRuntimeTagSample(sample);
@@ -1117,10 +1157,14 @@ export function App() {
           <output data-hmi-type="HmiTextBox" data-plc-variable="">EMERGENCY BUTTON PRESSED E.C.2</output>
           <span>Machine Control</span>
         </section>
-        <div className="hmi-plc">
-          <span data-framecraft-gateway-status="" role="status" aria-live="polite">PLC Connection</span>
+        <details className="hmi-plc"><summary title="PLC Connection: stato, diagnostica e guida" aria-label="Stato, diagnostica e guida PLC">
+          <span data-framecraft-gateway-status="" role="status" aria-live="polite">PLC: da configurare</span>
           <div className="hmi-plc-bar" data-hmi-type="HmiBar" data-plc-variable=""><i /></div>
-        </div>
+        </summary><section className="hmi-plc-diagnostics" aria-label="Diagnostica connessioni PLC">
+          <h2>Connessioni PLC</h2><p data-framecraft-plc-summary="">Configurazione in Pannello → Connessioni PLC. Salvare non avvia collegamenti.</p>
+          <div data-framecraft-plc-connections="" /><h3>Ultimi 10 eventi</h3><ol data-framecraft-plc-events="" />
+          <details><summary>Guida rapida e posizione dei log</summary><p>Configura tag, broker e mapping nell’editor; il responsabile del servizio deve preparare credenziali/certificati e avviare il servizio Node seguendo runtime/README.md. L’anteprima resta offline.</p><p>Controlla sempre qualità e aggiornamento dei tag. Una ricevuta broker non conferma l’esecuzione PLC. Esito incerto: verifica la macchina prima di un nuovo comando; nessun reinvio automatico.</p><p>Registro locale del servizio in .framecraft-runtime/logs, con rotazione. Niente password, token o valori dei comandi nei log. OPC UA non ancora disponibile; nessuna conferma PLC simulata.</p></details>
+        </section></details>
         <img className="hmi-logo" src="/placeholder.svg" alt="Logo del costruttore" />
 
         {/* Seconda fila: utente, linea e formato, OMAC, velocita'. */}
@@ -1262,7 +1306,24 @@ button, input, select, textarea { font: inherit; }
 .hmi-fault output:nth-of-type(2) { font-weight: 400; text-align: center; }
 .hmi-fault span:last-child { text-align: right; padding-right: 14px; font-weight: 400; }
 .hmi-glyph { display: grid; place-items: center; font-size: 19px; }
-.hmi-plc { position: absolute; left: 932px; top: 4px; width: 142px; height: 40px; display: grid; gap: 4px; text-align: center; font-size: 15px; }
+.hmi-plc { position: absolute; left: 932px; top: 1px; width: 142px; text-align: center; font-size: 13px; }
+.hmi-plc > summary { min-height: 44px; display: grid; align-content: center; gap: 5px; cursor: pointer; list-style: none; border-radius: 3px; }
+.hmi-plc > summary::-webkit-details-marker { display: none; }
+.hmi-plc > summary:hover { background: #333333; }
+.hmi-plc summary:focus-visible { outline: 2px solid #6cc5ff; outline-offset: 2px; }
+.hmi-top-bar:has(.hmi-plc[open]) { z-index: 70; }
+.hmi-plc-diagnostics { position: absolute; right: 0; top: 48px; z-index: 70; width: 430px; max-height: 580px; overflow: auto; padding: 18px; border: 1px solid #888888; border-radius: 5px; background: #222222; color: #ffffff; box-shadow: 0 12px 28px #00000099; text-align: left; line-height: 1.6; overflow-wrap: anywhere; }
+.hmi-plc-diagnostics h2 { margin: 0 0 10px; font-size: 18px; }
+.hmi-plc-diagnostics h3 { margin: 16px 0 8px; font-size: 15px; }
+.hmi-plc-diagnostics ol { list-style: none; margin: 0; padding: 0; }
+.hmi-plc-diagnostics li { padding: 12px; margin-bottom: 10px; border: 1px solid #666666; border-radius: 3px; }
+.hmi-plc-diagnostics li[data-level="warning"] { border-color: #e0ba65; }
+.hmi-plc-diagnostics li[data-level="error"] { border-color: #f58484; }
+.hmi-plc-diagnostics p { margin: 6px 0; }
+.hmi-plc-diagnostics [data-framecraft-plc-connections] span { display: block; }
+.hmi-plc-diagnostics small { color: #cccccc; }
+.hmi-plc-diagnostics details { border-top: 1px solid #777777; }
+.hmi-plc-diagnostics details summary { min-height: 44px; padding: 10px 0; cursor: pointer; }
 .hmi-plc-bar { height: 9px; background: #8B8D97; border-radius: 2px; overflow: hidden; }
 .hmi-plc-bar i { display: block; width: 0%; height: 100%; background: #339966; }
 .hmi-command-feedback { position: absolute; right: 20px; bottom: 12px; z-index: 60; max-width: 600px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #333333; border: 2px solid #d4a12a; color: white; font-size: 14px; }
@@ -1346,8 +1407,13 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     },
   };
   return [
+    { path: ".gitignore", content: "node_modules/\ndist/\n.framecraft/\n.framecraft-runtime/\n.framecraft-workspace.json\n*.log\n*.tsbuildinfo\n.env\n.env.*\n!.env.example\n*.pem\n*.key\n*.pfx\n*.p12\n" },
     { path: "src/App.tsx", content: appSource(machineName, planned, mobile) },
     { path: "runtime/mqtt-driver.mjs", content: mqttDriverSource },
+    { path: "runtime/connection-diagnostics.mjs", content: connectionDiagnosticSource },
+    { path: "runtime/connection-diagnostics.d.mts", content: connectionDiagnosticTypes },
+    { path: "runtime/runtime-log.mjs", content: runtimeLogSource },
+    { path: "runtime/runtime-log.d.mts", content: runtimeLogTypes },
     { path: "runtime/connection-config.mjs", content: connectionConfigSource },
     { path: "runtime/connection-config.d.mts", content: connectionConfigTypes },
     { path: "runtime/mqtt-driver.d.mts", content: mqttDriverTypes },
@@ -1361,7 +1427,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs" }, dependencies: { mqtt: "5.16.0" } }, null, 2) + "\n" },
     { path: "framecraft.connections.json", content: JSON.stringify({ version: 1, connections: [] }, null, 2) + "\n" },
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },
-    { path: "src/framecraftGateway.ts", content: gatewayClientSource },
+    { path: "src/framecraftGateway.ts", content: gatewayClientSource.replaceAll('"../../runtime/', '"../runtime/') },
     { path: "vite.config.ts", content: "import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\nimport { framecraftGatewayProxy } from './runtime/vite-gateway.mjs';\nconst proxy = framecraftGatewayProxy();\nexport default defineConfig({ plugins: [react()], server: { host: '127.0.0.1', proxy }, preview: { host: '127.0.0.1', proxy } });\n" },
     { path: "src/framecraftScriptRuntime.ts", content: hmiScriptRuntimeModuleSource() },
     { path: "src/framecraftHmiFlashing.ts", content: hmiFlashingRuntimeSource() },
@@ -1384,6 +1450,6 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "framecraft.scripts.json", content: `${JSON.stringify(emptyHmiScriptCatalog(), null, 2)}\n` },
     { path: "framecraft.faceplates.json", content: serializeHmiFaceplateCatalog(standardHmiFaceplateCatalog()) },
     { path: "framecraft.logs.json", content: `${JSON.stringify(emptyHmiDataLogCatalog(slug(machineName)), null, 2)}\n` },
-    { path: "README.md", content: `# ${machineName}\n\nPannello React creato da Framecraft sullo standard HMI ${panelSize.width}x${panelSize.height} (New_Layout_V19_V20).\n\nHMI React autonomo: non va distribuito in TIA/WinCC o FactoryTalk Runtime. I collegamenti industriali previsti sono OPC UA/MQTT.\n\n- Layout: ${mobile ? "desktop e mobile" : "desktop"}\n- Sezioni: ${planned.map((section) => `${section.label} (${section.pages.length} pagine)`).join(", ")}\n- Sessione Program Modification: ${settingsProgram}.\n- L'icona di una sezione apre il suo sottomenu, come nel pannello vero: le voci portano alle pagine.\n- ${photo ? `Foto della macchina: \`${photo.url}\`, gia' messa nelle pagine che mostrano la macchina intera.` : "Le immagini sono segnaposto: sostituiscile dall'Inspector con le grafiche della macchina."}\n- I pezzi (encoder, robot, stazioni) restano segnaposto: scegli tu l'immagine dall'Inspector.\n- Variabili PLC: importabili da \`framecraft.plc.json\` tramite l'editor.\n- Moduli JavaScript HMI: funzioni globali, locali e operazioni pianificate in \`framecraft.scripts.json\`, compilate senza eval.\n- Data Log: acquisizione ciclica, su variazione o su richiesta in \`framecraft.logs.json\`; i Trend possono usare valori online e campioni archiviati.\n- Function Trend X/Y: due sorgenti indipendenti, scalari o array JSON coerenti, configurabili dall'Inspector; curve online/storiche, sorgenti selezionabili a Runtime, zoom rettangolare, qualità, righello e CSV.\n- MQTT: servizio Node e gateway HTTP/browser in runtime/, disabilitati inizialmente. Configura i tag in Variabili PLC e usa Pannello -> Connessioni PLC per broker, mapping, gateway e client. Salvare non avvia rete o comandi; segreti soltanto nel servizio. Segui runtime/README.md; OPC UA resta da implementare.\n- Comandi reali: requestRuntimeTagWrite attende la ricevuta del servizio, non una conferma PLC. Nessuna coda offline o aggiornamento ottimistico; le scritture PLC degli script IR legacy sono bloccate in modalità connessa finché non viene integrato il trasporto asincrono.\n\n## Prima della produzione\n\nNode LTS supportato (baseline Node 24), HTTPS/reverse proxy protetto, autenticazione e ruoli server, segreti fuori dal bundle, audit/storage persistenti e interlock nel PLC. Vite dev/preview e il PIN browser non sono un deployment industriale sicuro. Collaudare CPU/TLS, conferma e idempotenza dei comandi, guasti e recovery; conservare lockfile e verificare vulnerabilità, licenze/notice e diritti di foto/font/export della distribuzione reale. La generazione del progetto non equivale ad approvazione al rilascio.\n` },
+    { path: "README.md", content: `# ${machineName}\n\nPannello React creato da Framecraft sullo standard HMI ${panelSize.width}x${panelSize.height} (New_Layout_V19_V20).\n\nHMI React autonomo: non va distribuito in TIA/WinCC o FactoryTalk Runtime. MQTT disponibile nel servizio Node; OPC UA non ancora implementato.\n\n- Layout: ${mobile ? "desktop e mobile" : "desktop"}\n- Sezioni: ${planned.map((section) => `${section.label} (${section.pages.length} pagine)`).join(", ")}\n- Sessione Program Modification: ${settingsProgram}.\n- L'icona di una sezione apre il suo sottomenu, come nel pannello vero: le voci portano alle pagine.\n- ${photo ? `Foto della macchina: \`${photo.url}\`, gia' messa nelle pagine che mostrano la macchina intera.` : "Le immagini sono segnaposto: sostituiscile dall'Inspector con le grafiche della macchina."}\n- I pezzi (encoder, robot, stazioni) restano segnaposto: scegli tu l'immagine dall'Inspector.\n- Variabili PLC: importabili da \`framecraft.plc.json\` tramite l'editor.\n- Moduli JavaScript HMI: funzioni globali, locali e operazioni pianificate in \`framecraft.scripts.json\`, compilate senza eval.\n- Data Log: acquisizione ciclica, su variazione o su richiesta in \`framecraft.logs.json\`; i Trend possono usare valori online e campioni archiviati.\n- Function Trend X/Y: due sorgenti indipendenti, scalari o array JSON coerenti, configurabili dall'Inspector; curve online/storiche, sorgenti selezionabili a Runtime, zoom rettangolare, qualità, righello e CSV.\n- MQTT: servizio Node e gateway HTTP/browser in runtime/, disabilitati inizialmente. Configura i tag in Variabili PLC e usa Pannello -> Connessioni PLC per broker, mapping, gateway e client. Salvare non avvia rete o comandi; segreti soltanto nel servizio. Segui runtime/README.md; OPC UA resta da implementare.\n- Comandi reali: requestRuntimeTagWrite attende la ricevuta del servizio, non una conferma PLC. Nessuna coda offline o aggiornamento ottimistico; eventi IR, moduli, timer e Scheduler attendono il trasporto MQTT asincrono. WriteAsync(1)/hmiWriteWait non è disponibile senza conferma applicativa PLC.\n- Guida rapida nell'editor: Pannello -> Connessioni PLC -> Guida rapida. Nel pannello autonomo apri lo stato PLC in alto per diagnostica, conseguenze e Come risolvere.\n- Log locali con rotazione in .framecraft-runtime/logs, fino a tre file da 1 MiB per servizio; niente password, token o valori dei comandi. Directory esclusa da Git, ma nomi tag/connessioni possono essere aziendali: non pubblicare il registro senza revisione. Dettagli e limiti in runtime/README.md.\n\n## Prima della produzione\n\nNode LTS supportato (baseline Node 24), HTTPS/reverse proxy protetto, autenticazione e ruoli server, segreti fuori dal bundle, audit/storage persistenti e interlock nel PLC. Vite dev/preview e il PIN browser non sono un deployment industriale sicuro. Collaudare CPU/TLS, conferma e idempotenza dei comandi, guasti e recovery; conservare lockfile e verificare vulnerabilità, licenze/notice e diritti di foto/font/export della distribuzione reale. La generazione del progetto non equivale ad approvazione al rilascio.\n` },
   ];
 }

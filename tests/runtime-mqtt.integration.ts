@@ -2,8 +2,9 @@
 import { Aedes, type Client } from "aedes";
 import { connectAsync } from "mqtt";
 import { createServer } from "node:net";
-import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createMqttPlcConnection, type MqttConnectionConfig, type MqttTagSample } from "../runtime/mqtt-driver.mjs";
@@ -32,7 +33,26 @@ async function fixture() {
 }
 
 describe("driver MQTT reale su broker TCP locale", () => {
-  it("avvia i sorgenti del pannello generato e legge un tag dal broker in un processo Node reale", async () => {
+  it.each(["mqtt", "gateway"])("CLI %s: JSON anche se disabilitato e nessun dettaglio privato su configurazione invalida", async (cli) => {
+    const base = path.resolve(".hmi-preview"); await mkdir(base, { recursive: true }); const root = await mkdtemp(path.join(base, "generated-mqtt-"));
+    try {
+      const files = standardProjectFiles({ machineName: "CLI safe", layout: "desktop", sections: ["main"] }).filter((file) => file.path.startsWith("runtime/") || ["framecraft.connections.json", "framecraft.plc.json"].includes(file.path));
+      for (const file of files) { const target = path.resolve(root, file.path); await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, file.content, "utf8"); }
+      const run = () => promisify(execFile)(process.execPath, [path.join(root, "runtime/start-" + cli + ".mjs"), "--json"], { cwd: root, windowsHide: true, timeout: 8000 });
+      const result = await run(); expect(JSON.parse(result.stdout.trim())).toMatchObject({ type: cli, state: "disabled" }); expect(result.stderr).toBe("");
+      await writeFile(path.join(root, "framecraft.connections.json"), 'PRIVATE_CONFIG_TOKEN {');
+      try { await run(); throw new Error("CLI invalida accettata per errore."); }
+      catch (error) {
+        expect(error).toMatchObject({ code: 1 }); const diagnostic = JSON.parse((error as { stderr: string }).stderr.trim());
+        expect(diagnostic).toMatchObject({ type: "diagnostic", code: "CONFIGURATION", action: expect.any(String) }); expect(JSON.stringify(diagnostic)).not.toContain("PRIVATE_CONFIG_TOKEN");
+      }
+    } finally {
+      const resolved = await realpath(root), parent = await realpath(base);
+      if (path.dirname(resolved) !== parent || !path.basename(resolved).startsWith("generated-mqtt-")) throw new Error("Cleanup non valido.");
+      await rm(resolved, { recursive: true, force: true });
+    }
+  }, 20000);
+  it.each([false, true])("avvia il servizio generato; campioni su stdout solo con --samples=%s", async (samples) => {
     const test = await fixture(); const base = path.resolve(".hmi-preview"); await mkdir(base, { recursive: true });
     const root = await mkdtemp(path.join(base, "generated-mqtt-"));
     let child: ReturnType<typeof spawn> | undefined, exited: Promise<void> | undefined;
@@ -44,13 +64,16 @@ describe("driver MQTT reale su broker TCP locale", () => {
       }
       await writeFile(path.join(root, "framecraft.connections.json"), JSON.stringify({ version: 1, connections: [{ ...test.config, protocol: "mqtt", enabled: true }] }));
       await writeFile(path.join(root, "framecraft.plc.json"), JSON.stringify({ version: 1, variables }));
-      child = spawn(process.execPath, [path.join(root, "runtime/start-mqtt.mjs")], { cwd: root, stdio: ["pipe", "pipe", "pipe"] });
+      child = spawn(process.execPath, [path.join(root, "runtime/start-mqtt.mjs"), "--json", ...(samples ? ["--samples"] : [])], { cwd: root, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
       let output = "", errors = ""; child.stdout!.on("data", (chunk) => { output += String(chunk); }); child.stderr!.on("data", (chunk) => { errors += String(chunk); });
       exited = new Promise<void>((resolve, reject) => { child!.once("exit", () => resolve()); child!.once("error", reject); });
       await vi.waitFor(() => expect(output).toContain('"state":"connected"'), { timeout: 8_000 });
       await test.publisher.publishAsync("test/motor/speed", JSON.stringify({ value: 42, quality: 192, time: 1_000 }), { qos: 1 });
-      await vi.waitFor(() => expect(output).toContain('"value":"42"'));
-      expect(output).toContain('"type":"sample"'); expect(output).toContain('"qualityCode":192'); expect(errors).toBe("");
+      if (samples) { await vi.waitFor(() => expect(output).toContain('"value":"42"')); expect(output).toContain('"type":"sample"'); expect(output).toContain('"qualityCode":192'); }
+      else { await new Promise((resolve) => setTimeout(resolve, 200)); expect(output).not.toContain('"type":"sample"'); expect(output).not.toContain('"value":"42"'); }
+      expect(errors).toContain('"code":"INSECURE_TRANSPORT"'); expect(errors).not.toContain('"level":"error"');
+      await vi.waitFor(async () => expect(await readFile(path.join(root, ".framecraft-runtime/logs/mqtt/connections-0.jsonl"), "utf8")).not.toContain('"value":"42"'));
+      for (const line of (output + errors).trim().split("\n")) expect(() => JSON.parse(line)).not.toThrow();
     } finally {
       if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGTERM"); if (exited) await exited;
       await test.close(); const resolved = await realpath(root), intendedBase = await realpath(base);
@@ -79,9 +102,9 @@ describe("driver MQTT reale su broker TCP locale", () => {
       await vi.waitFor(() => expect(test.driver.read("Motor.Speed")?.value).toBe("10"));
       await test.publisher.publishAsync("test/motor/speed", "{not-json", { qos: 1 });
       await vi.waitFor(() => expect(test.driver.read("Motor.Speed")?.lastError).toBe("BadPayload"));
-      expect(test.driver.read("Motor.Speed")).toMatchObject({ value: "10", qualityCode: 0 }); expect(test.onError).toHaveBeenCalledWith("Motor.Speed: Payload JSON MQTT non valido.");
+      expect(test.driver.read("Motor.Speed")).toMatchObject({ value: "10", qualityCode: 0 }); expect(test.onError).toHaveBeenCalledWith(expect.stringContaining("Come risolvere: Controlla formato JSON/testo"));
       await test.publisher.publishAsync("test/motor/speed", JSON.stringify({ value: "", quality: 192, time: 2_000 }), { qos: 1 });
-      await vi.waitFor(() => expect(test.onError).toHaveBeenCalledWith("Motor.Speed: Valore numerico non valido."));
+      await vi.waitFor(() => expect(test.onError.mock.calls.filter(([message]) => message.includes("Dato ricevuto non valido"))).toHaveLength(1));
       expect(test.driver.read("Motor.Speed")?.value).toBe("10");
     } finally { await test.close(); }
   });
@@ -94,7 +117,7 @@ describe("driver MQTT reale su broker TCP locale", () => {
       expect(await driver.write("Motor.Speed", 50)).toEqual({ tag: "Motor.Speed", delivery: "broker-ack", plcConfirmed: false });
       expect(await received).toEqual({ content: "50", retained: false }); expect(driver.read("Motor.Speed")).toBeUndefined();
       await expect(driver.write("Motor.Enabled", true)).rejects.toThrow("non autorizzata");
-      await driver.stop(); await expect(driver.write("Motor.Speed", 70)).rejects.toThrow("non accodato");
+      await driver.stop(); await expect(driver.write("Motor.Speed", 70)).rejects.toMatchObject({ outcome: "rejected", diagnostic: { code: "WRITE_OFFLINE" } });
     } finally { await driver.stop(); await test.close(); }
   });
   it("rileva dati scaduti e recupera una connessione spezzata con una nuova sottoscrizione", async () => {
@@ -118,17 +141,17 @@ describe("driver MQTT reale su broker TCP locale", () => {
       if (client?.id === "framecraft-test" && packet.topic === "test/motor/command") { attempts++; blocked.push(callback); } else callback(null);
     };
     try {
-      await driver.start(); const assertion = expect(driver.write("Motor.Speed", 80)).rejects.toThrow("esito del comando non confermato");
+      await driver.start(); const assertion = expect(driver.write("Motor.Speed", 80)).rejects.toMatchObject({ outcome: "uncertain", diagnostic: { code: "WRITE_UNCERTAIN" } });
       await vi.waitFor(() => expect(attempts).toBe(1)); test.clients.get("framecraft-test")!.conn.destroy(); await assertion;
       await vi.waitFor(() => expect(driver.state).toBe("connected"), { timeout: 3_000 }); expect(attempts).toBe(1);
     } finally { for (const callback of blocked) callback(new Error("Comando di collaudo scartato.")); await driver.stop(); await test.close(); }
   });
-  it("termina l'avvio fallito senza esporre segreti o lasciare riconnessioni attive", async () => {
+  it.each(["missing", "throws"])("termina l'avvio con credenziali %s senza esporre segreti o lasciare riconnessioni attive", async (mode) => {
     const test = await fixture(); const onError = vi.fn();
-    const driver = createMqttPlcConnection({ ...test.config, passwordEnv: "MISSING_SECRET" }, variables, { onError, resolveSecret: () => undefined });
+    const driver = createMqttPlcConnection({ ...test.config, passwordEnv: "MISSING_SECRET" }, variables, { onError, resolveSecret: () => { if (mode === "throws") throw null; return undefined; } });
     try {
-      await expect(driver.start()).rejects.toThrow("Configurazione o certificati"); expect(driver.state).toBe("error");
-      expect(onError).toHaveBeenCalledWith("Configurazione o certificati MQTT non disponibili.");
+      await expect(driver.start()).rejects.toMatchObject({ diagnostic: { code: "SECRET_MISSING" } }); expect(driver.state).toBe("error");
+      expect(onError).toHaveBeenCalledWith(expect.stringContaining("Come risolvere: Imposta le variabili")); expect(JSON.stringify(onError.mock.calls)).not.toContain("MISSING_SECRET");
     } finally { await driver.stop(); await test.close(); }
   });
   it("blocca endpoint con segreti, TLS implicito disattivato, mapping sconosciuti e comandi retained", () => {

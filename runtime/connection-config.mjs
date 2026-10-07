@@ -18,7 +18,7 @@ export function normalizeMqttTagValue(value, dataType) {
   if (Object.hasOwn(limits, type) || ["real", "lreal", "float", "double"].includes(type)) {
     if (typeof value !== "number" && typeof value !== "string" || typeof value === "string" && !value.trim()) throw new Error("Valore numerico non valido.");
     const numeric = Number(value); const range = limits[type];
-    if (!Number.isFinite(numeric) || range && (!Number.isInteger(numeric) || numeric < range[0] || numeric > range[1])) throw new Error("Valore fuori dal tipo PLC dichiarato.");
+    if (!Number.isFinite(numeric) || ["real", "float"].includes(type) && (Math.abs(numeric) > 3.4028234663852886e38 || numeric !== 0 && Math.fround(numeric) === 0) || range && (!Number.isInteger(numeric) || numeric < range[0] || numeric > range[1])) throw new Error("Valore fuori dal tipo PLC dichiarato.");
     return numeric;
   }
   if (["string", "wstring"].includes(type)) { if (typeof value !== "string") throw new Error("Valore stringa non valido."); return value; }
@@ -27,7 +27,7 @@ export function normalizeMqttTagValue(value, dataType) {
 
 export function validateMqttConnection(config, variables, prefix = "") {
   const reject = (message, key) => fail(message, prefix + key);
-  if (!object(config) || typeof config.id !== "string" || !config.id.trim()) reject("La connessione MQTT richiede un id.", "id");
+  if (!object(config) || typeof config.id !== "string" || !config.id.trim() || config.id.length > 200 || /[\u0000-\u001f\u007f]/.test(config.id)) reject("La connessione MQTT richiede un id valido, fino a 200 caratteri e senza caratteri di controllo.", "id");
   if (Object.hasOwn(config, "password") || Object.hasOwn(config, "username")) reject("Usa usernameEnv/passwordEnv, non credenziali nel JSON.", "passwordEnv");
   let url;
   try { url = new URL(config.url); } catch { reject("URL MQTT non valido; le credenziali devono restare nell'ambiente del servizio.", "url"); }
@@ -36,7 +36,7 @@ export function validateMqttConnection(config, variables, prefix = "") {
   for (const key of ["allowInsecure", "allowWrites"]) if (config[key] !== undefined && typeof config[key] !== "boolean") reject("Il consenso deve essere booleano.", key);
   if (config.clientId !== undefined && (typeof config.clientId !== "string" || !config.clientId.trim() || /\0/.test(config.clientId))) reject("Client ID MQTT non valido.", "clientId");
   if (!Array.isArray(config.bindings) || config.bindings.length > 5_000) reject("Mapping MQTT non valido.", "bindings");
-  if (!Array.isArray(variables) || variables.some((v) => !object(v) || typeof v.name !== "string" || !v.name.trim() || typeof v.dataType !== "string") || new Set(variables.map((v) => v.name)).size !== variables.length) reject("Catalogo PLC non valido o duplicato.", "bindings");
+  if (!Array.isArray(variables) || variables.some((v) => !object(v) || typeof v.name !== "string" || !v.name.trim() || v.name.length > 200 || /[\u0000-\u001f\u007f]/.test(v.name) || typeof v.dataType !== "string") || new Set(variables.map((v) => v.name)).size !== variables.length) reject("Catalogo PLC non valido o duplicato.", "bindings");
   const tags = new Map(variables.map((v) => [v.name, { ...v }])); const seen = new Set();
   for (const [index, binding] of config.bindings.entries()) {
     const error = (message, key) => reject(message, "bindings." + index + "." + key);
@@ -49,6 +49,7 @@ export function validateMqttConnection(config, variables, prefix = "") {
     for (const key of ["qos", "writeQos"]) if (binding[key] !== undefined && ![0, 1, 2].includes(binding[key])) error("QoS MQTT non valido.", key);
     for (const key of ["encoding", "writeEncoding"]) if (!["json", "text"].includes(binding[key] ?? "json")) error("Formato MQTT non valido.", key);
     for (const key of ["valuePath", "qualityPath", "timestampPath"]) if (binding[key] !== undefined && (typeof binding[key] !== "string" || binding[key] && (!binding[key].startsWith("/") || /~(?![01])/u.test(binding[key])))) error("Usa un JSON Pointer per " + key + ".", key);
+    for (const key of ["valuePath", "qualityPath", "timestampPath"]) if (binding.encoding === "text" && binding[key] !== undefined && (key !== "valuePath" || binding[key] !== "")) error("Il testo scalare non contiene campi JSON: rimuovi " + key + " o scegli JSON.", key);
     if (binding.staleAfterMs !== undefined && (!Number.isFinite(binding.staleAfterMs) || binding.staleAfterMs < 250)) error("staleAfterMs deve essere almeno 250 ms.", "staleAfterMs");
     if (binding.timestampUnit !== undefined && !["ms", "s"].includes(binding.timestampUnit)) error("Unità timestamp non valida.", "timestampUnit");
     if (binding.writeRetain !== undefined && binding.writeRetain !== false) error("I comandi PLC non possono essere retained.", "writeRetain");
