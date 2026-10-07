@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { act, createElement } from "react";
+import { readFileSync } from "node:fs";
+import { URL as NodeURL } from "node:url";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../src/filesystem/desktopBridge", () => ({ desktopAvailable: true, desktopBridge: { readFile: vi.fn(), writeFile: vi.fn(), createFile: vi.fn(), analyzeProject: vi.fn() } }));
@@ -9,6 +11,7 @@ import { PagesPanel } from "../src/editor/PagesPanel";
 import { standardProjectFiles } from "../src/core/standardProject";
 import { readPageCategories } from "../src/core/pageNavigation";
 import { detectPages } from "../src/core/pages";
+const editorStyles = readFileSync(new NodeURL("../src/styles/global.css", import.meta.url), "utf8");
 const project = { root: "C:/synthetic-panel", name: "Synthetic", framework: "vite" as const, language: "typescript" as const, packageManager: "npm" as const, entryFiles: [] as string[], files: [], scripts: {}, dependencies: [], hasNodeModules: true, missingDependencies: [] };
 const generated = standardProjectFiles({ machineName: "Synthetic", layout: "desktop-mobile", sections: ["main"] });
 const sources = Object.fromEntries(generated.filter((item) => /src\/.*\.tsx$/.test(item.path)).map((item) => [`${project.root}/${item.path}`, item.content]));
@@ -26,6 +29,19 @@ beforeEach(() => {
 });
 afterEach(async () => { if (root) await act(async () => root!.unmount()); host?.remove(); root = undefined; useEditorStore.setState(actions); vi.restoreAllMocks(); });
 describe("finestra pagine e categorie", () => {
+  it("mantiene lo stile delle pagine dentro categorie e gruppi liberi", async () => {
+    useEditorStore.setState({ activePageId: useEditorStore.getState().pages[0].id, pageCategories: [] });
+    const style = document.createElement("style"); style.textContent = editorStyles; document.head.append(style);
+    try {
+      await mount();
+      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>(".page-category-group > button"));
+      expect(buttons).toHaveLength(useEditorStore.getState().pages.length);
+      for (const item of buttons) { expect(item.classList.contains("page-list-item")).toBe(true); expect(getComputedStyle(item).display).toBe("flex"); expect(getComputedStyle(item).backgroundColor).not.toBe("buttonface"); }
+      expect(document.querySelectorAll('.page-list [aria-current="page"]')).toHaveLength(1);
+      await act(async () => { useEditorStore.setState({ pageCategories: readPageCategories(sources[router]) }); root!.render(createElement(PagesPanel)); });
+      for (const item of document.querySelectorAll(".page-category-group > button")) expect(getComputedStyle(item).display).toBe("flex");
+    } finally { style.remove(); }
+  });
   it("non ripristina un vecchio menu se una lettura lenta termina dopo la creazione", async () => {
     let complete!: (source: string) => void;
     vi.mocked(desktopBridge.readFile).mockReturnValueOnce(new Promise((resolve) => { complete = resolve; }));

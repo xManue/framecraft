@@ -117,7 +117,7 @@ export function PagesPanel() {
   const refreshCategories = useEditorStore((state) => state.refreshPageCategories);
   useEffect(() => { if (project && routerFile) void refreshCategories(); }, [project, routerFile, refreshCategories]);
   const [creating, setCreating] = useState<"page" | "category">();
-  const pageButton = (page: typeof pages[number]) => <button key={page.id} className={activePageId === page.id ? "active" : ""} onClick={() => void openPage(page)} title={page.file}><Route size={15} /><span><strong>{page.name}</strong><small>{page.stateValue ? `schermata: ${page.stateValue}` : page.route}</small></span></button>;
+  const pageButton = (page: typeof pages[number]) => <button type="button" key={page.id} className={activePageId === page.id ? "page-list-item active" : "page-list-item"} aria-current={activePageId === page.id ? "page" : undefined} onClick={() => void openPage(page)} title={page.file}><Route size={15} /><span><strong>{page.name}</strong><small>{page.stateValue ? `schermata: ${page.stateValue}` : page.route}</small></span></button>;
   const freePages = pages.filter((page) => !categories.some((category) => category.pages.includes(page.route)));
   return <div className="panel-content pages-panel"><div className="panel-title"><span>PAGINE</span><button aria-label="Nuova pagina" onClick={() => setCreating("page")} disabled={!routerEditable}><Plus size={16} /></button></div>
     <p className="panel-help">Le categorie organizzano anche il menu del pannello. Qui crei pagine; in Aggiungi elementi trovi soltanto componenti.</p>

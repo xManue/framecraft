@@ -3405,6 +3405,20 @@ Verifiche del 5 ottobre 2026:
   sintetico: prova layout, non certificazione del router o PLC reale. Screenshot/fixture locali
   ignorati. Non eseguita la suite generale, come richiesto dall'utente.
 
+### 95. Colori leggibili dopo il raggruppamento pagine (2026-10-07)
+
+- Regressione riprodotta dallo screenshot: i pulsanti dentro le nuove categorie non erano più
+  figli diretti di `page-list`, quindi perdevano gli stili e usavano i colori nativi del browser.
+  Classe dedicata per tutte le pagine, categoria o gruppo libero; selezione/focus riconoscibili,
+  nomi e percorsi lunghi troncati senza allargare il pannello.
+- Avvisi di caricamento/errore anteprima allineati al tema scuro dell'editor, con testo e pulsanti
+  leggibili. Nessuna modifica ai colori dei progetti macchina o dell'iframe funzionante.
+- Test mirato dello stile sulle pagine realmente raggruppate. Riproduzione del vero AppShell in
+  Edge isolato con progetto sintetico: 23 pagine, righe contenute, avviso scuro e contrasto dei
+  testi principali 8,9:1. Fixture/screenshot locali ignorati; nessun salvataggio del progetto utente.
+- Il server dell'editor rispondeva. L'utente ha confermato che l'anteprima era tornata disponibile
+  prima di ulteriori interventi: non riavviata, causa transitoria non attribuita senza log.
+
 ## Da fare, dopo
 
 - **Richieste attuali — Cosa fa**: controllo iniziale che abilita le reazioni e scelta click,
