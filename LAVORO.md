@@ -3419,6 +3419,30 @@ Verifiche del 5 ottobre 2026:
 - Il server dell'editor rispondeva. L'utente ha confermato che l'anteprima era tornata disponibile
   prima di ulteriori interventi: non riavviata, causa transitoria non attribuita senza log.
 
+### 96. Nuovi HMI mobile: orientamento, navigazione e accesso (2026-10-07)
+
+- Pipeline dei nuovi desktop+mobile: scelta Automatico/Desktop/Mobile. Automatico segue i
+  cambiamenti del viewport sotto i 1280 px necessari al guscio desktop; scelta manuale mantenuta
+  durante la navigazione. I pannelli solo desktop non attivano il mobile.
+- Adatta disegno misura l'area contenuto e la larghezza reale della pagina, anche se modificata;
+  ResizeObserver e fallback resize con cleanup. Nessun cambiamento alle coordinate macchina.
+  L'adattamento riduce anche i comandi del disegno: dimensioni reali per usarli più grandi.
+- Utente di nuovo visibile nell'header compatto, senza attivare login o inventare una sessione.
+  L'azione Accesso utente già configurata apre una pagina responsive con account/PIN/tastierino,
+  senza overflow su telefono. È ancora accesso locale browser, non autenticazione industriale.
+- Sezione attiva riportata nella striscia visibile senza scroll dell'intera pagina. Menu con righe
+  48 px (corretto il conflitto con l'altezza inline), chiusura touch/Escape, focus sul primo comando,
+  ritorno all'apertura o alla pagina selezionata e chiusura quando si esce dal menu con tastiera.
+  Conservato il bordo iniziale del menu desktop. Safe-area predisposte, senza dichiararle collaudate
+  su dispositivi fisici. I 44 px dei comandi del guscio non si applicano al disegno rimpicciolito.
+- Verifiche mirate: sei casi sul vero App generato, cinque controlli generatore/gusci/menu,
+  tre casi serializzazione/login esistenti e TypeScript. Edge isolato a 320x640, 375x800,
+  812x375 e 1024x768; desktop a 1414 px. Header, righe menu, focus, scorrimento, scala e login
+  sintetico verificati. Ripetuto solo il caso orizzontale dopo l'ultimo aggiustamento del focus.
+  Router della fixture sintetico: non collaudo del router reale, telefono fisico o PLC.
+- L'utente eliminerà i vecchi progetti: migrazione guidata non più richiesta. Nessuna cancellazione
+  effettuata, nessuna riscrittura dei loro gusci/CSS. Fixture e screenshot restano locali ignorati.
+
 ## Da fare, dopo
 
 - **Richieste attuali — Cosa fa**: controllo iniziale che abilita le reazioni e scelta click,
@@ -3426,8 +3450,8 @@ Verifiche del 5 ottobre 2026:
   abilitate; altre azioni guidate utili; visibilità e reattività per utente/permesso attivo.
   Collegare anteprima e Runtime esportato, non soltanto l'interfaccia. Le autorizzazioni PLC
   industriali devono restare server-side: i soli permessi nel browser non sono un confine sicuro.
-- **Mobile esistente**: aggiornamento guidato del guscio dei pannelli già creati, con confronto,
-  backup e conservazione delle personalizzazioni; collaudo touch e progetti reali ancora aperto.
+- **Mobile**: collaudo su dispositivi touch fisici e sui nuovi progetti reali; nessuna migrazione
+  dei vecchi pannelli richiesta dall'utente. Le verifiche browser non sostituiscono il collaudo macchina.
 
 - **Sicurezza tooling**: migrare e collaudare Vitest/mocker/Tinypool a versioni corrette
   per gli advisory del punto 93, senza override incompatibili. Ripetere suite pubblica,

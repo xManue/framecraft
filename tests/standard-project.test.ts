@@ -10,10 +10,12 @@ describe("generatore nuovo pannello standard", () => {
   it("genera un guscio mobile adattabile mantenendo la tela macchina e comandi touch", () => {
     const files = standardProjectFiles({ machineName: "Mobile", layout: "desktop-mobile", sections: ["main"] });
     const app = files.find((file) => file.path === "src/App.tsx")!.content, css = files.find((file) => file.path === "src/styles.css")!.content;
-    expect(app.includes("window.matchMedia('(max-width: 800px)')")).toBe(true);
+    expect(app.includes("window.matchMedia('(max-width: 1279px)')")).toBe(true);
     expect(app.includes("Adatta disegno")).toBe(true); expect(app.includes('data-mobile-fit={mobileFit}')).toBe(true);
-    expect(css.includes(".hmi-shell.mobile { width: 100%" )).toBe(true); expect(css.includes("height: calc(100dvh - 172px)")).toBe(true);
+    expect(css.includes(".hmi-shell.mobile { width: 100%" )).toBe(true); expect(css.includes("height: calc(100dvh - 172px - env(")).toBe(true);
     expect(css.includes("zoom: var(--mobile-scale)")).toBe(true); expect(css.includes("min-height: 44px")).toBe(true);
+    expect(css.includes(".hmi-shell.mobile .hmi-user { position: static")).toBe(true);
+    expect(css.includes(".hmi-submenu-panel li { height: 48px !important")).toBe(true);
     expect(files.find((file) => file.path.startsWith("src/pages/") && file.content.includes("data-page-number={1001}"))?.content.includes("width: 1280")).toBe(true);
   });
   it("crea guscio, tutte le pagine delle sezioni, manifesto e catalogo PLC", () => {

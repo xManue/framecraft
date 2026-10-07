@@ -1013,7 +1013,7 @@ function appSource(machineName: string, planned: readonly PlannedSection[], mobi
   const entryIcons = usedMenuIcons.map((id) => `  ${id}: (${svgIcon(menuIcon[id])}),`).join("\n");
   const fallback = planned[0]?.route ?? "/";
   const layoutSwitch = mobile
-    ? `\n        <div className="hmi-layout-controls"><button type="button" className="hmi-layout-switch" onClick={() => setMobileLayout((value) => !value)}>{mobileLayout ? "Desktop" : "Mobile"}</button>{mobileLayout && <button type="button" className="hmi-fit-switch" aria-pressed={mobileFit} onClick={() => setMobileFit((value) => !value)}>{mobileFit ? "Dimensioni reali" : "Adatta disegno"}</button>}</div>`
+    ? `\n        <div className="hmi-layout-controls"><label><span className="hmi-layout-label">Layout pannello</span><select className="hmi-layout-switch" value={layoutMode} onChange={(event) => setLayoutMode(event.target.value as typeof layoutMode)}><option value="auto">Automatico</option><option value="desktop">Desktop</option><option value="mobile">Mobile</option></select></label>{mobileLayout && <button type="button" className="hmi-fit-switch" aria-pressed={mobileFit} title="Adatta riduce anche i comandi del disegno. Usa Dimensioni reali per controlli più grandi." onClick={() => setMobileFit((value) => !value)}>{mobileFit ? "Dimensioni reali" : "Adatta disegno"}</button>}</div>`
     : "";
 
   return `import { useEffect, useRef, useState } from "react";
@@ -1066,13 +1066,17 @@ ${entryIcons}
 };
 
 export function App() {
-  const [mobileLayout, setMobileLayout] = useState(${mobile ? "() => window.matchMedia('(max-width: 800px)').matches" : "false"});
+  const [layoutMode, setLayoutMode] = useState<"auto" | "desktop" | "mobile">(${mobile ? '"auto"' : '"desktop"'});
+  const [compactScreen, setCompactScreen] = useState(() => window.matchMedia('(max-width: 1279px)').matches);
+  const mobileLayout = layoutMode === "mobile" || layoutMode === "auto" && compactScreen;
   const [mobileFit, setMobileFit] = useState(false);
-  const [mobileScale, setMobileScale] = useState(() => Math.min(1, window.innerWidth / 1280));
+  const screen = useRef<HTMLElement>(null);
+  const [mobileScale, setMobileScale] = useState(1);
   useEffect(() => {
-    const resize = () => setMobileScale(Math.min(1, window.innerWidth / 1280));
-    window.addEventListener("resize", resize); resize();
-    return () => window.removeEventListener("resize", resize);
+    const query = window.matchMedia('(max-width: 1279px)');
+    const changed = () => setCompactScreen(query.matches);
+    query.addEventListener("change", changed); changed();
+    return () => query.removeEventListener("change", changed);
   }, []);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [runtimeLanguage, setRuntimeLanguage] = useState(resourceCatalog.activeLanguage || resourceCatalog.defaultLanguage || "it-IT");
@@ -1081,6 +1085,51 @@ export function App() {
   const navigate = useNavigate();
   const current = panelSections.find((section) => section.pages.includes(location.pathname)) ?? panelSections[0];
   const openSection = panelSections.find((section) => section.id === openMenu) ?? null;
+
+  useEffect(() => {
+    const content = screen.current;
+    if (!content) return;
+    const drawing = content.querySelector<HTMLElement>(".hmi-page");
+    const resize = () => {
+      const width = drawing?.offsetWidth || 1280;
+      setMobileScale(Math.min(1, (content.clientWidth || window.innerWidth) / width));
+    };
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(resize) : null;
+    observer?.observe(content);
+    if (drawing) observer?.observe(drawing);
+    window.addEventListener("resize", resize); resize();
+    return () => { observer?.disconnect(); window.removeEventListener("resize", resize); };
+  }, [location.pathname, mobileLayout]);
+
+  useEffect(() => {
+    if (!mobileLayout) return;
+    const nav = document.querySelector<HTMLElement>(".hmi-lateral");
+    const active = nav?.querySelector<HTMLElement>(".hmi-section.active");
+    if (!nav || !active) return;
+    if (active.offsetLeft < nav.scrollLeft || active.offsetLeft + active.offsetWidth > nav.scrollLeft + nav.clientWidth)
+      nav.scrollLeft = Math.max(0, active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2);
+  }, [current.id, mobileLayout]);
+
+  const closeMenu = () => {
+    setOpenMenu(null);
+    const opener = Array.from(document.querySelectorAll<HTMLButtonElement>(".hmi-section")).find((item) => item.dataset.section === openMenu);
+    opener?.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    if (!openMenu) return;
+    document.querySelector<HTMLButtonElement>("#hmi-section-menu li:not(.hmi-submenu-heading) button:not(:disabled)")?.focus({ preventScroll: true });
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault(); closeMenu();
+    };
+    const leave = (event: FocusEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && !target.closest("#hmi-section-menu, .hmi-section")) setOpenMenu(null);
+    };
+    window.addEventListener("keydown", escape);
+    document.addEventListener("focusin", leave);
+    return () => { window.removeEventListener("keydown", escape); document.removeEventListener("focusin", leave); };
+  }, [openMenu]);
 
   useEffect(() => installFramecraftHmiRuntime({
     navigate: (target) => navigate(runtimeRoute(target)),
@@ -1148,6 +1197,7 @@ export function App() {
     if (!route) return; // voce "Free": tiene il posto, non porta a una pagina
     setOpenMenu(null);
     navigate(route);
+    screen.current?.focus({ preventScroll: true });
   };
 
   return (
@@ -1218,8 +1268,8 @@ export function App() {
             disabled={!section.route}
             data-hmi-type="HmiButton"
             data-plc-variable="Actual_Page_Number"
-            aria-haspopup={section.entries.length > 1 ? "menu" : undefined}
             aria-expanded={section.entries.length > 1 ? section.id === openMenu : undefined}
+            aria-controls={section.entries.length > 1 && section.id === openMenu ? "hmi-section-menu" : undefined}
             onClick={() => chooseSection(section)}
           >
             <span className="hmi-section-icon">{sectionIcons[section.id] ?? Object.values(sectionIcons)[0]}</span>
@@ -1228,7 +1278,7 @@ export function App() {
         ))}
       </nav>
 
-      <main className="hmi-screen" data-hmi-type="HmiScreenWindow" data-mobile-fit={mobileFit}>
+      <main ref={screen} tabIndex={-1} aria-label="Pagina del pannello" className="hmi-screen" data-hmi-type="HmiScreenWindow" data-mobile-fit={mobileFit}>
         <Routes>
 ${routes}
           <Route path="*" element={<Navigate to=${JSON.stringify(fallback)} replace />} />
@@ -1241,9 +1291,10 @@ ${routes}
       {/* Il sottomenu: il resto dello schermo si scurisce, il triangolino punta all'icona. */}
       {openSection && openSection.menu && (
         <div className="hmi-submenu">
-          <button type="button" className="hmi-submenu-dim" aria-label="Chiudi il menu" onClick={() => setOpenMenu(null)} />
+          <button type="button" className="hmi-submenu-dim" aria-label="Chiudi il menu" tabIndex={-1} onClick={closeMenu} />
           <span className="hmi-submenu-pointer" aria-hidden="true" style={openSection.menu.pointer} />
-          <ul className="hmi-submenu-panel" aria-label={\`Menu \${openSection.label}\`} style={openSection.menu.panel}>
+          <ul id="hmi-section-menu" className="hmi-submenu-panel" aria-label={\`Menu \${openSection.label}\`} style={openSection.menu.panel}>
+            <li className="hmi-submenu-heading"><strong>{openSection.label}</strong><button type="button" aria-label="Chiudi menu sezione" onClick={closeMenu}>Chiudi ×</button></li>
             {openSection.entries.map((entry, index) => (
               <li key={index} style={{ height: openSection.menu!.entry.pitch }}>
                 <button type="button" data-hmi-type="HmiButton" disabled={!entry.route} onClick={() => chooseEntry(entry.route)}>
@@ -1292,24 +1343,31 @@ ${mobileTabs}
 .hmi-shell.mobile .hmi-submenu-pointer { display: none; }
 .hmi-shell.mobile .hmi-submenu-panel { left: 16px !important; top: ${mobileShell.content.top + 8}px !important; width: 300px !important; }
 .hmi-layout-controls { position: fixed; right: 10px; bottom: 10px; z-index: 40; display: flex; gap: 8px; }
+.hmi-layout-controls label { display: flex; }
+.hmi-layout-label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .hmi-layout-switch, .hmi-fit-switch { min-height: 44px; padding: 0 12px; border: 1px solid #64646A; border-radius: 4px; background: #333333; color: #FFFFFF; font-size: 14px; cursor: pointer; }
-.hmi-layout-switch:hover, .hmi-layout-switch:focus-visible { opacity: 1; }
+.hmi-layout-switch:focus-visible, .hmi-fit-switch:focus-visible { outline: 2px solid #6cc5ff; outline-offset: 2px; }
 /* Il disegno resta nelle sue coordinate: si sposta nell'area contenuto, non l'intera pagina. */
-html:has(.hmi-shell.mobile), body:has(.hmi-shell.mobile), #root:has(.hmi-shell.mobile) { min-width: 0; min-height: 0; height: 100%; }
-.hmi-shell.mobile { width: 100%; min-width: 0; height: 100dvh; min-height: 320px; }
-.hmi-shell.mobile .hmi-top-bar { width: 100%; height: 56px; }
-.hmi-shell.mobile .hmi-clock { left: 8px; top: 6px; width: 142px; }.hmi-shell.mobile .hmi-clock strong { font-size: 22px; }
-.hmi-shell.mobile .hmi-plc { left: auto; right: 8px; top: 4px; width: 156px; }
-.hmi-shell.mobile .hmi-logo, .hmi-shell.mobile .hmi-user { display: none; }
-.hmi-shell.mobile .hmi-plc-diagnostics { width: min(430px, calc(100vw - 16px)); max-height: calc(100dvh - 72px); }
-.hmi-shell.mobile .hmi-lateral { top: 56px; width: 100%; height: 56px; padding: 0; overflow-x: auto; overflow-y: hidden; }
+html:has(.hmi-shell.mobile), body:has(.hmi-shell.mobile), #root:has(.hmi-shell.mobile) { min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+.hmi-shell.mobile { width: 100%; min-width: 0; height: 100dvh; min-height: 0; }
+.hmi-shell.mobile .hmi-top-bar { width: 100%; height: calc(56px + env(safe-area-inset-top, 0px)); padding: calc(6px + env(safe-area-inset-top, 0px)) 8px 6px; display: grid; grid-template-columns: 64px minmax(44px, 1fr) 140px; gap: 8px; align-items: center; z-index: 50; }
+.hmi-shell.mobile .hmi-clock { position: static; grid-column: 1; grid-row: 1; width: auto; height: 44px; }.hmi-shell.mobile .hmi-clock strong { font-size: 22px; }.hmi-shell.mobile .hmi-clock span { display: none; }
+.hmi-shell.mobile .hmi-plc { position: static; grid-column: 3; grid-row: 1; width: auto; }
+.hmi-shell.mobile .hmi-user { position: static; grid-column: 2; grid-row: 1; display: grid; grid-template-rows: 1fr; width: 100%; height: 44px; min-width: 0; padding: 0 4px; }
+.hmi-shell.mobile .hmi-user span { display: none; }.hmi-shell.mobile .hmi-user strong { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hmi-shell.mobile .hmi-logo { display: none; }
+.hmi-shell.mobile .hmi-plc-diagnostics { right: 8px; top: calc(56px + env(safe-area-inset-top, 0px)); width: min(430px, calc(100vw - 16px)); max-height: calc(100dvh - 72px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+.hmi-shell.mobile .hmi-lateral { top: calc(56px + env(safe-area-inset-top, 0px)); width: 100%; height: 56px; padding: 0; overflow-x: auto; overflow-y: hidden; z-index: 50; }
 .hmi-shell.mobile .hmi-section { flex: 0 0 auto; width: auto; min-width: 110px; min-height: 44px; padding: 0 16px; }
-.hmi-shell.mobile .hmi-screen { top: 112px; width: 100%; height: calc(100dvh - 172px); overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; zoom: 1 !important; }
+.hmi-shell.mobile .hmi-screen { top: calc(112px + env(safe-area-inset-top, 0px)); width: 100%; height: calc(100dvh - 172px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; zoom: 1 !important; }
 .hmi-shell.mobile .hmi-screen[data-mobile-fit="true"] .hmi-page { zoom: var(--mobile-scale); }
-.hmi-shell.mobile .hmi-submenu-panel { top: 120px !important; left: 8px !important; width: min(340px, calc(100vw - 16px)) !important; max-height: calc(100dvh - 184px); overflow-y: auto; }
-.hmi-shell.mobile .hmi-submenu-panel li { height: 48px; }.hmi-shell.mobile .hmi-submenu-panel button { min-height: 44px; }
-.hmi-shell.mobile .hmi-command-feedback { left: 8px; right: 8px; bottom: 64px; max-height: 160px; overflow: auto; }
-.hmi-shell.mobile .hmi-layout-controls { left: 0; right: 0; bottom: 0; height: 60px; padding: 8px; background: #111; justify-content: flex-end; }
+.hmi-shell.mobile .hmi-submenu-panel { top: calc(120px + env(safe-area-inset-top, 0px)) !important; left: 8px !important; width: min(340px, calc(100vw - 16px)) !important; max-height: calc(100dvh - 184px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow-y: auto; overscroll-behavior: contain; }
+.hmi-shell.mobile .hmi-submenu-panel li { height: 48px !important; }.hmi-shell.mobile .hmi-submenu-panel button { min-height: 44px; }
+.hmi-shell.mobile .hmi-submenu-heading { display: flex; position: sticky; top: -8px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 0 14px; background: ${cssColor(submenuPalette.panel)}; }
+.hmi-shell.mobile .hmi-submenu-heading button { width: auto; padding: 0 8px; }
+.hmi-shell.mobile .hmi-command-feedback { left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); max-height: min(160px, calc(100dvh - 184px)); overflow: auto; }
+.hmi-shell.mobile .hmi-layout-controls { left: 0; right: 0; bottom: 0; height: calc(60px + env(safe-area-inset-bottom, 0px)); padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: #111; justify-content: flex-end; z-index: 50; }
+.hmi-shell.mobile .hmi-fit-switch { min-width: 0; }
 `
     : "";
 
@@ -1398,7 +1456,8 @@ ${tiles}
 .hmi-submenu-dim { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; padding: 0; background: ${cssColor(submenuPalette.scrim)}; cursor: default; }
 .hmi-submenu-pointer { position: absolute; background: ${cssColor(submenuPalette.panel)}; clip-path: polygon(100% 0, 100% 100%, 0 50%); }
 .hmi-submenu-panel { position: absolute; margin: 0; padding: ${submenuPanel.entry.first}px 0 2px; list-style: none; border-radius: 10px; background: ${cssColor(submenuPalette.panel)}; overflow: hidden; }
-.hmi-submenu-panel li + li { border-top: ${submenuPanel.separator.height}px solid ${cssColor(submenuPalette.separator)}; }
+.hmi-submenu-panel li:not(.hmi-submenu-heading) + li { border-top: ${submenuPanel.separator.height}px solid ${cssColor(submenuPalette.separator)}; }
+.hmi-submenu-heading { display: none; }
 .hmi-submenu-panel button { display: flex; align-items: center; gap: 16px; width: 100%; height: 100%; padding: 0 14px; border: 0; background: transparent; color: ${cssColor(submenuPalette.text)}; font-size: 15px; font-weight: 700; text-align: left; cursor: pointer; }
 .hmi-submenu-panel button:enabled:hover, .hmi-submenu-panel button:enabled:focus-visible { background: rgba(255, 255, 255, .5); }
 /* Le voci "Free" sono nel menu come nelle foto, con lo stesso nero: solo, non aprono niente. */

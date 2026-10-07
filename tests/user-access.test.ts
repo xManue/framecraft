@@ -47,6 +47,8 @@ describe("ready-made user access", () => {
   it("carries the accounts inside the generated file and reads them back", () => {
     const source = serializeUserAccessRuntime(panelConfig);
     expect(source).toContain("framecraft.operator-session");
+    expect(source).toContain("@media(max-width:600px)");
+    expect(source).toContain("grid-template-columns:minmax(0,1fr)");
     expect(parseUserAccessRuntime(source)).toEqual(panelConfig);
     expect(parseUserAccessRuntime("console.log('altro file');")).toBeUndefined();
   });

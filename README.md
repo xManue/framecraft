@@ -64,10 +64,17 @@ menu and numeric screen lookup, not just the editor list. Standard sections keep
 their original numbers; custom categories use 10–99 and leave 9 to popups.
 **Aggiungi elementi** contains reusable components, not the project's page exports.
 
-New **desktop + mobile** standard panels adapt their header and navigation to a
-narrow viewport. The machine drawing keeps its 1280×694 coordinates: pan at
-**Dimensioni reali**, or choose **Adatta disegno**. This generator change does not
-silently overwrite an existing machine project's custom shell or CSS.
+New **desktop + mobile** standard panels offer **Automatico**, **Desktop** and
+**Mobile** in the layout selector. Automatic mode follows viewport changes,
+including orientation, and switches to mobile below the desktop shell's 1280 px.
+Manual mode stays selected while navigating. Header, configured user access,
+scrolling section navigation and menus remain available on small screens.
+The machine drawing keeps its coordinates: pan at **Dimensioni reali**, or choose
+**Adatta disegno**, calculated from the actual content area and page width.
+Fit also reduces drawing controls: use natural size for larger operating targets;
+44 px shell/menu controls do not make every scaled machine control touch-sized.
+This generator change does not overwrite or delete existing machine projects.
+Browser layout checks are not physical-device or live-PLC commissioning.
 
 ## Run
 
