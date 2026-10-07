@@ -334,12 +334,12 @@ export interface EditorState {
   setResourceLanguage: (language: string) => void;
   /** Fills a data-driven table with the catalog signals whose name or tag table matches. */
   fillListFromPlcVariables: (filter: string) => Promise<void>;
-  updateListItemProperty: (property: string, value: string) => Promise<void>;
+  updateListItemProperty: (property: string, value: string) => Promise<boolean>;
   chooseImage: (listProperty?: string) => Promise<void>;
   setListItemHighlight: (highlight?: { type: string; d: string }) => Promise<void>;
   removeListItem: () => Promise<void>;
   duplicateListItem: () => Promise<void>;
-  updateText: (value: string) => Promise<void>;
+  updateText: (value: string) => Promise<boolean>;
   updateStyle: (property: string, value: string | number) => Promise<void>;
   updateStyles: (values: Record<string, string | number>, renderedStyles?: Record<string, string>) => Promise<boolean>;
   insertComponent: (jsx: string, placement?: ComponentPlacement) => Promise<void>;
@@ -2021,7 +2021,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       } catch (error) { reportError(error); }
     },
     async updateText(value) {
-      const { document, selectedId } = get(); if (!document || !selectedId) return;
+      const { document, selectedId } = get(); if (!document || !selectedId) return false;
       const current = selectionEditCurrent();
       try {
         const node = document.nodes[selectedId];
@@ -2029,25 +2029,26 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         // A row of a list shows a value that lives in the data. Writing there keeps the JSX clean and
         // is what the user meant: renaming the third card renames that card, everywhere it appears.
         const binding = isolate ? await currentListBinding() : undefined;
-        if (!current()) return;
+        if (!current()) return false;
         const property = binding?.textProperty
           ? binding.item?.properties.find((item) => item.name === binding.textProperty && item.kind === "text")
           : undefined;
         if (binding && property) {
           const { replaceSourceRange } = await import("../source-parser/transformSource");
-          if (!current()) return;
-          if (!await applyToFile(binding.file, replaceSourceRange(binding.source, property.start, property.end, JSON.stringify(value)), current)) return;
+          if (!current()) return false;
+          if (!await applyToFile(binding.file, replaceSourceRange(binding.source, property.start, property.end, JSON.stringify(value)), current, binding.source)) return false;
           reportSuccess(`Testo della voce ${binding.index + 1} di «${binding.name}» aggiornato in ${fileName(binding.file)}${binding.shared ? " (file condiviso)" : ""}.`);
-          return;
+          return true;
         }
         const { updateStaticText, updateStaticTextForInstance } = await import("../source-parser/transformSource");
-        if (!current()) return;
+        if (!current()) return false;
         if (!await applySource(isolate
           ? updateStaticTextForInstance(document.source, node.source.start, node.source.end, value, index!)
-          : updateStaticText(document.source, node.source.start, node.source.end, value), true, document, current)) return;
+          : updateStaticText(document.source, node.source.start, node.source.end, value), true, document, current)) return false;
         reportSuccess(`Testo aggiornato su ${scopeNote(node.type, count, index)}.`);
+        return true;
       }
-      catch (error) { reportError(error); }
+      catch (error) { reportError(error); return false; }
     },
 
     async removeAttribute(name) {
@@ -2150,8 +2151,10 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
 
     /** Changes one value of the data row: the label of a card, the id of a machine part. */
     async updateListItemProperty(property, value) {
+      const current = selectionEditCurrent();
       try {
         const binding = await currentListBinding();
+        if (!current()) return false;
         const target = binding?.item?.properties.find((item) => item.name === property);
         if (!binding || !target) throw new Error("Questa voce non e' piu' raggiungibile: riseleziona l'elemento.");
         if (target.kind === "number" && !Number.isFinite(Number(value))) throw new Error(`Il valore ${value} non e' un numero.`);
@@ -2159,9 +2162,11 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
           : target.kind === "number" ? String(Number(value))
             : JSON.stringify(value);
         const { replaceSourceRange } = await import("../source-parser/transformSource");
-        await applyToFile(binding.file, replaceSourceRange(binding.source, target.start, target.end, literal));
+        if (!current()) return false;
+        if (!await applyToFile(binding.file, replaceSourceRange(binding.source, target.start, target.end, literal), current, binding.source)) return false;
         reportSuccess(`${property} della voce ${binding.index + 1} di «${binding.name}» aggiornato in ${fileName(binding.file)}${binding.shared ? " (file condiviso: vale per tutti i pannelli)" : ""}.`);
-      } catch (error) { reportError(error); }
+        return true;
+      } catch (error) { reportError(error); return false; }
     },
 
     /** Copies a chosen image into the working project before changing the selected image. Relative

@@ -2,6 +2,7 @@ import { Activity, Box, Boxes, Cable, ChevronDown, ChevronsUpDown, Code2, Copy, 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { EditorNode, SelectionItem } from "../core/types";
 import { ElementTransformControls } from "./ElementTransformControls";
+import { EditableTextField } from "./EditableTextField";
 import { readHighlightRegion } from "../core/highlightRegion";
 import { handlersNavigate, type ActionValue, type HandlerBinding, type InteractionAction, type InteractionReport } from "../core/interactions";
 import type { ListItemProperty } from "../source-parser/listData";
@@ -977,6 +978,8 @@ function ListItemField({ property, hint, label, textFieldRef }: { property: List
     if (next !== property.value) void update(property.name, next);
   };
 
+  if (label === "Testo" && property.kind === "text") return <EditableTextField value={property.value} label="Testo" multiline={property.value.length > 60 || property.value.includes("\n")} fieldRef={textFieldRef} onCommit={(value) => update(property.name, value)} />;
+
   if (property.kind === "boolean") {
     return <label className="property-field"><span title={property.name}>{label ?? property.name}</span>
       <select value={draft} onChange={(event) => { setDraft(event.target.value); apply(event.target.value); }}>
@@ -1233,12 +1236,17 @@ function ListItemSection({ expandSignal, focusText, textFocusRequestedAt }: { ex
   const textProperties = regularProperties.filter((property) => property.kind === "text" && binding.usages?.[property.name]?.attribute === "");
   const primaryText = regularProperties.find((property) => property.name === binding.textProperty)
     ?? textProperties.find((property) => property.value === selectedText) ?? textProperties[0];
-  return <InspectorSection title="Voce della lista" icon={<Database size={12} />} initiallyOpen expandSignal={Math.max(expandSignal ?? 0, textFocusRequestedAt ?? 0)}>
-    <p className="inspector-note">Voce {binding.index + 1} di {binding.count} in <code>{binding.name}</code> · {shortFileName(binding.file)}
-      {binding.shared ? " · file condiviso: vale per tutti i pannelli" : ""}</p>
-    {regularProperties.length
-      ? regularProperties.map((property) => <ListItemField key={property.name} property={property} label={property === primaryText ? "Testo" : undefined} hint={usageHint(binding.usages?.[property.name])} textFieldRef={property === primaryText ? focusText : undefined} />)
-      : <p className="inspector-note">Questa voce non contiene valori semplici da modificare.</p>}
+  const otherProperties = regularProperties.filter((property) => property !== primaryText);
+  return <InspectorSection title="Testo e dati" icon={<Database size={12} />} initiallyOpen expandSignal={Math.max(expandSignal ?? 0, textFocusRequestedAt ?? 0)}>
+    <p className="inspector-note">Elemento {binding.index + 1} di {binding.count}. Il testo e i dati cambiano solo nella voce selezionata.
+      {binding.shared ? " Il file è condiviso: la stessa voce cambia anche negli altri pannelli che lo usano." : ""}</p>
+    {primaryText && <ListItemField key={primaryText.name} property={primaryText} label="Testo" hint={usageHint(binding.usages?.[primaryText.name])} textFieldRef={focusText} />}
+    {primaryText && otherProperties.length > 0 ? <details className="list-additional-properties">
+      <summary>Altri dati dell’elemento ({otherProperties.length})<ChevronDown size={14} /></summary>
+      <p className="inspector-note">Lista <code>{binding.name}</code> · {shortFileName(binding.file)}</p>
+      {otherProperties.map((property) => <ListItemField key={property.name} property={property} hint={usageHint(binding.usages?.[property.name])} />)}
+    </details> : otherProperties.map((property) => <ListItemField key={property.name} property={property} hint={usageHint(binding.usages?.[property.name])} />)}
+    {!regularProperties.length && <p className="inspector-note">Questa voce non contiene valori semplici da modificare.</p>}
     {hasArea && <SelectionAreaEditor properties={binding.item.properties} />}
     {hasMarker && !hasArea && <EmptyHighlightEditor properties={binding.item.properties} />}
     <div className="list-item-actions">
@@ -1424,7 +1432,7 @@ function ActionCard({ action, copies, dataRow }: { action: InteractionAction; co
       {action.values.map((value) => <ActionValueField key={`${value.start}-${value.label}`} value={value} />)}
       {action.values.length > 0 && copies > 1 && <p className="inspector-note">Questo valore è scritto una volta sola nel codice: cambiarlo vale per tutte le {copies} copie.</p>}
       {fields.map((property) => <ListItemField key={property.name} property={property} hint={usageHint(dataRow?.usages?.[property.name])} />)}
-      {!action.values.length && !fields.length && !action.handlers.length && <p className="inspector-note">Questa azione non passa valori fissi: il comportamento sta nel codice{dataRow ? ", e i valori di questa copia si modificano in «Voce della lista»" : ""}.</p>}
+      {!action.values.length && !fields.length && !action.handlers.length && <p className="inspector-note">Questa azione non passa valori fissi: il comportamento sta nel codice{dataRow ? ", e i valori di questa copia si modificano in Aspetto → Testo e dati" : ""}.</p>}
       {(action.details.length > 0 || action.handlers.length > 0) && <details className="action-technical-details"><summary>Dettagli tecnici</summary>
         {action.details.length > 0 && <ul>{action.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>}
         {action.handlers.map((handler) => <HandlerEditor key={`${handler.file}-${handler.prop}-${handler.start}`} handler={handler} />)}
@@ -1530,7 +1538,7 @@ function ActionSection({ node, expandSignal }: { node: EditorNode; expandSignal?
       : <>
           {!visibleActions.length && <p className="inspector-note">Nessuna azione: questo elemento non reagisce al click e non porta da nessuna parte.</p>}
           {report.owner && <p className="inspector-note">L’azione è del contenitore &lt;{report.owner.type}&gt; alla riga {report.owner.line}. Modificandola qui cambia quel contenitore.</p>}
-          {dataRow && <p className="inspector-note">Agisce sulla voce {dataRow.index + 1} di <code>{dataRow.name}</code>: i suoi valori si modificano nella sezione «Voce della lista».</p>}
+          {dataRow && <p className="inspector-note">Agisce sulla voce {dataRow.index + 1} di <code>{dataRow.name}</code>: i suoi valori si modificano in Aspetto → Testo e dati.</p>}
           {visibleActions.map((action, position) => <ActionCard key={`${action.trigger}-${position}`} action={action} copies={copies} dataRow={dataRow} />)}
         </>}
     <UserAccessEditor node={node} />
@@ -1555,17 +1563,21 @@ function RepeatScope() {
   const info = useEditorStore((state) => state.selectionInfo);
   const scope = useEditorStore((state) => state.editScope);
   const setScope = useEditorStore((state) => state.setEditScope);
+  const listBinding = useEditorStore((state) => state.listBinding);
+  const selectedId = useEditorStore((state) => state.selectedId);
   const count = info?.instanceCount ?? 1;
   const index = info?.listIndex ?? info?.instanceIndex;
   if (count <= 1) return null;
   const isolated = scope === "instance" && index != null;
+  const hasDataRow = listBinding?.nodeId === selectedId && Boolean(listBinding?.item);
   return <div className="repeat-scope">
     <div className="repeat-scope-title"><Copy size={13} /><strong>Elemento ripetuto ×{count}</strong></div>
     <p>{index == null
       ? "L’anteprima non sa quale copia è selezionata, quindi le modifiche valgono per tutte."
       : isolated
-        ? `Modifiche e Canc valgono solo per la copia #${index + 1}.`
-        : `Modifiche e Canc valgono per tutte le ${count} copie.`}</p>
+        ? `Aspetto e Canc valgono solo per la copia #${index + 1}.`
+        : `Aspetto e Canc valgono per tutte le ${count} copie.`}</p>
+    {hasDataRow && <p>Il campo Testo e gli altri dati della lista cambiano sempre solo nella voce selezionata.</p>}
     {index != null && <div className="repeat-scope-switch" role="group" aria-label="Ambito delle modifiche">
       <button type="button" className={isolated ? "active" : ""} aria-pressed={isolated} onClick={() => setScope("instance")}>Solo questa</button>
       <button type="button" className={isolated ? "" : "active"} aria-pressed={!isolated} onClick={() => setScope("all")}>Tutte ({count})</button>
@@ -1711,11 +1723,8 @@ export function Inspector() {
   const inspectorRef = useRef<HTMLElement>(null);
   const textFocusRequestedAt = useEditorStore((state) => state.textFocusRequestedAt);
   const textFocusHandled = useRef<{ at: number; selection: string; field: HTMLInputElement | HTMLTextAreaElement; list: boolean } | undefined>(undefined);
-  const textCancelled = useRef(false);
   const [tab, setTab] = useState<PropertyTab>("appearance");
   const selectionKey = `${node?.source.file}:${node?.source.start}:${node?.type}:${selectionInfo?.listIndex}:${selectionInfo?.instanceIndex}`;
-  const [text, setText] = useState(node?.text ?? selectionInfo?.text ?? "");
-  useEffect(() => { setText(node?.text ?? selectionInfo?.text ?? ""); }, [node?.id, node?.text, selectionInfo?.text]);
   // The AST id includes the end offset: editing a property changes it, not the selected object.
   useEffect(() => { setTab("appearance"); inspectorRef.current?.scrollTo({ top: 0, behavior: "instant" }); },
     [node?.source.file, node?.source.start, node?.type, selectionInfo?.listIndex, selectionInfo?.instanceIndex]);
@@ -1741,12 +1750,13 @@ export function Inspector() {
   }
   if (!node) return <aside ref={inspectorRef} className="inspector empty-inspector"><div className="panel-title"><span>MODIFICA ELEMENTO</span></div><GuidedPageNote /><div><Info size={20} /><strong>Clicca ciò che vuoi cambiare</strong><p>Testo, dimensioni, colori, azioni e variabile PLC compariranno qui automaticamente.</p></div></aside>;
   const locked = !node.capabilities.style;
-  const listText = listBinding?.nodeId === node.id && listBinding.item?.properties.find((property) => property.name === listBinding.textProperty);
+  const listText = listBinding?.nodeId === node.id ? listBinding.item?.properties.find((property) => property.name === listBinding.textProperty) : undefined;
+  const displayedText = listText?.value ?? node.text ?? selectionInfo?.text;
   const style = (property: string) => node.styles[property] ?? selectionStyles[property];
   return <aside ref={inspectorRef} className="inspector has-selection">
     <div className="inspector-navigation">
       <div className="panel-title"><span>MODIFICA ELEMENTO</span></div>
-      <div className="selection-summary"><span className="node-icon"><SquareMousePointer size={18} /></span><span><strong>{elementName(node.type)}</strong><small>{(selectionInfo?.text ?? node.text)?.trim().slice(0, 48) || (selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : "Elemento selezionato")}</small></span></div>
+      <div className="selection-summary"><span className="node-icon"><SquareMousePointer size={18} /></span><span><strong>{elementName(node.type)}</strong><small>{displayedText?.trim().slice(0, 48) || (selectionRect ? `${rounded(selectionRect.width)} × ${rounded(selectionRect.height)} px` : "Elemento selezionato")}</small></span></div>
       <div className="inspector-tabs" role="tablist" aria-label="Proprietà dell’elemento">
         {propertyTabs.map(({ id, label }, index) => <button key={id} id={`element-tab-${id}`} type="button" role="tab" aria-selected={tab === id} aria-controls={`element-panel-${id}`} tabIndex={tab === id ? 0 : -1} onClick={() => chooseTab(id)} onKeyDown={(event) => {
           const next = event.key === "ArrowRight" ? (index + 1) % propertyTabs.length : event.key === "ArrowLeft" ? (index + propertyTabs.length - 1) % propertyTabs.length : event.key === "Home" ? 0 : event.key === "End" ? propertyTabs.length - 1 : undefined;
@@ -1762,28 +1772,22 @@ export function Inspector() {
     <LockedElementNote />
     <SharedFileNote file={node.source.file} />
     <div key={`${selectionKey}:appearance`} id="element-panel-appearance" role="tabpanel" aria-labelledby="element-tab-appearance" hidden={tab !== "appearance"}>
-    <p className="inspector-edit-hint">Invio applica, Esc annulla. Testo: Ctrl+Invio. Colori e scelte: subito.</p>
-    {node.dynamic && <div className="code-component"><Lock size={13} /><span>{listBinding?.nodeId === node.id ? "La scritta arriva dai dati della voce: modificala qui sotto, senza cambiare il codice." : "Il contenuto arriva da una variabile. Puoi sostituirlo con un valore fisso oppure continuare a modificare geometria e stile."}</span></div>}
+    {node.dynamic && !listText && <div className="code-component"><Lock size={13} /><span>{listBinding?.nodeId === node.id ? "La scritta arriva dai dati della voce: modificala qui sotto, senza cambiare il codice." : "Il contenuto arriva da una variabile. Puoi sostituirlo con un valore fisso oppure continuare a modificare geometria e stile."}</span></div>}
     {node.type === "img" && <ImageSourceSection node={node} expandSignal={expandSignal} />}
     <ListItemSection expandSignal={expandSignal} focusText={(field) => focusText(field, true)} textFocusRequestedAt={tab === "appearance" ? textFocusRequestedAt : undefined} />
-    <InspectorSection title="Contenuto" icon={<TypeIcon size={12} />} initiallyOpen expandSignal={Math.max(expandSignal ?? 0, textFocusRequestedAt ?? 0)}>
-      {listText ? <p className="inspector-note">La scritta si modifica nel campo Testo della voce qui sopra.</p> : node.capabilities.text
+    {listText ? <div className="list-text-translations"><MultilingualTextBinding node={node} /></div> : <InspectorSection title="Contenuto" icon={<TypeIcon size={12} />} initiallyOpen expandSignal={Math.max(expandSignal ?? 0, textFocusRequestedAt ?? 0)}>
+      {node.capabilities.text
         // The field starts from what the preview shows when the source holds an expression, so the
         // comparison starts from there too: leaving the field untouched must never write anything.
-        ? <label className="property-stack"><span>Testo</span><textarea ref={focusText} value={text} aria-label="Testo dell'elemento" onChange={(event) => setText(event.target.value)} onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.currentTarget.blur(); }
-          if (event.key === "Escape") { textCancelled.current = true; setText(node.text ?? selectionInfo?.text ?? ""); event.currentTarget.blur(); }
-        }} onBlur={() => {
-          if (textCancelled.current) { textCancelled.current = false; return; }
-          if (text !== (node.text ?? selectionInfo?.text ?? "")) void updateText(text);
-        }} /></label>
+        ? <EditableTextField value={node.text ?? selectionInfo?.text ?? ""} ariaLabel="Testo dell'elemento" fieldRef={focusText} onCommit={updateText} />
         // Saying where the text actually lives beats an empty panel: the writing belongs to a child.
         : <p className="inspector-note">{node.children.length
           ? "Il testo di questo elemento sta dentro gli elementi figli: clicca direttamente la scritta da cambiare."
           : "Questo elemento non contiene testo."}</p>}
       <MultilingualTextBinding node={node} />
-    </InspectorSection>
+    </InspectorSection>}
 
+    <p className="inspector-edit-hint">Misure: Invio o uscita dal campo. Colori e scelte cambiano subito. Ctrl+Z annulla.</p>
     <InspectorSection title="Posizione e dimensioni" icon={<Move size={12} />} initiallyOpen expandSignal={expandSignal}>
       <div className="property-pair coordinate-pair"><CoordinateField label="X" axis="x" value={selectionRect?.x} translate={style("translate")} disabled={locked} /><CoordinateField label="Y" axis="y" value={selectionRect?.y} translate={style("translate")} disabled={locked} /></div>
       <div className="property-pair"><NumberStyleField label="Larghezza" property="width" value={style("width")} fallback={selectionRect?.width} disabled={locked} /><NumberStyleField label="Altezza" property="height" value={style("height")} fallback={selectionRect?.height} disabled={locked} /></div>

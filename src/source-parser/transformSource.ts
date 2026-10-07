@@ -215,7 +215,10 @@ export function updateStaticText(source: string, start: number, end: number, val
     throw new Error("Il testo di questo elemento sta dentro gli elementi figli: clicca direttamente la scritta per modificarla.");
   }
   if (element.openingElement.end == null || element.closingElement?.start == null) throw new Error("Questo elemento non può contenere testo.");
-  return new MagicString(source).overwrite(element.openingElement.end, element.closingElement.start, `{${JSON.stringify(value)}}`).toString();
+  const magic = new MagicString(source), text = `{${JSON.stringify(value)}}`;
+  return (element.openingElement.end === element.closingElement.start
+    ? magic.appendLeft(element.openingElement.end, text)
+    : magic.overwrite(element.openingElement.end, element.closingElement.start, text)).toString();
 }
 
 function literal(value: string | number): string {

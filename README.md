@@ -31,12 +31,20 @@ and events; **PLC e dati** for bindings, dynamics, list imports, faceplates and 
 **Altro** for CSS, attributes and code. These are task groups, not simple/advanced modes.
 
 Text labels from lists edit the selected data row through a single **Testo** field, preserving
-the JSX/data link. When inline editing is unavailable, double-clicking requests that text field
+the JSX/data link. The label comes first; other row properties are under **Altri dati dell’elemento**.
+Use **Applica testo** to apply the draft or **Annulla** to restore the current text. A visible
+message distinguishes applying, applied, rejected, and a draft whose file could not be saved.
+Cancel also works by keyboard without focus loss applying the discarded text. Clearing a
+label does not remove its text field: you can write a new label into the empty element.
+When inline editing is unavailable, double-clicking requests that text field
 without opening every technical section. Common property fields apply on Enter or focus loss;
 multiline text also accepts Ctrl+Enter.
 Escape cancels pending edits in the common text/style/geometry fields and binding inputs;
 color pickers and choices apply immediately. Existing percent/rem units are retained.
 Translations are expandable, and open initially when the element has a multilingual key.
+For repeated elements, **Solo questa / Tutte** controls source edits such as styles and deletion;
+the visible list-row text/data fields always edit the selected row. A shared data file changes
+that row in every panel that uses it, as the property sheet warns.
 
 The active property tab and scroll position survive the selected element's own style edits;
 selecting another element returns to **Aspetto**. Group/external-element sheets and the

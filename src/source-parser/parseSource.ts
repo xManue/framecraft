@@ -63,7 +63,13 @@ function details(element: JSXElement) {
   const textNode = runs.length === 1 ? runs[0] : undefined;
   const dynamic = element.children.some((child) => child.type === "JSXExpressionContainer" || child.type === "JSXSpreadChild");
   const nestedElements = element.children.some((child) => child.type === "JSXElement" || child.type === "JSXFragment");
-  return { props, dynamicProps, styles, stylesEditable, text: textNode?.value.trim(), textEditable: Boolean(textNode) || (dynamic && !nestedElements), dynamic };
+  const content = element.children.filter((child) => child.type !== "JSXText" || child.value.trim());
+  const only = content.length === 1 ? content[0] : undefined;
+  const literalText = only?.type === "JSXExpressionContainer" && only.expression.type === "StringLiteral" ? only.expression.value : undefined;
+  const emptyText = !content.length && Boolean(element.closingElement)
+    && /^(button|a|label|span|p|h[1-6]|div|li|td|th|small|strong|em|textarea|text|tspan)$/.test(jsxName(element.openingElement.name));
+  return { props, dynamicProps, styles, stylesEditable, text: textNode?.value.trim() ?? literalText ?? (emptyText ? "" : undefined),
+    textEditable: Boolean(textNode) || (dynamic && !nestedElements) || emptyText, dynamic: dynamic && literalText === undefined };
 }
 
 export function parseSource(file: string, source: string, version = 1): EditorDocument {

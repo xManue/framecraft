@@ -3281,6 +3281,53 @@ Verifiche del 5 ottobre 2026:
   completa: restano conferme PLC, OPC UA, payload avanzati, RBAC/audit/storage server,
   TLS/CPU reali e packaging/LTS/licenze. AI facoltativa ancora secondo la propria roadmap.
 
+### 92. Scritta in primo piano, conferma visibile e testo vuoto ancora modificabile
+
+- Ulteriore semplificazione della modifica elementi, concentrata su pulsanti e targhette.
+  Il campo **Testo** ha **Applica testo**, **Annulla** ed esito visibile: pronto, applicazione
+  in corso, applicato o errore. Invio/Ctrl+Invio, Esc e applicazione uscendo dal campo restano
+  disponibili; passare con Tab ad Annulla non applica prima la scritta da scartare. Click
+  ripetuti non generano due scritture mentre la prima è in corso.
+- La scritta della targhetta è il primo campo della voce, anche se `id` precede `label` nei
+  dati. Gli altri valori sono raccolti in **Altri dati dell’elemento**, espandibile. La voce
+  continua a vivere nel suo file dati, senza duplicare il campo Testo né scollegare il JSX.
+  Spiegata la differenza fra ambito dello stile/Canc e testo/dati della voce: questi ultimi
+  modificano la voce selezionata anche con Tutte, rispettando l'avviso sul file condiviso.
+- `updateText` e `updateListItemProperty` restituiscono un esito reale. Niente falso successo
+  se una scrittura è rifiutata: per la pagina si distingue la scritta rimasta nella bozza non
+  salvata; per il file dati si conserva il testo da riprovare. Un errore non avvia tentativi
+  automatici. La rilettura del file dati rifiuta una versione cambiata prima della scrittura;
+  non è una sostituzione del CAS atomico del backend. Aggiunta la guardia di selezione ai
+  valori della voce, così una lettura tardiva non modifica un elemento appena selezionato.
+- Riprodotto e corretto il caso svuota/riscrivi: il parser non perde la capacità di testo dei
+  contenitori testuali vuoti e legge le stringhe letterali inserite dal trasformatore, invece
+  di mostrare una scritta vecchia dell'anteprima. L'intervallo totalmente vuoto usa inserimento
+  invece di overwrite. Nessun campo testo inventato per immagini/input, forme SVG senza testo,
+  componenti esterni vuoti o genitori il cui testo appartiene ai figli.
+- Intestazione aggiornata dalla scritta nel sorgente/dati; spiegazioni duplicate tolte dalla
+  targhetta. Il campo mantiene il valore confermato dall'operazione AST anche per copie
+  senza dati risolvibili e con anteprima ancora vecchia, senza riabilitare Applica sul vecchio
+  valore. Annulla ripristina la scritta applicata, non quella precedente dell'anteprima.
+- Regressioni mirate di Inspector e parser: **70 test passati** su testo, applica/annulla,
+  click ripetuti, errori disco/file dati, file cambiati, selezione tardiva, composizione da
+  tastiera, svuota/riscrivi, undo e conferma senza anteprima aggiornata. Prova grafica Edge
+  headless con build e profili isolati: pulsante a 320 px e targhetta a 240 px, una sola
+  scrittura, annullamento senza salvataggi, campi entro la colonna e nuovi comandi testo da
+  almeno 44 px. Le immagini sono state ispezionate; non è un collaudo della finestra desktop
+  dell'utente né una prova su PLC reale.
+- Verificata la copia dell'indice Git `e591c769abde27a1ce1ba4ede4d475768b02492b`, senza
+  export privati, foto o segreti: **1218 test pubblici passati in 89 file**, incluse **29 nuove
+  regressioni**; build TypeScript/Vite, **3 collaudi production/Vite** e **16 test recovery**
+  del vero store compilato passati. I dieci file di riferimento dipendono dagli export locali
+  e sono esclusi con avviso. Dipendenze già installate tramite junction, non installazione
+  pulita. Le ultime aggiunte documentali non cambiano il codice verificato. Restano i warning
+  di bundling preesistenti sugli import statici/dinamici e il collaudo desktop su progetti reali.
+- Nessun agente, nuova dipendenza, progetto macchina modificato o riavvio manuale della
+  finestra/anteprima dell'utente. Fixture sintetiche e immagini del collaudo restano ignorate;
+  export WinCC, foto e segreti non entrano nel repository pubblico. Roadmap HMI/AI e gate
+  industriali restano aperti. UI/UX ha guidato priorità della scritta, conferme esplicite,
+  feedback vicino al campo, focus e comandi da 44 px, conservando lo stile dell'editor.
+
 ## Da fare, dopo
 
 - **Affidabilità editor durante gli aggiornamenti**: HMR/reload coperti al punto 77 e deposito

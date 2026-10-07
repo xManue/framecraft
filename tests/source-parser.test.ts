@@ -32,6 +32,35 @@ describe("React source model", () => {
     expect(section?.dynamic).toBe(true);
     expect(article?.capabilities.text).toBe(true);
   });
+
+  it.each(["button", "span", "label", "h1", "textarea", "text"])("keeps an empty paired %s editable and reads the text inserted by the transform", (tag) => {
+    const source = `export const Page = () => <${tag}> </${tag}>;`;
+    const document = parseSource("Empty.tsx", source), node = document.nodes[document.roots[0]];
+    expect(node.capabilities.text).toBe(true); expect(node.text).toBe(""); expect(node.dynamic).toBe(false);
+    const updated = updateStaticText(source, node.source.start, node.source.end, "Nuova scritta");
+    const next = parseSource("Empty.tsx", updated), selected = next.nodes[next.roots[0]];
+    expect(selected.capabilities.text).toBe(true); expect(selected.text).toBe("Nuova scritta"); expect(selected.dynamic).toBe(false);
+  });
+
+  it.each(["<img />", "<input />", "<button />", "<rect></rect>", "<Widget></Widget>", "<button><span>Scritta</span></button>"])("does not invent a text field for %s", (jsx) => {
+    const document = parseSource("NoText.tsx", `export const Page = () => ${jsx};`);
+    expect(document.nodes[document.roots[0]].capabilities.text).toBe(false);
+  });
+
+  it("reads a literal string expression, including an empty or whitespace-only string, without calling it a variable", () => {
+    for (const text of ["", " ", 'Avvia "Motore"\nseconda riga']) {
+      const document = parseSource("Literal.tsx", `export const Page = () => <button>{${JSON.stringify(text)}}</button>;`), node = document.nodes[document.roots[0]];
+      expect(node.text).toBe(text); expect(node.capabilities.text).toBe(true); expect(node.dynamic).toBe(false);
+    }
+  });
+
+  it("inserts a new label into a completely empty paired button", () => {
+    const source = "export const Page = () => <button></button>;";
+    const document = parseSource("Empty.tsx", source), node = document.nodes[document.roots[0]];
+    const updated = updateStaticText(source, node.source.start, node.source.end, "Riavvia motore");
+    const next = parseSource("Empty.tsx", updated);
+    expect(next.nodes[next.roots[0]].text).toBe("Riavvia motore");
+  });
 });
 
 describe("localized AST-validated transforms", () => {
