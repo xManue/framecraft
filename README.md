@@ -67,6 +67,24 @@ selecting another element returns to **Aspetto**. Group/external-element sheets 
 faceplate type mini-editor retain their existing layouts. Local preview changes and saving
 the project are separate from publishing or commanding a PLC.
 
+## Updating a faceplate instance
+
+In **Modifica → PLC e dati → Istanza faceplate**, select another released type/version.
+A comparison window opens before any source edit: review the interface and visual changes,
+choose which old fields to map to the new ones, and click **Applica all’istanza**.
+Compatible same-name tags, values and event scripts are retained automatically. Renamed fields
+can be mapped explicitly; event scripts require the same parameter names and types. Missing
+required tags and incompatible values block the update. Removing or replacing configured data
+requires a separate confirmation that lists what will be discarded.
+
+**Solo questa** updates one identified copy inside a repeated list. **Tutte** updates the
+shared template only when its faceplate configuration is static; copies with separate
+configurations must be reviewed individually. Changing page, selection, edit scope or catalog
+invalidates an open comparison. **Annulla (Ctrl+Z)** restores the previous source configuration.
+Container position/size are unchanged. Runtime local state is recreated for the new version;
+live PLC values are not migrated, and this command does not connect to or write a PLC.
+Project-wide and nested-instance bulk migrations remain planned.
+
 ## Pages and categories
 
 Use **Pagine → Nuova pagina** for the full-size creation window: choose a name,

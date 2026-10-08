@@ -23,7 +23,8 @@ import type { SimulatedElement, UnresolvedDynamization } from "../core/plcSimula
 import { emptyHmiResourceCatalog, parseHmiResourceCatalog, type HmiResourceCatalog } from "../core/hmiResources";
 import type { HmiScriptTagStatus } from "../core/hmiScript";
 import { emptyHmiScriptCatalog, parseHmiScriptCatalog, type HmiScriptCatalog } from "../core/hmiScriptModules";
-import { emptyHmiFaceplateCatalog, hmiFaceplateCatalogName, parseHmiFaceplateCatalog, type HmiFaceplateCatalog } from "../core/hmiFaceplates";
+import { emptyHmiFaceplateCatalog, hmiFaceplateAttribute, hmiFaceplateCatalogName, parseHmiFaceplateCatalog, serializeHmiFaceplateBinding, type HmiFaceplateCatalog } from "../core/hmiFaceplates";
+import { planHmiFaceplateMigration, selectedFaceplateBinding, type FaceplateMigrationOptions } from "../core/hmiFaceplateMigration";
 import { emptyHmiDataLogCatalog, hmiDataLogCatalogName, parseHmiDataLogCatalog, type HmiDataLogCatalog } from "../core/hmiDataLogs";
 import { clearEditorReloadCheckpoint, installEditorReloadRecovery, readEditorReloadCheckpoint, recoverEditorReload, type EditorReloadRecovery } from "./editorRecovery";
 import { cleanDiagnosticText } from "../core/editorMessages";
@@ -295,6 +296,7 @@ export interface EditorState {
   expandProperties: () => void;
   inspectSource: (source: SourceRef, tag?: string, focusText?: boolean) => Promise<void>;
   updateAttribute: (name: string, value: string) => Promise<void>;
+  migrateFaceplate: (expected: FaceplateMigrationTarget, targetKey: string, options: FaceplateMigrationOptions, acceptLosses: boolean) => Promise<boolean>;
   updateActionValue: (range: { start: number; end: number }, kind: "page" | "link" | "text" | "number" | "boolean", value: string, origin?: { file: string; raw: string }) => Promise<void>;
   updateActionValueForItem: (action: ActionValue, itemKey: string, value: string) => Promise<void>;
   updateHandler: (handler: HandlerBinding, name: string) => Promise<void>;
@@ -366,6 +368,14 @@ export interface EditorState {
   openStandalonePreview: () => Promise<void>;
   closeStandalonePreview: () => void;
   handleExternalFileChange: (path: string) => Promise<void>;
+}
+
+export type FaceplateMigrationTarget = Pick<EditorState, "project" | "document" | "selectedId" | "selectionInfo" | "editScope" | "faceplateCatalog" | "plcVariables">;
+
+export function faceplateMigrationTargetCurrent(state: EditorState, expected: FaceplateMigrationTarget): boolean {
+  return state.interactionMode === "edit" && state.project === expected.project && state.document === expected.document
+    && state.selectedId === expected.selectedId && state.selectionInfo === expected.selectionInfo && state.editScope === expected.editScope
+    && state.faceplateCatalog === expected.faceplateCatalog && state.plcVariables === expected.plcVariables;
 }
 
 function readRecentProjects() {
@@ -2055,6 +2065,38 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         ]), true, document, current)) return;
         reportSuccess("Accesso utente rimosso da questo elemento. Il componente pronto resta disponibile per gli altri pulsanti.");
       } catch (error) { reportError(error); }
+    },
+    async migrateFaceplate(expected, targetKey, options, acceptLosses) {
+      const { document, selectedId } = get();
+      if (!document || !selectedId || !faceplateMigrationTargetCurrent(get(), expected)) return false;
+      const selectedCurrent = selectionEditCurrent();
+      const current = () => selectedCurrent() && faceplateMigrationTargetCurrent(get(), expected);
+      try {
+        const node = document.nodes[selectedId];
+        if (node?.props["data-hmi-type"] !== "HmiFaceplateContainer") return false;
+        const { count, index, isolate } = repetition();
+        if (count > 1 && expected.editScope === "instance" && (index == null || !Number.isSafeInteger(index) || index < 0)) return false;
+        if (expected.editScope === "all" && (expected.selectionInfo?.instanceCount ?? 1) > 1 && node.dynamicProps?.includes(hmiFaceplateAttribute)) return false;
+        const binding = selectedFaceplateBinding(document, node, expected.selectionInfo);
+        if (!binding) return false;
+        const plan = planHmiFaceplateMigration(binding, expected.faceplateCatalog, targetKey, expected.plcVariables, options);
+        if (!plan.binding || plan.issues.some((issue) => issue.severity === "error") || (plan.losses.length && !acceptLosses)) return false;
+        const { updateStaticAttributes, updateStaticAttributesForInstance } = await import("../source-parser/transformSource");
+        if (!current()) return false;
+        const values = { [hmiFaceplateAttribute]: serializeHmiFaceplateBinding(plan.binding) };
+        const previousStyles = get().selectionStyles;
+        const parsed = await applySource(isolate
+          ? updateStaticAttributesForInstance(document.source, node.source.start, node.source.end, values, index!)
+          : updateStaticAttributes(document.source, node.source.start, node.source.end, values), true, document, current);
+        if (!parsed) return false;
+        if (selectedCurrent(parsed) && !get().selectedId) {
+          const oldNodes = Object.values(document.nodes), newNodes = Object.values(parsed.nodes);
+          const position = oldNodes.findIndex((candidate) => candidate.id === selectedId);
+          if (position >= 0 && oldNodes.length === newNodes.length && oldNodes.every((candidate, index) => candidate.type === newNodes[index].type)) set({ selectedId: newNodes[position].id, selectionStyles: previousStyles });
+        }
+        if (selectedCurrent(parsed) && get().faceplateCatalog === expected.faceplateCatalog && get().plcVariables === expected.plcVariables) reportSuccess(`Faceplate aggiornato a V${plan.binding.version}. Annulla (Ctrl+Z) ripristina la configurazione precedente.`);
+        return true;
+      } catch (error) { reportError(error); return false; }
     },
     async updateAttribute(name, value) {
       const { document, selectedId, project } = get(); if (!document || !selectedId) return;

@@ -66,7 +66,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-UI-05 | Immagini, SVG, video, PDF e WebBrowser | PARZIALE | Proprietà media e policy Runtime | Dipendenze asset, CSP e fallback controllati |
 | FTX-UI-06 | DataGrid, ListBox, ComboBox e controlli dati | PARZIALE | Binding a store/query e interazioni Optix | Colonne tipizzate, virtualizzazione e carico stimato |
 | FTX-UI-07 | Trend real-time, storico e da database | DA FARE | Penne, assi, soglie, query, Normal/Trace/Range | Playback sincronizzato con allarmi, eventi e audit |
-| FTX-UI-08 | Widget e librerie riusabili | PARZIALE | Packaging, dipendenze e aggiornamento istanze | Versioni, diff interfaccia e migrazione assistita |
+| FTX-UI-08 | Widget e librerie riusabili | PARZIALE | Packaging, dipendenze e semantica delle istanze/widget Optix | Base Framecraft: catalogo faceplate versionato, diff e migrazione assistita di tag/proprietà/eventi con undo (LAVORO 104); non equivale ancora a ObjectType/ereditarietà Optix |
 | FTX-UI-09 | Finestre modali e popup parametrizzati | PARZIALE | Alias di contesto, ciclo vita e risultati | Anteprima nello stesso editor con istanze reali |
 | FTX-UI-10 | Localizzazione e Localization Dictionary | PARZIALE | Import/export e semantica delle LocalizedText Optix | Copertura, fallback e cambio lingua live già centrali |
 | FTX-UI-11 | Traduzione Runtime per sessione | PARZIALE | Locale indipendente per ogni sessione | Simulazione multi-sessione affiancata |

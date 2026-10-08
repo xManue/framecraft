@@ -411,6 +411,24 @@ export function updateStaticTextForInstance(source: string, start: number, end: 
 }
 
 /** Same idea for attributes: the value is written as a guard so only the selected copy changes. */
+export function readStaticAttributeForInstance(source: string, start: number, end: number, name: string, instanceIndex: number): string | number | boolean | undefined {
+  const { element, callback } = instanceTarget(source, start, end);
+  const attribute = attributeNamed(element, name);
+  if (attribute?.value?.type === "StringLiteral") return attribute.value.value;
+  if (attribute?.value?.type !== "JSXExpressionContainer") return undefined;
+  const indexName = callback.params[1]?.type === "Identifier" ? callback.params[1].name : undefined;
+  if (!indexName || !Number.isSafeInteger(instanceIndex) || instanceIndex < 0) return undefined;
+  let expression = attribute.value.expression;
+  for (let depth = 0; depth < 64; depth += 1) {
+    if (expression.type === "StringLiteral" || expression.type === "NumericLiteral" || expression.type === "BooleanLiteral") return expression.value;
+    if (expression.type !== "ConditionalExpression") return undefined;
+    const test = expression.test;
+    if (test.type !== "BinaryExpression" || test.operator !== "===" || test.left.type !== "Identifier" || test.left.name !== indexName || test.right.type !== "NumericLiteral") return undefined;
+    expression = test.right.value === instanceIndex ? expression.consequent : expression.alternate;
+  }
+  return undefined;
+}
+
 export function updateStaticAttributesForInstance(source: string, start: number, end: number, values: Record<string, string>, instanceIndex: number): string {
   const { element, callback } = instanceTarget(source, start, end);
   const magic = new MagicString(source);

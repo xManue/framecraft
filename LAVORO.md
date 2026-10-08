@@ -3639,6 +3639,37 @@ Verifiche del 5 ottobre 2026:
   precond e tweetnacl restano le review SDK. Gate releaseApproved falso, nessuna approvazione
   legale/industriale. Dati macchina, certificati, cache e artefatti restano esclusi da Git.
 
+### 104. Confronto e migrazione guidata dei faceplate (2026-10-08)
+
+- Da Modifica → PLC e dati → Istanza faceplate, scegliere un'altra versione rilasciata apre
+  una finestra di confronto prima di cambiare il sorgente. Mostra aggiunte/rimozioni/modifiche
+  di tag, proprietà, eventi, locali, oggetti visuali, annidamenti, dimensioni e sorgente;
+  tipi, firme, default e geometrie sono descritti con prima/dopo, senza JSON grezzo.
+- Stesso tipo/nome/contratto compatibile: mapping PLC, valori espliciti e script si conservano.
+  Campi rinominati rimappabili esplicitamente; script conservabili solo con stessi nomi/tipi
+  e ordine dei parametri. Un altro tipo non eredita automaticamente i collegamenti omonimi.
+  Tag obbligatori e tipi incompatibili bloccano la conferma; configurazioni eliminate o
+  sostituite elencate e scartabili solo con checkbox esplicito. Interi 64 bit preservati come
+  stringhe esatte, numeri fuori range/non finiti e Boolean impropri rifiutati.
+- Comando nello store comune, con ricontrollo di documento, progetto, selezione/copia,
+  ambito, catalogo faceplate e PLC anche dopo gli await. Una migrazione equivale a un undo;
+  posizione/dimensioni/rotazione del contenitore e CRLF invariati. Nessuna connessione,
+  scrittura PLC, migrazione di valori live o conservazione dello stato locale Runtime.
+- Solo questa aggiorna una copia identificata dentro Array.map; lettura limitata ai literal
+  e guardie di indice generate dall'editor, senza eval. Inserire il parametro di indice
+  non perde la selezione. Tutte possibile per template statico; con configurazioni separate
+  o indice mancante il flusso impedisce sovrascritture implicite e spiega come continuare.
+- Dialogo responsive con label, focus contenuto/restituito, Escape, blocco del doppio invio e
+  della chiusura durante il salvataggio. Nessuna toolbar aggiunta al canvas. README e roadmap
+  aggiornati; stessa base riusabile in futuro per Optix/AI, senza dichiararne la parità.
+- Verifiche mirate: 76 casi in sei file passati, piano puro, vero ispettore/store, catalogo,
+  serializzazione, annulla/ripeti, selezione asincrona, copie ripetute e incompatibilità.
+  TypeScript e build editor isolata passati; restano gli avvisi preesistenti di chunk/import
+  misti. Nessuna suite generale, nuovi pacchetti, dati macchina pubblicati o riavvio dell'app.
+  Collaudo visivo desktop/touch e prove su macchina restano separati dalle verifiche automatiche.
+- Restano aggiornamento massivo tra pagine e istanze annidate, contratti dinamici arbitrari,
+  migrazione dell'information model Optix e AI facoltativa. WCU-FP-06/ENG-12 restano PARZIALE.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
@@ -3665,7 +3696,8 @@ Verifiche del 5 ottobre 2026:
   touch (`WCU-DYN-07`, `FC-MORE-12`).
 - **Roadmap WinCC, fase 5 da completare**: parità completa del mini-editor faceplate con l'editor
   pagine, eventi annidati, opzioni container, contesto esatto di `Faceplate.Close`, screen window
-  generiche, UDT, diff e migrazione versioni (`WCU-FP-*`, `WCU-ENG-12`, `WCU-TAG-05`).
+  generiche, UDT e migrazione massiva/nidata delle versioni; confronto e migrazione della singola
+  istanza al punto 104 (`WCU-FP-*`, `WCU-ENG-12`, `WCU-TAG-05`).
 - **Roadmap WinCC, fase 6 da completare**: stampa, profili e object model dei trend; sul temporale
   restano anche fusi orari e aggregazione per pixel
   (`WCU-CTL-05/06`, `WCU-DAT-04/05`).

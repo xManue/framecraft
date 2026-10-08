@@ -2,6 +2,8 @@ import { Activity, Box, Boxes, Cable, ChevronDown, ChevronsUpDown, Code2, Copy, 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { EditorNode, SelectionItem } from "../core/types";
 import { ElementTransformControls } from "./ElementTransformControls";
+import { FaceplateMigrationDialog } from "./FaceplateMigrationDialog";
+import { selectedFaceplateBinding } from "../core/hmiFaceplateMigration";
 import { EditableTextField } from "./EditableTextField";
 import { readHighlightRegion } from "../core/highlightRegion";
 import { handlersNavigate, type ActionValue, type HandlerBinding, type InteractionAction, type InteractionReport } from "../core/interactions";
@@ -18,12 +20,12 @@ import { inspectHmiScript } from "../core/hmiScript";
 import { hmiScriptFunctions, hmiScriptGlobalDefinition, hmiScriptVariables } from "../core/hmiScriptModules";
 import { hmiEventLabels, hmiEventsAttribute, hmiEventTypesFor, parseHmiEvents, serializeHmiEvents, type HmiEventBinding, type HmiEventType } from "../core/hmiEvents";
 import { guidedActionLabels, guidedActionScript, newGuidedAction, readGuidedAction, type GuidedActionKind } from "../core/hmiActions";
-import { hmiFaceplateAttribute, hmiFaceplateBindingIssues, parseHmiFaceplateBinding, serializeHmiFaceplateBinding, type HmiFaceplateEventBinding, type HmiFaceplateEventDefinition, type HmiFaceplateInstanceBinding } from "../core/hmiFaceplates";
+import { hmiFaceplateAttribute, hmiFaceplateBindingIssues, serializeHmiFaceplateBinding, type HmiFaceplateEventBinding, type HmiFaceplateEventDefinition, type HmiFaceplateInstanceBinding } from "../core/hmiFaceplates";
 import { defaultHmiTrendConfig, hmiTrendAttribute, hmiTrendIssues, hmiTrendModes, parseHmiTrendConfig, serializeHmiTrendConfig, type HmiTrendArea, type HmiTrendAxis, type HmiTrendConfig, type HmiTrendMode, type HmiTrendSeries } from "../core/hmiTrend";
 import { defaultHmiFunctionTrendConfig, hmiFunctionTrendAttribute, hmiFunctionTrendIssues, parseHmiFunctionTrendConfig, serializeHmiFunctionTrendConfig, type HmiFunctionTrendConfig, type HmiFunctionTrendSeries, type HmiFunctionTrendSource } from "../core/hmiFunctionTrend";
 import { dynamizedProperties, type Dynamization, type MappingConditionType } from "../core/hmiStandard";
 import { highlightShapePath, insertPathAnchor, movePathAnchor, pathAnchors, pathBounds, pathClosed, setPathClosed, transformPathToBounds, type PathBounds } from "../core/svgPathGeometry";
-import { useEditorStore, type ListBinding, type SelectionProblem } from "../state/editorStore";
+import { useEditorStore, type FaceplateMigrationTarget, type ListBinding, type SelectionProblem } from "../state/editorStore";
 import { translatedCoordinate } from "./coordinates";
 import { borderStyles, formatBorder, parseBorder, type BorderParts } from "./borderValue";
 
@@ -569,16 +571,26 @@ function HmiFaceplateSection({ node, expandSignal }: { node: EditorNode; expandS
   const update = useEditorStore((state) => state.updateAttribute);
   const remove = useEditorStore((state) => state.removeAttribute);
   const setLeftPanel = useEditorStore((state) => state.setLeftPanel);
+  const [migration, setMigration] = useState<{ expected: FaceplateMigrationTarget; targetKey: string }>();
+  const faceplateDocument = useEditorStore((state) => state.document);
+  const faceplateSelection = useEditorStore((state) => state.selectionInfo);
+  const binding = useMemo(() => selectedFaceplateBinding(faceplateDocument, node, faceplateSelection), [faceplateDocument, node, faceplateSelection]);
   if (node.props["data-hmi-type"] !== "HmiFaceplateContainer") return null;
-  const binding = parseHmiFaceplateBinding(node.props[hmiFaceplateAttribute]);
   const type = binding ? catalog.types.find((candidate) => candidate.id === binding.typeId && candidate.version === binding.version) : undefined;
   const released = catalog.types.filter((candidate) => candidate.status === "released");
+  const unreadableBinding = !binding && node.dynamicProps.includes(hmiFaceplateAttribute);
   const issues = binding ? hmiFaceplateBindingIssues(binding, catalog, variables) : [];
   const write = (next: HmiFaceplateInstanceBinding) => void update(hmiFaceplateAttribute, serializeHmiFaceplateBinding(next));
   const selectType = (value: string) => {
+    if (unreadableBinding) return;
     if (!value) { void remove(hmiFaceplateAttribute); return; }
     const next = catalog.types.find((candidate) => `${candidate.id}@${candidate.version}` === value);
-    if (!next) return;
+    if (!next || next.status !== "released") return;
+    if (binding) {
+      if (value === `${binding.typeId}@${binding.version}`) return;
+      setMigration({ expected: useEditorStore.getState(), targetKey: value });
+      return;
+    }
     write({
       typeId: next.id, version: next.version, tagBindings: {},
       propertyValues: Object.fromEntries(next.interfaceProperties.flatMap((property) => property.defaultValue === undefined ? [] : [[property.name, property.defaultValue]])),
@@ -599,7 +611,10 @@ function HmiFaceplateSection({ node, expandSignal }: { node: EditorNode; expandS
     write({ ...binding, eventBindings });
   };
   return <InspectorSection title="Istanza faceplate" icon={<Boxes size={12} />} initiallyOpen expandSignal={expandSignal}>
-    <label className="property-stack"><span>Tipo e versione rilasciata</span><select value={binding ? `${binding.typeId}@${binding.version}` : ""} onChange={(event) => selectType(event.target.value)}><option value="">Scegli un faceplate</option>{released.map((candidate) => <option key={`${candidate.id}@${candidate.version}`} value={`${candidate.id}@${candidate.version}`}>{candidate.name} · V{candidate.version}</option>)}</select></label>
+    <label className="property-stack"><span>Tipo e versione rilasciata</span><select disabled={unreadableBinding} value={binding ? `${binding.typeId}@${binding.version}` : ""} onChange={(event) => selectType(event.target.value)}><option value="">Scegli un faceplate</option>{released.map((candidate) => <option key={`${candidate.id}@${candidate.version}`} value={`${candidate.id}@${candidate.version}`}>{candidate.name} · V{candidate.version}</option>)}</select></label>
+    {unreadableBinding && <p className="inspector-note">La configurazione dipende da un’espressione nel codice o da una copia non identificata. Non la sostituisco con valori vuoti: riseleziona la copia oppure modifica il collegamento nel codice.</p>}
+    {binding && <p className="inspector-note">Scegli un’altra versione per confrontare le differenze e conservare i collegamenti prima di confermare.</p>}
+    {migration && <FaceplateMigrationDialog expected={migration.expected} targetKey={migration.targetKey} onClose={() => setMigration(undefined)} />}
     {!released.length && <p className="inspector-note">Non ci sono versioni rilasciate. <button type="button" className="link-button" onClick={() => setLeftPanel("faceplates")}>Apri Tipi faceplate</button>.</p>}
     {type && <>
       <p className="inspector-note">{type.width} × {type.height}px{type.source ? ` · ${type.source}` : ""}</p>

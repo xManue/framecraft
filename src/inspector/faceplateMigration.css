@@ -1,0 +1,17 @@
+.fc-faceplate-backdrop { position: fixed; inset: 0; z-index: 2000; background: #000a; display: grid; place-items: center; padding: 24px; }
+.fc-faceplate-migration { width: min(960px, 100%); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; background: var(--surface-1); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: 0 20px 80px #0008; font-size: 14px; line-height: 1.5; }
+.fc-faceplate-migration header, .fc-faceplate-migration footer { display: flex; align-items: center; gap: 16px; padding: 16px 24px; flex-shrink: 0; }
+.fc-faceplate-migration header { justify-content: space-between; border-bottom: 1px solid var(--border); }
+.fc-faceplate-migration h2 { margin: 0; font-size: 20px; }.fc-faceplate-migration h3 { font-size: 16px; margin: 20px 0 8px; }.fc-faceplate-migration h4 { margin: 0 0 8px; font-size: 14px; }
+.fc-faceplate-migration p { margin: 8px 0; }.fc-faceplate-migration header p, .fc-faceplate-migration footer span { color: var(--muted); }
+.fc-faceplate-migration-body { overflow-y: auto; min-height: 0; padding: 8px 24px 24px; overflow-wrap: anywhere; }
+.fc-faceplate-migration ul { padding-left: 24px; }.fc-faceplate-migration li { margin: 6px 0; }.fc-faceplate-migration li small { display: block; color: var(--muted); font-size: 13px; margin-top: 3px; }
+.fc-faceplate-migration fieldset { border: 0; margin: 20px 0; padding: 0; min-width: 0; }.fc-faceplate-migration legend { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+.fc-faceplate-migration article { padding: 14px; margin: 10px 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.fc-faceplate-migration label { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }.fc-faceplate-migration label span { color: var(--muted); }
+.fc-faceplate-migration input, .fc-faceplate-migration select { min-width: 0; width: 100%; min-height: 44px; padding: 8px 10px; background: var(--surface-1); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius); font: inherit; }
+.fc-faceplate-migration button { min-height: 44px; padding: 8px 14px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius); cursor: pointer; font: inherit; }.fc-faceplate-migration button:hover:not(:disabled) { background: var(--surface-hover); }.fc-faceplate-migration button:disabled { cursor: default; opacity: .5; }
+.fc-faceplate-migration .fc-faceplate-apply { border-color: var(--accent); }.fc-faceplate-migration :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fc-faceplate-migration .fc-faceplate-confirm { flex-direction: row; align-items: center; min-height: 44px; gap: 12px; }.fc-faceplate-confirm input[type="checkbox"] { width: 20px; min-height: 20px; flex-shrink: 0; }
+.fc-faceplate-warning { color: var(--warning); }.fc-faceplate-error { color: var(--red); }.fc-faceplate-migration footer { border-top: 1px solid var(--border); justify-content: flex-end; }.fc-faceplate-migration footer span { flex: 1; }
+@media (max-width: 600px) { .fc-faceplate-backdrop { padding: 8px; }.fc-faceplate-migration { max-height: calc(100dvh - 16px); }.fc-faceplate-migration header, .fc-faceplate-migration footer, .fc-faceplate-migration-body { padding: 14px; }.fc-faceplate-migration footer { flex-wrap: wrap; }.fc-faceplate-migration footer span { flex-basis: 100%; } }
