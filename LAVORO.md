@@ -3542,6 +3542,32 @@ Verifiche del 5 ottobre 2026:
   ignorati, nessun riavvio dell'app utente e nessuna suite generale. Resta separato il collaudo
   dell'aggiornamento nella finestra desktop reale e dell'artefatto production.
 
+### 101. Ritorno alla scelta Desktop/Mobile dal pannello HMI (2026-10-08)
+
+- Nei nuovi pannelli standard desktop+mobile il cambio layout passa soltanto dalla
+  pagina iniziale: comando “Cambia dispositivo” in alto a destra su Desktop e fisso
+  accanto al navigatore Mobile, visibile anche scorrendo le categorie. Target 44 px
+  minimo, SVG e focus visibile; non è un'impostazione dell'editor.
+- Eliminato il selettore inferiore Desktop/Mobile/Automatico e il cambio automatico
+  al ridimensionamento. Conservato separatamente Adatta disegno/Dimensioni reali:
+  cambia lo zoom del disegno, non il layout del pannello.
+- Il ritorno cancella soltanto la preferenza di questo progetto e riporta il focus
+  alla scelta. Pagina corrente conservata; dopo una nuova scelta la preferenza resta
+  durante navigazione e reload. Dopo il ritorno, anche un reload ripresenta la scelta.
+  Storage non disponibile non blocca il percorso in memoria; cache indietro/avanti
+  riallineata alla preferenza, anche quando cancellata o impostata al vecchio auto.
+- Al ritorno il guscio operativo si smonta: menu, listener e observer liberati,
+  runtime reinstallato soltanto dopo una nuova scelta. Non è logout né interblocco
+  e non arresta i servizi/PLC esterni. Ingresso dei pannelli solo desktop invariato.
+- Verifiche mirate: quindici casi sul vero App generato, due sul generatore/JSX
+  e riconoscimento pagine; TypeScript. Edge isolato a 375x800, 768x800, 812x375 e
+  viewport largo 1414 px: ritorno, cambio, focus, target e pulsante raggiungibile senza
+  sovrapporre logo/navigatore. Screenshot telefono/desktop ispezionati. Tre ricaricamenti
+  reali: Mobile conservato su schermo largo, Desktop su stretto e scelta ripresentata
+  dopo il ritorno. Router/dati sintetici; fixture browser e screenshot ignorati,
+  senza riavvio dell'app dell'utente, riscrittura di progetti macchina o suite generale.
+  Collaudo touch fisico, pannelli reali e produzione restano separati.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

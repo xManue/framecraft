@@ -86,12 +86,15 @@ browser tab, select a device before entering the operating pages. Deep links kee
 their requested page after selection. This screen selects a layout, not a login
 or a PLC interlock; existing machine projects are not rewritten.
 
-Once inside, the panel offers **Automatico**, **Desktop** and
-**Mobile** in the layout selector. Automatic mode follows viewport changes,
-including orientation, and switches to mobile below the desktop shell's 1280 px.
-Manual mode stays selected across page changes and reloads in the same browser
-tab, until another mode is chosen. The editor preview also remembers the selector
-on already-created panels without rewriting their files. Header, configured user access,
+Use **Cambia dispositivo** to return to the initial page and choose another layout.
+It is visible at the top right on Desktop and beside the section strip on Mobile,
+even when the strip scrolls. There is no bottom-right layout selector or automatic
+layout change on resize: Desktop/Mobile stays selected across page changes and
+reloads in the same browser tab. Returning clears this project's layout preference
+until a device is chosen again, preserves the requested page, and focuses the choices.
+An old saved Automatico preference asks for an explicit choice in the new shell.
+The editor's compatibility helper still remembers selectors on already-created
+panels without rewriting their files. Header, configured user access,
 scrolling section navigation and menus remain available on small screens.
 The machine drawing keeps its coordinates: pan at **Dimensioni reali**, or choose
 **Adatta disegno**, calculated from the actual content area and page width.

@@ -49,7 +49,9 @@ async function mount(component = App) {
 }
 async function render() { await act(async () => root!.render(createElement(App))); }
 async function click(element: HTMLElement) { await act(async () => element.click()); }
-async function mode(value: string) { const select = document.querySelector<HTMLSelectElement>(".hmi-layout-switch")!; await act(async () => { select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); }); }
+const returnButton = () => document.querySelector<HTMLButtonElement>("[data-panel-return]")!;
+async function choose(value: string) { await click(document.querySelector<HTMLButtonElement>(`[data-panel-start-mode="${value}"]`)!); }
+async function mode(value: string) { await click(returnButton()); await choose(value); }
 const shell = () => document.querySelector<HTMLElement>(".hmi-shell")!;
 const scale = () => Number(shell().style.getPropertyValue("--mobile-scale"));
 beforeEach(() => {
@@ -57,7 +59,7 @@ beforeEach(() => {
   route = categories[0].route; viewportWidth = contentWidth = 375; drawingWidth = 1280;
   mediaListeners.clear(); Observer.instances = [];
   sessionStorage.clear();
-  sessionStorage.setItem(layoutKey, "auto");
+  sessionStorage.setItem(layoutKey, "mobile");
   vi.stubGlobal("ResizeObserver", Observer);
   vi.stubGlobal("matchMedia", vi.fn(() => ({ get matches() { return viewportWidth < 1280; }, addEventListener: (_event: string, callback: () => void) => mediaListeners.add(callback), removeEventListener: (_event: string, callback: () => void) => mediaListeners.delete(callback) })));
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.classList.contains("hmi-screen") || this.classList.contains("hmi-lateral") ? contentWidth : 0; });
@@ -82,15 +84,37 @@ describe("guscio mobile realmente generato", () => {
     await act(async () => root!.unmount()); root = undefined; host?.remove();
     await mount(); expect(document.querySelector(".hmi-start")).toBeNull(); expect(shell().dataset.panelLayout).toBe(value);
   });
-  it("richiede la scelta con una preferenza non valida e continua senza storage disponibile", async () => {
-    sessionStorage.setItem(layoutKey, "unknown"); await mount(); expect(document.querySelector(".hmi-start")).not.toBeNull();
+  it.each(["unknown", "auto"])("richiede la scelta con la preferenza %s e continua senza storage disponibile", async (saved) => {
+    sessionStorage.setItem(layoutKey, saved); await mount(); expect(document.querySelector(".hmi-start")).not.toBeNull();
     await act(async () => root!.unmount()); root = undefined; host?.remove();
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw Error("Storage blocked"); });
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw Error("Storage blocked"); });
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw Error("Storage blocked"); });
     await mount(); expect(document.querySelector(".hmi-start")).not.toBeNull();
     await click(document.querySelector<HTMLButtonElement>('[data-panel-start-mode="mobile"]')!);
     expect(shell().dataset.panelLayout).toBe("mobile"); route = categories[1].route; await render();
     expect(shell().dataset.panelLayout).toBe("mobile");
+    await click(returnButton()); expect(document.querySelector(".hmi-shell")).toBeNull();
+    await choose("desktop"); expect(shell().dataset.panelLayout).toBe("desktop");
+  });
+  it.each(["desktop", "mobile"])("torna da %s alla scelta, chiude il menu e libera il runtime prima di cambiare dispositivo", async (value) => {
+    sessionStorage.setItem(layoutKey, value); route = categories[1].route;
+    sessionStorage.setItem("framecraft.operator-session", "synthetic-user");
+    await mount(); await click(document.querySelector<HTMLButtonElement>('[data-section="settings"]')!);
+    expect(document.querySelector("#hmi-section-menu")).not.toBeNull();
+    expect(document.querySelector(".hmi-layout-switch")).toBeNull();
+    await click(returnButton());
+    expect(document.querySelector(".hmi-start")).not.toBeNull(); expect(document.querySelector(".hmi-shell")).toBeNull();
+    expect(document.querySelector("#hmi-section-menu")).toBeNull();
+    expect(sessionStorage.getItem(layoutKey)).toBeNull();
+    expect(sessionStorage.getItem("framecraft.operator-session")).toBe("synthetic-user");
+    expect(document.activeElement).toBe(document.querySelector('[data-panel-start-mode="desktop"]'));
+    expect(Observer.instances.every((observer) => observer.disconnected)).toBe(true); expect(disposeRuntime).toHaveBeenCalledOnce();
+    expect((window as Window & { __framecraftSetPage?: unknown }).__framecraftSetPage).toBeUndefined();
+    await choose(value === "desktop" ? "mobile" : "desktop");
+    expect(shell().dataset.panelLayout).toBe(value === "desktop" ? "mobile" : "desktop");
+    expect(route).toBe(categories[1].route); expect(navigate).not.toHaveBeenCalled();
+    expect(installRuntime).toHaveBeenCalledTimes(2); expect(document.activeElement).toBe(document.querySelector(".hmi-screen"));
   });
   it("condivide la scelta iniziale con la chiave specifica del progetto in anteprima", async () => {
     const meta = document.createElement("meta"); meta.name = "framecraft-panel-layout-key"; meta.content = "framecraft.preview.panel-layout:synthetic-new";
@@ -98,51 +122,56 @@ describe("guscio mobile realmente generato", () => {
     try {
       await mount(); expect(document.querySelector(".hmi-start")).not.toBeNull();
       await click(document.querySelector<HTMLButtonElement>('[data-panel-start-mode="mobile"]')!);
-      expect(sessionStorage.getItem(meta.content)).toBe("mobile"); expect(sessionStorage.getItem(layoutKey)).toBe("auto");
+      expect(sessionStorage.getItem(meta.content)).toBe("mobile"); expect(sessionStorage.getItem(layoutKey)).toBe("mobile");
       await act(async () => root!.unmount()); root = undefined; host?.remove(); await mount();
       expect(shell().dataset.panelLayout).toBe("mobile"); expect(document.querySelector(".hmi-start")).toBeNull();
+      await click(returnButton()); expect(sessionStorage.getItem(meta.content)).toBeNull();
+      expect(sessionStorage.getItem(layoutKey)).toBe("mobile");
+      await act(async () => root!.unmount()); root = undefined; host?.remove(); await mount();
+      expect(document.querySelector(".hmi-start")).not.toBeNull();
     } finally { meta.remove(); }
   });
   it("mantiene Mobile dopo il ricaricamento causato dal cambio pagina finché non lo cambi manualmente", async () => {
     viewportWidth = contentWidth = 1440;
+    sessionStorage.setItem(layoutKey, "desktop");
     await mount(); expect(shell().dataset.panelLayout).toBe("desktop");
     await mode("mobile"); expect(shell().dataset.panelLayout).toBe("mobile");
     await act(async () => root!.unmount()); root = undefined; host?.remove();
     route = categories[1].route;
     await mount(); expect(shell().dataset.panelLayout).toBe("mobile");
-    expect(document.querySelector<HTMLSelectElement>(".hmi-layout-switch")!.value).toBe("mobile");
+    expect(sessionStorage.getItem(layoutKey)).toBe("mobile");
     await mode("desktop"); await act(async () => root!.unmount()); root = undefined; host?.remove();
     route = categories[2].route; viewportWidth = contentWidth = 375;
     await mount(); expect(shell().dataset.panelLayout).toBe("desktop");
-    await mode("auto"); await act(async () => root!.unmount()); root = undefined; host?.remove();
-    await mount(); expect(shell().dataset.panelLayout).toBe("mobile");
-    expect(document.querySelector<HTMLSelectElement>(".hmi-layout-switch")!.value).toBe("auto");
-    viewportWidth = 1440; await act(async () => mediaListeners.forEach((callback) => callback()));
-    expect(shell().dataset.panelLayout).toBe("desktop");
+    await click(returnButton()); await act(async () => root!.unmount()); root = undefined; host?.remove();
+    await mount(); expect(document.querySelector(".hmi-start")).not.toBeNull(); expect(document.querySelector(".hmi-shell")).toBeNull();
+    await choose("mobile"); viewportWidth = 1440; await act(async () => window.dispatchEvent(new Event("resize")));
+    expect(shell().dataset.panelLayout).toBe("mobile");
   });
-  it("segue il ridimensionamento, conserva la scelta manuale e torna in automatico", async () => {
+  it("non cambia layout al ridimensionamento: il cambio passa sempre dalla pagina iniziale", async () => {
     await mount(); expect(shell().dataset.panelLayout).toBe("mobile");
-    viewportWidth = 1440; await act(async () => mediaListeners.forEach((callback) => callback()));
+    viewportWidth = 1440; await act(async () => window.dispatchEvent(new Event("resize")));
+    expect(shell().dataset.panelLayout).toBe("mobile");
+    viewportWidth = 1920; await act(async () => window.dispatchEvent(new Event("resize")));
+    expect(shell().dataset.panelLayout).toBe("mobile");
+    await mode("desktop"); viewportWidth = 375; await act(async () => window.dispatchEvent(new Event("resize")));
     expect(shell().dataset.panelLayout).toBe("desktop");
     await mode("mobile"); expect(shell().dataset.panelLayout).toBe("mobile");
-    viewportWidth = 1920; await act(async () => mediaListeners.forEach((callback) => callback()));
-    expect(shell().dataset.panelLayout).toBe("mobile");
-    await mode("desktop"); viewportWidth = 375; await act(async () => mediaListeners.forEach((callback) => callback()));
-    expect(shell().dataset.panelLayout).toBe("desktop");
-    await mode("auto"); expect(shell().dataset.panelLayout).toBe("mobile");
-    viewportWidth = 812; await act(async () => mediaListeners.forEach((callback) => callback()));
-    expect(shell().dataset.panelLayout).toBe("mobile"); expect(navigate).not.toHaveBeenCalled();
+    viewportWidth = 812; await act(async () => window.dispatchEvent(new Event("resize")));
+    expect(shell().dataset.panelLayout).toBe("mobile"); expect(navigate).not.toHaveBeenCalled(); expect(mediaListeners.size).toBe(0);
   });
-  it("riallinea scelta e viewport tornando indietro su una pagina conservata dal browser", async () => {
+  it("riallinea la scelta e torna alla pagina iniziale anche sulle pagine conservate dal browser", async () => {
     viewportWidth = 1440; await mount(); await mode("mobile");
     const key = "framecraft.panel-layout:Synthetic mobile";
     sessionStorage.setItem(key, "desktop"); viewportWidth = 375;
     const event = new Event("pageshow"); Object.defineProperty(event, "persisted", { value: true });
     await act(async () => window.dispatchEvent(event)); expect(shell().dataset.panelLayout).toBe("desktop");
+    sessionStorage.removeItem(key);
+    await act(async () => window.dispatchEvent(event)); expect(document.querySelector(".hmi-start")).not.toBeNull();
+    expect(document.querySelector(".hmi-shell")).toBeNull(); expect(disposeRuntime).toHaveBeenCalledTimes(2);
+    await choose("mobile"); expect(sessionStorage.getItem(key)).toBe("mobile");
     sessionStorage.setItem(key, "auto");
-    await act(async () => window.dispatchEvent(event)); expect(shell().dataset.panelLayout).toBe("mobile");
-    expect(document.querySelector<HTMLSelectElement>(".hmi-layout-switch")!.value).toBe("auto");
-    await mode("mobile"); expect(sessionStorage.getItem(key)).toBe("mobile");
+    await act(async () => window.dispatchEvent(event)); expect(document.querySelector(".hmi-start")).not.toBeNull();
   });
   it("adatta alla finestra contenuto e ricalcola la scala anche su pagine più larghe", async () => {
     await mount(); expect(scale()).toBeCloseTo(375 / 1280);
@@ -174,8 +203,8 @@ describe("guscio mobile realmente generato", () => {
   });
   it("chiude il menu quando il focus esce, senza rubarlo, e conserva la navigazione", async () => {
     await mount(); const opener = document.querySelector<HTMLButtonElement>('[data-section="settings"]')!;
-    await click(opener); const select = document.querySelector<HTMLSelectElement>(".hmi-layout-switch")!;
-    await act(async () => select.focus()); expect(document.querySelector("#hmi-section-menu")).toBeNull(); expect(document.activeElement).toBe(select);
+    await click(opener); const back = returnButton();
+    await act(async () => back.focus()); expect(document.querySelector("#hmi-section-menu")).toBeNull(); expect(document.activeElement).toBe(back);
     await click(opener); const entry = document.querySelector<HTMLElement>("#hmi-section-menu li:not(.hmi-submenu-heading) button:not(:disabled)")!;
     await click(entry); expect(document.querySelector("#hmi-section-menu")).toBeNull(); expect(navigate).toHaveBeenLastCalledWith(categories[1].entries.find((item) => item.route)!.route);
     expect(document.querySelector('[data-section="settings"]')!.classList.contains("active")).toBe(true);
@@ -184,7 +213,7 @@ describe("guscio mobile realmente generato", () => {
   it("non abilita il mobile nei pannelli solo desktop e rimuove i listener alla chiusura", async () => {
     const desktop = standardProjectFiles({ machineName: "Desktop", layout: "desktop", sections: ["main"] }).find((file) => file.path === "src/App.tsx")!.content;
     await mount(loadApp(desktop)); expect(shell().dataset.panelLayout).toBe("desktop"); expect(document.querySelector(".hmi-layout-controls")).toBeNull(); expect(document.querySelector(".hmi-start")).toBeNull();
-    expect(mediaListeners.size).toBe(1);
+    expect(document.querySelector("[data-panel-return]")).toBeNull(); expect(mediaListeners.size).toBe(0);
     await act(async () => root!.unmount()); root = undefined;
     expect(mediaListeners.size).toBe(0); expect(Observer.instances.every((observer) => observer.disconnected)).toBe(true); expect(disposeRuntime).toHaveBeenCalledOnce();
   });

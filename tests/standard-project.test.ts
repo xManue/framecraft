@@ -12,18 +12,22 @@ describe("generatore nuovo pannello standard", () => {
     const app = files.find((file) => file.path === "src/App.tsx")!.content, styles = files.find((file) => file.path === "src/styles.css")!.content;
     expect(() => parse(app, { sourceType: "module", plugins: ["jsx", "typescript"] })).not.toThrow();
     expect(app).toContain('className="hmi-start"'); expect(app).toContain('data-panel-start-mode="desktop"'); expect(app).toContain('data-panel-start-mode="mobile"');
+    expect(app).toContain('data-panel-return=""'); expect(app).toContain("sessionStorage.removeItem(layoutPreferenceKey)");
+    expect(app).not.toContain("hmi-layout-switch"); expect(app).not.toContain('"auto"');
     expect(app).toContain('{"Linea {A} test"}'); expect(styles).toContain("@media (max-width: 600px)");
     const sources = Object.fromEntries(files.filter((file) => file.path.endsWith(".tsx")).map((file) => [file.path, file.content]));
     expect(detectPages(sources).pages).toHaveLength(files.filter((file) => file.path.startsWith("src/pages/")).length);
     const desktop = standardProjectFiles({ machineName: "Desktop", layout: "desktop", sections: ["main"] });
     expect(desktop.find((file) => file.path === "src/App.tsx")!.content).not.toContain('className="hmi-start"');
+    expect(desktop.find((file) => file.path === "src/App.tsx")!.content).not.toContain("data-panel-return");
     expect(desktop.find((file) => file.path === "src/styles.css")!.content).not.toContain(".hmi-start");
     expect(files.filter((file) => file.path.startsWith("src/pages/"))).toHaveLength(desktop.filter((file) => file.path.startsWith("src/pages/")).length);
   });
   it("genera un guscio mobile adattabile mantenendo la tela macchina e comandi touch", () => {
     const files = standardProjectFiles({ machineName: "Mobile", layout: "desktop-mobile", sections: ["main"] });
     const app = files.find((file) => file.path === "src/App.tsx")!.content, css = files.find((file) => file.path === "src/styles.css")!.content;
-    expect(app.includes("window.matchMedia('(max-width: 1279px)')")).toBe(true);
+    expect(app).toContain('const mobileLayout = layoutMode === "mobile"');
+    expect(app).not.toContain("window.matchMedia"); expect(css).not.toContain("hmi-layout-switch");
     expect(app.includes("Adatta disegno")).toBe(true); expect(app.includes('data-mobile-fit={mobileFit}')).toBe(true);
     expect(css.includes(".hmi-shell.mobile { width: 100%" )).toBe(true); expect(css.includes("height: calc(100dvh - 172px - env(")).toBe(true);
     expect(css.includes("zoom: var(--mobile-scale)")).toBe(true); expect(css.includes("min-height: 44px")).toBe(true);
