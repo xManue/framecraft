@@ -1,0 +1,10 @@
+.indirect-tag-editor { display: grid; gap: 8px; min-width: 0; }
+.indirect-tag-editor p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.indirect-tag-editor code { color: var(--text); }
+.indirect-tag-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; font-size: 12px; }
+.indirect-tag-toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.indirect-tag-type { display: grid; gap: 5px; font-size: 11px; }
+.indirect-tag-type select { min-width: 0; min-height: 44px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text); padding: 6px; }
+.indirect-tag-toggle input:focus-visible, .indirect-tag-type select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.indirect-tag-resolution { border-left: 3px solid var(--accent); padding: 8px; background: var(--surface-2); color: var(--text); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.indirect-tag-resolution.error { border-left-color: var(--danger); }

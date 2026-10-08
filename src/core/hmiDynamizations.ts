@@ -31,6 +31,10 @@ function normalized(value: unknown): Dynamization | undefined {
   const conditionType = conditions.has(item.conditionType as MappingConditionType) ? item.conditionType as MappingConditionType : "None";
   const result: Dynamization = { property: item.property.trim(), kind, conditionType };
   if (typeof item.tag === "string" && item.tag.trim()) result.tag = item.tag.trim();
+  if (kind === "Tag" && item.indirect === true) {
+    result.indirect = true;
+    if (typeof item.indirectDataType === "string" && item.indirectDataType.trim()) result.indirectDataType = item.indirectDataType.trim();
+  }
   if (typeof item.source === "string" && item.source.trim()) result.source = item.source.trim();
   if (Array.isArray(item.triggers)) {
     const triggers = [...new Set(item.triggers.filter((trigger): trigger is string => typeof trigger === "string").map((trigger) => trigger.trim()).filter(Boolean))];

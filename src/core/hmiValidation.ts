@@ -5,6 +5,7 @@ import { inspectHmiScript, inspectHmiScriptProgram } from "./hmiScript";
 import { pageNumberAttribute } from "./hmiPages";
 import { pageNumberParts } from "./hmiStandard";
 import type { PlcVariableDefinition } from "./plcVariables";
+import { hmiIndirectBindingIssue } from "./hmiTagBinding";
 import type { HmiResourceCatalog } from "./hmiResources";
 import { hmiEventsAttribute, parseHmiEvents } from "./hmiEvents";
 import { hmiScriptCatalogIssues, hmiScriptFunctions, hmiScriptGlobalDefinition, hmiScriptVariables, type HmiScriptCatalog } from "./hmiScriptModules";
@@ -147,7 +148,7 @@ function checkTags(file: string, source: string, declared: Set<string> | undefin
   }
 }
 
-function checkDynamizations(file: string, source: string, declared: Set<string> | undefined, resources: HmiResourceCatalog | undefined, scripts: HmiScriptCatalog | undefined, scope: string | undefined, issues: HmiIssue[]) {
+function checkDynamizations(file: string, source: string, declared: Set<string> | undefined, resources: HmiResourceCatalog | undefined, scripts: HmiScriptCatalog | undefined, scope: string | undefined, issues: HmiIssue[], variables?: readonly PlcVariableDefinition[]) {
   dynamizationAttribute.lastIndex = 0;
   for (let match = dynamizationAttribute.exec(source); match; match = dynamizationAttribute.exec(source)) {
     const line = lineAt(source, match.index);
@@ -179,6 +180,8 @@ function checkDynamizations(file: string, source: string, declared: Set<string> 
         }
       };
       if (item.kind === "Tag") {
+        const indirectIssue = hmiIndirectBindingIssue(item, variables);
+        if (indirectIssue) issues.push({ kind: "dynamization-incomplete", severity: "error", file, line, message: `${where}: ${indirectIssue}` });
         if (!item.tag?.trim()) {
           issues.push({ kind: "dynamization-incomplete", severity: "error", file, line, message: `${where} non dice da quale tag prende il valore.` });
         } else if (declared && !declared.has(item.tag.trim())) {
@@ -400,7 +403,7 @@ export function validateHmiProject({ sources, variables, resources, scripts, fac
   for (const [file, source] of Object.entries(sources)) {
     const scope = routeByFile.get(file.replaceAll("\\", "/").toLocaleLowerCase());
     checkTags(file, source, declared, issues);
-    checkDynamizations(file, source, declared, resources, scripts, scope, issues);
+    checkDynamizations(file, source, declared, resources, scripts, scope, issues, variables);
     checkEvents(file, source, declared, scripts, scope, issues);
     checkFaceplates(file, source, faceplates, variables, issues);
     checkTrends(file, source, variables, dataLogs, issues);

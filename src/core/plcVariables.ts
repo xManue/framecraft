@@ -76,6 +76,13 @@ function combineAccess(left: PlcAccess, right: PlcAccess): PlcAccess {
 }
 
 function trendAttributePattern(): RegExp { return /(\bdata-hmi-(?:function-)?trend\s*=\s*)(["'])(.*?)\2/gs; }
+function dynamizationAttributePattern(): RegExp { return /(\bdata-hmi-dynamizations\s*=\s*)(["'])(.*?)\2/gs; }
+function dynamizationTagSources(raw: string): Record<string, unknown>[] {
+  try {
+    const parsed: unknown = JSON.parse(raw.replace(/&quot;/g, '"').replace(/&apos;|&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === "object" && ["Tag", "ResourceList", "Flashing"].includes(item.kind) && typeof item.tag === "string" && item.tag.trim()) : [];
+  } catch { return []; }
+}
 function trendAttributeConfig(raw: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(raw.replace(/&quot;/g, '"').replace(/&apos;|&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
@@ -120,6 +127,7 @@ export function detectPlcVariables(sources: Record<string, string>): PlcVariable
     for (const match of source.matchAll(hookPattern)) record(match[1], "read-write", file, lineAt(source, match.index ?? 0));
     const attributePattern = /\bdata-plc-(?:variable|tag)\s*=\s*["']([^"']+)["']/g;
     for (const match of source.matchAll(attributePattern)) record(match[1], "read", file, lineAt(source, match.index ?? 0));
+    for (const match of source.matchAll(dynamizationAttributePattern())) for (const binding of dynamizationTagSources(match[3])) record(binding.tag as string, "read", file, lineAt(source, match.index ?? 0));
     for (const match of source.matchAll(trendAttributePattern())) {
       const config = trendAttributeConfig(match[3]); if (!config) continue;
       for (const tagSource of trendTagSources(config)) record(tagSource.tag as string, "read", file, lineAt(source, match.index ?? 0));
@@ -154,6 +162,16 @@ export function renamePlcVariableUsage(source: string, previousName: string, nex
   replace(/(\b(?:hmi|plc)\.(?:value|read|write|setpoint)\(\s*)(["'`])([^"'`]+)\2/g);
   replace(/(\busePlcVariable\(\s*)(["'`])([^"'`]+)\2/g);
   replace(/(\bdata-plc-(?:variable|tag)\s*=\s*)(["'])([^"']+)\2/g);
+  source = source.replace(dynamizationAttributePattern(), (complete, prefix: string, quote: string, raw: string) => {
+    const bindings = dynamizationTagSources(raw);
+    if (!bindings.some((item) => item.tag === previousName)) return complete;
+    // Si modifica solo il campo tag riconosciuto, non testi, condizioni o nomi restituiti dagli script.
+    const decoded = raw.replace(/&quot;/g, '"').replace(/&apos;|&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    const items = JSON.parse(decoded) as Record<string, unknown>[];
+    for (const item of items) if (item && ["Tag", "ResourceList", "Flashing"].includes(String(item.kind)) && item.tag === previousName) item.tag = nextName;
+    const json = JSON.stringify(items).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    return `${prefix}${quote}${quote === '"' ? json.replaceAll('"', "&quot;") : json.replaceAll("'", "&apos;")}${quote}`;
+  });
   source = source.replace(trendAttributePattern(), (complete, prefix: string, quote: string, raw: string) => {
     const config = trendAttributeConfig(raw); if (!config) return complete;
     let changed = false;
@@ -181,5 +199,6 @@ export function plcTagsInSource(source: string): string[] {
     const config = trendAttributeConfig(match[3]); if (!config) continue;
     for (const tagSource of trendTagSources(config)) tags.add(tagSource.tag as string);
   }
+  for (const match of source.matchAll(dynamizationAttributePattern())) for (const binding of dynamizationTagSources(match[3])) tags.add(binding.tag as string);
   return [...tags];
 }

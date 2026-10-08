@@ -1,7 +1,8 @@
 import { cssColor, type Dynamization } from "./hmiStandard";
 import { hmiFlashingInlineStyle, resolveHmiFlashing, type HmiFlashingVisual } from "./hmiFlashing";
-import { evaluateHmiExpression, hmiExpressionTruthy, inspectHmiExpression } from "./hmiExpression";
+import { evaluateHmiExpression, inspectHmiExpression } from "./hmiExpression";
 import { resolveHmiResource, type HmiResourceCatalog } from "./hmiResources";
+import { resolveHmiTagDynamization, type HmiTagDefinition, type HmiTagStatus } from "./hmiTagBinding";
 import { executeHmiScript, inspectHmiScript, type HmiScriptProgram, type HmiScriptRuntimeFunction, type HmiScriptRuntimeVariable, type HmiScriptScope, type HmiScriptScreenItemManager, type HmiScriptTimerManager } from "./hmiScript";
 
 /** La simulazione degli stati PLC: dato un valore di prova per un tag, che aspetto prende l'oggetto.
@@ -33,6 +34,7 @@ export interface SimulationPatch {
   style: Record<string, string>;
   /** Il testo, quando la dinamizzazione e' su `Text` o `ProcessValue`. */
   text?: string;
+  readOnly?: boolean;
   /** La grafica scelta da una lista risorse, quando la proprietà dinamizzata è `Graphic`. */
   graphic?: string;
   /** Lampeggi attivi, tenuti separati finché non vengono composti in un'unica animazione CSS. */
@@ -79,29 +81,6 @@ function truthy(value: string): boolean {
   return true;
 }
 
-/** La riga della tabella che vince, con le regole del `ValueConverter`.
- *
- * `Range`: la prima riga il cui intervallo contiene il valore; un estremo che manca vuol dire aperto
- * da quella parte. `Singlebit`: la prima riga il cui bit e' acceso — la `condition` e' il numero del
- * bit quando e' un numero, altrimenti si legge come vero/falso. */
-function matchedEntry(item: Dynamization, value: string): NonNullable<Dynamization["entries"]>[number] | undefined {
-  const entries = item.entries ?? [];
-  if (!entries.length) return undefined;
-  const number = numberOf(value);
-  if (item.conditionType === "Range") {
-    if (number === undefined) return undefined;
-    return entries.find((entry) => (entry.from ?? -Infinity) <= number && number <= (entry.to ?? Infinity));
-  }
-  if (item.conditionType === "Singlebit") {
-    return entries.find((entry) => {
-      const bit = entry.condition === undefined ? undefined : numberOf(entry.condition);
-      if (bit !== undefined) return number !== undefined && ((number >> bit) & 1) === 1;
-      return truthy(entry.condition ?? "") === truthy(value);
-    });
-  }
-  return undefined;
-}
-
 /** Il valore che la proprieta' assume, o il motivo per cui non si sa. */
 export function resolveDynamization(
   item: Dynamization,
@@ -114,6 +93,8 @@ export function resolveDynamization(
   globalScope?: HmiScriptScope,
   variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>,
   screenItems?: HmiScriptScreenItemManager,
+  tagCatalog?: readonly HmiTagDefinition[],
+  tagStatus?: Readonly<Record<string, HmiTagStatus>>,
 ): { value: string; resourceKind?: "text" | "graphic"; fallbackLanguage?: string } | { reason: string } {
   if (item.kind === "Script") {
     if (!item.source?.trim()) return { reason: "La dinamizzazione non contiene uno script." };
@@ -143,29 +124,8 @@ export function resolveDynamization(
     };
   }
   if (item.kind !== "Tag") return { reason: `La sorgente e' ${item.kind}, non un tag.` };
-  if (!item.tag) return { reason: "La dinamizzazione non dice quale tag legge." };
-  if (value === undefined || value.trim() === "") return { reason: `Il tag ${item.tag} non ha un valore di prova.` };
-
-  const condition = item.conditionType ?? "None";
-  if (condition === "None") return { value: value.trim() };
-  if (!item.entries?.length) {
-    // E' il caso di tutto l'export: le soglie stanno in `fill.cmd`, non nelle schermate.
-    return { reason: `La tabella ${condition} e' vuota: le soglie non sono nell'export.` };
-  }
-  if (condition === "Expression") {
-    let firstError: string | undefined;
-    for (const entry of item.entries) {
-      if (!entry.condition?.trim()) continue;
-      const result = evaluateHmiExpression(entry.condition, { ...values, [item.tag]: value, value });
-      if ("error" in result) { firstError ??= result.error; continue; }
-      if (hmiExpressionTruthy(result.value)) return { value: entry.value };
-    }
-    return firstError
-      ? { reason: `Condizione personalizzata non risolta: ${firstError}.` }
-      : { reason: `Nessuna condizione personalizzata copre ${value}.` };
-  }
-  const entry = matchedEntry(item, value);
-  return entry ? { value: entry.value } : { reason: `Nessuna riga della tabella ${condition} copre ${value}.` };
+  const resolved = resolveHmiTagDynamization(item, item.tag && value !== undefined ? { ...values, [item.tag]: value } : values, tagCatalog, tagStatus);
+  return "reason" in resolved ? { reason: resolved.reason } : { value: resolved.value };
 }
 
 const pixels = (value: string): string | undefined => {
@@ -203,18 +163,24 @@ const notShown: Record<string, string> = {
 const textProperties = new Set(["Text", "ProcessValue"]);
 
 /** Lo stato di un elemento con i valori di prova dati: cosa diventa, e cosa non si e' potuto dire. */
-export function simulationPatch(items: readonly Dynamization[], values: SimulationValues, resources?: HmiResourceCatalog, language?: string, functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>, timerManager?: HmiScriptTimerManager, globalScope?: HmiScriptScope, variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>, screenItems?: HmiScriptScreenItemManager): SimulationPatch {
+export function simulationPatch(items: readonly Dynamization[], values: SimulationValues, resources?: HmiResourceCatalog, language?: string, functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>, timerManager?: HmiScriptTimerManager, globalScope?: HmiScriptScope, variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>, screenItems?: HmiScriptScreenItemManager, tagCatalog?: readonly HmiTagDefinition[], tagStatus?: Readonly<Record<string, HmiTagStatus>>): SimulationPatch {
   const patch: SimulationPatch = { style: {}, flashing: [], unresolved: [] };
   for (const item of items) {
+    if (item.kind === "Tag" && item.indirect && item.property === "ProcessValue") patch.readOnly = true;
     if (item.kind === "Flashing") {
       const flashing = resolveHmiFlashing(item, values);
       if ("reason" in flashing) patch.unresolved.push({ property: item.property, reason: flashing.reason });
       else if (flashing.active) patch.flashing.push(flashing.visual);
       continue;
     }
-    const resolved = resolveDynamization(item, item.tag ? values[item.tag] : undefined, values, resources, language, functions, timerManager, globalScope, variables, screenItems);
+    const resolved = resolveDynamization(item, item.tag ? values[item.tag] : undefined, values, resources, language, functions, timerManager, globalScope, variables, screenItems, tagCatalog, tagStatus);
     if ("reason" in resolved) {
       patch.unresolved.push({ property: item.property, reason: resolved.reason });
+      if (item.kind === "Tag" && item.indirect) {
+        if (textProperties.has(item.property)) patch.text = "—";
+        else if (item.property === "Visible") patch.style.visibility = "hidden";
+        else if (item.property === "Enabled") Object.assign(patch.style, { pointerEvents: "none", filter: "grayscale(1)" });
+      }
       continue;
     }
     if (resolved.resourceKind === "graphic") {
@@ -258,6 +224,7 @@ export interface SimulationCommand {
   instanceId: string;
   style: Record<string, string>;
   text?: string;
+  readOnly?: boolean;
   graphic?: string;
   flashing?: HmiFlashingVisual[];
 }
@@ -266,12 +233,12 @@ export interface SimulationCommand {
  *
  * Un elemento senza niente da cambiare non entra nella lista: l'anteprima deve poter rimettere a
  * posto tutti quelli che tocca, e piu' corta e' la lista meno c'e' da rimettere a posto. */
-export function simulationCommands(elements: readonly SimulatedElement[], values: SimulationValues, resources?: HmiResourceCatalog, language?: string, functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>, timerManager?: HmiScriptTimerManager, globalScope?: HmiScriptScope, variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>, screenItems?: (instanceId: string) => HmiScriptScreenItemManager):
+export function simulationCommands(elements: readonly SimulatedElement[], values: SimulationValues, resources?: HmiResourceCatalog, language?: string, functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>, timerManager?: HmiScriptTimerManager, globalScope?: HmiScriptScope, variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>, screenItems?: (instanceId: string) => HmiScriptScreenItemManager, tagCatalog?: readonly HmiTagDefinition[], tagStatus?: Readonly<Record<string, HmiTagStatus>>):
   { commands: SimulationCommand[]; unresolved: UnresolvedDynamization[] } {
   const commands: SimulationCommand[] = [];
   const unresolved = new Map<string, UnresolvedDynamization>();
   for (const element of elements) {
-    const patch = simulationPatch(element.dynamizations, values, resources, language, functions, timerManager, globalScope, variables, screenItems?.(element.instanceId));
+    const patch = simulationPatch(element.dynamizations, values, resources, language, functions, timerManager, globalScope, variables, screenItems?.(element.instanceId), tagCatalog, tagStatus);
     for (const item of patch.unresolved) unresolved.set(`${item.property}|${item.reason}`, item);
     if (!Object.keys(patch.style).length && patch.text === undefined && patch.graphic === undefined) continue;
     commands.push({
@@ -279,6 +246,7 @@ export function simulationCommands(elements: readonly SimulatedElement[], values
       style: patch.style,
       ...(patch.flashing.length ? { flashing: patch.flashing } : {}),
       ...(patch.text === undefined ? {} : { text: patch.text }),
+      ...(patch.readOnly ? { readOnly: true } : {}),
       ...(patch.graphic === undefined ? {} : { graphic: patch.graphic }),
     });
   }

@@ -14,6 +14,7 @@ import { editableSummary, isEditableFile, type TemplateContract } from "../core/
 import { plcTagsInSource } from "../core/plcVariables";
 import { plcVariablesMatching } from "../core/tagImport";
 import { availableDynamizedProperties, hmiDynamizationAttribute, newHmiDynamization, parseHmiDynamizations, removeHmiDynamization, replaceHmiDynamization, serializeHmiDynamizations } from "../core/hmiDynamizations";
+import { HmiIndirectTagEditor } from "./HmiIndirectTagEditor";
 import { hmiFlashingContrast, hmiFlashingProperties } from "../core/hmiFlashing";
 import { inspectHmiExpression } from "../core/hmiExpression";
 import { inspectHmiScript } from "../core/hmiScript";
@@ -511,8 +512,9 @@ function DynamizationCard({ item, index, all, properties, onWrite }: { item: Dyn
       patch({ kind, tag: kind === "Tag" || kind === "ResourceList" || (kind === "Flashing" && item.flashingCondition === "RangeViolation") ? item.tag : undefined, source: kind === "Tag" || kind === "Flashing" ? undefined : item.source, triggers: kind === "Script" ? item.triggers : undefined, cycleMs: kind === "Script" ? item.cycleMs : undefined, conditionType: kind === "Tag" ? item.conditionType : "None", entries: kind === "Tag" ? item.entries : [], color: kind === "Flashing" ? item.color ?? "#FF3B30" : undefined, alternateColor: kind === "Flashing" ? item.alternateColor ?? "#FFD60A" : undefined, flashingCondition: kind === "Flashing" ? item.flashingCondition ?? "Always" : undefined, flashingRate: kind === "Flashing" ? item.flashingRate ?? "Medium" : undefined, minimum: kind === "Flashing" ? item.minimum : undefined, maximum: kind === "Flashing" ? item.maximum : undefined });
     }}><option value="Tag">Variabile PLC</option><option value="ResourceList">Lista risorse</option><option value="Expression">Espressione</option><option value="Script">Funzione</option>{colorProperty && <option value="Flashing">Lampeggio WinCC</option>}</select></label>
     {item.kind === "Tag" ? <>
-      <DynamizationTextField label="Variabile PLC" value={item.tag ?? ""} placeholder="Cerca o scrivi un tag" list="hmi-dynamization-tags" onCommit={(tag) => patch({ tag })} />
+      <DynamizationTextField label={item.indirect ? "Tag selettore · WSTRING" : "Variabile PLC"} value={item.tag ?? ""} placeholder="Cerca o scrivi un tag" list="hmi-dynamization-tags" onCommit={(tag) => patch({ tag })} />
       <datalist id="hmi-dynamization-tags">{catalog.map((variable) => <option key={variable.name} value={variable.name}>{variable.description}</option>)}</datalist>
+      <HmiIndirectTagEditor item={item} onPatch={patch} />
       <label className="dynamization-field"><span>Conversione del valore</span><select value={condition} onChange={(event) => patch({ conditionType: event.target.value as MappingConditionType, entries: [] })}><option value="None">Diretta · usa il valore del tag</option><option value="Range">Intervalli / soglie</option><option value="Singlebit">Bit o condizione singola</option><option value="Expression">Condizione personalizzata</option></select></label>
       {condition !== "None" && <div className="dynamization-rules">
         {rules.map((entry, ruleIndex) => <DynamizationRule key={ruleIndex} entry={entry} conditionType={condition} onChange={(next) => patch({ entries: rules.map((rule, current) => current === ruleIndex ? next : rule) })} onRemove={() => patch({ entries: rules.filter((_, current) => current !== ruleIndex) })} />)}

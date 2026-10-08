@@ -47,6 +47,7 @@ type TransformSession = {
 export function Canvas() {
   const previewUrl = useEditorStore((state) => state.previewUrl);
   const previewPath = useEditorStore((state) => state.previewPath);
+  const plcVariables = useEditorStore((state) => state.plcVariables);
   const requestedStatePage = useEditorStore((state) => state.requestedStatePage);
   const previewStatus = useEditorStore((state) => state.previewStatus);
   const previewError = useEditorStore((state) => state.previewError);
@@ -297,7 +298,7 @@ export function Canvas() {
     if (!preview) return;
     if (!simulation.on) { preview.postMessage({ type: "framecraft:simulate", on: false }, "*"); return; }
     const context = hmiScriptContexts.options(scriptCatalog, previewPath, "dynamizations");
-    const { commands, unresolved } = simulationCommands(simulation.elements, simulation.values, resourceCatalog, resourceCatalog.activeLanguage, context.functions, hmiTimerManager, context.globalScope, context.variables, (instanceId) => hmiPropertyFlashing.context(instanceId));
+    const { commands, unresolved } = simulationCommands(simulation.elements, simulation.values, resourceCatalog, resourceCatalog.activeLanguage, context.functions, hmiTimerManager, context.globalScope, context.variables, (instanceId) => hmiPropertyFlashing.context(instanceId), plcVariables, simulation.status);
     preview.postMessage({ type: "framecraft:simulate", on: true, commands }, "*");
     useEditorStore.getState().setSimulationUnresolved(unresolved);
   }
@@ -457,7 +458,7 @@ export function Canvas() {
     renderFaceplateVisuals();
     renderTrendVisuals();
     if (simulation.on) dataLogRuntime.updateSnapshot(simulation.values, simulation.status);
-  }, [simulation.on, simulation.values, simulation.status, simulation.elements, resourceCatalog, scriptCatalog, dataLogRuntime, previewPath, previewSrc]);
+  }, [simulation.on, simulation.values, simulation.status, simulation.elements, resourceCatalog, scriptCatalog, dataLogRuntime, previewPath, previewSrc, plcVariables]);
 
   useEffect(() => {
     if (!simulation.on) return;

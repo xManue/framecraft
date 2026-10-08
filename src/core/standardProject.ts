@@ -31,6 +31,8 @@ import gatewayStartSource from "../../runtime/start-gateway.mjs?raw";
 import gatewayProxySource from "../../runtime/vite-gateway.mjs?raw";
 import gatewayProxyTypes from "../../runtime/vite-gateway.d.mts?raw";
 import gatewayClientSource from "./hmiGateway.ts?raw";
+import hmiTagBindingSource from "./hmiTagBinding.ts?raw";
+import hmiExpressionSource from "./hmiExpression.ts?raw";
 
 /** Il pannello nuovo, gia' allo standard.
  *
@@ -245,6 +247,7 @@ import { renderHmiFaceplates } from "./framecraftHmiFaceplateVisuals";
 import { renderHmiTrendControls } from "./framecraftHmiTrend";
 import { renderHmiFunctionTrendControls } from "./framecraftHmiFunctionTrend";
 import { createHmiDataLogRuntime } from "./framecraftHmiDataLogs";
+import { resolveHmiTagDynamization, resolveHmiTagReference } from "./framecraftHmiTagBinding";
 import scriptCatalogJson from "../framecraft.scripts.json";
 import faceplateCatalogJson from "../framecraft.faceplates.json";
 import dataLogCatalogJson from "../framecraft.logs.json";
@@ -265,6 +268,10 @@ interface DynamicBinding {
   property: string;
   kind: string;
   tag?: string;
+  indirect?: boolean;
+  indirectDataType?: string;
+  conditionType?: string;
+  entries?: { from?: number; to?: number; condition?: string; value: string }[];
   source?: string;
   triggers?: string[];
   cycleMs?: number;
@@ -457,6 +464,7 @@ function applyDynamicValue(element: Element, property: string, value: string): b
   if (property === "Enabled") { style.pointerEvents = runtimeTruthy(value) ? "auto" : "none"; style.filter = runtimeTruthy(value) ? "none" : "grayscale(1)"; return true; }
   if (property === "Text" || property === "ProcessValue") {
     if (element.childElementCount) return false;
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) { if (element.value !== value) element.value = value; return true; }
     if (element.textContent !== value) element.textContent = value;
     return true;
   }
@@ -546,6 +554,49 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       reportOnce(element, item.property + ":property", "[HMI dinamica " + item.property + "] valore non applicabile all'elemento.");
     }
   };
+  const tagBindingErrors = new WeakMap<Element, Map<string, string>>();
+  const originalTitles = new WeakMap<Element, string | null>();
+  const originalTagStyles = new WeakMap<Element, Map<string, Record<string, string>>>();
+  const readOnlyTagControls = new Map<HTMLInputElement | HTMLTextAreaElement, boolean>();
+  const executeTagDynamic = (element: Element, item: DynamicBinding) => {
+    if (item.property === "ProcessValue" && (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+      if (item.indirect && !readOnlyTagControls.has(element)) readOnlyTagControls.set(element, element.readOnly);
+      if (readOnlyTagControls.has(element)) element.readOnly = item.indirect || readOnlyTagControls.get(element)!;
+    }
+    const result = resolveHmiTagDynamization(item, values, plcCatalogJson.variables, tagStatus, gatewayConfig.enabled);
+    const errors = tagBindingErrors.get(element) ?? new Map<string, string>();
+    tagBindingErrors.set(element, errors);
+    if (!originalTitles.has(element)) originalTitles.set(element, element.getAttribute("title"));
+    const styleNames: Record<string, string[]> = { Left: ["left"], Top: ["top"], Width: ["width"], Height: ["height"], BorderWidth: ["border-width", "border-style"], BackColor: ["background-color"], ForeColor: ["color"], BorderColor: ["border-color"], Opacity: ["opacity"], RotationAngle: ["rotate"], Enabled: ["pointer-events", "filter"], Visible: ["visibility"] };
+    const style = element instanceof HTMLElement || element instanceof SVGElement ? element.style : undefined;
+    const originals = originalTagStyles.get(element) ?? new Map<string, Record<string, string>>();
+    originalTagStyles.set(element, originals);
+    const names = Object.prototype.hasOwnProperty.call(styleNames, item.property) ? styleNames[item.property] : [];
+    if (style && !originals.has(item.property)) originals.set(item.property, Object.fromEntries(names.map((name) => [name, style.getPropertyValue(name)])));
+    const supported = item.property === "Text" || item.property === "ProcessValue" || Object.prototype.hasOwnProperty.call(styleNames, item.property);
+    const reason = "reason" in result ? result.reason : !supported || !applyDynamicValue(element, item.property, result.value) ? "La proprietà o il valore non sono applicabili all’elemento. Controlla tipo del segnale e proprietà scelta." : undefined;
+    if (reason) {
+      if (style) for (const [name, value] of Object.entries(originals.get(item.property) ?? {})) {
+        if (value) style.setProperty(name, value); else style.removeProperty(name);
+      }
+      errors.set(item.property, reason);
+      element.setAttribute("data-framecraft-dynamic-error", [...errors.values()].join(" "));
+      element.setAttribute("title", [...errors.values()].join(" "));
+      if (item.property === "Text" || item.property === "ProcessValue") applyDynamicValue(element, item.property, "—");
+      if (item.property === "Enabled" || item.property === "Visible") applyDynamicValue(element, item.property, "false");
+      reportOnce(element, item.property + ":tag:" + reason, "[HMI collegamento " + item.property + "] " + reason);
+      return;
+    }
+    errors.delete(item.property);
+    if (!errors.size) {
+      element.removeAttribute("data-framecraft-dynamic-error");
+      const title = originalTitles.get(element);
+      if (title === null) element.removeAttribute("title"); else if (title !== undefined) element.setAttribute("title", title);
+    } else {
+      element.setAttribute("data-framecraft-dynamic-error", [...errors.values()].join(" "));
+      element.setAttribute("title", [...errors.values()].join(" "));
+    }
+  };
   const requestRefresh = (tag?: string, cycleMs?: number) => {
     if (tag) pendingTags.add(tag);
     else if (cycleMs) pendingCycles.add(cycleMs);
@@ -561,12 +612,20 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       const tags = new Set(pendingTags);
       const cycles = new Set(pendingCycles);
       refreshAll = false; pendingTags.clear(); pendingCycles.clear();
+      if (all) for (const [control, readOnly] of readOnlyTagControls) if (!control.isConnected || !dynamizations(control).some((item) => item.kind === "Tag" && item.indirect && item.property === "ProcessValue")) {
+        control.readOnly = readOnly; readOnlyTagControls.delete(control);
+      }
       for (const element of document.querySelectorAll("[data-hmi-dynamizations]")) {
         const items = dynamizations(element);
         const flashing = items.filter((item) => item.kind === "Flashing");
         if (flashing.length && (all || flashing.some((item) => item.tag && tags.has(item.tag)))) executeFlashing(element, flashing);
         for (const item of items) {
           if (item.kind === "Flashing") continue;
+          if (item.kind === "Tag") {
+            const reference = resolveHmiTagReference(item, values, plcCatalogJson.variables, tagStatus, gatewayConfig.enabled);
+            if (all || reference.dependencies.some((dependency) => tags.has(dependency))) executeTagDynamic(element, item);
+            continue;
+          }
           let triggers = item.triggers?.length ? item.triggers : item.scriptTags?.read ?? [];
           if (!item.triggers?.length && item.kind === "Script" && item.program) {
             const key = window.location.pathname + ":" + JSON.stringify(item.program);
@@ -956,6 +1015,8 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   requestRefresh();
   return () => {
     scriptAbort.abort();
+    for (const [control, readOnly] of readOnlyTagControls) control.readOnly = readOnly;
+    readOnlyTagControls.clear();
     gatewayClient?.stop(); gatewayClient = undefined; gatewayReport = undefined; gatewaySnapshot = undefined;
     window.removeEventListener("framecraft:command-result", commandResult);
     tagListeners.delete(tagChanged);
@@ -1617,6 +1678,8 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/framecraftHmiTrend.ts", content: hmiTrendRuntimeModuleSource() },
     { path: "src/framecraftHmiFunctionTrend.ts", content: hmiFunctionTrendRuntimeModuleSource() },
     { path: "src/framecraftHmiDataLogs.ts", content: hmiDataLogRuntimeModuleSource() },
+    { path: "src/framecraftHmiExpression.ts", content: hmiExpressionSource },
+    { path: "src/framecraftHmiTagBinding.ts", content: hmiTagBindingSource.replace('"./hmiExpression"', '"./framecraftHmiExpression"') },
     { path: "src/framecraftHmiRuntime.ts", content: hmiRuntimeSource() },
     { path: "src/styles.css", content: stylesSource(mobile) },
     { path: "public/placeholder.svg", content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"><rect width="800" height="500" fill="#ececec"/><rect x="12" y="12" width="776" height="476" rx="10" fill="none" stroke="#8b8b8b" stroke-width="3" stroke-dasharray="12 10"/><path d="M280 318l78-88 62 62 46-48 76 74H280z" fill="#b9b9b9"/><circle cx="360" cy="180" r="30" fill="#b9b9b9"/><text x="400" y="390" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="28" fill="#555">Sostituisci immagine nell'Inspector</text></svg>\n` },

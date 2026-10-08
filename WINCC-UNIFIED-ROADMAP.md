@@ -1,6 +1,6 @@
 # Framecraft verso WinCC Unified e oltre
 
-Aggiornato al 5 ottobre 2026. Baseline funzionale: documentazione ufficiale WinCC Unified V21.
+Aggiornato all'8 ottobre 2026. Baseline funzionale: documentazione ufficiale WinCC Unified V21.
 
 Questo file è la checklist stabile del progetto. L'obiettivo non è copiare l'aspetto di TIA Portal,
 ma coprire le capacità che servono a progettare e usare un HMI Unified, poi renderle più verificabili,
@@ -62,13 +62,13 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-TAG-03 | Tag interni, esterni e di sistema | PARZIALE | Editor e comportamento distinto per origine | Provenienza e disponibilità dichiarate, mai valori inventati |
 | WCU-TAG-04 | Tipi semplici, array, struct e UDT | PARZIALE | Editor tipi, array dinamici, nested UDT e BlockArray | Navigazione tipizzata dei membri e mapping automatico controllato |
 | WCU-TAG-05 | Tag locali di pagina e faceplate | PARZIALE | Tag locali di pagina e uso nelle dinamizzazioni del faceplate | Definizione, start value e stato Runtime isolato per ogni istanza faceplate; collisioni d'interfaccia impedite |
-| WCU-TAG-06 | Indirizzamento indiretto | DA FARE | Tag WString che seleziona un altro tag | Anteprima della risoluzione e protezione dai riferimenti ciclici |
-| WCU-TAG-07 | Valore, qualità, timestamp ed errori | PARZIALE | Collegare QualityCode, TimeStamp, LastError ed ErrorDescription al driver Runtime reale | Simulazione guidata di qualità/data campione e lettura degli stati negli script |
+| WCU-TAG-06 | Indirizzamento indiretto | PARZIALE | Parametri delle funzioni di sistema, sorgente screen object e trasferimenti in ingresso PLC | Selettore WSTRING nelle proprietà Tag, tipo atteso, catalogo/lettura/qualità verificati, risoluzione visibile, autoreferenze bloccate e nessuna catena; prova e Runtime autonomo condivisi (LAVORO 105) |
+| WCU-TAG-07 | Valore, qualità, timestamp ed errori | PARZIALE | Tipi complessi, semantiche complete e collaudo CPU | Stati MQTT/OPC UA scalari reali negli script; qualità, timestamp sorgente/server e StatusCode UA conservati dal gateway; prova locale esplicita e binding indiretti fail-closed |
 | WCU-TAG-08 | Cicli di acquisizione e trigger | PARZIALE | Integrare i cicli col driver Runtime reale e con tutte le proprietà dei tag | Data Log ciclici, su variazione e su richiesta/trigger con minimo 500 ms, stima archivio e validazione |
 | WCU-TAG-09 | Limiti, start value e soglie | PARZIALE | Proprietà di tag e quattro soglie V21 | Riutilizzo automatico su IO, bar, gauge e trend |
 | WCU-TAG-10 | Formula, scala e conversione unità | PARZIALE | Conversioni WinCC complete | Formula sicura testabile con valori reali/simulati |
-| WCU-TAG-11 | Lettura e scrittura singola | PARZIALE | Driver Runtime reale e gestione errori | Tracciamento di chi legge/scrive il tag |
-| WCU-TAG-12 | Lettura/scrittura massiva TagSet | PARZIALE | Collegamento al driver Runtime reale | Add/Remove/Clear, ReadMaxAge, batch sync/async/QCD, messaggi operatore, esito parziale per tag e dipendenze visibili |
+| WCU-TAG-11 | Lettura e scrittura singola | PARZIALE | Conferma applicativa PLC, RBAC/audit server e tipi avanzati | Gateway MQTT/OPC UA scalare, ricevute asincrone, qualità/errori reali e nessun replay offline |
+| WCU-TAG-12 | Lettura/scrittura massiva TagSet | PARZIALE | Batch industriale e semantiche atomiche/confermate dal PLC | Add/Remove/Clear, ReadMaxAge, batch sync/async/QCD, messaggi operatore, esito parziale per tag e dipendenze visibili; IR asincrona sul gateway (LAVORO 91/102) |
 | WCU-TAG-13 | Connessioni S7 e altri driver | RIFERIMENTO | Driver proprietari non richiesti | OPC UA/MQTT secondo le capacità della CPU, anche virtuale |
 | WCU-TAG-14 | Diagnostica connessione e riconnessione | PARZIALE | Collaudo CPU, audit/storage server e diagnosi avanzata | MQTT e OPC UA scalare nel gateway; qualità vera, timeout, rimedi, log sanificati e retry solo rete senza replay |
 
@@ -193,7 +193,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | ID | Capacità WinCC Unified | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
 | WCU-CON-01 | Runtime browser HTML5/SVG/JavaScript | PARZIALE | Packaging e deploy industriale | Sorgente React nativo e anteprima immediata |
-| WCU-CON-02 | OPC UA client | DA FARE | Browse, subscription, read/write e certificati | Mapping tipizzato importabile nel catalogo |
+| WCU-CON-02 | OPC UA client | PARZIALE | Browse, array/UDT, metodi/eventi/history e collaudo CPU/TLS | Client scalare con subscription/read/write, Namespace URI, accesso/tipo/rank, certificati e trust espliciti, diagnostica sanificata e no downgrade/replay (LAVORO 102) |
 | WCU-CON-03 | OPC UA server | DA FARE | Esposizione tag e sicurezza | Contratto pubblicato e test automatico |
 | WCU-CON-04 | OPC UA alarms e HistoryRead | DA FARE | Eventi/allarmi e storico | Query unificata live/storico |
 | WCU-CON-05 | MQTT provider | PARZIALE | RBAC/audit server, conferma PLC, payload personalizzati, wildcard/array/struct, Last Will e collaudo CPU/broker/trust reale | Editor grafico e guida rapida, cataloghi CAS, driver Node e gateway HTTP/browser; trasporto IR asincrono senza replay/cache ottimistica; ogni tentativo e SUBACK con timeout, rifiuti MQTT 5 distinti da esiti incerti, qualità Bad/scadenze e recupero; diagnostica con rimedi nel pannello standard e log locali ruotati senza segreti/valori; collaudi TCP/HTTP/TLS/mTLS isolati, anteprima senza rete |
@@ -353,4 +353,6 @@ non vengono attribuiti namespace alle enumerazioni senza verifica delle firme pr
 - [Logging tag](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-tags-rt-unified/logging-tags-rt-unified/basics-rt-unified/logging-modes-and-logging-process-rt-unified)
 - [Custom web controls](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/overview-of-screen-objects-rt-unified/my-controls-rt-unified/using-custom-web-controls-rt-unified)
 - [Connettività V21](https://docs.tia.siemens.cloud/r/en-us/v21/what-s-new-in-tia-portal/what-s-new-in-v21/simatic-wincc-unified/connectivity)
+- [Indirizzamento indiretto tramite tag e screen object, Unified V20](https://docs.tia.siemens.cloud/r/en-us/v20/configuring-tags-rt-unified/basics-rt-unified/indirect-addressing-rt-unified)
+- [Configurazione del selettore WString, Unified V20](https://docs.tia.siemens.cloud/r/en-us/v20/configuring-tags-rt-unified/configuring-tags-rt-unified/addressing-tags-indirectly-rt-unified)
 - [Audit](https://docs.tia.siemens.cloud/r/en-us/v21/installation/licensing/licensing-of-wincc-unified-options/audit)

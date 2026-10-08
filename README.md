@@ -85,6 +85,31 @@ Container position/size are unchanged. Runtime local state is recreated for the 
 live PLC values are not migrated, and this command does not connect to or write a PLC.
 Project-wide and nested-instance bulk migrations remain planned.
 
+## One field, different PLC signals
+
+In **Modifica → PLC e dati → Dinamica PLC**, choose a tag source and enable
+**Il tag sceglie un altro segnale**. Select a declared **WSTRING** selector and the
+expected destination type. For example, `SelectedMotor = "Motor1.Temperature"`
+makes the field read the declared `Motor1.Temperature` signal. Another field can
+read `SelectedMotor` directly to display the selected name. This follows the
+[Unified tag-selector workflow](https://docs.tia.siemens.cloud/r/en-us/v20/configuring-tags-rt-unified/configuring-tags-rt-unified/addressing-tags-indirectly-rt-unified).
+
+In **PLC → Valori di prova**, enter the destination name in the selector, then
+enter the destination value in the field that appears. The Inspector shows the
+resolved name/value or an actionable reason. The same resolver and conversions
+are included in new standalone panels and react to selector, destination and
+quality updates through the MQTT/OPC UA gateway.
+
+Only declared, readable, uniquely named, type-compatible destinations are accepted.
+Real gateway readings require known Good quality for both tags. Invalid references
+show **—** for text/process values (empty numeric inputs), restore static styles and disable dynamically
+controlled visibility/interaction. References are resolved once; self-references
+are rejected and text destinations are not recursively dereferenced. This is a
+read-only property binding; IO inputs are made read-only and their original state
+is restored when the local preview ends. This is not indirect PLC writing or server authorization.
+Indirect screen-object/system-function parameters and PLC input transfers remain planned.
+Old generated panels are not automatically rewritten.
+
 ## Pages and categories
 
 Use **Pagine → Nuova pagina** for the full-size creation window: choose a name,

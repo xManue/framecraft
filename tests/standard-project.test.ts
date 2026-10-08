@@ -97,6 +97,9 @@ describe("generatore nuovo pannello standard", () => {
     const hmiFunctionTrend = files.find((file) => file.path === "src/framecraftHmiFunctionTrend.ts")!.content;
     const hmiDataLogs = files.find((file) => file.path === "src/framecraftHmiDataLogs.ts")!.content;
     const hmiRuntime = files.find((file) => file.path === "src/framecraftHmiRuntime.ts")!.content;
+    expect(() => parse(files.find((file) => file.path === "src/framecraftHmiTagBinding.ts")!.content, { sourceType: "module", plugins: ["typescript"] })).not.toThrow();
+    expect(() => parse(files.find((file) => file.path === "src/framecraftHmiExpression.ts")!.content, { sourceType: "module", plugins: ["typescript"] })).not.toThrow();
+    expect(hmiRuntime).toContain('from "./framecraftHmiTagBinding"');
     expect(() => parse(scriptRuntime, { sourceType: "module", plugins: ["typescript"] })).not.toThrow();
     expect(() => parse(hmiFlashing, { sourceType: "module", plugins: ["typescript"] })).not.toThrow();
     expect(() => parse(scriptModules, { sourceType: "module", plugins: ["typescript"] })).not.toThrow();

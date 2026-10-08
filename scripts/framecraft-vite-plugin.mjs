@@ -729,6 +729,7 @@ const bridgeScript = sharedHelpers + String.raw`
       element.style.cssText = before.style;
       propertyFlashingSurface.setDeclarative(element, []);
       if (before.text !== null && element.isConnected) element.textContent = before.text;
+      if (before.value !== undefined && element.isConnected) { element.value = before.value; element.readOnly = before.readOnly; }
       if (before.src !== undefined && element.isConnected) {
         if (before.src === null) element.removeAttribute("src");
         else element.setAttribute("src", before.src);
@@ -746,9 +747,11 @@ const bridgeScript = sharedHelpers + String.raw`
       const element = instanceElements.get(command.instanceId);
       if (!element || !element.isConnected) continue;
       const writesText = typeof command.text === "string" && element.childElementCount === 0;
+      const valueControl = element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement;
       const writesGraphic = typeof command.graphic === "string";
       if (!simulated.has(element)) {
         simulated.set(element, { style: element.style.cssText, text: writesText ? element.textContent : null,
+          value: valueControl && writesText ? element.value : undefined, readOnly: valueControl && writesText ? element.readOnly : undefined,
           src: element instanceof HTMLImageElement ? element.getAttribute("src") : undefined });
       }
       const before = simulated.get(element);
@@ -759,7 +762,14 @@ const bridgeScript = sharedHelpers + String.raw`
         if (property.startsWith("--")) element.style.setProperty(property, value);
         else element.style[property] = value;
       }
-      if (writesText) element.textContent = command.text;
+      if (valueControl) {
+        if (writesText) {
+          if (before.value === undefined) { before.value = element.value; before.readOnly = element.readOnly; }
+          if (element.value !== command.text) element.value = command.text;
+          const readOnly = command.readOnly === true || before.readOnly;
+          if (element.readOnly !== readOnly) element.readOnly = readOnly;
+        } else if (before.value !== undefined) { element.value = before.value; element.readOnly = before.readOnly; }
+      } else if (writesText) element.textContent = command.text;
       if (writesGraphic) {
         if (element instanceof HTMLImageElement) element.setAttribute("src", command.graphic);
         else element.style.backgroundImage = 'url("' + command.graphic.replaceAll('"', '\\"') + '")';
@@ -772,6 +782,7 @@ const bridgeScript = sharedHelpers + String.raw`
       element.style.cssText = before.style;
       propertyFlashingSurface.setDeclarative(element, []);
       if (before.text !== null && element.isConnected) element.textContent = before.text;
+      if (before.value !== undefined && element.isConnected) { element.value = before.value; element.readOnly = before.readOnly; }
       if (before.src !== undefined && element.isConnected) {
         if (before.src === null) element.removeAttribute("src");
         else element.setAttribute("src", before.src);

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { serializeHmiDynamizations } from "../src/core/hmiDynamizations";
 import { serializeHmiEvents } from "../src/core/hmiEvents";
 import { serializeHmiFaceplateBinding } from "../src/core/hmiFaceplates";
@@ -39,6 +39,11 @@ function compileSource(source: string): string {
   compiledSources.set(source, javascript);
   return javascript;
 }
+
+// Il pannello riceve JavaScript già compilato: prepariamo solo il testo, mai istanze o stato Runtime.
+beforeAll(() => {
+  for (const path of ["src/framecraftScriptRuntime.ts", "src/framecraftHmiExpression.ts", "src/framecraftHmiTagBinding.ts"]) compileSource(generatedSources.get(path)!);
+});
 
 function loadGeneratedScriptRuntime(): typeof import("../src/core/hmiScript") {
   const source = generatedSources.get("src/framecraftScriptRuntime.ts")!;
@@ -132,7 +137,18 @@ function loadGeneratedFlashing(): { hmiFlashingCss: typeof hmiFlashingCss; hmiFl
   return module.exports as { hmiFlashingCss: typeof hmiFlashingCss; hmiFlashingInlineStyle: typeof hmiFlashingInlineStyle; resolveHmiFlashing: typeof resolveHmiFlashing };
 }
 
-function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCatalog(), dataLogCatalog: HmiDataLogCatalog = emptyHmiDataLogCatalog("runtime-test"), gatewayEnabled = false): GeneratedRuntime {
+function loadGeneratedTagBindings(): typeof import("../src/core/hmiTagBinding") {
+  const expression = { exports: {} };
+  new Function("exports", "module", compileSource(generatedSources.get("src/framecraftHmiExpression.ts")!))(expression.exports, expression);
+  const binding = { exports: {} };
+  new Function("exports", "module", "require", compileSource(generatedSources.get("src/framecraftHmiTagBinding.ts")!))(binding.exports, binding, (id: string) => {
+    if (id === "./framecraftHmiExpression") return expression.exports;
+    throw new Error(`Dipendenza generata non prevista: ${id}`);
+  });
+  return binding.exports as typeof import("../src/core/hmiTagBinding");
+}
+
+function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCatalog(), dataLogCatalog: HmiDataLogCatalog = emptyHmiDataLogCatalog("runtime-test"), gatewayEnabled = false, tagCatalog = [{ name: "Runtime.Alternative", dataType: "REAL", access: "read" }, { name: "Motor.Speed", dataType: "REAL", access: "read-write" }]): GeneratedRuntime {
   const source = generatedSources.get("src/framecraftHmiRuntime.ts")!
     .replace('import { executeHmiScript, executeHmiScriptAsync, inspectHmiScriptProgram } from "./framecraftScriptRuntime";', "const executeHmiScript = globalThis.__framecraftTestExecuteHmiScript; const executeHmiScriptAsync = globalThis.__framecraftTestExecuteHmiScriptAsync; const inspectHmiScriptProgram = globalThis.__framecraftTestInspectHmiScriptProgram;")
     .replace('import { hmiFlashingCss, hmiFlashingInlineStyle, resolveHmiFlashing, createHmiPropertyFlashing, createHmiPropertyFlashingDomSurface } from "./framecraftHmiFlashing";', "const { hmiFlashingCss, hmiFlashingInlineStyle, resolveHmiFlashing, createHmiPropertyFlashing, createHmiPropertyFlashingDomSurface } = globalThis.__framecraftTestHmiFlashing;")
@@ -147,7 +163,7 @@ function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCa
     .replace('import scriptCatalogJson from "../framecraft.scripts.json";', "const scriptCatalogJson = globalThis.__framecraftTestScriptCatalog;")
     .replace('import faceplateCatalogJson from "../framecraft.faceplates.json";', "const faceplateCatalogJson = globalThis.__framecraftTestFaceplateCatalog;")
     .replace('import dataLogCatalogJson from "../framecraft.logs.json";', "const dataLogCatalogJson = globalThis.__framecraftTestDataLogCatalog;")
-    .replace('import plcCatalogJson from "../framecraft.plc.json";', 'const plcCatalogJson = { variables: [{ name: "Runtime.Alternative" }, { name: "Motor.Speed" }] };')
+    .replace('import plcCatalogJson from "../framecraft.plc.json";', 'const plcCatalogJson = ' + JSON.stringify({ variables: tagCatalog }) + ';')
     .replace('import runtimeCatalogJson from "../framecraft.runtime.json";', 'const runtimeCatalogJson = { gateway: { enabled: ' + gatewayEnabled + ', pollMs: 100 } };')
     .replace('import { createHmiGatewayClient, HmiGatewayCommandError, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";', "const createHmiGatewayClient = globalThis.__framecraftTestGateway; const HmiGatewayCommandError = globalThis.__framecraftTestGatewayError;");
   const javascript = compileSource(source);
@@ -177,7 +193,10 @@ function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCa
   (globalThis as typeof globalThis & { __framecraftTestDataLogCatalog?: unknown }).__framecraftTestDataLogCatalog = dataLogCatalog;
   (globalThis as typeof globalThis & { __framecraftTestGateway?: typeof createHmiGatewayClient }).__framecraftTestGateway = createHmiGatewayClient;
   (globalThis as typeof globalThis & { __framecraftTestGatewayError?: typeof HmiGatewayCommandError }).__framecraftTestGatewayError = HmiGatewayCommandError;
-  new Function("exports", "module", javascript)(exports, module);
+  new Function("exports", "module", "require", javascript)(exports, module, (id: string) => {
+    if (id === "./framecraftHmiTagBinding") return loadGeneratedTagBindings();
+    throw new Error(`Dipendenza generata non prevista: ${id}`);
+  });
   return module.exports as unknown as GeneratedRuntime;
 }
 
@@ -223,6 +242,108 @@ afterEach(() => {
 });
 
 describe("Runtime del pannello standard generato", () => {
+  it("aggiorna il valore dei veri campi IO input in sola lettura indiretta e ripristina la modificabilità alla chiusura", () => {
+    const runtime = loadGeneratedRuntime(undefined, undefined, false, [{ name: "Selected", dataType: "WSTRING", access: "read" }, { name: "Motor1", dataType: "REAL", access: "read" }]);
+    runtime.setRuntimeTagValue("Selected", "Motor1"); runtime.setRuntimeTagValue("Motor1", 21);
+    const input = document.createElement("input"); input.type = "number"; input.value = "7";
+    input.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ property: "ProcessValue", kind: "Tag", tag: "Selected", indirect: true, indirectDataType: "REAL" }])); document.body.append(input);
+    const stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error: vi.fn() });
+    try {
+      expect(input.value).toBe("21"); expect(input.readOnly).toBe(true);
+      runtime.setRuntimeTagValue("Motor1", 32); expect(input.value).toBe("32");
+      runtime.setRuntimeTagValue("Selected", "Unknown"); expect(input.value).toBe(""); expect(input.title).toContain("catalogo");
+      runtime.setRuntimeTagValue("Selected", "Motor1"); expect(input.value).toBe("32");
+    } finally { stop(); }
+    expect(input.readOnly).toBe(false);
+  });
+  it("rifiuta proprietà sconosciute e non trasforma un tag in un URL eseguibile", () => {
+    const runtime = loadGeneratedRuntime(); runtime.setRuntimeTagValue("Source", "javascript:alert(1)");
+    const frame = document.createElement("iframe"), unknown = document.createElement("div");
+    frame.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ property: "Url", kind: "Tag", tag: "Source" }]));
+    unknown.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ property: "constructor", kind: "Tag", tag: "Source" }])); document.body.append(frame, unknown);
+    const error = vi.fn(), stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error });
+    try { expect(frame.getAttribute("src")).toBeNull(); expect(unknown.hasAttribute("data-framecraft-dynamic-error")).toBe(true); expect(error).toHaveBeenCalledTimes(2); }
+    finally { stop(); }
+  });
+  it("riceve selettore e destinazione dal gateway e non invia comandi impliciti", async () => {
+    const tags = [{ name: "Selected", dataType: "WSTRING", access: "read" }, { name: "Motor1", dataType: "REAL", access: "read" }];
+    const snapshot = { version: 1, allowWrites: false, connections: [{ id: "opcua", state: "connected" }], tags: tags.map((tag) => ({ ...tag, connectionId: "opcua", writable: false })), samples: [{ tag: "Selected", connectionId: "opcua", value: "Motor1", qualityCode: 192, receivedAt: Date.now() }, { tag: "Motor1", connectionId: "opcua", value: "28", qualityCode: 128, receivedAt: Date.now() }] };
+    const request = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify(snapshot))); vi.stubGlobal("fetch", request);
+    const runtime = loadGeneratedRuntime(undefined, undefined, true, tags);
+    const output = document.createElement("output"); output.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ property: "ProcessValue", kind: "Tag", tag: "Selected", indirect: true, indirectDataType: "REAL" }])); document.body.append(output);
+    const stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error: vi.fn() });
+    try {
+      expect(output.textContent).toBe("—");
+      await vi.waitFor(() => expect(output.textContent).toBe("28"));
+      expect(request.mock.calls.every((call) => String(call[0]).endsWith("/snapshot") && (call[1] as RequestInit).method !== "POST")).toBe(true);
+    } finally { stop(); }
+  });
+
+  it("ripristina lo stile statico e disabilita visibilità/comandi quando la destinazione diventa invalida", () => {
+    const tags = [{ name: "Selected", dataType: "WSTRING", access: "read" }, { name: "Motor1", dataType: "REAL", access: "read" }];
+    const runtime = loadGeneratedRuntime(undefined, undefined, false, tags); runtime.setRuntimeTagValue("Selected", "Motor1"); runtime.setRuntimeTagValue("Motor1", 1);
+    const block = document.createElement("div"); block.style.backgroundColor = "#808080";
+    const config = { property: "BackColor", kind: "Tag" as const, tag: "Selected", indirect: true, indirectDataType: "REAL", conditionType: "Range" as const, entries: [{ from: 1, to: 1, value: "#00ff00" }] };
+    block.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([config, { ...config, property: "Enabled", conditionType: "None", entries: [] }, { ...config, property: "Visible", conditionType: "None", entries: [] }])); document.body.append(block);
+    const stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error: vi.fn() });
+    try {
+      expect(block.style.backgroundColor).toBe("rgb(0, 255, 0)");
+      runtime.setRuntimeTagValue("Selected", "Unknown"); expect(block.style.backgroundColor).toBe("rgb(128, 128, 128)"); expect(block.style.visibility).toBe("hidden"); expect(block.style.pointerEvents).toBe("none");
+      runtime.setRuntimeTagValue("Selected", "Motor1"); expect(block.style.backgroundColor).toBe("rgb(0, 255, 0)"); expect(block.style.visibility).toBe("visible"); expect(block.style.pointerEvents).toBe("auto");
+    } finally { stop(); }
+  });
+
+  it("legge il tag scelto dal selettore, segue entrambe le variazioni e non effettua scritture", () => {
+    const tags = [{ name: "Selected", dataType: "WSTRING", access: "read-write" }, { name: "Motor1", dataType: "REAL", access: "read" }, { name: "Motor2", dataType: "REAL", access: "read" }];
+    const runtime = loadGeneratedRuntime(undefined, undefined, false, tags), errors = vi.fn(), writes = vi.fn();
+    runtime.setRuntimeTagValue("Selected", "Motor1"); runtime.setRuntimeTagValue("Motor1", 21); runtime.setRuntimeTagValue("Motor2", 32);
+    const label = document.createElement("output"), direct = document.createElement("span");
+    const config = { property: "ProcessValue", kind: "Tag" as const, tag: "Selected", indirect: true, indirectDataType: "REAL" };
+    label.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([config])); label.title = "Temperatura";
+    direct.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ ...config, indirect: false }])); document.body.append(label, direct);
+    window.addEventListener("framecraft:tag-write", writes);
+    const stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error: errors });
+    try {
+      expect(label.textContent).toBe("21"); expect(direct.textContent).toBe("Motor1"); expect(writes).not.toHaveBeenCalled();
+      runtime.setRuntimeTagValue("Motor1", 25); expect(label.textContent).toBe("25");
+      runtime.setRuntimeTagValue("Selected", "Motor2"); expect(label.textContent).toBe("32");
+      runtime.setRuntimeTagValue("Motor1", 99); expect(label.textContent).toBe("32");
+      runtime.setRuntimeTagValue("Motor2", 33); expect(label.textContent).toBe("33");
+      runtime.setRuntimeTagValue("Selected", "Unknown"); expect(label.textContent).toBe("—"); expect(label.title).toContain("catalogo");
+      runtime.setRuntimeTagValue("Selected", "Selected"); expect(label.textContent).toBe("—"); expect(label.title).toContain("sé stesso");
+      runtime.setRuntimeTagValue("Selected", "Motor1"); expect(label.textContent).toBe("99"); expect(label.title).toBe("Temperatura"); expect(label.hasAttribute("data-framecraft-dynamic-error")).toBe(false);
+      expect(errors).toHaveBeenCalledTimes(2);
+    } finally { stop(); window.removeEventListener("framecraft:tag-write", writes); }
+  });
+
+  it("non conserva una lettura indiretta quando cambia solo la qualità e recupera al campione Good", () => {
+    const runtime = loadGeneratedRuntime(undefined, undefined, false, [{ name: "Selected", dataType: "WSTRING", access: "read" }, { name: "Motor1", dataType: "REAL", access: "read" }]);
+    const label = document.createElement("output"); label.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ property: "ProcessValue", kind: "Tag", tag: "Selected", indirect: true, indirectDataType: "REAL" }])); document.body.append(label);
+    runtime.setRuntimeTagValue("Selected", "Motor1"); runtime.setRuntimeTagValue("Motor1", 21);
+    const error = vi.fn(), stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error });
+    const sample = (tag: string, qualityCode: number, value?: string) => runtime.applyRuntimeTagSample({ tag, qualityCode, value, connectionId: "synthetic", receivedAt: Date.now() });
+    try {
+      expect(label.textContent).toBe("21");
+      sample("Motor1", 0); expect(label.textContent).toBe("—");
+      sample("Motor1", 192, "25"); expect(label.textContent).toBe("25");
+      sample("Selected", 64); expect(label.textContent).toBe("—");
+      sample("Selected", 128, "Motor1"); expect(label.textContent).toBe("25");
+      expect(error).toHaveBeenCalledTimes(2);
+    } finally { stop(); }
+  });
+
+  it("consegna conversioni Range ed Expression al vero Runtime generato", () => {
+    const runtime = loadGeneratedRuntime(); runtime.setRuntimeTagValue("State", 2);
+    const label = document.createElement("span"), block = document.createElement("div");
+    label.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ property: "Text", kind: "Tag", tag: "State", conditionType: "Expression", entries: [{ condition: "value > 1", value: "Pronto" }] }]));
+    block.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ property: "BackColor", kind: "Tag", tag: "State", conditionType: "Range", entries: [{ from: 0, to: 2, value: "#ff0000" }, { from: 3, to: 9, value: "#00ff00" }] }])); document.body.append(label, block);
+    const error = vi.fn(), stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error });
+    try {
+      expect(label.textContent).toBe("Pronto"); expect(block.style.backgroundColor).toBe("rgb(255, 0, 0)");
+      runtime.setRuntimeTagValue("State", 3); expect(block.style.backgroundColor).toBe("rgb(0, 255, 0)"); expect(error).not.toHaveBeenCalled();
+    } finally { stop(); }
+  });
+
   it("aggiorna tag dentro array restituiti dai moduli senza trigger manuali", () => {
     window.history.replaceState({}, "", "/");
     const catalog = parseHmiScriptCatalog({ globalModules: [{

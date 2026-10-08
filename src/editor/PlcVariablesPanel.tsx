@@ -9,6 +9,7 @@ import type { FileEntry } from "../core/types";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
 import { simulationTags } from "../core/plcSimulation";
+import { resolveHmiTagReference } from "../core/hmiTagBinding";
 import { hmiEventsAttribute, parseHmiEvents } from "../core/hmiEvents";
 import { inspectHmiScript, inspectHmiScriptProgram } from "../core/hmiScript";
 import { hmiScriptFunctions, hmiScriptGlobalDefinition, hmiScriptVariables } from "../core/hmiScriptModules";
@@ -16,7 +17,7 @@ import { hmiTrendAttribute, parseHmiTrendConfig } from "../core/hmiTrend";
 import { hmiFunctionTrendAttribute, parseHmiFunctionTrendConfig } from "../core/hmiFunctionTrend";
 
 const emptyVariable: PlcVariableDefinition = { name: "", dataType: "", access: "read", address: "", description: "" };
-const plcTypes = ["BOOL", "BYTE", "WORD", "DWORD", "INT", "DINT", "LINT", "REAL", "LREAL", "STRING", "TIME", "DATE_AND_TIME"];
+const plcTypes = ["BOOL", "BYTE", "WORD", "DWORD", "INT", "DINT", "LINT", "REAL", "LREAL", "STRING", "WSTRING", "TIME", "DATE_AND_TIME"];
 
 function containsFile(entries: FileEntry[], name: string): boolean {
   return entries.some((entry) => entry.name === name || Boolean(entry.children && containsFile(entry.children, name)));
@@ -26,6 +27,7 @@ const catalogName = "framecraft.plc.json";
 
 export function PlcVariablesPanel() {
   const project = useEditorStore((state) => state.project);
+  const tagCatalog = useEditorStore((state) => state.plcVariables);
   const [variables, setVariables] = useState<PlcVariableDefinition[]>([]);
   const [query, setQuery] = useState("");
   const [editingName, setEditingName] = useState<string>();
@@ -152,6 +154,12 @@ export function PlcVariablesPanel() {
       const events = hmiScriptFunctions(scriptCatalog, previewPath, "events");
       const eventDefinition = hmiScriptGlobalDefinition(scriptCatalog, previewPath, "events")?.program;
       const tags = new Set(simulationTags(simulation.elements.flatMap((element) => element.dynamizations), dynamics, dynamicDefinition, publicVariables));
+      for (const item of simulation.elements.flatMap((element) => element.dynamizations)) if (item.kind === "Tag" && item.indirect) {
+        const result = resolveHmiTagReference(item, simulation.values, tagCatalog, simulation.status);
+        // La destinazione diventa un campo di prova solo se appartiene al catalogo e ha il tipo giusto.
+        const target = result.dependencies[1];
+        if (target && tagCatalog.some((tag) => !tag.detected && tag.name === target && tag.access !== "write" && tag.dataType.trim().toUpperCase() === item.indirectDataType?.trim().toUpperCase())) tags.add(target);
+      }
       for (const node of Object.values(document?.nodes ?? {})) {
         for (const binding of parseHmiEvents(node.props[hmiEventsAttribute])) {
           const inspection = inspectHmiScript(binding.script, events, eventDefinition, [], publicVariables);
@@ -176,7 +184,7 @@ export function PlcVariablesPanel() {
       for (const log of dataLogCatalog.logs.filter((log) => log.enabled)) for (const logged of log.tags) { if (logged.tag) tags.add(logged.tag); if (logged.mode === "on-demand" && logged.triggerTag) tags.add(logged.triggerTag); }
       return [...tags].sort();
     },
-    [document, simulation.elements, dataLogCatalog, scriptCatalog, previewPath],
+    [document, simulation.elements, simulation.values, simulation.status, tagCatalog, dataLogCatalog, scriptCatalog, previewPath],
   );
 
   const qualityLabel = (qualityCode: number) => {

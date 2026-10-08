@@ -3670,6 +3670,43 @@ Verifiche del 5 ottobre 2026:
 - Restano aggiornamento massivo tra pagine e istanze annidate, contratti dinamici arbitrari,
   migrazione dell'information model Optix e AI facoltativa. WCU-FP-06/ENG-12 restano PARZIALE.
 
+### 105. Indirizzamento indiretto delle proprietà PLC (2026-10-08)
+
+- WCU-TAG-06: opzione «Il tag sceglie un altro segnale» in Modifica → PLC e dati →
+  Dinamica PLC. Il selettore WSTRING contiene il nome della destinazione; lo stesso
+  selettore resta leggibile direttamente da altri oggetti. Tipo atteso esplicito,
+  risoluzione nome/valore e rimedi visibili, label e controlli tastiera/touch.
+- Risolutore e conversioni condivisi fra prova locale e nuovi pannelli autonomi:
+  catalogo obbligatorio, nomi unici/esatti, accesso in lettura e tipi compatibili.
+  Una dereferenziazione, senza eval o catene; autoreferenze e destinazioni non
+  dichiarate bloccate. Rilevamento e rinomina del selettore nelle dinamiche statiche.
+- La prova locale offre il campo della destinazione valida. Il Runtime reagisce ai
+  cambi di selettore, destinazione e qualità; con gateway reale entrambi i campioni
+  devono avere qualità Good conosciuta e nessun errore. Bad/incerta/mancante non
+  riprende valori obsoleti: testo «—» o input numerico vuoto, stili statici ripristinati,
+  Visible/Enabled disattivati e spiegazione nel campo/log, senza ripetere lo stesso errore.
+- Veri campi IO input aggiornati tramite value, non textContent, e in sola lettura
+  indiretta; bozza/valore/modificabilità ripristinati alla fine della prova. Nessuna
+  scrittura implicita, coda comandi, connessione automatica o nuovo permesso PLC.
+  Proprietà non supportate e URL eseguibili da tag non vengono applicati dal nuovo percorso.
+- Pipeline standard include i moduli di risoluzione/espressione e il relativo Runtime.
+  Anche le conversioni Tag dirette, Range/Singlebit/Expression usano il percorso
+  condiviso nel pannello esportato. Nessuna riscrittura automatica dei pannelli vecchi.
+- README/roadmap aggiornati; riallineate anche le righe UA/lettura-stati rimaste anteriori
+  al client scalare del punto 102. Riferimenti ufficiali Unified V20 per il contratto
+  WString; le corrispondenti pagine V21 non erano accessibili tramite il browser di ricerca.
+- Verifiche mirate: 153 casi in undici file passati, inclusi vero ispettore, ponte
+  in-memory, catalogo/rinomina, qualità, conversioni, input IO e Runtime generato;
+  gateway simulato con sole GET, nessuna CPU o servizio macchina contattato. TypeScript
+  e build editor isolata passati; avvisi preesistenti di chunk/import misti invariati.
+  Fixture del ponte nuova isolata per non duplicare listener; solo testo compilato
+  preparato prima dei test Runtime, mai istanze/stato condivisi. Nessuna suite generale,
+  nuovi pacchetti, dati macchina pubblicati o riavvio dell'app dell'utente.
+- WCU-TAG-06 resta PARZIALE: screen object, parametri delle funzioni di sistema e
+  trasferimenti in ingresso/scrittura indiretta restano da implementare. Autorizzazioni
+  server, collaudo CPU/TLS, verifica visiva desktop/touch, licenze/release, Optix e AI
+  facoltativa non sono dichiarati completati da questi test.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

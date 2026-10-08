@@ -518,6 +518,9 @@ export interface Dynamization {
   kind: DynamizationKind;
   /** Il tag letto da una sorgente `Tag` oppure usato per scegliere una voce di `ResourceList`. */
   tag?: string;
+  /** Il tag WString contiene il nome del segnale di destinazione, risolto una volta a Runtime. */
+  indirect?: boolean;
+  indirectDataType?: string;
   /** Nome della lista risorse, espressione o funzione, per le sorgenti che non sono un tag diretto. */
   source?: string;
   /** Tag che riattivano uno script. Se assenti, WinCC usa automaticamente i tag letti dal codice. */
