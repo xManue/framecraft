@@ -30,6 +30,7 @@ import { cleanDiagnosticText } from "../core/editorMessages";
 import { detectPages, insertReactRoute } from "../core/pages";
 import { insertElement, insertElementAtPosition } from "../source-parser/transformSource";
 import { parseSource } from "../source-parser/parseSource";
+import { matchLineEndings } from "../source-parser/lineEndings";
 import { categorySection, newPageCategory, readPageCategories, withCategoryPage, withPageCategories, type PageCategory } from "../core/pageNavigation";
 
 type LeftPanel = "project" | "components" | "pages" | "plc" | "resources" | "scripts" | "faceplates" | "logs" | "page";
@@ -728,7 +729,6 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     const current = () => sequence === runtime.selectionSequence && get().document === currentDocument && get().project === project;
     const selected = currentDocument?.file === snapshot.file && get().selectedId ? currentDocument.nodes[get().selectedId!] : undefined;
     const { parseSource } = await import("../source-parser/parseSource");
-    const { matchLineEndings } = await import("../source-parser/lineEndings");
     if (!current()) return undefined;
     let parsed;
     try {
@@ -871,7 +871,6 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     if (!valid()) return false;
     refuseIfGuided();
     await refuseIfTemplateOwns(file);
-    const { matchLineEndings } = await import("../source-parser/lineEndings");
     if (!valid()) return false;
     const previous = await desktopBridge.readFile(file);
     if (!valid()) return false;

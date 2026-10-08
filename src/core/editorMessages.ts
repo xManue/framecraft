@@ -20,6 +20,9 @@ export function describeEditorMessage(raw: string, context: MessageContext = "ed
     return message("La copia automatica della bozza non è stata aggiornata.",
       `${/ENOSPC|disco pieno|spazio insufficiente/i.test(details) ? "Libera spazio sul disco. " : ""}Le ultime modifiche potrebbero non essere recuperabili dopo la chiusura. Salva la pagina o copia le modifiche prima di uscire; poi riprova il backup.`);
   }
+  if (/Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk [\w-]+ failed/i.test(details)) return context === "preview"
+    ? message("Una parte del pannello non è stata caricata.", "Riprova l’anteprima. Se ricapita, apri la diagnostica: un caricamento fallito non significa necessariamente che il file sia mancante.")
+    : message("Un componente dell’editor non è stato caricato.", "Attendi che eventuali aggiornamenti dell’editor finiscano, poi riprova il comando. Se ricapita, conserva la bozza prima di riavviare l’app e comunica i dettagli tecnici a chi ti assiste. Non è un errore del PLC.");
   if (context === "interface") return message("L’interfaccia dell’editor si è interrotta.",
     "Prova a tornare ai progetti. Se ci sono modifiche non salvate, conferma l’uscita solo dopo averle conservate. Se ricapita, comunica i dettagli tecnici a chi ti assiste.");
   if (/config path contains.*\?/i.test(details)) return message("Avviso sul percorso Windows dell’anteprima.",

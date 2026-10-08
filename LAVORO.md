@@ -3521,6 +3521,27 @@ Verifiche del 5 ottobre 2026:
   dell'utente. Router/dati sintetici; fixture e screenshot ignorati. Nessun test generale,
   nessuna pretesa di collaudo touch fisico o PLC.
 
+### 100. Aggiungi azione senza download tardivo di lineEndings (2026-10-08)
+
+- Segnalazione su un select Desktop/Mobile con onChange nativo: caricamento dinamico
+  di src/source-parser/lineEndings.ts fallito. File presente nel checkout; al controllo
+  la porta editor 1420 non rispondeva, quindi causa del guasto originale del server non attribuita.
+- Riprodotto lo stesso errore in Edge isolato sul codice precedente: risposta 503 soltanto
+  al chunk lineEndings dopo l'avvio. Aggiungi azione falliva prima di scrivere; fonte invariata.
+- Helper CRLF caricato con lo store, non al primo comando o durante annulla/ripeti e modifiche
+  su altri file. Correzione minima: nessun nuovo retry/replay, nessuna rimozione dei guard di
+  selezione, proprietà template, sintassi o progetto. I moduli parser già caricati restano riusati.
+- Nuovi messaggi distinguono moduli editor e anteprima non caricati, conservano i dettagli
+  originali e indicano di conservare la bozza prima di riavviare. Nessuna promessa di rollback
+  generale o file necessariamente mancante; nessuna attribuzione al PLC per errori di import JS.
+- Test pubblico del vero percorso Inspector → store → sorgente: helper non più scaricabile
+  dopo avvio, aggiunta azione su select, onChange originale e CRLF preservati, una modifica
+  annullabile e ripetibile. Ventisei casi messaggi, undici guard asincroni pertinenti, TypeScript.
+- Browser prima/dopo: stesso blocco di rete, con fix zero richieste al helper durante azione,
+  annulla e ripeti; tre scritture soltanto nel bridge sintetico in memoria. Fixture/screenshot
+  ignorati, nessun riavvio dell'app utente e nessuna suite generale. Resta separato il collaudo
+  dell'aggiornamento nella finestra desktop reale e dell'artefatto production.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

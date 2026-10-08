@@ -30,6 +30,22 @@ describe("messaggi comprensibili senza alterare l'errore originale", () => {
     const raw = "Vite non si è avviato. C:/panel/node_modules/.bin/vite.cmd si è chiuso subito dopo l’avvio.";
     expect(describeEditorMessage(raw, "preview").text).toBe("Il servizio dell’anteprima si è fermato.");
   });
+  it.each([
+    "Failed to fetch dynamically imported module: http://localhost:1420/src/source-parser/lineEndings.ts",
+    "TypeError: error loading dynamically imported module: http://localhost:1420/src/core/pages.ts",
+    "TypeError: Importing a module script failed.",
+  ])("spiega il caricamento dell'editor fallito senza attribuirlo al PLC: %s", (raw) => {
+    const result = describeEditorMessage(raw);
+    expect(result.text).toBe("Un componente dell’editor non è stato caricato.");
+    expect(result.details).toBe(raw); expect(result.nextStep).toContain("conserva la bozza prima");
+    expect(result.nextStep).toContain("Non è un errore del PLC");
+    expect(describeEditorMessage(raw, "interface").text).toBe(result.text);
+  });
+  it("distingue un modulo del pannello non caricato da un guasto del servizio editor", () => {
+    const result = describeEditorMessage("Failed to fetch dynamically imported module: http://localhost:4173/src/Page.tsx", "preview");
+    expect(result.text).toBe("Una parte del pannello non è stata caricata.");
+    expect(result.nextStep).toContain("Riprova l’anteprima"); expect(result.nextStep).not.toContain("riavviare l’app");
+  });
 
   it("un avviso di compatibilità non dichiara fallita un'anteprima funzionante", () => {
     const message = describeEditorMessage('The config path contains the "?" character', "preview", "warning");
