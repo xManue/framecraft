@@ -80,7 +80,13 @@ menu and numeric screen lookup, not just the editor list. Standard sections keep
 their original numbers; custom categories use 10–99 and leave 9 to popups.
 **Aggiungi elementi** contains reusable components, not the project's page exports.
 
-New **desktop + mobile** standard panels offer **Automatico**, **Desktop** and
+New **desktop + mobile** standard panels open with a **Desktop / Mobile** choice
+page inside the HMI itself, not in the editor. With no choice saved in the current
+browser tab, select a device before entering the operating pages. Deep links keep
+their requested page after selection. This screen selects a layout, not a login
+or a PLC interlock; existing machine projects are not rewritten.
+
+Once inside, the panel offers **Automatico**, **Desktop** and
 **Mobile** in the layout selector. Automatic mode follows viewport changes,
 including orientation, and switches to mobile below the desktop shell's 1280 px.
 Manual mode stays selected across page changes and reloads in the same browser

@@ -1019,6 +1019,44 @@ function appSource(machineName: string, planned: readonly PlannedSection[], mobi
   const layoutSwitch = mobile
     ? `\n        <div className="hmi-layout-controls"><label><span className="hmi-layout-label">Layout pannello</span><select className="hmi-layout-switch" value={layoutMode} onChange={(event) => chooseLayoutMode(event.target.value as PanelLayoutMode)}><option value="auto">Automatico</option><option value="desktop">Desktop</option><option value="mobile">Mobile</option></select></label>{mobileLayout && <button type="button" className="hmi-fit-switch" aria-pressed={mobileFit} title="Adatta riduce anche i comandi del disegno. Usa Dimensioni reali per controlli più grandi." onClick={() => setMobileFit((value) => !value)}>{mobileFit ? "Dimensioni reali" : "Adatta disegno"}</button>}</div>`
     : "";
+  const layoutEntry = mobile ? `
+  const firstChoice = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (layoutMode === null) firstChoice.current?.focus({ preventScroll: true }); }, [layoutMode]);
+  useEffect(() => {
+    const resumed = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      try {
+        const saved = sessionStorage.getItem(layoutPreferenceKey);
+        if (saved === "auto" || saved === "desktop" || saved === "mobile") setLayoutMode(saved);
+      } catch { /* Retain the current choice if storage is unavailable. */ }
+    };
+    window.addEventListener("pageshow", resumed);
+    return () => window.removeEventListener("pageshow", resumed);
+  }, [layoutPreferenceKey]);
+  if (layoutMode === null) return (
+    <main className="hmi-start" aria-labelledby="hmi-start-title" data-hmi-type="HmiScreen" data-panel-start="">
+      <div className="hmi-start-content">
+        <p className="hmi-start-eyebrow">Pannello HMI</p>
+        <h1 id="hmi-start-title">Scegli come aprire il pannello</h1>
+        <p className="hmi-start-machine">{${JSON.stringify(machineName)}}</p>
+        <p className="hmi-start-description">Seleziona il layout per il dispositivo che vuoi usare.</p>
+        <div className="hmi-start-options">
+          <button ref={firstChoice} type="button" className="hmi-start-option" data-panel-start-mode="desktop" aria-label="Apri pannello Desktop" aria-describedby="hmi-start-desktop-description" onClick={() => chooseLayoutMode("desktop")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+            <strong>Desktop</strong><span id="hmi-start-desktop-description">Layout completo per PC e monitor industriali.</span>
+            <span className="hmi-start-open" aria-hidden="true">Apri Desktop →</span>
+          </button>
+          <button type="button" className="hmi-start-option" data-panel-start-mode="mobile" aria-label="Apri pannello Mobile" aria-describedby="hmi-start-mobile-description" onClick={() => chooseLayoutMode("mobile")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="6" y="2" width="12" height="20" rx="2" /><path d="M10 5h4M11 19h2" /></svg>
+            <strong>Mobile</strong><span id="hmi-start-mobile-description">Navigazione adattata a telefono e tablet.</span>
+            <span className="hmi-start-open" aria-hidden="true">Apri Mobile →</span>
+          </button>
+        </div>
+        <p className="hmi-start-help">Puoi cambiare la scelta dal selettore Layout pannello, anche dopo l'ingresso.</p>
+      </div>
+    </main>
+  );
+` : "";
 
   return `import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
@@ -1069,41 +1107,44 @@ const entryIcons: Record<string, ReactElement> = {
 ${entryIcons}
 };
 
+type PanelLayoutMode = "auto" | "desktop" | "mobile";
+
 export function App() {
-  type PanelLayoutMode = "auto" | "desktop" | "mobile";
   const layoutPreferenceKey = document.querySelector<HTMLMetaElement>('meta[name="framecraft-panel-layout-key"]')?.content || ${JSON.stringify(`framecraft.panel-layout:${machineName}`)};
-  const [layoutMode, setLayoutMode] = useState<PanelLayoutMode>(() => {
+  const [layoutMode, setLayoutMode] = useState<PanelLayoutMode | null>(() => {
     ${mobile ? `try {
       const saved = sessionStorage.getItem(layoutPreferenceKey);
       if (saved === "auto" || saved === "desktop" || saved === "mobile") return saved;
     } catch { /* Storage unavailable: keep the selector usable. */ }
-    return "auto";` : 'return "desktop";'}
+    return null;` : 'return "desktop";'}
   });
   const chooseLayoutMode = (value: PanelLayoutMode) => {
     if (!["auto", "desktop", "mobile"].includes(value)) return;
     try { sessionStorage.setItem(layoutPreferenceKey, value); } catch { /* The in-memory choice still works. */ }
     setLayoutMode(value);
   };
+${layoutEntry}
+  return <Panel layoutMode={layoutMode ?? "desktop"} chooseLayoutMode={chooseLayoutMode} />;
+}
+
+function Panel({ layoutMode, chooseLayoutMode }: { layoutMode: PanelLayoutMode; chooseLayoutMode: (value: PanelLayoutMode) => void }) {
   const [compactScreen, setCompactScreen] = useState(() => window.matchMedia('(max-width: 1279px)').matches);
   const mobileLayout = layoutMode === "mobile" || layoutMode === "auto" && compactScreen;
   const [mobileFit, setMobileFit] = useState(false);
   const screen = useRef<HTMLElement>(null);
   const [mobileScale, setMobileScale] = useState(1);
+  useEffect(() => { screen.current?.focus({ preventScroll: true }); }, []);
   useEffect(() => {
     const query = window.matchMedia('(max-width: 1279px)');
     const changed = () => setCompactScreen(query.matches);
     const resumed = (event: PageTransitionEvent) => {
       if (!event.persisted) return;
       changed();
-      ${mobile ? `try {
-        const saved = sessionStorage.getItem(layoutPreferenceKey);
-        if (saved === "auto" || saved === "desktop" || saved === "mobile") setLayoutMode(saved);
-      } catch { /* Retain the current choice if storage is unavailable. */ }` : ""}
     };
     query.addEventListener("change", changed); changed();
     window.addEventListener("pageshow", resumed);
     return () => { query.removeEventListener("change", changed); window.removeEventListener("pageshow", resumed); };
-  }, [layoutPreferenceKey]);
+  }, []);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [runtimeLanguage, setRuntimeLanguage] = useState(resourceCatalog.activeLanguage || resourceCatalog.defaultLanguage || "it-IT");
   const localizedTexts = useRef(new Map<Element, string | null>());
@@ -1349,6 +1390,29 @@ function stylesSource(mobile: boolean) {
 
   const mobileRules = mobile
     ? `
+html:has(.hmi-start), body:has(.hmi-start), #root:has(.hmi-start) { min-width: 0; min-height: 0; height: 100%; }
+.hmi-start { display: grid; place-items: center; width: 100%; min-height: 100dvh; padding: max(28px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) max(28px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px)); background: #111318; color: #FFFFFF; }
+.hmi-start-content { width: min(760px, 100%); text-align: center; overflow-wrap: anywhere; }
+.hmi-start-eyebrow { margin: 0; color: #B7C3D2; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.hmi-start h1 { margin: 12px 0; font-size: clamp(26px, 4vw, 36px); line-height: 1.2; }
+.hmi-start-machine { margin: 0 0 16px; color: #8ED1FF; font-size: 18px; font-weight: 600; }
+.hmi-start-description { margin: 0; color: #D0D7E0; font-size: 16px; line-height: 1.5; }
+.hmi-start-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 28px 0 22px; }
+.hmi-start-option { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; min-height: 220px; padding: 24px; border: 1px solid #606B7A; border-radius: 12px; background: #20242C; color: #FFFFFF; text-align: left; cursor: pointer; transition: background-color .15s, border-color .15s; }
+.hmi-start-option:hover { background: #29333F; border-color: #8ED1FF; }
+.hmi-start-option:focus-visible { outline: 3px solid #8ED1FF; outline-offset: 4px; }
+.hmi-start-option svg { width: 48px; height: 48px; margin-bottom: 8px; color: #8ED1FF; flex-shrink: 0; }
+.hmi-start-option strong { font-size: 24px; }
+.hmi-start-option > span { color: #D0D7E0; font-size: 16px; line-height: 1.5; }
+.hmi-start-option .hmi-start-open { margin-top: auto; padding-top: 8px; color: #8ED1FF; font-size: 14px; font-weight: 600; }
+.hmi-start-help { max-width: 600px; margin: 0 auto; color: #B7C3D2; font-size: 14px; line-height: 1.6; }
+@media (max-width: 600px) {
+  .hmi-start { padding: max(24px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px)); }
+  .hmi-start-options { grid-template-columns: 1fr; gap: 14px; margin: 24px 0 20px; }
+  .hmi-start-option { min-height: 184px; padding: 20px; gap: 8px; }
+  .hmi-start-option svg { width: 36px; height: 36px; margin-bottom: 4px; }
+  .hmi-start-option strong { font-size: 22px; }
+}
 /* Layout mobile: barra compatta, navigatore a linguette, pagina a grandezza naturale. */
 .hmi-shell.mobile .hmi-top-bar { height: ${mobileShell.navigator.top}px; background: #111111; }
 .hmi-shell.mobile .hmi-clock { top: 4px; height: 40px; }

@@ -42,6 +42,7 @@ function loadApp(input = source): React.ComponentType {
   return exports.App as React.ComponentType;
 }
 const App = loadApp();
+const layoutKey = "framecraft.panel-layout:Synthetic mobile";
 async function mount(component = App) {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root!.render(createElement(component)));
@@ -56,6 +57,7 @@ beforeEach(() => {
   route = categories[0].route; viewportWidth = contentWidth = 375; drawingWidth = 1280;
   mediaListeners.clear(); Observer.instances = [];
   sessionStorage.clear();
+  sessionStorage.setItem(layoutKey, "auto");
   vi.stubGlobal("ResizeObserver", Observer);
   vi.stubGlobal("matchMedia", vi.fn(() => ({ get matches() { return viewportWidth < 1280; }, addEventListener: (_event: string, callback: () => void) => mediaListeners.add(callback), removeEventListener: (_event: string, callback: () => void) => mediaListeners.delete(callback) })));
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.classList.contains("hmi-screen") || this.classList.contains("hmi-lateral") ? contentWidth : 0; });
@@ -64,6 +66,43 @@ beforeEach(() => {
 });
 afterEach(async () => { if (root) await act(async () => root!.unmount()); host?.remove(); root = undefined; host = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe("guscio mobile realmente generato", () => {
+  it.each(["desktop", "mobile"])("presenta la scelta iniziale nel pannello e apre %s solo dopo la scelta", async (value) => {
+    sessionStorage.clear(); route = categories[1].route; viewportWidth = value === "mobile" ? 1440 : 375;
+    await mount();
+    expect(document.querySelector(".hmi-start")).not.toBeNull(); expect(document.querySelector(".hmi-shell")).toBeNull();
+    expect(document.querySelectorAll("[data-panel-start-mode]")).toHaveLength(2);
+    expect(document.activeElement).toBe(document.querySelector('[data-panel-start-mode="desktop"]'));
+    expect(installRuntime).not.toHaveBeenCalled(); expect(navigate).not.toHaveBeenCalled();
+    await click(document.querySelector<HTMLButtonElement>(`[data-panel-start-mode="${value}"]`)!);
+    expect(document.querySelector(".hmi-start")).toBeNull(); expect(shell().dataset.panelLayout).toBe(value);
+    expect(sessionStorage.getItem(layoutKey)).toBe(value); expect(route).toBe(categories[1].route);
+    expect(document.querySelector(".hmi-page")).not.toBeNull(); expect(installRuntime).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(document.querySelector(".hmi-screen"));
+    route = categories[2].route; await render(); expect(shell().dataset.panelLayout).toBe(value);
+    await act(async () => root!.unmount()); root = undefined; host?.remove();
+    await mount(); expect(document.querySelector(".hmi-start")).toBeNull(); expect(shell().dataset.panelLayout).toBe(value);
+  });
+  it("richiede la scelta con una preferenza non valida e continua senza storage disponibile", async () => {
+    sessionStorage.setItem(layoutKey, "unknown"); await mount(); expect(document.querySelector(".hmi-start")).not.toBeNull();
+    await act(async () => root!.unmount()); root = undefined; host?.remove();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw Error("Storage blocked"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw Error("Storage blocked"); });
+    await mount(); expect(document.querySelector(".hmi-start")).not.toBeNull();
+    await click(document.querySelector<HTMLButtonElement>('[data-panel-start-mode="mobile"]')!);
+    expect(shell().dataset.panelLayout).toBe("mobile"); route = categories[1].route; await render();
+    expect(shell().dataset.panelLayout).toBe("mobile");
+  });
+  it("condivide la scelta iniziale con la chiave specifica del progetto in anteprima", async () => {
+    const meta = document.createElement("meta"); meta.name = "framecraft-panel-layout-key"; meta.content = "framecraft.preview.panel-layout:synthetic-new";
+    document.head.append(meta);
+    try {
+      await mount(); expect(document.querySelector(".hmi-start")).not.toBeNull();
+      await click(document.querySelector<HTMLButtonElement>('[data-panel-start-mode="mobile"]')!);
+      expect(sessionStorage.getItem(meta.content)).toBe("mobile"); expect(sessionStorage.getItem(layoutKey)).toBe("auto");
+      await act(async () => root!.unmount()); root = undefined; host?.remove(); await mount();
+      expect(shell().dataset.panelLayout).toBe("mobile"); expect(document.querySelector(".hmi-start")).toBeNull();
+    } finally { meta.remove(); }
+  });
   it("mantiene Mobile dopo il ricaricamento causato dal cambio pagina finché non lo cambi manualmente", async () => {
     viewportWidth = contentWidth = 1440;
     await mount(); expect(shell().dataset.panelLayout).toBe("desktop");
@@ -144,7 +183,7 @@ describe("guscio mobile realmente generato", () => {
   });
   it("non abilita il mobile nei pannelli solo desktop e rimuove i listener alla chiusura", async () => {
     const desktop = standardProjectFiles({ machineName: "Desktop", layout: "desktop", sections: ["main"] }).find((file) => file.path === "src/App.tsx")!.content;
-    await mount(loadApp(desktop)); expect(shell().dataset.panelLayout).toBe("desktop"); expect(document.querySelector(".hmi-layout-controls")).toBeNull();
+    await mount(loadApp(desktop)); expect(shell().dataset.panelLayout).toBe("desktop"); expect(document.querySelector(".hmi-layout-controls")).toBeNull(); expect(document.querySelector(".hmi-start")).toBeNull();
     expect(mediaListeners.size).toBe(1);
     await act(async () => root!.unmount()); root = undefined;
     expect(mediaListeners.size).toBe(0); expect(Observer.instances.every((observer) => observer.disconnected)).toBe(true); expect(disposeRuntime).toHaveBeenCalledOnce();

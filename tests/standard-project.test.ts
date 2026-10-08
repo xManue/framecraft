@@ -7,6 +7,19 @@ import { submenuPlacement } from "../src/core/hmiSectionMenu";
 import { standardProjectFiles, standardProjectPageCount, standardProjectSectionChoices } from "../src/core/standardProject";
 
 describe("generatore nuovo pannello standard", () => {
+  it("inserisce la scelta iniziale nel progetto HMI desktop+mobile, non nei pannelli solo desktop", () => {
+    const files = standardProjectFiles({ machineName: "Linea {A} <test>", layout: "desktop-mobile", sections: ["main"] });
+    const app = files.find((file) => file.path === "src/App.tsx")!.content, styles = files.find((file) => file.path === "src/styles.css")!.content;
+    expect(() => parse(app, { sourceType: "module", plugins: ["jsx", "typescript"] })).not.toThrow();
+    expect(app).toContain('className="hmi-start"'); expect(app).toContain('data-panel-start-mode="desktop"'); expect(app).toContain('data-panel-start-mode="mobile"');
+    expect(app).toContain('{"Linea {A} test"}'); expect(styles).toContain("@media (max-width: 600px)");
+    const sources = Object.fromEntries(files.filter((file) => file.path.endsWith(".tsx")).map((file) => [file.path, file.content]));
+    expect(detectPages(sources).pages).toHaveLength(files.filter((file) => file.path.startsWith("src/pages/")).length);
+    const desktop = standardProjectFiles({ machineName: "Desktop", layout: "desktop", sections: ["main"] });
+    expect(desktop.find((file) => file.path === "src/App.tsx")!.content).not.toContain('className="hmi-start"');
+    expect(desktop.find((file) => file.path === "src/styles.css")!.content).not.toContain(".hmi-start");
+    expect(files.filter((file) => file.path.startsWith("src/pages/"))).toHaveLength(desktop.filter((file) => file.path.startsWith("src/pages/")).length);
+  });
   it("genera un guscio mobile adattabile mantenendo la tela macchina e comandi touch", () => {
     const files = standardProjectFiles({ machineName: "Mobile", layout: "desktop-mobile", sections: ["main"] });
     const app = files.find((file) => file.path === "src/App.tsx")!.content, css = files.find((file) => file.path === "src/styles.css")!.content;

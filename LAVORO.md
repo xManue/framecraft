@@ -3497,6 +3497,30 @@ Verifiche del 5 ottobre 2026:
 - Nessun riavvio dell'app dell'utente, nessun test generale; fixture e screenshot locali ignorati.
   Collaudo di progetti reali, touch fisico e PLC restano separati da queste verifiche browser.
 
+### 99. Pagina iniziale HMI per scegliere Desktop o Mobile (2026-10-07)
+
+- Inserita nella pipeline dei nuovi pannelli standard desktop+mobile: schermata del pannello
+  HMI generato, non impostazione/modalità dell'editor. Senza una scelta valida nella scheda
+  corrente, mostra nome macchina e due pulsanti Desktop/Mobile prima delle pagine operative.
+- Scelta esplicita: Mobile anche su schermo largo, Desktop anche su telefono. Conservata
+  la pagina richiesta da un collegamento diretto; nessun percorso o numero standard inventato.
+  La scelta salvata evita di riproporre la schermata durante navigazione e ricaricamento.
+  Dentro il pannello resta il selettore Desktop/Mobile/Automatico per modificarla.
+- Guscio operativo separato dalla schermata iniziale: installFramecraftHmiRuntime si monta
+  soltanto all'ingresso. La scelta layout non è autenticazione né interblocco PLC e non
+  controlla il ciclo di vita dei servizi esterni. Pannelli solo desktop invariati nell'ingresso.
+- Pulsanti nativi con descrizioni, SVG, focus visibile e passaggio del focus alla pagina aperta;
+  griglia a due colonne o verticale su telefono, safe-area, scorrimento su finestre basse,
+  nessun ridimensionamento dei disegni macchina. Storage non disponibile non blocca l'ingresso.
+- Verifiche mirate: dodici casi sul vero App generato (ingresso, runtime differito, preferenze,
+  navigazione, menu e resize), tre su generazione/JSX e riconoscimento pagine; TypeScript.
+  Edge isolato a 375x800, 768x800, 812x375 e viewport largo 1414 px: ingresso, cambio manuale,
+  memoria al rimontaggio, focus, target e assenza di debordi. Screenshot telefono/desktop
+  ispezionati. Ripetuto il solo flusso nuovo guscio con tre ricaricamenti reali dopo l'ingresso.
+- Nessuna riscrittura/cancellazione di progetti macchina esistenti, nessun riavvio dell'app
+  dell'utente. Router/dati sintetici; fixture e screenshot ignorati. Nessun test generale,
+  nessuna pretesa di collaudo touch fisico o PLC.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
