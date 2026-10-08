@@ -3568,6 +3568,49 @@ Verifiche del 5 ottobre 2026:
   senza riavvio dell'app dell'utente, riscrittura di progetti macchina o suite generale.
   Collaudo touch fisico, pannelli reali e produzione restano separati.
 
+### 102. Client OPC UA scalare, gateway e pipeline standard (2026-10-08)
+
+- Servizio Node autonomo con MQTT e OPC UA nello stesso gateway. Client e certificate-manager
+  fissati a 2.186.17, controllo logger SDK a 2.186.7; minimo Node 22.13.0, baseline Node 24.
+  Server SDK soltanto nelle fixture, non nelle dipendenze del runtime generato. Lockfile:
+  nessuna versione di pacchetti già presenti aggiornata incidentalmente.
+- Connessioni PLC: nuovo profilo OPC UA separato, offline, endpoint vuoto e connessione/comandi
+  disabilitati. Sicurezza iniziale SignAndEncrypt/Basic256Sha256; mode/policy e trust espliciti,
+  policy SHA1 escluse. None richiede consenso per test isolati anonimi; niente downgrade.
+  Credenziali solo tramite riferimenti ambiente, certificati/chiavi/PKI come percorsi sul servizio.
+- Trust non automatico, controllo validità, coppia chiave/certificato, hostname/IP, URI client/server
+  e certificato del canale effettivo. PKI caricata all'avvio senza watcher: aggiornamenti richiedono
+  riavvio manuale. Diagnostica statica con rimedi e codici UA hex sanificati; dump SDK disabilitati
+  nel processo PLC, senza disabilitare gli eventi/log Framecraft.
+- Mapping tramite Namespace URI e identificatore senza ns=. Namespace risolto a ogni sessione;
+  tipi built-in scalari, ValueRank e UserAccessLevel verificati prima di ready e delle scritture.
+  Subscription e letture periodiche reali: valore invariato non significa campione scaduto.
+  StatusCode uint32 originale e timestamp source/server separati da receivedAt; Good/Uncertain/Bad
+  derivati dai bit di severità UA. Bad/Uncertain preservano l'ultimo valore valido, senza renderlo
+  Good; perdita sessione/scadenza rendono Bad. Browser ReadMaxAge usa acquisizione reale OPC UA.
+- Consensi distinti gateway/connessione/catalogo/binding e permessi UA correnti. Risposta Good
+  Write è delivery opcua-service, mai plcConfirmed. Rifiuto esplicito separato da esito incerto;
+  nessuna coda offline, replay o cache ottimistica. Browser e continuazioni IR riconoscono la
+  ricevuta OPC UA senza inventare conferme o letture CPU forzate.
+- Pipeline nuovo pannello: copia driver/tipi, gateway comune, dipendenze esatte, guida e diagnostica;
+  resta vuota/disabilitata inizialmente. Dialogo con campi etichettati, mapping paginati, ricerca
+  catalogo distinta e salto al campo errato anche dopo la prima pagina. Mini guida, README e
+  roadmap Unified/Optix aggiornati a PARZIALE, non a parità o produzione completate.
+- Verifiche mirate, 169 casi distinti: 71 configurazione, 55 dialogo/client/IR, 11 gateway MQTT/HTTP,
+  10 OPC UA reali loopback, 1 confezionamento standard, 3 inventario licenze e 18 diagnostica sicura. Casi OPC UA:
+  qualità/timestamp, tipi/nodi/namespace errati, Bad/Uncertain/Good con flag, scrittura rifiutata,
+  server perso, timeout e stop durante Write senza replay, trust reciproco, hostname/URI/scadenza,
+  credenziali negate senza segreti, deduplica HTTP e processo Node realmente copiato dalla pipeline
+  con stdout JSON pulito. TypeScript passato; fixture/certificati/log esclusi da Git, nessun PLC
+  reale o riavvio dell'app utente, nessuna suite generale. Collaudo CPU/touch/artefatto industriale separato.
+- Licenze nuovo grafo runtime: 127 pacchetti, nessuno mancante. Due revisioni: precond 0.2.3
+  senza license nel manifest (README indica MIT, notice completa da verificare/conservare),
+  tweetnacl 0.14.5 Unlicense fuori dall'allowlist corrente. Nessuna approvazione legale automatica.
+  npm audit autorizzato: nessuna segnalazione nel grafo OPC UA; restano 3 segnalazioni tooling
+  Vitest/mocker/Tinypool (2 critical, 1 moderate), upgrade major da collaudare separatamente.
+- Restano browsing/import nodi, array/UDT/subtype custom/64 bit/DateTime, metodi/eventi/allarmi UA,
+  rinnovo PKI guidato, conferme applicative PLC, ruoli/audit/storage server e commissionamento CPU.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
@@ -3603,7 +3646,7 @@ Verifiche del 5 ottobre 2026:
 - **Interfaccia**: estendere le categorie superiori quando entrano nuove funzioni WinCC, Optix e AI,
   senza reintrodurre toolbar permanenti nel canvas o nel bordo inferiore.
 - **Connettività trasversale**: trasporto asincrono MQTT nella IR integrato al punto 91;
-  completare conferme PLC/payload avanzati, command layer restante e driver OPC UA; RBAC/audit/storage
+  completare conferme PLC/payload avanzati, command layer restante e OPC UA avanzato; RBAC/audit/storage
   server e collaudo TLS/CPU fisiche o virtuali. Mai segreti nel browser o replay di comandi incerti.
 - **Produzione**: chiudere licenze/notice e diritti asset, collaudare upgrade Vitest, audit Rust/OS,
   packaging su runtime LTS e guasti/recovery nella finestra desktop e su progetti reali;

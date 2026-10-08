@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createMqttPlcConnection, normalizeMqttTagValue } from "./mqtt-driver.mjs";
+import { createOpcUaPlcConnection } from "./opcua-driver.mjs";
 import { validateConnectionCatalog } from "./connection-config.mjs";
 import { ConnectionOperationError, connectionDiagnostic, createDiagnosticReporter, diagnosticText, safeNotify } from "./connection-diagnostics.mjs";
 
@@ -23,7 +24,7 @@ function body(request) {
   });
 }
 
-export function createMqttGateway(catalog, variables, options = {}) {
+export function createPlcGateway(catalog, variables, options = {}) {
   catalog = JSON.parse(JSON.stringify(catalog));
   const config = catalog?.gateway;
   if (config?.enabled !== true) throw new Error("Gateway non abilitato o catalogo non valido.");
@@ -40,17 +41,17 @@ export function createMqttGateway(catalog, variables, options = {}) {
   };
   const report = createDiagnosticReporter(record, { protocol: "gateway" });
   const connections = enabled.map((connection) => {
-    const driver = createMqttPlcConnection(connection, variables, {
+    const driver = (connection.protocol === "opcua" ? createOpcUaPlcConnection : createMqttPlcConnection)(connection, variables, {
       resolveSecret: options.resolveSecret,
       onError: options.onError,
       onDiagnostic: record,
       onState: (state) => { states.set(connection.id, { ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) }); safeNotify(options.onState, state); },
     });
     for (const binding of connection.bindings) {
-      if (owners.has(binding.tag)) throw new Error("Un tag non può avere due sorgenti MQTT attive.");
+      if (owners.has(binding.tag)) throw new Error("Un tag non può avere due sorgenti PLC attive.");
       const variable = variables.find((item) => item.name === binding.tag);
-      owners.set(binding.tag, { driver, connectionId: connection.id, name: binding.tag, dataType: variable.dataType, access: variable.access,
-        writable: config.allowWrites === true && connection.allowWrites === true && variable.access !== "read" && Boolean(binding.writeTopic) });
+      owners.set(binding.tag, { driver, protocol: connection.protocol, connectionId: connection.id, name: binding.tag, dataType: variable.dataType, access: variable.access,
+        writable: config.allowWrites === true && connection.allowWrites === true && variable.access !== "read" && (connection.protocol === "opcua" ? binding.writeEnabled === true : Boolean(binding.writeTopic)) });
     }
     states.set(connection.id, { id: connection.id, state: "stopped" }); return driver;
   });
@@ -97,7 +98,7 @@ export function createMqttGateway(catalog, variables, options = {}) {
       // L'id resta registrato anche se il chiamante interrompe HTTP: nessun replay del comando.
       entry.result = owner.driver.write(command.tag, command.value).then((delivery) => ({ status: 200, body: { id: command.id, outcome: "delivered", ...delivery } }), (error) => {
         const rejected = error instanceof ConnectionOperationError && error.outcome === "rejected";
-        const diagnostic = error instanceof ConnectionOperationError ? error.diagnostic : connectionDiagnostic("WRITE_UNCERTAIN", { protocol: "mqtt", connectionId: owner.connectionId, tag: command.tag });
+        const diagnostic = error instanceof ConnectionOperationError ? error.diagnostic : connectionDiagnostic("WRITE_UNCERTAIN", { protocol: owner.protocol, connectionId: owner.connectionId, tag: command.tag });
         return { status: rejected ? diagnostic.code === "WRITE_OFFLINE" ? 503 : 422 : 502, body: { id: command.id, tag: command.tag, outcome: rejected ? "rejected" : "uncertain", plcConfirmed: false, error: diagnosticText(diagnostic), diagnostic } };
       }).finally(() => { entry.finished = true; });
       commands.set(command.id, entry); const result = await entry.result; respond(response, result.status, result.body);
@@ -133,3 +134,6 @@ export function createMqttGateway(catalog, variables, options = {}) {
     },
   };
 }
+
+// Compatibility for existing integrations; the gateway now accepts both protocols.
+export const createMqttGateway = createPlcGateway;

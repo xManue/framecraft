@@ -121,7 +121,8 @@ describe("bridge MQTT HTTP reale", () => {
     await new Promise<void>((resolve) => reservation.close(() => resolve()));
     const catalog = { ...test.catalog, gateway: { ...test.catalog.gateway, port: reserved.port }, connections: test.catalog.connections.map((c) => ({ ...c, clientId: "editor-config-test" })) };
     const model = parseConnectionConfiguration({ generation: 1, files: { connections: JSON.stringify(catalog), runtime: null, plc: JSON.stringify({ version: 1, variables }) } });
-    model.catalog.connections[0].bindings[0].timestampUnit = "s"; model.runtime.gateway.enabled = true;
+    const connection = model.catalog.connections[0]; if (connection.protocol !== "mqtt") throw new Error("Fixture MQTT richiesta");
+    connection.bindings[0].timestampUnit = "s"; model.runtime.gateway.enabled = true;
     const serialized = serializeConnectionConfiguration(model);
     const gateway = createMqttGateway(JSON.parse(serialized.connections), variables, { resolveSecret: () => token });
     try {

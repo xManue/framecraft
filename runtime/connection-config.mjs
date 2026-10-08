@@ -75,6 +75,54 @@ export function validateGatewayConfiguration(config, allowEphemeralPort = false)
   })) fail("allowedOrigins deve contenere origini HTTP/HTTPS esatte.", "gateway.allowedOrigins");
 }
 
+export function validateOpcUaConnection(config, variables, prefix = "") {
+  const reject = (message, key) => fail(message, prefix + key);
+  if (!object(config) || typeof config.id !== "string" || !config.id.trim() || config.id.length > 200 || /[\u0000-\u001f\u007f]/.test(config.id)) reject("La connessione OPC UA richiede un nome valido, senza caratteri di controllo.", "id");
+  let endpoint;
+  try { endpoint = new URL(config.url); } catch { reject("Endpoint OPC UA non valido: usa opc.tcp://server:porta/percorso.", "url"); }
+  if (endpoint.protocol !== "opc.tcp:" || !endpoint.hostname || !endpoint.port || Number(endpoint.port) < 1 || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) reject("Endpoint OPC UA non valido: porta esplicita valida, niente credenziali, query o frammenti.", "url");
+  if (!["None", "Sign", "SignAndEncrypt"].includes(config.securityMode)) reject("Scegli la modalità di sicurezza OPC UA prevista dal server.", "securityMode");
+  if (!["None", "Basic256Sha256", "Aes128_Sha256_RsaOaep", "Aes256_Sha256_RsaPss"].includes(config.securityPolicy)) reject("Policy OPC UA non supportata; le policy deprecate non sono abilitate.", "securityPolicy");
+  if ((config.securityMode === "None") !== (config.securityPolicy === "None")) reject("None richiede sia modalità sia policy None; non viene applicato alcun downgrade automatico.", "securityPolicy");
+  for (const key of ["allowInsecure", "allowWrites"]) if (config[key] !== undefined && typeof config[key] !== "boolean") reject("Il consenso deve essere booleano.", key);
+  if (config.securityMode === "None" && config.allowInsecure !== true) reject("OPC UA senza sicurezza richiede consenso esplicito, solo per rete di test isolata.", "allowInsecure");
+  if (Object.hasOwn(config, "username") || Object.hasOwn(config, "password")) reject("Credenziali soltanto nell'ambiente del servizio, non nel JSON.", "usernameEnv");
+  for (const key of ["usernameEnv", "passwordEnv"]) if (config[key] !== undefined && !envName(config[key])) reject("Inserisci un nome di variabile ambiente privata del servizio, mai VITE_*.", key);
+  if (Boolean(config.usernameEnv) !== Boolean(config.passwordEnv)) reject("Utente e password richiedono entrambi i riferimenti ambiente.", "passwordEnv");
+  if (config.securityMode === "None" && config.usernameEnv) reject("L'accesso con utente/password richiede una connessione OPC UA sicura.", "securityMode");
+  for (const key of ["certificateFile", "privateKeyFile", "pkiDirectory"]) {
+    const value = config[key];
+    if (value !== undefined && (typeof value !== "string" || !value.trim() || /[\u0000-\u001f\u007f]|-----BEGIN/.test(value))) reject("Inserisci un percorso sul servizio, non un certificato o una chiave inline.", key);
+    if (config.securityMode !== "None" && !value) reject("La connessione sicura richiede certificato client, chiave privata e directory PKI sul servizio.", key);
+  }
+  if (Boolean(config.certificateFile) !== Boolean(config.privateKeyFile)) reject("Certificato client e chiave privata vanno configurati insieme.", "privateKeyFile");
+  if (config.applicationUri !== undefined && (typeof config.applicationUri !== "string" || !/^(urn:|https?:\/\/)/.test(config.applicationUri) || /[\u0000-\u0020\u007f]/.test(config.applicationUri))) reject("Application URI non valida: deve corrispondere all'URI nel certificato client.", "applicationUri");
+  if (config.securityMode !== "None" && !config.applicationUri) reject("Specifica l'Application URI riportata nel certificato client.", "applicationUri");
+  for (const key of ["timeoutMs", "reconnectMs", "readIntervalMs", "samplingIntervalMs"]) if (config[key] !== undefined && (!Number.isInteger(config[key]) || config[key] < 250 || config[key] > 60_000)) reject("Intervallo OPC UA non valido: da 250 a 60000 ms.", key);
+  if (!Array.isArray(variables) || variables.some((v) => !object(v) || typeof v.name !== "string" || !v.name.trim() || v.name.length > 200 || /[\u0000-\u001f\u007f]/.test(v.name) || typeof v.dataType !== "string" || !["read", "write", "read-write"].includes(v.access)) || new Set(variables.map((v) => v.name)).size !== variables.length) reject("Catalogo PLC non valido o duplicato.", "bindings");
+  if (!Array.isArray(config.bindings) || config.bindings.length > 5000) reject("Mapping OPC UA non valido: massimo 5000 tag.", "bindings");
+  const tags = new Map(variables.map((v) => [v.name, { ...v }])), seen = new Set();
+  for (const [index, binding] of config.bindings.entries()) {
+    const error = (message, key) => reject(message, "bindings." + index + "." + key);
+    if (!object(binding) || !tags.has(binding.tag) || seen.has(binding.tag)) error("Tag non dichiarato o mapping OPC UA duplicato.", "tag");
+    seen.add(binding.tag); const variable = tags.get(binding.tag);
+    try { normalizeMqttTagValue(["bool", "boolean"].includes(variable.dataType.toLowerCase()) ? false : ["string", "wstring"].includes(variable.dataType.toLowerCase()) ? "" : 0, variable.dataType); } catch { error("Tipo PLC non supportato dal driver OPC UA scalare; array e UDT richiedono un mapping dedicato.", "tag"); }
+    if (typeof binding.namespaceUri !== "string" || !binding.namespaceUri.trim() || binding.namespaceUri.length > 2048 || /[\u0000-\u001f\u007f]/.test(binding.namespaceUri)) error("Usa il Namespace URI reale del server, non un indice ns= che può cambiare al riavvio.", "namespaceUri");
+    const node = binding.nodeId;
+    if (typeof node !== "string" || node.length > 4096 || /[\u0000-\u001f\u007f]/.test(node) || !(/^(i=(0|[1-9]\d*)|s=.+|g=[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}|b=(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/.test(node)) || node === "b=" || node.startsWith("i=") && Number(node.slice(2)) > 4294967295) error("Identificatore nodo non valido: i=numero, s=testo, g=GUID o b=base64; namespace separato, senza ns=.", "nodeId");
+    if (binding.writeEnabled !== undefined && typeof binding.writeEnabled !== "boolean") error("Abilitazione comando non valida.", "writeEnabled");
+    if (variable.access === "read" && binding.writeEnabled === true) error("Un tag di sola lettura non può abilitare comandi.", "writeEnabled");
+    if (binding.staleAfterMs !== undefined && (!Number.isInteger(binding.staleAfterMs) || binding.staleAfterMs < 250 || binding.staleAfterMs > 3_600_000)) error("Scadenza campione non valida: da 250 a 3600000 ms.", "staleAfterMs");
+  }
+  return tags;
+}
+
+export function validatePlcConnection(config, variables, prefix = "") {
+  if (config?.protocol === "mqtt") return validateMqttConnection(config, variables, prefix);
+  if (config?.protocol === "opcua") return validateOpcUaConnection(config, variables, prefix);
+  fail("Protocollo PLC non supportato: scegli MQTT oppure OPC UA.", prefix + "protocol");
+}
+
 export function validateConnectionCatalog(catalog, variables, options = {}) {
   if (!object(catalog) || catalog.version !== 1 || !Array.isArray(catalog.connections)) fail("Catalogo connessioni non valido: versione 1 e array connections richiesti.", "connections");
   validateGatewayConfiguration(catalog.gateway, options.allowEphemeralPort === true);
@@ -83,12 +131,12 @@ export function validateConnectionCatalog(catalog, variables, options = {}) {
   const ids = new Set(), owners = new Set();
   for (const { connection, index } of selected) {
     const prefix = "connections." + index + ".";
-    if (!object(connection) || connection.protocol !== "mqtt") fail("Il driver OPC UA non è ancora disponibile; questo editor gestisce solo MQTT.", prefix + "protocol");
+    if (!object(connection)) fail("Profilo connessione non valido.", prefix + "protocol");
     if (typeof connection.enabled !== "boolean") fail("Abilitazione connessione non valida.", prefix + "enabled");
-    validateMqttConnection(connection, variables, prefix);
+    validatePlcConnection(connection, variables, prefix);
     if (ids.has(connection.id)) fail("Id di connessione duplicati.", prefix + "id"); ids.add(connection.id);
     if (connection.enabled) for (const binding of connection.bindings) {
-      if (owners.has(binding.tag)) fail("Un tag non può avere due sorgenti MQTT attive.", prefix + "bindings." + connection.bindings.indexOf(binding) + ".tag"); owners.add(binding.tag);
+      if (owners.has(binding.tag)) fail("Un tag non può avere due sorgenti PLC attive, anche tra MQTT e OPC UA.", prefix + "bindings." + connection.bindings.indexOf(binding) + ".tag"); owners.add(binding.tag);
     }
   }
 }

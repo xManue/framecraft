@@ -1,5 +1,5 @@
 import {
-  ConnectionConfigurationError, validateConnectionCatalog, validateGatewayConfiguration, validateMqttConnection,
+  ConnectionConfigurationError, validateConnectionCatalog, validateGatewayConfiguration, validatePlcConnection,
   type ConnectionCatalog, type PlcConnectionConfig,
 } from "../../runtime/connection-config.mjs";
 import type { PlcVariableDefinition } from "./plcVariables";
@@ -18,9 +18,14 @@ export interface ConnectionIssue { path: string; message: string }
 export function defaultConnectionCatalog(): ConnectionCatalog {
   return { version: 1, gateway: { enabled: false, host: "127.0.0.1", port: 4877, tokenEnv: "FRAMECRAFT_GATEWAY_TOKEN", allowedOrigins: [], allowWrites: false }, connections: [] };
 }
-export function newMqttConnection(existing: readonly PlcConnectionConfig[]): PlcConnectionConfig {
+export function newMqttConnection(existing: readonly PlcConnectionConfig[]): Extract<PlcConnectionConfig, { protocol: "mqtt" }> {
   let index = 1; while (existing.some((c) => c.id === "mqtt-" + index)) index++;
   return { id: "mqtt-" + index, protocol: "mqtt", enabled: false, url: "", allowInsecure: false, allowWrites: false, bindings: [] };
+}
+export function newOpcUaConnection(existing: readonly PlcConnectionConfig[]): Extract<PlcConnectionConfig, { protocol: "opcua" }> {
+  let index = 1; while (existing.some((c) => c.id === "opcua-" + index)) index++;
+  return { id: "opcua-" + index, protocol: "opcua", enabled: false, url: "", allowWrites: false, allowInsecure: false,
+    securityMode: "SignAndEncrypt", securityPolicy: "Basic256Sha256", bindings: [] };
 }
 
 function parseObject(source: string, file: string): Record<string, unknown> {
@@ -40,7 +45,7 @@ function rejectInlineSecrets(value: unknown, depth = 0): void {
         if (error instanceof Error && error.message === "inline") throw new Error("URL con credenziali inline: usa riferimenti ambiente del servizio.");
       }
     }
-    if (/^(caFile|certificateFile|privateKeyFile)$/.test(key) && typeof child === "string" && child.includes("-----BEGIN")) throw new Error("Il catalogo contiene certificati o chiavi inline: lascia solo i percorsi dei file sul servizio.");
+    if (/^(caFile|certificateFile|privateKeyFile|pkiDirectory)$/.test(key) && typeof child === "string" && child.includes("-----BEGIN")) throw new Error("Il catalogo contiene certificati o chiavi inline: lascia solo i percorsi dei file sul servizio.");
     rejectInlineSecrets(child, depth + 1);
   }
 }
@@ -49,12 +54,15 @@ export function parseConnectionConfiguration(snapshot: ConnectionConfigurationSn
   const raw = snapshot.files.connections === null ? defaultConnectionCatalog() : parseObject(snapshot.files.connections, "framecraft.connections.json");
   rejectInlineSecrets(raw);
   const catalog = { ...raw, gateway: raw.gateway ?? defaultConnectionCatalog().gateway } as ConnectionCatalog;
-  if (!Array.isArray(catalog.connections) || catalog.connections.length > 1000) throw new Error("Il catalogo deve contenere fino a 1000 connessioni MQTT.");
+  if (!Array.isArray(catalog.connections) || catalog.connections.length > 1000) throw new Error("Il catalogo deve contenere fino a 1000 connessioni PLC.");
   for (const c of catalog.connections) {
-    if (!c || c.protocol !== "mqtt") throw new Error("Questo editor gestisce solo MQTT. Un profilo OPC UA o sconosciuto non viene alterato: il driver OPC UA è ancora da implementare.");
-    if (typeof c.id !== "string" || typeof c.url !== "string" || !Array.isArray(c.bindings) || c.bindings.some((b) => !b || typeof b !== "object" || Array.isArray(b))) throw new Error("Struttura della connessione MQTT non valida.");
+    if (!c || !["mqtt", "opcua"].includes(c.protocol)) throw new Error("Protocollo PLC non supportato. I profili sconosciuti non vengono alterati o convertiti.");
+    if (typeof c.id !== "string" || typeof c.url !== "string" || !Array.isArray(c.bindings) || c.bindings.some((b) => !b || typeof b !== "object" || Array.isArray(b))) throw new Error("Struttura della connessione PLC non valida.");
     const shape = (value: object, fields: string[], type: string) => fields.every((key) => (value as Record<string, unknown>)[key] === undefined || typeof (value as Record<string, unknown>)[key] === type);
-    if (!shape(c, ["clientId", "usernameEnv", "passwordEnv"], "string") || !shape(c, ["enabled", "allowWrites", "allowInsecure"], "boolean") || !shape(c, ["reconnectMs", "timeoutMs", "maxPayloadBytes", "protocolVersion"], "number") || c.tls !== undefined && (!c.tls || typeof c.tls !== "object" || Array.isArray(c.tls) || !shape(c.tls, ["caFile", "certificateFile", "privateKeyFile"], "string")) || c.bindings.some((b) => !shape(b, ["tag", "topic", "writeTopic", "valuePath", "qualityPath", "timestampPath", "timestampUnit", "encoding", "writeEncoding"], "string") || !shape(b, ["qos", "writeQos", "staleAfterMs"], "number"))) throw new Error("Tipi dei campi MQTT non validi; il catalogo non è stato alterato.");
+    if (!shape(c, ["usernameEnv", "passwordEnv"], "string") || !shape(c, ["enabled", "allowWrites", "allowInsecure"], "boolean") || !shape(c, ["reconnectMs", "timeoutMs"], "number")) throw new Error("Tipi dei campi PLC non validi; il catalogo non è stato alterato.");
+    if (c.protocol === "mqtt") {
+      if (!shape(c, ["clientId"], "string") || !shape(c, ["maxPayloadBytes", "protocolVersion"], "number") || c.tls !== undefined && (!c.tls || typeof c.tls !== "object" || Array.isArray(c.tls) || !shape(c.tls, ["caFile", "certificateFile", "privateKeyFile"], "string")) || c.bindings.some((b) => !shape(b, ["tag", "topic", "writeTopic", "valuePath", "qualityPath", "timestampPath", "timestampUnit", "encoding", "writeEncoding"], "string") || !shape(b, ["qos", "writeQos", "staleAfterMs"], "number"))) throw new Error("Tipi dei campi MQTT non validi; il catalogo non è stato alterato.");
+    } else if (typeof c.securityMode !== "string" || typeof c.securityPolicy !== "string" || !shape(c, ["applicationUri", "certificateFile", "privateKeyFile", "pkiDirectory"], "string") || !shape(c, ["readIntervalMs", "samplingIntervalMs"], "number") || c.bindings.some((b) => typeof b.namespaceUri !== "string" || typeof b.nodeId !== "string" || !shape(b, ["tag"], "string") || !shape(b, ["staleAfterMs"], "number") || !shape(b, ["writeEnabled"], "boolean"))) throw new Error("Struttura OPC UA non supportata: usa i campi Namespace URI, identificatore nodo e sicurezza previsti da Framecraft. Il profilo non è stato convertito o alterato.");
   }
   if (!catalog.gateway || typeof catalog.gateway !== "object" || Array.isArray(catalog.gateway) || !Array.isArray(catalog.gateway.allowedOrigins) || catalog.gateway.allowedOrigins.some((origin) => typeof origin !== "string") || typeof catalog.gateway.port !== "number" || typeof catalog.gateway.tokenEnv !== "string" || typeof catalog.gateway.enabled !== "boolean") throw new Error("Struttura del gateway non valida.");
   const runtime = (snapshot.files.runtime === null ? { version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } } : parseObject(snapshot.files.runtime, "framecraft.runtime.json")) as unknown as RuntimeConnectionConfiguration;
@@ -80,7 +88,7 @@ export function connectionConfigurationIssues(model: ConnectionEditorModel): Con
   };
   const catalog = normalizedCatalog(model);
   check(() => validateGatewayConfiguration(catalog.gateway), "gateway");
-  catalog.connections.forEach((c, index) => check(() => validateMqttConnection(c, model.variables, "connections." + index + "."), "connections." + index));
+  catalog.connections.forEach((c, index) => check(() => validatePlcConnection(c, model.variables, "connections." + index + "."), "connections." + index));
   check(() => validateConnectionCatalog(catalog, model.variables, { includeDisabled: true }), "connections");
   const client = model.runtime.gateway;
   if (typeof client.enabled !== "boolean") issues.push({ path: "runtime.gateway.enabled", message: "Abilitazione client non valida." });

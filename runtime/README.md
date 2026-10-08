@@ -1,9 +1,9 @@
-# MQTT e gateway del Runtime autonomo
+# MQTT, OPC UA e gateway del Runtime autonomo
 
 MQTT.js gira nel servizio Node, non nel browser. Il driver usa un broker reale TCP/TLS/WebSocket,
 sottoscrizioni, cache tipizzata, qualità e timestamp, timeout e riconnessione. Il gateway HTTP
 trasferisce i campioni al browser e inoltra i comandi autorizzati. Non serve un Runtime Siemens
-o Rockwell; OPC UA è ancora da implementare.
+o Rockwell; il client OPC UA scalare è descritto nella sezione dedicata sotto.
 
 Il collaudo `npm run test:gateway` nel repository usa Aedes su TCP/TLS, gateway HTTP, peer TCP
 controllati per i rifiuti MQTT 5 e processi Node separati anche per i sorgenti generati. Certificati
@@ -15,15 +15,15 @@ se presente). Queste prove locali non dimostrano compatibilità con CPU/broker/t
 
 La pipeline copia servizio, client, tipi, proxy e questa guida. Per impostazione iniziale:
 `framecraft.connections.json` è vuoto, il gateway browser in `framecraft.runtime.json` è disabilitato
-e nessun endpoint, topic, segreto o collegamento viene inventato. L'anteprima dell'editor continua
+e nessun endpoint, topic, nodo o segreto o collegamento viene inventato. L'anteprima dell'editor continua
 a usare la simulazione esplicita, non si collega automaticamente al servizio.
 
 1. Dichiarare i tag e il loro accesso in `framecraft.plc.json`.
-2. Aprire **Pannello → Connessioni PLC** nell'editor. Aggiungere il broker, scegliere i tag
+2. Aprire **Pannello → Connessioni PLC** nell'editor. Aggiungere broker MQTT o server OPC UA, scegliere i tag
    dichiarati e i topic reali, configurare valore/qualità/timestamp e i riferimenti ambiente/TLS.
    **Guida rapida** apre cinque passi e approfondimenti nello stesso dialogo, anche se il
    catalogo non è leggibile; non salva né avvia rete. Le opzioni avanzate comprendono QoS,
-   timeout e permessi di scrittura. OPC UA non è disponibile.
+   timeout e permessi di scrittura. Per OPC UA configurare Namespace URI, nodi e PKI come descritto sotto.
 3. Abilitare esplicitamente servizio, connessione e client del pannello, poi **Salva configurazione**.
    Questo salva `framecraft.connections.json` e `framecraft.runtime.json`, non avvia alcun servizio,
    non verifica credenziali/CPU/certificati e non scrive tag PLC. Il client mantiene il percorso
@@ -145,13 +145,14 @@ configurazione può impedire l'avvio: controllare la console del servizio, non s
 ## Comandi senza false conferme
 
 Servono contemporaneamente `gateway.allowWrites: true`, `connection.allowWrites: true`, accesso
-PLC `write`/`read-write` e `writeTopic`. Il server verifica il tipo, non solo il browser.
+PLC `write`/`read-write` e mapping comando: `writeTopic` per MQTT oppure `writeEnabled`
+e permesso corrente del nodo OPC UA. Il servizio verifica il tipo, non solo il browser.
 Nel pannello generato usare l'API asincrona e attendere il risultato:
 
 ```ts
 import { requestRuntimeTagWrite } from "./framecraftHmiRuntime";
 const result = await requestRuntimeTagWrite("Motor.Speed", 30);
-// result.delivery è una ricevuta di trasporto/broker, non l'esecuzione del PLC.
+// result.delivery è una ricevuta di trasporto/broker/servizio UA, non l'esecuzione del PLC.
 ```
 
 `setRuntimeTagValue` inoltra la richiesta senza attendere nel chiamante e mostra l'esito; non va
@@ -178,8 +179,8 @@ risposta o ACK anomalo dopo PUBREC sono **incerti**. Il rifiuto non viene trasfo
 consegna. Reason 16 segnala assenza di destinatari, non esecuzione PLC. Anche QoS 2 non
 giustifica un replay automatico del comando applicativo dopo un errore.
 
-La lettura è dalla cache dei campioni ricevuti. `ReadMaxAge` verifica età di ricezione e timestamp
-sorgente; `ReadAsync(1)` e `ReadMaxAge(0)` non fingono una lettura forzata CPU. **`WriteAsync(1)`
+La lettura è dalla cache dei campioni ricevuti. `ReadMaxAge` verifica età dell'acquisizione
+e per MQTT anche timestamp sorgente; `ReadAsync(1)` e `ReadMaxAge(0)` non fingono una lettura forzata CPU. **`WriteAsync(1)`
 non è disponibile**: `hmiWriteWait` richiede conferma di scrittura nel PLC, non l'ack del broker.
 Le operazioni QCD, messaggi operatore con audit server e bit atomici non supportati vengono
 respinti prima dell'invio. Le dinamizzazioni sincrone non possono inviare scritture di rete.
@@ -199,12 +200,77 @@ Framecraft l'installazione del runtime connesso è bloccata anche se la configur
 I comandi non sono retained, non sono accodati offline e non sono ripubblicati automaticamente
 dopo una perdita di connessione. L'esito mancante è **incerto**: il comando potrebbe essere stato
 eseguito, quindi non va ritentato automaticamente. `plcConfirmed` resta `false` anche con broker
-ack QoS 1/2. Solo una nuova lettura aggiorna il valore visualizzato, mai un aggiornamento ottimistico.
+ack QoS 1/2 o risposta Good del servizio Write OPC UA. Solo una nuova lettura aggiorna il valore visualizzato, mai un aggiornamento ottimistico.
 
 L'API deduplica per ID per cinque minuti, solo in memoria, con massimo 1000 richieste registrate;
 non garantisce exactly-once o deduplica dopo un riavvio. Serve un protocollo di conferma/idempotenza
 nel PLC per comandi industriali che lo richiedono. La notifica a schermo distingue ricevuta,
 rifiuto ed esito incerto.
+
+## OPC UA scalare
+
+Il gateway comune usa `node-opcua-client` 2.186.17 nel servizio Node (minimo 22.13.0,
+baseline di deployment Node 24). Non viene distribuito un server OPC UA. L'editor salva
+profili distinti MQTT/OPC UA; un tag non può avere due sorgenti attive.
+
+1. Ottenere endpoint `opc.tcp://host:porta/percorso`, Namespace URI e identificatori reali
+   dal responsabile macchina. Un binding contiene `tag`, `namespaceUri`, `nodeId`,
+   `writeEnabled` (inizialmente false) e `staleAfterMs`. L'identificatore è `i=numero`,
+   `s=testo`, `g=GUID` o `b=base64`, **senza ns=**. L'indice viene risolto a ogni sessione.
+2. Selezionare modalità e policy offerte dal server: preferire `SignAndEncrypt` e
+   `Basic256Sha256`, oppure le policy AES SHA256 supportate. Non vengono provate policy
+   alternative o deprecate. `None/None` richiede consenso `allowInsecure: true` ed è
+   soltanto per test isolati anonimi; utente/password in chiaro vengono rifiutati.
+3. Preparare fuori dal bundle client `certificateFile` (PEM o DER), `privateKeyFile`
+   (chiave PEM), `applicationUri` e `pkiDirectory`. URI, coppia chiave/certificato e
+   validità devono corrispondere. Dare alla chiave permessi minimi per l'account servizio.
+4. Verificare fuori banda il certificato del server con il responsabile e inserirlo nel
+   trust store PKI del servizio (`trusted/certs`); configurare `issuers/certs` e CRL se
+   richieste dalla catena. Il server deve a sua volta autorizzare il certificato client.
+   Certificati sconosciuti restano rifiutati: non accettarli per il solo fatto che
+   compaiono in `rejected`. Hostname/IP e URI server devono corrispondere al certificato
+   del canale effettivo. Non disattivare le verifiche per aggirare un errore.
+5. Per accesso nominale impostare **solo** `usernameEnv` e `passwordEnv`, entrambi,
+   e i valori privati nell'ambiente Node. Il server decide i permessi; l'anonimo non
+   implica diritto di scrittura. Abilitare gateway, connessione e client con le
+   scritture disabilitate, salvare e avviare manualmente il servizio come sopra.
+
+Il trust store viene caricato all'avvio, senza watcher: dopo modifiche a PKI o profili,
+riavviare manualmente il servizio. Errori di trust/accesso/mapping fermano la connessione,
+non generano tentativi ripetuti; i guasti di rete possono ricreare una sessione.
+La diagnostica sanificata Framecraft sostituisce nel processo PLC i dump grezzi dell'SDK.
+
+Tipi iniziali: Bool, interi 8/16/32 bit con segno o senza, Real/Float, LReal/Double,
+String/WString. Tipo built-in, ValueRank scalare e UserAccessLevel vengono verificati
+prima di dichiarare il collegamento pronto e prima di ogni comando. Array, UDT, subtype
+custom, 64 bit, DateTime, browsing/import, metodi, eventi e allarmi OPC UA restano fuori
+dal driver iniziale: un mapping incompatibile è un errore, non un dato convertito a caso.
+
+Subscription e letture periodiche reali mantengono la cache. `receivedAt` misura una
+vera acquisizione, non un keepalive; source/server timestamp e StatusCode uint32 restano
+distinti. La severità UA è mappata a Good=192, Uncertain=64, Bad=0 conservando il codice
+originale. Il timestamp sorgente può restare invariato se il valore non cambia: la
+freschezza OPC UA per ReadMaxAge usa l'acquisizione reale. In caso di dati non validi si
+conserva l'ultimo valore, senza renderlo Good. Perdita sessione e scadenza rendono Bad.
+
+Un comando richiede tutti i consensi: gateway, connessione, catalogo scrivibile,
+`writeEnabled` del binding e permesso corrente OPC UA. `delivery: "opcua-service"`
+significa risposta Good del servizio Write, **non esecuzione fisica del PLC**:
+`plcConfirmed` resta false. Bad esplicito è rifiuto; risposta persa/timeout dopo l'invio
+è incerta. Nessuna coda offline, reinvio automatico o aggiornamento ottimistico della cache.
+
+Fonti ufficiali: [client Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/opc-ua-open-platform-communications-rt-unified/wincc-unified-opc-ua-client-rt-unified/using-the-wincc-unified-opc-ua-client-rt-unified),
+[certificati Optix](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/1-00/contents-ditamap/using-the-software/opc-ua/opc-ua-communications-security/certificates-and-keys.html),
+[API Node OPC UA](https://node-opcua.github.io/api_doc/latest/interfaces/node-opcua-client.index.OPCUAClientOptions.html).
+L'implementazione è Framecraft autonoma, non un adapter per i Runtime proprietari.
+Le prove sintetiche loopback non sostituiscono il collaudo CPU, trust e rete aziendali.
+
+Inventario licenze OPC UA dal lockfile editor: 127 pacchetti, nessuna dipendenza mancante.
+Restano due revisioni esplicite: `precond@0.2.3` non dichiara license nel manifest/lockfile
+(il README installato indica MIT, ma occorre conservare la notice completa verificata);
+`tweetnacl@0.14.5` dichiara Unlicense, da valutare secondo la policy della distribuzione.
+Client, certificate-manager e debug dichiarano MIT, ma questo non approva automaticamente
+l'intero grafo né sostituisce le notice. Il server SDK è soltanto una dipendenza di test.
 
 ## Prima della produzione
 
@@ -213,7 +279,7 @@ certificati/trust verificati, HTTPS e autenticazione/permessi lato server, inter
 audit persistente, prove di guasto/recovery e conferme applicative adeguate ai comandi. Vite dev
 e il proxy locale non sono un server di produzione; il PIN locale del pannello non è RBAC server.
 
-Sono ancora da completare driver OPC UA, conferme PLC, metodi/payload avanzati,
+Sono ancora da completare browsing, array/UDT, metodi/allarmi OPC UA, conferme PLC e payload avanzati,
 storage industriale, audit/RBAC e collaudo su macchina. Verificare lockfile, vulnerabilità,
 licenze/notice e diritti degli asset della distribuzione effettiva. Le basi presenti non sono
 un'approvazione al rilascio industriale.

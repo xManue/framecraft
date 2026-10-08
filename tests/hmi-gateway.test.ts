@@ -105,10 +105,10 @@ describe("client gateway del Runtime browser", () => {
     try { client.start(); await vi.waitFor(() => expect(client.state).toBe("disconnected")); expect(onSnapshot).not.toHaveBeenCalled(); await expect(client.write("Speed", 20)).rejects.toMatchObject({ outcome: "rejected" }); }
     finally { client.stop(); }
   });
-  it("non aggiorna la cache né invia conferma PLC dopo una ricevuta del broker", async () => {
+  it.each(["broker-ack", "transport", "opcua-service"])("non aggiorna la cache né invia conferma PLC dopo una ricevuta %s", async (delivery) => {
     const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).endsWith("/snapshot")) return response(snapshot);
-      const command = JSON.parse(String(init?.body)); return response({ ...command, outcome: "delivered", delivery: "broker-ack", plcConfirmed: false });
+      const command = JSON.parse(String(init?.body)); return response({ ...command, outcome: "delivered", delivery, plcConfirmed: false });
     });
     const onSnapshot = vi.fn(), client = createHmiGatewayClient({ request, onSnapshot });
     try {
@@ -124,6 +124,12 @@ describe("client gateway del Runtime browser", () => {
     }));
     const client = createHmiGatewayClient({ request, onSnapshot, pollMs: 60_000 });
     try { client.start(); await vi.waitFor(() => expect(client.state).toBe("disconnected")); expect(cancel).toHaveBeenCalledOnce(); expect(onSnapshot).not.toHaveBeenCalled(); }
+    finally { client.stop(); }
+  });
+  it("un valore OPC UA invariato può essere letto fresco mantenendo timestamp e StatusCode originali", async () => {
+    const sample = { ...snapshot.samples[0], receivedAt: Date.now(), sourceTimestamp: Date.now() - 60000, serverTimestamp: Date.now(), opcUaStatusCode: 0 };
+    const client = createHmiGatewayClient({ request: async () => response({ ...snapshot, samples: [sample] }), pollMs: 60000 });
+    try { client.start(); await vi.waitFor(() => expect(client.state).toBe("connected")); expect(await client.read("Speed", { maxAge: 5000 })).toMatchObject({ value: "10", opcUaStatusCode: 0, sourceTimestamp: sample.sourceTimestamp }); }
     finally { client.stop(); }
   });
   it("non ritenta una scrittura se HTTP cade dopo l'invio", async () => {

@@ -28,13 +28,23 @@ L'utente deve poter:
 
 ## Connessioni PLC configurabili senza modificare JSON a mano
 
-`Pannello → Connessioni PLC` configura MQTT nel servizio Node e il client same-origin del pannello:
-broker, mapping del catalogo tag reale, valore/qualità/timestamp, freshness, QoS, timeout,
-riferimenti ambiente e percorsi TLS. Gateway, connessione, accesso tag e topic comando sono gate
+`Pannello → Connessioni PLC` configura MQTT e OPC UA scalare nel servizio Node e il client same-origin del pannello:
+broker/server, mapping del catalogo tag reale, valore/qualità/timestamp, freshness, QoS o nodi,
+timeout, riferimenti ambiente e percorsi TLS/PKI. Gateway, connessione, accesso tag e mapping comando sono gate
 separati per le scritture. Non esistono credenziali inline, connessioni avviate dal dialogo o
-conferme PLC simulate; OPC UA resta da implementare. Mapping paginati e ricerca dei tag limitano
+conferme PLC simulate; il client OPC UA scalare verifica trust, Namespace URI, tipi e permessi; browsing, array/UDT e metodi restano da implementare. Mapping paginati e ricerca dei tag limitano
 il DOM anche per cataloghi grandi. Il modulo puro di validazione è comune a editor, driver e
 gateway, e viene copiato nello standard generato.
+
+Flusso comune: catalogo tag + profili validati → servizio Node → driver MQTT/OPC UA →
+campioni acquisiti → gateway loopback autenticato → proxy same-origin → HMI/IR.
+Il browser non contiene credenziali PLC. Il gateway è il confine trasporto, non RBAC
+operatore o interblocco: una ricevuta di servizio non autorizza a inventare conferme.
+Per OPC UA si usa Namespace URI invece di indici stabili presunti, subscription e
+letture reali per verificare valori invariati, trust caricato all'avvio senza autoaccept.
+La lettura periodica aumenta traffico ma evita di confondere keepalive con freschezza;
+va dimensionata sulla CPU. Driver scalare e policy SHA256 riducono il primo perimetro;
+browsing, UDT/array, metodi/allarmi e interoperabilità aziendale restano lavoro esplicito.
 
 La persistenza confronta contenuto originale dei due cataloghi e del catalogo tag, root e
 generazione del progetto. File mancanti e errori sono distinti; conflitti richiedono ricarica
@@ -182,8 +192,8 @@ fino all'esito del trasporto senza rigiocare gli effetti. Le letture provengono 
 acquisiti, le scritture non aggiornano la cache. Cambio contesto/stop impediscono ulteriori
 effetti; un invio interrotto resta incerto e non viene ritentato. `hmiWriteWait`, lettura CPU
 forzata, QCD/audit operatore e bit atomici non disponibili non vengono simulati come riusciti.
-Mancano driver OPC UA, conferme applicative PLC, autenticazione/RBAC/audit server e payload
-avanzati. Una ricevuta MQTT non è una conferma PLC. Servizio, client e interprete vengono
+Mancano browsing/array/UDT/metodi OPC UA, conferme applicative PLC, autenticazione/RBAC/audit server e payload
+avanzati. Una ricevuta MQTT o del servizio Write OPC UA non è una conferma PLC. Servizio, client e interprete vengono
 copiati dallo standard, con connessioni disabilitate inizialmente. Vedi `runtime/README.md`.
 Importare sorgenti vendor può aiutare la migrazione, ma round-trip verso IDE, licenze/token vendor
 e deploy sui loro Runtime non sono requisiti del prodotto.
@@ -481,7 +491,7 @@ altri controlli restano da coprire. Tranche e verifiche sono ai punti 79 e 82 di
 Non e' un motore JavaScript completo: restano classi, spread e funzioni come valori, closure generiche,
 scoping di blocco/hoisting completo e librerie versionate. L'isolamento completo dei contesti
 JavaScript per istanza faceplate e lo Scheduler server industriale richiedono altro lavoro.
-Il trasporto MQTT è integrato nelle continuazioni della IR, non equivale a un motore JavaScript
+Il trasporto MQTT/OPC UA è integrato nelle continuazioni della IR, non equivale a un motore JavaScript
 completo o alla conferma PLC. Stato e verifiche sono in `LAVORO.md`, punti 71, 74, 76 e 91;
 `WCU-EVT-05/07` rimangono parziali e non certificano un HMI collegato alla macchina.
 

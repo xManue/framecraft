@@ -36,6 +36,11 @@ describe("diagnostica PLC sicura e comprensibile", () => {
   it.each([["ECONNREFUSED", "NETWORK_REFUSED"], ["EAI_AGAIN", "NETWORK_DNS"], ["ENOTFOUND", "NETWORK_DNS"], ["ETIMEDOUT", "NETWORK_TIMEOUT"], ["CERT_HAS_EXPIRED", "TLS_EXPIRED"], ["CERT_NOT_YET_VALID", "TLS_EXPIRED"], ["ERR_TLS_CERT_ALTNAME_INVALID", "TLS_HOSTNAME"], ["SELF_SIGNED_CERT_IN_CHAIN", "TLS_UNTRUSTED"], ["ERR_OSSL_X509_KEY_VALUES_MISMATCH", "TLS_CONFIGURATION"], [4, "AUTH_DENIED"], [135, "AUTH_DENIED"], [132, "MQTT_VERSION"], [133, "CLIENT_ID_INVALID"], [142, "CLIENT_ID_CONFLICT"]])("classifica il codice %s senza leggere error.message", (code, expected) => {
     expect(transportDiagnosticCode({ code, message: "PRIVATE_DATA" })).toBe(expected);
   });
+  it("conserva solo StatusCode UA esadecimali completi, senza propagare testo tecnico arbitrario", () => {
+    expect(connectionDiagnostic("OPC_UA_WRITE_REJECTED", { protocol: "opcua", technicalCode: "0x801F0000" }).technicalCode).toBe("0x801F0000");
+    for (const technicalCode of ["0x801F0000 secret=PRIVATE", "0x801F", "BadUserAccessDenied PRIVATE"]) expect(connectionDiagnostic("OPC_UA_WRITE_REJECTED", { protocol: "opcua", technicalCode }).technicalCode).toBeUndefined();
+    expect(connectionDiagnostic("WRITE_REJECTED", { protocol: "mqtt", technicalCode: "0x801F0000" }).technicalCode).toBeUndefined();
+  });
   it("raggruppa errori uguali e contiene callback difettosi senza perdere il primo evento", () => {
     const callback = vi.fn(), report = createDiagnosticReporter(callback, { protocol: "mqtt", connectionId: "linea" }, { intervalMs: 5000 });
     report("BAD_PAYLOAD", { tag: "A", timestamp: 1000 }); report("BAD_PAYLOAD", { tag: "A", timestamp: 2000 }); report("BAD_PAYLOAD", { tag: "A", timestamp: 3000 });

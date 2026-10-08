@@ -8,7 +8,7 @@ const transport = (): HmiScriptTransport => ({ read: vi.fn(async () => ({ value:
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("continuazioni script collegate al trasporto reale", () => {
-  it("attende davvero la ricevuta, non rigioca effetti e non aggiorna il dato acquisito", async () => {
+  it.each(["broker-ack", "transport", "opcua-service"] as const)("attende la ricevuta %s senza replay o aggiornamento ottimistico", async (delivery) => {
     const driver = transport(); let resolve!: (value: HmiScriptCommandResult) => void;
     driver.write = vi.fn(() => new Promise<HmiScriptCommandResult>(r => { resolve = r; }));
     const scope = createHmiScriptScope(program("let counter = 0;"));
@@ -16,10 +16,10 @@ describe("continuazioni script collegate al trasporto reale", () => {
     const pending = executeHmiScriptAsync(program('counter = counter + 1; Tags("Speed").Write(20); counter = counter + 1; return Tags("Speed").Read();'), input, { transport: driver, globalScope: scope });
     await vi.waitFor(() => expect(driver.write).toHaveBeenCalledOnce());
     expect(scope.values.get("counter")).toBe(1);
-    resolve(delivered("Speed"));
+    resolve({ ...delivered("Speed"), delivery });
     const result = await pending;
     expect(result.error).toBeUndefined(); expect(scope.values.get("counter")).toBe(2);
-    expect(result).toMatchObject({ returned: 10, reads: { Speed: "10" }, writes: {}, commands: [delivered("Speed")] });
+    expect(result).toMatchObject({ returned: 10, reads: { Speed: "10" }, writes: {}, commands: [{ ...delivered("Speed"), delivery }] });
     expect(result.tagStatus.Speed.qualityCode).toBe(0); expect(result.tagStatus.Speed.qualityKnown).toBe(false);
     expect(input.Speed).toBe("4"); expect(driver.write).toHaveBeenCalledOnce();
   });

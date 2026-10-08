@@ -50,7 +50,7 @@ export function npmLicenseInventory(lock, scopeRoots) {
 
 export async function licenseAudit(root) {
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")), lock = JSON.parse(await readFile(path.join(root, "package-lock.json"), "utf8"));
-  const npm = npmLicenseInventory(lock, { editor: manifest.dependencies ?? {}, tooling: manifest.devDependencies ?? {}, "mqtt-runtime": { mqtt: "5.16.0" } });
+  const npm = npmLicenseInventory(lock, { editor: manifest.dependencies ?? {}, tooling: manifest.devDependencies ?? {}, "mqtt-runtime": { mqtt: "5.16.0" }, "opcua-runtime": { "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } });
   let cargo;
   try {
     const execution = { encoding: "utf8", windowsHide: true, timeout: 60_000, maxBuffer: 16_777_216, stdio: ["ignore", "pipe", "pipe"] };

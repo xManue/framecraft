@@ -16,8 +16,8 @@ A Tauri-based visual editor for existing React + TypeScript + Vite projects. The
 The editor also generates standalone React HMI panels, supports page navigation, multi-selection,
 drag/resize/snap, z-index and rotation, PLC bindings and explicit simulation, trends/data logs,
 faceplates and a bounded script interpreter. Mouse-drawn highlight regions are persisted in the
-panel source. **Pannello → Connessioni PLC** configures the real Node MQTT service and same-origin
-gateway; saving does not start a connection or send commands. OPC UA and optional AI remain planned.
+panel source. **Pannello → Connessioni PLC** configures the real Node MQTT/OPC UA scalar service and same-origin
+gateway; saving does not start a connection or send commands. OPC UA scalar mappings are supported; browsing/arrays/methods and optional AI remain planned.
 
 See [ARCHITETTURA-HMI.md](ARCHITETTURA-HMI.md), [LAVORO.md](LAVORO.md), and the WinCC/Optix/AI roadmaps
 for implemented behavior, verification and remaining work. These are autonomous React panels,
@@ -185,8 +185,8 @@ prove interoperability with a real machine or its broker/trust, or approval for 
 ## Production status
 
 This checkpoint is not an industrial release. Authentication/RBAC and durable server audit/storage,
-OPC UA, PLC application acknowledgements, advanced payloads and real CPU/TLS testing remain open.
-Compiled scripts, modules, timers and Scheduler now await MQTT transport without optimistic tag
+OPC UA browsing/arrays/methods, PLC application acknowledgements, advanced payloads and real CPU/TLS testing remain open.
+Compiled scripts, modules, timers and Scheduler now await MQTT/OPC UA transport without optimistic tag
 updates or replay; broker receipts are not PLC acknowledgements. See [runtime/README.md](runtime/README.md).
 MQTT attempts, including reconnect/subscription, are bounded. Credentials, certificate,
 mapping, stale-data and command errors include their impact and how to resolve them.

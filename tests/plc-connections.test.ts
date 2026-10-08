@@ -13,7 +13,8 @@ describe("configurazione PLC condivisa editor/Runtime", () => {
     expect(() => normalizeMqttTagValue(1e-50, "Real")).toThrow("fuori dal tipo"); expect(normalizeMqttTagValue(1e-50, "LReal")).toBe(1e-50);
     const model = parseConnectionConfiguration(snapshot()); model.catalog.connections[0].id = "bad\nname";
     expect(connectionConfigurationIssues(model).some((issue) => issue.path.endsWith(".id"))).toBe(true);
-    model.catalog.connections[0].id = "valid"; model.catalog.connections[0].bindings[0].encoding = "text";
+    const connection = model.catalog.connections[0]; if (connection.protocol !== "mqtt") throw new Error("Fixture MQTT richiesta");
+    connection.id = "valid"; connection.bindings[0].encoding = "text";
     expect(connectionConfigurationIssues(model).some((issue) => issue.path.endsWith(".valuePath"))).toBe(true);
   });
   it("parte disabilitata e non inventa broker, origini o tag", () => {
@@ -50,7 +51,8 @@ describe("configurazione PLC condivisa editor/Runtime", () => {
     expect(connectionConfigurationIssues(model)).toContainEqual(expect.objectContaining({ path: "connections.0.bindings.0." + path }));
   });
   it("rifiuta topic Unicode oltre il limite UTF-8 senza usare Buffer nel browser", () => {
-    const model = parseConnectionConfiguration(snapshot()); model.catalog.connections[0].bindings[0].topic = "é".repeat(32768);
+    const model = parseConnectionConfiguration(snapshot()); const connection = model.catalog.connections[0];
+    if (connection.protocol !== "mqtt") throw new Error("Fixture MQTT richiesta"); connection.bindings[0].topic = "é".repeat(32768);
     expect(connectionConfigurationIssues(model)[0].path).toBe("connections.0.bindings.0.topic");
   });
   it("porta 0 è ammessa solo nel collaudo gateway, non nella configurazione UI", () => {

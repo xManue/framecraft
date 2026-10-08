@@ -3,7 +3,7 @@ import { normalizeMqttTagValue } from "../../runtime/connection-config.mjs";
 export type { ConnectionDiagnostic } from "../../runtime/connection-diagnostics.mjs";
 export interface HmiGatewaySample {
   tag: string; connectionId: string; value?: string; qualityCode?: number; timestamp?: number; sourceTimestamp?: number;
-  receivedAt: number; retained?: boolean; lastError?: string; errorDescription?: string;
+  receivedAt: number; retained?: boolean; lastError?: string; errorDescription?: string; serverTimestamp?: number; opcUaStatusCode?: number;
 }
 export interface HmiGatewaySnapshot {
   version: 1; allowWrites: boolean;
@@ -12,7 +12,7 @@ export interface HmiGatewaySnapshot {
   tags: { name: string; dataType: string; access: string; connectionId: string; writable: boolean }[];
   samples: HmiGatewaySample[];
 }
-export interface HmiGatewayWriteResult { id: string; tag: string; outcome: "delivered"; delivery: "broker-ack" | "transport"; plcConfirmed: false }
+export interface HmiGatewayWriteResult { id: string; tag: string; outcome: "delivered"; delivery: "broker-ack" | "transport" | "opcua-service"; plcConfirmed: false }
 export interface HmiGatewayOptions {
   path?: string; pollMs?: number; timeoutMs?: number; request?: typeof fetch;
   onSnapshot?: (snapshot: HmiGatewaySnapshot) => void;
@@ -96,6 +96,8 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
       if (!sample || tags.get(sample.tag) !== sample.connectionId || samples.has(sample.tag) || !Number.isFinite(sample.receivedAt)
         || sample.value !== undefined && typeof sample.value !== "string" || sample.qualityCode !== undefined && (!Number.isInteger(sample.qualityCode) || sample.qualityCode < 0 || sample.qualityCode > 65_535)
         || sample.timestamp !== undefined && !Number.isFinite(sample.timestamp) || sample.sourceTimestamp !== undefined && !Number.isFinite(sample.sourceTimestamp)
+        || sample.serverTimestamp !== undefined && !Number.isFinite(sample.serverTimestamp)
+        || sample.opcUaStatusCode !== undefined && (!Number.isInteger(sample.opcUaStatusCode) || sample.opcUaStatusCode < 0 || sample.opcUaStatusCode > 0xffffffff)
         || sample.lastError !== undefined && typeof sample.lastError !== "string" || sample.errorDescription !== undefined && typeof sample.errorDescription !== "string") throw new Error("Campione gateway non valido.");
       samples.add(sample.tag);
     }
@@ -135,10 +137,11 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
       if (options.mode === 1 || options.maxAge === 0) throw new HmiGatewayCommandError("MQTT non supporta la lettura forzata dalla CPU: sono disponibili soltanto i campioni ricevuti.", "rejected");
       if (options.mode !== undefined && options.mode !== 0 || options.maxAge !== undefined && (!Number.isInteger(options.maxAge) || options.maxAge < 0 || options.maxAge > 0xffffffff)) throw new HmiGatewayCommandError("Parametri di lettura non validi.", "rejected");
       const definition = snapshot.tags.find((item) => item.name === tag);
-      if (!definition || definition.access === "write" || !snapshot.connections.some((item) => item.id === definition.connectionId && item.state === "connected")) throw new HmiGatewayCommandError("Tag non leggibile o connessione MQTT non disponibile.", "rejected");
+      if (!definition || definition.access === "write" || !snapshot.connections.some((item) => item.id === definition.connectionId && item.state === "connected")) throw new HmiGatewayCommandError("Tag non leggibile o connessione PLC non disponibile.", "rejected");
       const sample = snapshot.samples.find((item) => item.tag === tag);
-      if (!sample || sample.value === undefined || sample.lastError || sample.qualityCode !== undefined && (sample.qualityCode & 0xc0) === 0) throw new HmiGatewayCommandError(sample?.errorDescription ?? "Nessun campione MQTT valido disponibile per questo tag. Controlla publisher, mapping e qualità nella diagnostica PLC.", "rejected");
-      if (options.maxAge !== undefined && Math.max(Date.now() - sample.receivedAt, Date.now() - (sample.sourceTimestamp ?? sample.receivedAt)) > options.maxAge) throw new HmiGatewayCommandError("Il campione MQTT e' piu' vecchio del limite richiesto; nessuna lettura CPU simulata.", "rejected");
+      if (!sample || sample.value === undefined || sample.lastError || sample.qualityCode !== undefined && (sample.qualityCode & 0xc0) === 0) throw new HmiGatewayCommandError(sample?.errorDescription ?? "Nessun campione PLC valido disponibile per questo tag. Controlla sorgente, mapping e qualità nella diagnostica PLC.", "rejected");
+      const sourceAge = sample.opcUaStatusCode !== undefined ? 0 : Date.now() - (sample.sourceTimestamp ?? sample.receivedAt);
+      if (options.maxAge !== undefined && Math.max(Date.now() - sample.receivedAt, sourceAge) > options.maxAge) throw new HmiGatewayCommandError("Il campione PLC e' piu' vecchio del limite richiesto; nessuna lettura CPU simulata.", "rejected");
       return { ...sample };
     },
     async write(tag: string, value: string | number | boolean, signal?: AbortSignal): Promise<HmiGatewayWriteResult> {
@@ -160,7 +163,7 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
           safeNotify(options.onDiagnostic, event);
           throw new HmiGatewayCommandError(diagnosticText(event), outcome, event);
         }
-        if (data.id !== id || data.tag !== tag || data.outcome !== "delivered" || data.plcConfirmed !== false || typeof data.delivery !== "string" || !["broker-ack", "transport"].includes(data.delivery)) throw new Error("Conferma gateway non valida.");
+        if (data.id !== id || data.tag !== tag || data.outcome !== "delivered" || data.plcConfirmed !== false || typeof data.delivery !== "string" || !["broker-ack", "transport", "opcua-service"].includes(data.delivery)) throw new Error("Conferma gateway non valida.");
         return data as unknown as HmiGatewayWriteResult;
       } catch (error) {
         if (error instanceof HmiGatewayCommandError) throw error;

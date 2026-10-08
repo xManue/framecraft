@@ -178,7 +178,7 @@ export interface HmiScriptTagFailure { code?: number; description?: string }
 export interface HmiScriptCommandResult {
   tag: string;
   outcome: "delivered" | "rejected" | "uncertain";
-  delivery?: "broker-ack" | "transport";
+  delivery?: "broker-ack" | "transport" | "opcua-service";
   plcConfirmed: false;
   id?: string;
   error?: string;
@@ -1558,7 +1558,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       if (request.mode === 1) throw Object.assign(new Error("hmiWriteWait richiede una conferma PLC che questo trasporto non supporta; nessun comando inviato."), { outcome: "rejected" });
       const response = (yield request) as HmiScriptCommandResult;
       if (!response || response.tag !== request.tag || response.plcConfirmed !== false || !["delivered", "rejected", "uncertain"].includes(response.outcome)
-        || response.outcome === "delivered" && !["broker-ack", "transport"].includes(response.delivery ?? "")) throw new Error("Ricevuta del trasporto non valida.");
+        || response.outcome === "delivered" && !["broker-ack", "transport", "opcua-service"].includes(response.delivery ?? "")) throw new Error("Ricevuta del trasporto non valida.");
       receipt = { ...response };
     } catch (caught) {
       receipt = { tag: request.tag, outcome: caught && typeof caught === "object" && "outcome" in caught && caught.outcome === "rejected" ? "rejected" : "uncertain", plcConfirmed: false, error: faultMessage(caught) };

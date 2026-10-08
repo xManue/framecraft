@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { createMqttGateway } from "./gateway.mjs";
+import { createPlcGateway } from "./gateway.mjs";
 import { ConnectionOperationError, connectionDiagnostic } from "./connection-diagnostics.mjs";
 import { createRuntimeLogger } from "./runtime-log.mjs";
 
@@ -15,7 +15,7 @@ try {
   const plc = JSON.parse(await readFile(new URL("framecraft.plc.json", root), "utf8"));
   if (catalog.gateway?.enabled !== true) process.stdout.write((json ? JSON.stringify({ type: "gateway", state: "disabled" }) : "Gateway disabilitato; nessuna connessione PLC avviata.") + "\n");
   else {
-    gateway = createMqttGateway(catalog, plc.variables, { onDiagnostic: (event) => logger.write(event),
+    gateway = createPlcGateway(catalog, plc.variables, { onDiagnostic: (event) => logger.write(event),
       onState: (state) => process.stdout.write(JSON.stringify({ type: "connection", ...state }) + "\n") });
     if (!stopping) {
       await gateway.start();
@@ -24,6 +24,6 @@ try {
     }
   }
 } catch (error) {
-  logger.write(error instanceof ConnectionOperationError ? error.diagnostic : connectionDiagnostic(error?.path?.endsWith(".protocol") ? "OPC_UA_UNAVAILABLE" : "CONFIGURATION", { protocol: "gateway", technicalCode: error.code }));
+  logger.write(error instanceof ConnectionOperationError ? error.diagnostic : connectionDiagnostic("CONFIGURATION", { protocol: "gateway", technicalCode: error.code }));
   await stop(); process.exitCode = 1;
 } finally { if (!gateway) await logger.close(); else await logger.flush(); }

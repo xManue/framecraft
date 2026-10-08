@@ -5,14 +5,15 @@ import { normalizeMqttTagValue, type PlcConnectionConfig } from "../../runtime/c
 import type { MqttBinding } from "../../runtime/mqtt-driver.mjs";
 import type { GatewayConfig } from "../../runtime/gateway.mjs";
 import {
-  connectionConfigurationIssues, newMqttConnection, parseConnectionConfiguration, serializeConnectionConfiguration,
+  connectionConfigurationIssues, newMqttConnection, newOpcUaConnection, parseConnectionConfiguration, serializeConnectionConfiguration,
   type ConnectionConfigurationSnapshot, type ConnectionEditorModel, type ConnectionIssue,
 } from "../core/plcConnections";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
 import { PlcConnectionGuide } from "./PlcConnectionGuide";
+import { OpcUaConnectionEditor } from "./OpcUaConnectionEditor";
 
-type FieldProps = {
+export type FieldProps = {
   label: string; path: string; value?: string | number; onChange(value: string): void;
   issues: ConnectionIssue[]; hint?: string; placeholder?: string; numeric?: boolean; min?: number; max?: number;
   choices?: readonly { value: string; label: string; disabled?: boolean }[]; disabled?: boolean;
@@ -129,9 +130,12 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
   function chooseConnection(index: number) { setSelected(index); setMappingPage(0); setMappingSearch(""); setTagSearch(""); }
   function gateway(patch: Partial<GatewayConfig>) { update((current) => ({ ...current, catalog: { ...current.catalog, gateway: { ...current.catalog.gateway, ...patch } } })); }
   function client(patch: Partial<ConnectionEditorModel["runtime"]["gateway"]>) { update((current) => ({ ...current, runtime: { ...current.runtime, gateway: { ...current.runtime.gateway, ...patch } } })); }
-  function connection(patch: Partial<PlcConnectionConfig>) { update((current) => ({ ...current, catalog: { ...current.catalog, connections: current.catalog.connections.map((c, i) => i === selected ? { ...c, ...patch } : c) } })); }
-  function binding(index: number, patch: Partial<MqttBinding>) { if (model) connection({ bindings: model.catalog.connections[selected].bindings.map((b, i) => i === index ? { ...b, ...patch } : b) }); }
-  const current = model?.catalog.connections[selected];
+  function connection(patch: Partial<Extract<PlcConnectionConfig, { protocol: "mqtt" }>>) { update((current) => ({ ...current, catalog: { ...current.catalog, connections: current.catalog.connections.map((c, i) => i === selected && c.protocol === "mqtt" ? { ...c, ...patch, protocol: "mqtt" } : c) } })); }
+  function binding(index: number, patch: Partial<MqttBinding>) { const c = model?.catalog.connections[selected]; if (c?.protocol === "mqtt") connection({ bindings: c.bindings.map((b, i) => i === index ? { ...b, ...patch } : b) }); }
+  function removeConnection() { update((m) => ({ ...m, catalog: { ...m.catalog, connections: m.catalog.connections.filter((_, i) => i !== selected) } })); setSelected(Math.max(0, selected - 1)); }
+  const selectedConnection = model?.catalog.connections[selected];
+  const current = selectedConnection?.protocol === "mqtt" ? selectedConnection : undefined;
+  const opcua = selectedConnection?.protocol === "opcua" ? selectedConnection : undefined;
   const pageSize = 10;
   const mappingRows = current?.bindings.map((value, index) => ({ value, index })).filter(({ value }) => !mappingSearch || value.tag.toLowerCase().includes(mappingSearch.toLowerCase())) ?? [];
   const page = Math.min(mappingPage, Math.max(0, Math.ceil(mappingRows.length / pageSize) - 1));
@@ -142,14 +146,14 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
 
   return createPortal(<div className="connections-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
     <section ref={dialog} className="connections-dialog" role="dialog" aria-modal="true" aria-labelledby="plc-connections-title" aria-describedby="plc-connections-purpose" aria-busy={phase === "loading" || phase === "saving"}>
-      <header><div><h2 id="plc-connections-title"><Cable size={20} aria-hidden="true" /> Connessioni PLC</h2><p id="plc-connections-purpose">{initialProject?.name} · configurazione offline del servizio MQTT e dei tag del pannello</p></div><div className="connection-header-actions"><button type="button" aria-controls={guideId} disabled={!!confirm} onClick={() => { if (guide.current) { guide.current.open = true; guide.current.scrollIntoView?.({ block: "nearest" }); guide.current.querySelector("summary")?.focus(); } }}><BookOpen size={18} aria-hidden="true" /> Guida rapida</button><button type="button" data-close-connections disabled={phase === "saving"} onClick={requestClose} aria-label="Chiudi Connessioni PLC"><X size={20} /></button></div></header>
+      <header><div><h2 id="plc-connections-title"><Cable size={20} aria-hidden="true" /> Connessioni PLC</h2><p id="plc-connections-purpose">{initialProject?.name} · configurazione offline MQTT / OPC UA e tag del pannello</p></div><div className="connection-header-actions"><button type="button" aria-controls={guideId} disabled={!!confirm} onClick={() => { if (guide.current) { guide.current.open = true; guide.current.scrollIntoView?.({ block: "nearest" }); guide.current.querySelector("summary")?.focus(); } }}><BookOpen size={18} aria-hidden="true" /> Guida rapida</button><button type="button" data-close-connections disabled={phase === "saving"} onClick={requestClose} aria-label="Chiudi Connessioni PLC"><X size={20} /></button></div></header>
       <div className="connections-body">
         <PlcConnectionGuide ref={guide} id={guideId} />
         {phase === "loading" && <p role="status">Lettura dei cataloghi del progetto…</p>}
         {error && <div className="connection-error-banner" role="alert">{error}</div>}
         {status && <div className="connection-success" role="status"><Check size={18} />{status}</div>}
         {model && <fieldset disabled={phase !== "ready" || !!confirm}>
-          <p className="connection-note">MQTT disponibile. OPC UA: driver ancora da implementare. Salvare configura i JSON; non verifica CPU, broker, certificati o credenziali e non avvia la rete.</p>
+          <p className="connection-note">MQTT e OPC UA scalare nel servizio Node. Salvare configura i JSON; non verifica CPU, server, certificati o credenziali e non avvia la rete. Tieni disabilitate le scritture per il primo collaudo.</p>
           <section className="connection-section"><h3>1. Servizio e pannello</h3><div className="connection-grid">
             {toggle("Abilita il servizio gateway", "gateway.enabled", model.catalog.gateway.enabled, (enabled) => gateway({ enabled }), "Vale al prossimo avvio manuale del servizio Node.")}
             {toggle("Collega il pannello al gateway", "runtime.gateway.enabled", model.runtime.gateway.enabled, (enabled) => client({ enabled }), "Solo nel Runtime autonomo, non nel canvas dell’editor.")}
@@ -161,11 +165,12 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
             {field("Percorso same-origin del gateway", "runtime.gateway.path", model.runtime.gateway.path, () => {}, { disabled: true, hint: "Il gateway attuale usa solo /_framecraft/plc/v1." })}
             {model.runtime.gateway.path !== "/_framecraft/plc/v1" && <button type="button" onClick={() => client({ path: "/_framecraft/plc/v1" })}>Ripristina percorso standard</button>}
             <div className="connection-field"><label htmlFor="plc-origins">Origini HTTP/HTTPS autorizzate</label><textarea id="plc-origins" data-field="gateway.allowedOrigins" value={model.catalog.gateway.allowedOrigins.join("\n")} onChange={(event) => gateway({ allowedOrigins: event.target.value.split("\n") })} placeholder="https://hmi.azienda.local" aria-invalid={issues.some((i) => i.path === "gateway.allowedOrigins")} aria-describedby="plc-origins-help" autoComplete="off" spellCheck={false} /><small id="plc-origins-help">Una origine esatta per riga, senza percorso. Non è CORS aperto né autenticazione operatore. Non vengono aggiunte origini automaticamente.</small>{issues.filter((i) => i.path === "gateway.allowedOrigins").map((i) => <small className="connection-error" key={i.path}>{i.message}</small>)}</div>
-            {toggle("Consenti scritture nel gateway", "gateway.allowWrites", model.catalog.gateway.allowWrites, (allowWrites) => gateway({ allowWrites }), "Servono anche il consenso della connessione, un tag scrivibile e il topic comando. L’ACK broker non conferma l’esecuzione PLC.")}
+            {toggle("Consenti scritture nel gateway", "gateway.allowWrites", model.catalog.gateway.allowWrites, (allowWrites) => gateway({ allowWrites }), "Servono anche consenso della connessione, tag scrivibile e mapping comando (topic MQTT o consenso nodo OPC UA). La ricevuta non conferma l’esecuzione PLC.")}
           </div></details></section>
-          <section className="connection-section"><div className="connection-section-heading"><h3>2. Broker e tag</h3><button type="button" disabled={model.catalog.connections.length >= 1000} onClick={() => { setSelected(model.catalog.connections.length); update((m) => ({ ...m, catalog: { ...m.catalog, connections: [...m.catalog.connections, newMqttConnection(m.catalog.connections)] } })); }}><Plus size={17} /> Aggiungi MQTT</button></div>
-            {!!model.catalog.connections.length && <div className="connection-picker" role="group" aria-label="Scegli connessione MQTT">{model.catalog.connections.map((c, index) => <button key={index} type="button" aria-pressed={selected === index} onClick={() => chooseConnection(index)}>{c.id || "Connessione " + (index + 1)}<small>{c.enabled ? "Abilitata" : "Disabilitata"} · {c.bindings.length} tag</small></button>)}</div>}
-            {!current && <p>Nessuna connessione configurata. Aggiungi un broker MQTT e usa i tag già salvati in Variabili PLC.</p>}
+          <section className="connection-section"><div className="connection-section-heading"><h3>2. Broker, server OPC UA e tag</h3><button type="button" disabled={model.catalog.connections.length >= 1000} onClick={() => { setSelected(model.catalog.connections.length); update((m) => ({ ...m, catalog: { ...m.catalog, connections: [...m.catalog.connections, newMqttConnection(m.catalog.connections)] } })); }}><Plus size={17} /> Aggiungi MQTT</button><button type="button" disabled={model.catalog.connections.length >= 1000} onClick={() => { setSelected(model.catalog.connections.length); update((m) => ({ ...m, catalog: { ...m.catalog, connections: [...m.catalog.connections, newOpcUaConnection(m.catalog.connections)] } })); }}><Plus size={17} /> Aggiungi OPC UA</button></div>
+            {!!model.catalog.connections.length && <div className="connection-picker" role="group" aria-label="Scegli connessione PLC">{model.catalog.connections.map((c, index) => <button key={index} type="button" aria-pressed={selected === index} onClick={() => chooseConnection(index)}>{c.id || "Connessione " + (index + 1)}<small>{c.protocol === "opcua" ? "OPC UA" : "MQTT"} · {c.enabled ? "Abilitata" : "Disabilitata"} · {c.bindings.length} tag</small></button>)}</div>}
+            {!selectedConnection && <p>Nessuna connessione configurata. Aggiungi MQTT oppure OPC UA e usa i tag già salvati in Variabili PLC.</p>}
+            {opcua && <OpcUaConnectionEditor key={selected} config={opcua} prefix={prefix} variables={model.variables} focusPath={focusPath} onFocusHandled={() => setFocusPath(undefined)} mappingLimit={model.catalog.connections.reduce((n, c) => n + c.bindings.length, 0) >= 5000} field={field} toggle={toggle} supportedType={supportedType} onRemove={removeConnection} onChange={(next) => update((m) => ({ ...m, catalog: { ...m.catalog, connections: m.catalog.connections.map((c, index) => index === selected ? next : c) } }))} />}
             {current && <><div className="connection-grid">
               {field("Nome connessione", prefix + "id", current.id, (id) => connection({ id }))}
               {field("Indirizzo del broker", prefix + "url", current.url, (url) => connection({ url }), { placeholder: "mqtts://broker.azienda.local:8883", hint: "mqtt, mqtts, ws o wss. Non inserire utente e password nell’URL." })}
@@ -204,7 +209,7 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
                 {field("QoS comando " + (index + 1), path + "writeQos", b.writeQos ?? 1, (value) => binding(index, { writeQos: Number(value) as 0 | 1 | 2 }), { choices: qosChoices, disabled: variable?.access === "read" })}
               </div></details><button type="button" className="connection-remove" onClick={() => connection({ bindings: current.bindings.filter((_, i) => i !== index) })} aria-label={"Rimuovi mapping " + (index + 1)}><Trash2 size={16} /> Rimuovi mapping</button></article>;
             })}
-            <button type="button" className="connection-remove" onClick={() => { update((m) => ({ ...m, catalog: { ...m.catalog, connections: m.catalog.connections.filter((_, i) => i !== selected) } })); setSelected(Math.max(0, selected - 1)); }}><Trash2 size={16} /> Rimuovi connessione</button></>}
+            <button type="button" className="connection-remove" onClick={removeConnection}><Trash2 size={16} /> Rimuovi connessione</button></>}
           </section>
           {!!issues.length && <div className="connection-error-banner" role="alert"><strong>Correggi la configurazione prima di salvare</strong>{issues.slice(0, 6).map((issue) => <button type="button" key={issue.path + issue.message} onClick={() => { const match = /^connections\.(\d+)\./.exec(issue.path); if (match) setSelected(Number(match[1])); const mapping = /\.bindings\.(\d+)\./.exec(issue.path); setMappingSearch(""); if (mapping) setMappingPage(Math.floor(Number(mapping[1]) / pageSize)); setFocusPath(issue.path); }}>{issue.message}</button>)}</div>}
         </fieldset>}

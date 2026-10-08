@@ -60,7 +60,13 @@ describe("generatore nuovo pannello standard", () => {
     expect(JSON.parse(files.find((file) => file.path === "framecraft.connections.json")!.content)).toEqual({ version: 1, connections: [] });
     expect(JSON.parse(files.find((file) => file.path === "runtime/package.json")!.content)).toMatchObject({ scripts: { mqtt: "node start-mqtt.mjs" }, dependencies: { mqtt: "5.16.0" } });
     expect(files.find((file) => file.path === "runtime/mqtt-driver.mjs")!.content).toContain('import { connect } from "mqtt"');
-    expect(files.find((file) => file.path === "runtime/gateway.mjs")!.content).toContain("export function createMqttGateway");
+    const service = JSON.parse(files.find((file) => file.path === "runtime/package.json")!.content);
+    expect(service).toMatchObject({ engines: { node: ">=22.13.0" }, dependencies: { "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17" } });
+    expect(service.dependencies["node-opcua-server"]).toBeUndefined();
+    expect(files.find((file) => file.path === "runtime/opcua-driver.mjs")!.content).toContain("createOpcUaPlcConnection");
+    expect(files.find((file) => file.path === "runtime/opcua-driver.d.mts")!.content).toContain("OpcUaConnectionConfig");
+    expect(files.find((file) => file.path === "runtime/gateway.mjs")!.content).toContain("export function createPlcGateway");
+    expect(files.find((file) => file.path === "runtime/gateway.mjs")!.content).toContain("export const createMqttGateway = createPlcGateway");
     expect(files.find((file) => file.path === "runtime/connection-diagnostics.mjs")!.content).toContain("Come risolvere:");
     expect(files.find((file) => file.path === "runtime/connection-diagnostics.d.mts")!.content).toContain("ConnectionDiagnostic");
     expect(files.find((file) => file.path === "runtime/runtime-log.mjs")!.content).toContain("export function createRuntimeLogger");

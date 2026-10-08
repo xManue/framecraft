@@ -185,9 +185,9 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 
 | ID | Capacità FactoryTalk Optix | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
-| FTX-CON-01 | OPC UA Client | ESTERNO | Endpoint, nodi, sicurezza, subscription e import | Browser con diff namespace e certificati controllati |
+| FTX-CON-01 | OPC UA Client | PARZIALE | Browsing/import, array/UDT, metodi, eventi/allarmi e collaudo CPU | Driver Node scalare, subscription + letture reali, Namespace URI risolto a ogni sessione, mapping e permessi verificati; gateway comune senza replay |
 | FTX-CON-02 | OPC UA Server | ESTERNO | Endpoint, nodi pubblicati, sampling e array | Superficie esposta revisionabile e test interoperabilità |
-| FTX-CON-03 | OPC UA security mode, policy e X509 | ESTERNO | Certificati, utenti e trust list | Scadenze, policy deboli e trust inattesi segnalati |
+| FTX-CON-03 | OPC UA security mode, policy e X509 | PARZIALE | Gestione guidata PKI/rinnovo, trust aziendali e collaudo CPU | Mode/policy espliciti, policy SHA1 escluse, trust reciproco non automatico, hostname/URI/validità/chiave e accesso verificati, errori con rimedi |
 | FTX-CON-04 | Configurazione dinamica OPC UA | DA FARE | Nodi e metodi Runtime previsti | Validazione transazionale e rollback |
 | FTX-CON-05 | MQTT Client publisher/subscriber | PARZIALE | Payload avanzati, Last Will, array/wildcard, parità MQTT 5 completa, conferme PLC, RBAC/audit server e collaudo CPU/broker/trust reale | Editor connessioni e mini guida, servizio Node/gateway HTTP, trasporto asincrono IR evento/moduli/timer/Scheduler; timeout a ogni tentativo/SUBACK, rifiuti e incertezza distinti, diagnostica con rimedi e log locali ruotati; collaudi TCP/HTTP/TLS/mTLS isolati; nessun replay, aggiornamento ottimistico o falsa conferma PLC |
 | FTX-CON-06 | Payload MQTT JSON o testo personalizzato | DA FARE | Formatter e mapping variabili | Schema JSON, esempio live e compatibilità versioni |

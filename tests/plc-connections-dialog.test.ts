@@ -37,7 +37,7 @@ describe("Connessioni PLC: interfaccia e persistenza reali", () => {
     vi.mocked(desktopBridge.readConnectionConfiguration).mockResolvedValue(data); await mount();
     const help = button("Guida rapida"), guide = document.getElementById(help.getAttribute("aria-controls")!) as HTMLDetailsElement;
     expect(guide.open).toBe(false); await click(help); expect(guide.open).toBe(true); expect(document.activeElement).toBe(guide.querySelector("summary"));
-    expect(guide.textContent).toContain("OPC UA non è ancora collegabile"); expect(guide.textContent).toContain("Non ripeterlo alla cieca");
+    expect(guide.textContent).toContain("OPC UA scalare"); expect(guide.textContent).toContain("Non ripeterlo alla cieca");
     expect(guide.textContent).toContain(".framecraft-runtime/logs"); expect(document.body.textContent).not.toContain("NEVER_RENDER_SECRET");
     expect(desktopBridge.saveConnectionConfiguration).not.toHaveBeenCalled(); expect(desktopBridge.writeFile).not.toHaveBeenCalled();
   });
@@ -47,7 +47,7 @@ describe("Connessioni PLC: interfaccia e persistenza reali", () => {
     await mount(createElement(TopBar)); expect(document.querySelector('[role="dialog"]')).toBeNull();
     const menu = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === "Pannello")!;
     await click(menu); const entry = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent?.includes("Connessioni PLC"))!;
-    await click(entry); expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Broker e tag"); expect(restart).not.toHaveBeenCalled(); expect(preview).not.toHaveBeenCalled();
+    await click(entry); expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Broker, server OPC UA e tag"); expect(restart).not.toHaveBeenCalled(); expect(preview).not.toHaveBeenCalled();
     expect(desktopBridge.readConnectionConfiguration).toHaveBeenCalledExactlyOnceWith(project.root); expect(desktopBridge.saveConnectionConfiguration).not.toHaveBeenCalled();
   });
   it("ha controlli etichettati, default disabilitati e tag non supportati chiaramente esclusi", async () => {
@@ -77,6 +77,32 @@ describe("Connessioni PLC: interfaccia e persistenza reali", () => {
     expect(button("Salva configurazione").disabled).toBe(true); await change("connections.1.url", "mqtts://other.invalid"); await click(button("Associa tag"));
     expect(input("connections.1.bindings.0.tag").value).toBe("Motor.Speed"); expect(input("connections.1.bindings.0.topic").value).toBe("");
     await change("connections.1.bindings.0.topic", "actual/topic"); expect(button("Salva configurazione").disabled).toBe(false);
+  });
+  it("aggiunge OPC UA offline con consensi separati e mantiene MQTT inalterato", async () => {
+    await mount(); await click(button("Aggiungi OPC UA"));
+    expect(input("connections.1.url").value).toBe(""); expect(input("connections.1.securityMode").value).toBe("SignAndEncrypt");
+    expect(input("connections.1.enabled").checked).toBe(false); expect(input("connections.1.allowWrites").checked).toBe(false);
+    await change("connections.1.url", "opc.tcp://server.invalid:4840"); await change("connections.1.securityMode", "None");
+    expect(button("Salva configurazione").disabled).toBe(true); await click(input("connections.1.allowInsecure")); await click(button("Associa tag"));
+    expect(input("connections.1.bindings.0.writeEnabled").checked).toBe(false);
+    await change("connections.1.bindings.0.namespaceUri", "urn:synthetic"); await change("connections.1.bindings.0.nodeId", "s=Speed");
+    await click(button("Salva configurazione"));
+    const catalog = JSON.parse(vi.mocked(desktopBridge.saveConnectionConfiguration).mock.calls[0][2].connections);
+    expect(catalog.connections[0].protocol).toBe("mqtt"); expect(catalog.connections[0].bindings[0].topic).toBe("speed");
+    expect(catalog.connections[1]).toMatchObject({ protocol: "opcua", enabled: false, allowWrites: false, securityMode: "None", allowInsecure: true });
+  });
+  it("gli errori OPC UA aprono il mapping paginato e la ricerca catalogo non nasconde la riga", async () => {
+    const data = fixture(), tags = Array.from({ length: 120 }, (_, i) => ({ ...variables[0], name: "Tag" + i }));
+    const raw = JSON.parse(data.files.connections!); raw.connections = [{ id: "opcua", protocol: "opcua", enabled: false, url: "opc.tcp://server.invalid:4840", securityMode: "None", securityPolicy: "None", allowInsecure: true,
+      bindings: tags.slice(0, 25).map((v) => ({ tag: v.name, namespaceUri: "urn:synthetic", nodeId: "s=" + v.name })) }];
+    raw.connections[0].bindings[15].nodeId = "ns=2;s=wrong"; data.files.connections = JSON.stringify(raw); data.files.plc = JSON.stringify({ version: 1, variables: tags });
+    vi.mocked(desktopBridge.readConnectionConfiguration).mockResolvedValue(data); await mount();
+    expect(document.querySelectorAll(".connection-binding")).toHaveLength(10);
+    await click(document.querySelector<HTMLButtonElement>(".connection-error-banner button")!);
+    expect(document.activeElement).toBe(input("connections.0.bindings.15.nodeId"));
+    await change("opcua-catalog-search", "Tag119");
+    expect(document.querySelector('[data-field="connections.0.bindings.15.nodeId"]')).not.toBeNull();
+    expect([...document.querySelectorAll<HTMLOptionElement>("option")].some((o) => o.value === "Tag119")).toBe(true);
   });
   it("scegliere testo scalare toglie i percorsi JSON dal solo draft e non inventa qualità", async () => {
     await mount(); await change("connections.0.bindings.0.qualityPath", "/quality"); await change("connections.0.bindings.0.timestampPath", "/time");
