@@ -18,6 +18,8 @@ import { defaultHmiFunctionTrendConfig, renderHmiFunctionTrendControls, serializ
 import { standardProjectFiles } from "../src/core/standardProject";
 import { createHmiGatewayClient, HmiGatewayCommandError } from "../src/core/hmiGateway";
 import { connectionDiagnostic } from "../runtime/connection-diagnostics.mjs";
+import * as alarmEngine from "../runtime/alarm-engine.mjs";
+import { createHmiAlarmControl } from "../src/core/hmiAlarmControl";
 
 interface GeneratedRuntime {
   installFramecraftHmiRuntime(options: { navigate: (target: string) => void; trace: (message: string) => void; error: (message: string) => void }): () => void;
@@ -148,7 +150,7 @@ function loadGeneratedTagBindings(): typeof import("../src/core/hmiTagBinding") 
   return binding.exports as typeof import("../src/core/hmiTagBinding");
 }
 
-function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCatalog(), dataLogCatalog: HmiDataLogCatalog = emptyHmiDataLogCatalog("runtime-test"), gatewayEnabled = false, tagCatalog = [{ name: "Runtime.Alternative", dataType: "REAL", access: "read" }, { name: "Motor.Speed", dataType: "REAL", access: "read-write" }]): GeneratedRuntime {
+function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCatalog(), dataLogCatalog: HmiDataLogCatalog = emptyHmiDataLogCatalog("runtime-test"), gatewayEnabled = false, tagCatalog = [{ name: "Runtime.Alternative", dataType: "REAL", access: "read" }, { name: "Motor.Speed", dataType: "REAL", access: "read-write" }], alarmCatalog = alarmEngine.emptyAlarmCatalog()): GeneratedRuntime {
   const source = generatedSources.get("src/framecraftHmiRuntime.ts")!
     .replace('import { executeHmiScript, executeHmiScriptAsync, inspectHmiScriptProgram } from "./framecraftScriptRuntime";', "const executeHmiScript = globalThis.__framecraftTestExecuteHmiScript; const executeHmiScriptAsync = globalThis.__framecraftTestExecuteHmiScriptAsync; const inspectHmiScriptProgram = globalThis.__framecraftTestInspectHmiScriptProgram;")
     .replace('import { hmiFlashingCss, hmiFlashingInlineStyle, resolveHmiFlashing, createHmiPropertyFlashing, createHmiPropertyFlashingDomSurface } from "./framecraftHmiFlashing";', "const { hmiFlashingCss, hmiFlashingInlineStyle, resolveHmiFlashing, createHmiPropertyFlashing, createHmiPropertyFlashingDomSurface } = globalThis.__framecraftTestHmiFlashing;")
@@ -163,6 +165,7 @@ function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCa
     .replace('import scriptCatalogJson from "../framecraft.scripts.json";', "const scriptCatalogJson = globalThis.__framecraftTestScriptCatalog;")
     .replace('import faceplateCatalogJson from "../framecraft.faceplates.json";', "const faceplateCatalogJson = globalThis.__framecraftTestFaceplateCatalog;")
     .replace('import dataLogCatalogJson from "../framecraft.logs.json";', "const dataLogCatalogJson = globalThis.__framecraftTestDataLogCatalog;")
+    .replace('import alarmCatalogJson from "../framecraft.alarms.json";', 'const alarmCatalogJson = ' + JSON.stringify(alarmCatalog) + ';')
     .replace('import plcCatalogJson from "../framecraft.plc.json";', 'const plcCatalogJson = ' + JSON.stringify({ variables: tagCatalog }) + ';')
     .replace('import runtimeCatalogJson from "../framecraft.runtime.json";', 'const runtimeCatalogJson = { gateway: { enabled: ' + gatewayEnabled + ', pollMs: 100 } };')
     .replace('import { createHmiGatewayClient, HmiGatewayCommandError, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";', "const createHmiGatewayClient = globalThis.__framecraftTestGateway; const HmiGatewayCommandError = globalThis.__framecraftTestGatewayError;");
@@ -195,6 +198,8 @@ function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCa
   (globalThis as typeof globalThis & { __framecraftTestGatewayError?: typeof HmiGatewayCommandError }).__framecraftTestGatewayError = HmiGatewayCommandError;
   new Function("exports", "module", "require", javascript)(exports, module, (id: string) => {
     if (id === "./framecraftHmiTagBinding") return loadGeneratedTagBindings();
+    if (id === "../runtime/alarm-engine.mjs") return alarmEngine;
+    if (id === "./framecraftHmiAlarmControl") return { createHmiAlarmControl };
     throw new Error(`Dipendenza generata non prevista: ${id}`);
   });
   return module.exports as unknown as GeneratedRuntime;
@@ -242,6 +247,58 @@ afterEach(() => {
 });
 
 describe("Runtime del pannello standard generato", () => {
+  it("Scheduler allarmi del servizio non riproduce storico, polling vecchi o eventi dopo il riavvio", async () => {
+    const tags = [{ name: "Signal", dataType: "Bool", access: "read" }];
+    const catalog = { ...alarmEngine.emptyAlarmCatalog(), alarms: [{ id: "alarm", name: "Motor alarm", text: "Controlla motore", tag: "Signal", className: "Alarm_CTH", enabled: true, priority: 1, trigger: { kind: "bit" as const, bit: 0, activeWhen: "set" as const } }] };
+    let engine = alarmEngine.createAlarmEngine(catalog, tags);
+    engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 });
+    let serviceState = { ...engine.snapshot(), actionsEnabled: false };
+    const request = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ version: 1, allowWrites: false, connections: [{ id: "mqtt", state: "connected" }], tags: tags.map((tag) => ({ ...tag, connectionId: "mqtt", writable: false })), samples: [], alarms: serviceState })));
+    vi.stubGlobal("fetch", request);
+    const scripts = parseHmiScriptCatalog({ scheduledTasks: [{ id: "alarm-task", name: "Evento allarme", trigger: { kind: "alarm", criterion: "state", condition: "equals", operand: "Incoming" }, script: 'HMIRuntime.Trace("service-alarm");' }] });
+    const runtime = loadGeneratedRuntime(scripts, undefined, true, tags, catalog);
+    document.body.innerHTML = '<div data-hmi-type="HmiAlarmControl" style="height:300px"></div>';
+    const error = vi.fn(), trace = vi.fn(), stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace, error });
+    try {
+      await vi.waitFor(() => expect(document.body.textContent).toContain("Attivo"));
+      expect(trace).not.toHaveBeenCalled();
+      engine.updateSample({ tag: "Signal", value: "0", qualityCode: 192 }); serviceState = { ...engine.snapshot(), actionsEnabled: false };
+      await vi.waitFor(() => expect(document.body.textContent).toContain("Rientrato"));
+      engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); serviceState = { ...engine.snapshot(), actionsEnabled: false };
+      await vi.waitFor(() => expect(trace).toHaveBeenCalledTimes(1));
+      const previous = serviceState;
+      engine.updateSample({ tag: "Signal", value: "0", qualityCode: 0 }); serviceState = { ...engine.snapshot(), actionsEnabled: false };
+      await vi.waitFor(() => expect(document.body.textContent).toContain("segnale non valido"));
+      serviceState = previous; const polls = request.mock.calls.length;
+      await vi.waitFor(() => expect(request.mock.calls.length).toBeGreaterThan(polls + 1));
+      expect(document.body.textContent).toContain("segnale non valido"); expect(trace).toHaveBeenCalledTimes(1);
+      engine = alarmEngine.createAlarmEngine(catalog, tags); engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); serviceState = { ...engine.snapshot(), actionsEnabled: false };
+      await vi.waitFor(() => expect(document.body.textContent).not.toContain("segnale non valido")); expect(trace).toHaveBeenCalledTimes(1);
+      engine.updateSample({ tag: "Signal", value: "0", qualityCode: 192 }); serviceState = { ...engine.snapshot(), actionsEnabled: false };
+      await vi.waitFor(() => expect(document.body.textContent).toContain("Rientrato"));
+      engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); serviceState = { ...engine.snapshot(), actionsEnabled: false };
+      await vi.waitFor(() => expect(trace).toHaveBeenCalledTimes(2)); expect(error).not.toHaveBeenCalled();
+      expect(request.mock.calls.every(([url, init]) => String(url).endsWith("/snapshot") && init?.method !== "POST")).toBe(true);
+    } finally { stop(); }
+  });
+  it("allarmi locali usano segnali, qualità e presa visione senza rimbalzi o scritture PLC", async () => {
+    const catalog = { ...alarmEngine.emptyAlarmCatalog(), alarms: [{ id: "alarm", name: "Motor alarm", text: "Controlla motore", tag: "Signal", className: "Alarm_CTH", enabled: true, priority: 1, trigger: { kind: "bit" as const, bit: 0, activeWhen: "set" as const } }] };
+    const scripts = parseHmiScriptCatalog({ scheduledTasks: [{ id: "alarm-task", name: "Evento allarme", trigger: { kind: "alarm", criterion: "state", condition: "equals", operand: "Incoming" }, script: 'HMIRuntime.Trace("automatic-alarm");' }] });
+    const runtime = loadGeneratedRuntime(scripts, undefined, false, [{ name: "Signal", dataType: "Bool", access: "read" }], catalog);
+    document.body.innerHTML = '<div data-hmi-type="HmiAlarmControl" data-hmi-filter="AlarmClassName = \'Alarm_CTH\'" style="height:300px"></div>';
+    document.querySelector("[data-hmi-type]")!.setAttribute("data-hmi-events", serializeHmiEvents([{ event: "Tapped", script: 'HMIRuntime.Trace("unexpected-parent-click");' }]));
+    const error = vi.fn(), trace = vi.fn(), dispose = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace, error });
+    try {
+      expect(document.body.textContent).toContain("In attesa del segnale"); runtime.setRuntimeTagValue("Signal", "1"); expect(document.body.textContent).toContain("Attivo");
+      await vi.waitFor(() => expect(trace).toHaveBeenCalledWith("[HMI TASK Evento allarme] automatic-alarm")); runtime.setRuntimeTagValue("Signal", "1"); expect(trace.mock.calls.filter(([message]) => message.includes("automatic-alarm"))).toHaveLength(1);
+      const select = document.querySelector<HTMLButtonElement>('[aria-label="Seleziona Motor alarm"]')!; select.click(); [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Prendi in visione")!.click();
+      await vi.waitFor(() => expect(document.body.textContent).toContain("preso in visione")); expect(runtime.runtimeTagValues().Signal).toBe("1");
+      runtime.applyRuntimeTagSample({ tag: "Signal", connectionId: "local", value: "0", qualityCode: 0, receivedAt: 1000 }); expect(document.body.textContent).toContain("Attivo"); expect(document.body.textContent).toContain("segnale non valido");
+      runtime.applyRuntimeTagSample({ tag: "Signal", connectionId: "local", value: "0", qualityCode: 192, receivedAt: 1001 }); expect(document.body.textContent).toContain("Nessun allarme corrispondente"); expect(error).not.toHaveBeenCalled();
+      expect(trace.mock.calls.some(([message]) => message.includes("unexpected-parent-click"))).toBe(false);
+    } finally { dispose(); }
+    expect(document.querySelector("[data-hmi-alarm-root]")).toBeNull();
+  });
   it("aggiorna il valore dei veri campi IO input in sola lettura indiretta e ripristina la modificabilità alla chiusura", () => {
     const runtime = loadGeneratedRuntime(undefined, undefined, false, [{ name: "Selected", dataType: "WSTRING", access: "read" }, { name: "Motor1", dataType: "REAL", access: "read" }]);
     runtime.setRuntimeTagValue("Selected", "Motor1"); runtime.setRuntimeTagValue("Motor1", 21);

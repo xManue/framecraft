@@ -12,6 +12,7 @@ import { createOpcUaPlcConnection, type OpcUaConnectionConfig } from "../runtime
 import { createPlcGateway } from "../runtime/gateway.mjs";
 import type { ConnectionDiagnostic } from "../runtime/connection-diagnostics.mjs";
 import { standardProjectFiles } from "../src/core/standardProject";
+import { emptyAlarmCatalog } from "../runtime/alarm-engine.mjs";
 
 const variables = [{ name: "Motor.Speed", dataType: "Real", access: "read-write" as const }];
 const namespaceUri = "urn:framecraft:synthetic-test";
@@ -50,7 +51,7 @@ async function fixture(secure = false, wrongHostname = false) {
     await serverManager.trustCertificate(new X509Certificate(await readFile(config.certificateFile)).raw); await clientManager.dispose();
   }
   let shut = false;
-  return { config, server, root, get writes() { return writes; }, get value() { return value; }, sourceTime,
+  return { config, server, root, get writes() { return writes; }, get value() { return value; }, set value(next: number) { value = next; }, sourceTime,
     set status(next: typeof status) { status = next; }, set writeStatus(next: typeof writeStatus) { writeStatus = next; },
     set pausedWrites(next: boolean) { paused = next; }, releaseWrites() { for (const finish of held.splice(0)) finish(); },
     async trustServer() { const manager = new OPCUACertificateManager({ rootFolder: config.pkiDirectory!, automaticallyAcceptUnknownCertificate: false, disableFileWatchers: true }); await manager.initialize(); await manager.trustCertificate(server.getCertificate()); await manager.dispose(); },
@@ -66,6 +67,18 @@ async function fixture(secure = false, wrongHostname = false) {
 }
 
 describe("OPC UA reale su server sintetico loopback", () => {
+  it("il motore allarmi acquisisce soglia e qualità dal gateway OPC UA senza scritture", async () => {
+    const test = await fixture(), token = "synthetic_alarm_opcua_token_0123456789";
+    const alarmCatalog = { ...emptyAlarmCatalog(), alarms: [{ id: "a", name: "Speed alarm", text: "Controlla velocità", tag: "Motor.Speed", className: "Alarm_CTH", priority: 1, enabled: true, trigger: { kind: "high" as const, limit: 5, hysteresis: 1 } }] };
+    const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "ALARM_UA_TEST_TOKEN", allowedOrigins: ["http://localhost:4173"], allowWrites: false }, connections: [{ ...test.config, protocol: "opcua", enabled: true, allowWrites: false }] }, variables, { resolveSecret: () => token, alarmCatalog });
+    try {
+      await gateway.start(); expect(gateway.snapshot().connections[0].state).toBe("connected"); await vi.waitFor(() => expect(gateway.snapshot().alarms!.rows[0]).toMatchObject({ active: true, quality: "good" }));
+      test.value = 0; test.status = StatusCodes.BadOutOfService;
+      await vi.waitFor(() => expect(gateway.snapshot().alarms!.rows[0]).toMatchObject({ active: true, quality: "bad" }));
+      test.status = StatusCodes.Good; await vi.waitFor(() => expect(gateway.snapshot().alarms!.rows[0]).toMatchObject({ active: false, quality: "good", pending: true }));
+      expect(gateway.snapshot().alarms!.history.map((e) => e.state)).toEqual(["Incoming", "Outgoing"]); expect(test.writes).toBe(0);
+    } finally { await gateway.stop(); await test.close(); }
+  }, 20000);
   it("acquisisce tipo, qualità e timestamp originali; una ricevuta Write non è conferma PLC", async () => {
     const test = await fixture(), driver = createOpcUaPlcConnection(test.config, variables);
     try {

@@ -137,9 +137,78 @@ fn save_for_root(root: &str, expected: ConfigurationSnapshot, next: Configuratio
     Ok(ConfigurationSnapshot { generation, files: save_with(root, &expected.files, &next, persist)? })
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AlarmConfigurationSnapshot {
+    pub generation: u64,
+    pub source: Option<String>,
+    pub plc: Option<String>,
+}
+
+#[tauri::command]
+pub fn read_alarm_configuration(root: String, state: State<RuntimeState>) -> Result<AlarmConfigurationSnapshot, String> {
+    read_alarms_for_root(&root, &state)
+}
+
+fn read_alarms_for_root(root: &str, state: &RuntimeState) -> Result<AlarmConfigurationSnapshot, String> {
+    let guard = state.project_root.lock().map_err(|_| "Project root lock poisoned")?;
+    let root = check_root(root, &guard).map_err(|error| error.replace("Riapri Connessioni PLC.", "Riapri Allarmi."))?;
+    Ok(AlarmConfigurationSnapshot { generation: state.project_generation.load(std::sync::atomic::Ordering::SeqCst), source: read_one(root, "framecraft.alarms.json")?, plc: read_one(root, PLC)? })
+}
+
+fn save_alarm_source(root: &Path, expected: &AlarmConfigurationSnapshot, source: &str) -> Result<(), String> {
+    let staged = stage(root, "framecraft.alarms.json", source)?;
+    if read_one(root, "framecraft.alarms.json")? != expected.source || read_one(root, PLC)? != expected.plc {
+        return Err("Il catalogo allarmi o PLC è cambiato sul disco. Ricarica prima di salvare: nessun file è stato sovrascritto.".into());
+    }
+    persist(staged, &target(root, "framecraft.alarms.json")?)
+}
+
+#[tauri::command]
+pub fn save_alarm_configuration(root: String, expected: AlarmConfigurationSnapshot, source: String, state: State<RuntimeState>) -> Result<AlarmConfigurationSnapshot, String> {
+    save_alarms_for_root(&root, expected, source, &state)
+}
+
+fn save_alarms_for_root(root: &str, expected: AlarmConfigurationSnapshot, source: String, state: &RuntimeState) -> Result<AlarmConfigurationSnapshot, String> {
+    let guard = state.project_root.lock().map_err(|_| "Project root lock poisoned")?;
+    let root = check_root(root, &guard).map_err(|error| error.replace("Riapri Connessioni PLC.", "Riapri Allarmi."))?;
+    let generation = state.project_generation.load(std::sync::atomic::Ordering::SeqCst);
+    if generation != expected.generation { return Err("La sessione del progetto è cambiata. Riapri Allarmi.".into()); }
+    save_alarm_source(root, &expected, &source)?;
+    Ok(AlarmConfigurationSnapshot { generation, source: Some(source), plc: expected.plc })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn alarm_commands_reject_previous_session_and_foreign_project() {
+        let dir = tempfile::tempdir().unwrap(); let root = fs::canonicalize(dir.path()).unwrap();
+        let other = tempfile::tempdir().unwrap(); let other_root = fs::canonicalize(other.path()).unwrap();
+        let state = RuntimeState::default(); crate::set_project_root(&state, root.clone()).unwrap();
+        let snapshot = read_alarms_for_root(&root.to_string_lossy(), &state).unwrap();
+        let source = "{\"version\":1,\"classes\":[],\"alarms\":[],\"maxHistory\":100}";
+        crate::set_project_root(&state, root.clone()).unwrap();
+        assert!(save_alarms_for_root(&root.to_string_lossy(), snapshot, source.into(), &state).err().unwrap().contains("sessione"));
+        let snapshot = read_alarms_for_root(&root.to_string_lossy(), &state).unwrap();
+        crate::set_project_root(&state, other_root.clone()).unwrap();
+        assert!(read_alarms_for_root(&root.to_string_lossy(), &state).err().unwrap().contains("Riapri Allarmi"));
+        assert!(save_alarms_for_root(&root.to_string_lossy(), snapshot, source.into(), &state).is_err());
+        assert!(!root.join("framecraft.alarms.json").exists()); assert!(!other_root.join("framecraft.alarms.json").exists());
+    }
+    #[test]
+    fn alarm_catalog_creation_conflicts_and_invalid_json_preserve_files() {
+        let dir = tempfile::tempdir().unwrap(); let root = fs::canonicalize(dir.path()).unwrap();
+        let expected = AlarmConfigurationSnapshot { generation: 1, source: None, plc: None };
+        let source = "{\"version\":1,\"classes\":[],\"alarms\":[],\"maxHistory\":100}";
+        save_alarm_source(&root, &expected, source).unwrap();
+        assert!(save_alarm_source(&root, &expected, source).is_err());
+        let current = AlarmConfigurationSnapshot { source: Some(source.into()), ..expected };
+        assert!(save_alarm_source(&root, &current, "bad json").is_err());
+        fs::write(root.join(PLC), "changed").unwrap();
+        assert!(save_alarm_source(&root, &current, "{\"version\":1}").is_err());
+        assert_eq!(read_one(&root, "framecraft.alarms.json").unwrap().as_deref(), Some(source));
+    }
     fn update() -> ConfigurationUpdate {
         ConfigurationUpdate { connections: "{\"version\":1,\"connections\":[]}".into(), runtime: "{\"version\":1,\"gateway\":{\"enabled\":false}}".into() }
     }

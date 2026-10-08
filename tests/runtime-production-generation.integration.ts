@@ -28,6 +28,7 @@ describe("collaudo separato della generazione Runtime di produzione", () => {
     expect(files.find((file) => file.path === "runtime/mqtt-driver.mjs")?.content).toContain("export function createMqttPlcConnection");
     expect(JSON.parse(files.find((file) => file.path === "framecraft.connections.json")!.content)).toEqual({ version: 1, connections: [] });
     expect(files.find((file) => file.path === "runtime/gateway.mjs")?.content).toContain("export function createPlcGateway");
+    expect(files.find((file) => file.path === "runtime/gateway.mjs")?.content).toContain("options.alarmCatalog !== undefined");
     expect(files.find((file) => file.path === "runtime/gateway.mjs")?.content).toContain("export const createMqttGateway = createPlcGateway");
     expect(files.find((file) => file.path === "runtime/opcua-driver.mjs")?.content).toContain("export function createOpcUaPlcConnection");
     const manifest = JSON.parse(files.find((file) => file.path === "runtime/package.json")!.content);
@@ -37,7 +38,15 @@ describe("collaudo separato della generazione Runtime di produzione", () => {
     expect(manifest.devDependencies?.vitest).toBeUndefined();
     expect(JSON.parse(files.find((file) => file.path === "framecraft.runtime.json")!.content).gateway.enabled).toBe(false);
     const modules = new Map<string, Record<string, unknown>>();
-    for (const name of ["runtime/connection-config.mjs", "runtime/connection-diagnostics.mjs"]) modules.set(name, evaluateModule(files.find((file) => file.path === name)!.content));
+    for (const name of ["runtime/connection-config.mjs", "runtime/connection-diagnostics.mjs", "runtime/alarm-engine.mjs"]) modules.set(name, evaluateModule(files.find((file) => file.path === name)!.content, (id) => {
+      const dependency = modules.get(path.posix.normalize(path.posix.join(path.posix.dirname(name), id)));
+      if (!dependency) throw new Error(`Dipendenza allarmi generata mancante: ${id}`);
+      return dependency;
+    }));
+    const alarmModule = modules.get("runtime/alarm-engine.mjs") as typeof import("../runtime/alarm-engine.mjs");
+    const alarmCatalog = alarmModule.emptyAlarmCatalog(); alarmCatalog.alarms.push({ id: "a", name: "Motor", text: "Controlla", tag: "Signal", className: "Alarm_CTH", priority: 1, enabled: true, trigger: { kind: "bit", bit: 0, activeWhen: "set" } });
+    const alarms = alarmModule.createAlarmEngine(alarmCatalog, [{ name: "Signal", dataType: "Bool", access: "read" }]);
+    alarms.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); expect(alarms.snapshot().rows[0]).toMatchObject({ active: true, pending: true });
     expect(files.find((file) => file.path === "runtime/runtime-log.mjs")?.content).toContain("export function createRuntimeLogger");
     expect(files.find((file) => file.path === ".gitignore")?.content).toContain(".framecraft-runtime/");
     for (const file of files.filter((file) => /^src\/framecraft.+\.ts$/.test(file.path) && file.path !== "src/framecraftHmiRuntime.ts")) {

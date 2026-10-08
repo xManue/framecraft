@@ -33,6 +33,10 @@ import gatewayProxyTypes from "../../runtime/vite-gateway.d.mts?raw";
 import gatewayClientSource from "./hmiGateway.ts?raw";
 import hmiTagBindingSource from "./hmiTagBinding.ts?raw";
 import hmiExpressionSource from "./hmiExpression.ts?raw";
+import { emptyAlarmCatalog } from "./hmiAlarms";
+import alarmEngineSource from "../../runtime/alarm-engine.mjs?raw";
+import alarmEngineTypes from "../../runtime/alarm-engine.d.mts?raw";
+import alarmControlSource from "./hmiAlarmControl.ts?raw";
 
 /** Il pannello nuovo, gia' allo standard.
  *
@@ -251,6 +255,9 @@ import { resolveHmiTagDynamization, resolveHmiTagReference } from "./framecraftH
 import scriptCatalogJson from "../framecraft.scripts.json";
 import faceplateCatalogJson from "../framecraft.faceplates.json";
 import dataLogCatalogJson from "../framecraft.logs.json";
+import alarmCatalogJson from "../framecraft.alarms.json";
+import { createAlarmEngine, type AlarmSnapshot } from "../runtime/alarm-engine.mjs";
+import { createHmiAlarmControl } from "./framecraftHmiAlarmControl";
 import plcCatalogJson from "../framecraft.plc.json";
 import runtimeCatalogJson from "../framecraft.runtime.json";
 import { createHmiGatewayClient, HmiGatewayCommandError, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";
@@ -481,6 +488,45 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   if ((window as Window & { __framecraftEditorPreview?: boolean }).__framecraftEditorPreview) return () => undefined;
   let runtimeActive = true;
   const scriptAbort = new AbortController();
+  let localAlarms: ReturnType<typeof createAlarmEngine> | undefined;
+  let alarmSnapshot: AlarmSnapshot | undefined;
+  let alarmCursor: { instanceId: string; sequence: number } | undefined;
+  const alarmControls = new Map<HTMLElement, ReturnType<typeof createHmiAlarmControl>>();
+  const alarmClearButtons = new Map<HTMLButtonElement, { disabled: boolean; title: string }>();
+  const renderAlarmControls = () => {
+    for (const [host, control] of alarmControls) if (!host.isConnected) { control.dispose(); alarmControls.delete(host); }
+    for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAlarmControl"]')) {
+      if (!alarmControls.has(host)) alarmControls.set(host, createHmiAlarmControl(host, async (command) => {
+        if (!runtimeActive) throw new Error("Sessione pannello interrotta.");
+        if (gatewayConfig.enabled) {
+          if (!gatewayClient) throw new Error("Servizio allarmi non disponibile.");
+          const next = await gatewayClient.alarmAction(command, scriptAbort.signal);
+          if (runtimeActive) acceptAlarmSnapshot(next);
+        } else if (localAlarms) localAlarms.action(command, "Prova locale");
+        else throw new Error("Catalogo allarmi non valido.");
+      }));
+    }
+    for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-hmi-action="clear-alarm-log"]')) {
+      if (!alarmClearButtons.has(button)) alarmClearButtons.set(button, { disabled: button.disabled, title: button.title });
+      button.disabled = true; button.title = "Storico della sessione: cancellazione e archivio industriale non ancora abilitati.";
+    }
+    for (const control of alarmControls.values()) control.update(alarmSnapshot, !gatewayConfig.enabled && !!localAlarms || gatewayClient?.state === "connected");
+  };
+  const acceptAlarmSnapshot = (next: AlarmSnapshot | undefined) => {
+    if (next && alarmSnapshot?.instanceId === next.instanceId && alarmSnapshot.revision > next.revision) return;
+    if (next && alarmCursor?.instanceId === next.instanceId) {
+      if (next.historyDropped > alarmCursor.sequence) (options.error ?? console.error)("[HMI ALLARMI] Alcuni eventi precedono lo storico disponibile; nessuna operazione recuperata automaticamente.");
+      for (const entry of next.history) if (entry.sequence > alarmCursor.sequence) notifyRuntimeAlarm(entry);
+    }
+    if (next) alarmCursor = { instanceId: next.instanceId, sequence: next.sequence };
+    alarmSnapshot = next; renderAlarmControls();
+  };
+  if (!gatewayConfig.enabled) {
+    try { localAlarms = createAlarmEngine(alarmCatalogJson as never, plcCatalogJson.variables, { onEvent: notifyRuntimeAlarm }); }
+    catch (error) { (options.error ?? console.error)("[HMI ALLARMI] " + (error instanceof Error ? error.message : "Catalogo non valido.")); }
+  }
+  const stopAlarmSubscription = localAlarms?.subscribe((next) => { alarmSnapshot = { ...next, actionsEnabled: true }; renderAlarmControls(); });
+  if (localAlarms) alarmSnapshot = { ...localAlarms.snapshot(), actionsEnabled: true };
   const scriptOptions = (local?: { names: ReadonlySet<string>; values: Record<string, string> }) => ({
     ...(gatewayConfig.enabled ? { transport: gatewayScriptTransport() } : {}), signal: scriptAbort.signal,
     isActive: () => runtimeActive, localTags: local?.names, localTagValues: local?.values,
@@ -817,7 +863,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       (options.error ?? console.error)(\`[HMI \${eventType}] \${error instanceof Error ? error.message : String(error)}\`);
     });
   };
-  const target = (event: Event) => event.target instanceof Element ? event.target.closest("[data-hmi-events]") : null;
+  const target = (event: Event) => event.target instanceof Element && !event.target.closest("[data-hmi-alarm-root]") ? event.target.closest("[data-hmi-events]") : null;
   const down = (event: Event) => run(target(event), "Down");
   const up = (event: Event) => run(target(event), "Up");
   const tapped = (event: Event) => run(target(event), "Tapped");
@@ -887,6 +933,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     }
   };
   const tagChanged = (tag: string, previous?: string) => {
+    localAlarms?.updateSample({ tag, value: values[tag], qualityCode: tagStatus[tag]?.qualityCode ?? 192, lastError: tagStatus[tag]?.lastError });
     requestRefresh(tag);
     for (const task of scheduledTasks) if (task.trigger.kind === "tag" && task.trigger.tag === tag && tagTriggerMatches(task, previous, values[tag])) queueScheduledTask(task, "tag");
   };
@@ -965,7 +1012,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     };
     unavailable();
     gatewayClient = createHmiGatewayClient({ path: gatewayConfig.path, pollMs: gatewayConfig.pollMs, timeoutMs: gatewayConfig.timeoutMs,
-      onState: (state) => { if (state === "disconnected") { gatewaySnapshot = undefined; unavailable(); } renderGatewayStatus(state); },
+      onState: (state) => { if (state === "disconnected") { gatewaySnapshot = undefined; unavailable(); } renderGatewayStatus(state); renderAlarmControls(); },
       onDiagnostic: (event) => {
         recentDiagnostics.push({ ...event }); if (recentDiagnostics.length > 100) recentDiagnostics.shift();
         if (event.level !== "info") gatewayReport?.([event.connectionId, event.tag, event.title, event.message, event.impact, "Come risolvere: " + event.action].filter(Boolean).join(" · "));
@@ -973,6 +1020,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       },
       onSnapshot: (snapshot) => {
         gatewaySnapshot = snapshot;
+        acceptAlarmSnapshot(snapshot.alarms);
         for (const sample of snapshot.samples) applyRuntimeTagSample(sample);
         renderGatewayStatus("connected");
       },
@@ -1001,20 +1049,24 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   window.addEventListener("framecraft:alarm-state", alarmChanged);
   window.addEventListener("framecraft:data-log-request", requestDataLog);
   const observer = new MutationObserver((records) => {
-    if (records.every((record) => record.target instanceof Element && record.target.closest("[data-hmi-trend-root], [data-hmi-function-trend-root]"))) return;
-    scanLoaded(); syncCycles(); requestRefresh(); renderRuntimeFaceplates(); renderTrendControls(); renderGatewayStatus(gatewayClient?.state ?? "stopped");
+    if (records.every((record) => record.target instanceof Element && record.target.closest("[data-hmi-trend-root], [data-hmi-function-trend-root], [data-hmi-alarm-root]"))) return;
+    scanLoaded(); syncCycles(); requestRefresh(); renderRuntimeFaceplates(); renderTrendControls(); renderGatewayStatus(gatewayClient?.state ?? "stopped"); renderAlarmControls();
   });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-hmi-events", "data-hmi-dynamizations", "data-hmi-faceplate", "data-hmi-trend", "data-hmi-function-trend"] });
   if (!gatewayConfig.enabled) for (const error of scriptContexts.initialize(scriptCatalog, undefined, "scheduler", values, { tagStatus })) (options.error ?? console.error)("[HMI SCRIPT scheduler] " + error);
   scanLoaded();
   syncCycles();
   installScheduledTasks();
+  renderAlarmControls();
   renderRuntimeFaceplates();
   renderTrendControls();
   const trendTimer = setInterval(renderTrendControls, 250);
   requestRefresh();
   return () => {
     scriptAbort.abort();
+    stopAlarmSubscription?.();
+    for (const control of alarmControls.values()) control.dispose(); alarmControls.clear();
+    for (const [button, original] of alarmClearButtons) { button.disabled = original.disabled; button.title = original.title; } alarmClearButtons.clear();
     for (const [control, readOnly] of readOnlyTagControls) control.readOnly = readOnly;
     readOnlyTagControls.clear();
     gatewayClient?.stop(); gatewayClient = undefined; gatewayReport = undefined; gatewaySnapshot = undefined;
@@ -1658,6 +1710,10 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/mqtt-driver.d.mts", content: mqttDriverTypes },
     { path: "runtime/start-mqtt.mjs", content: mqttStartSource },
     { path: "runtime/gateway.mjs", content: gatewaySource },
+    { path: "runtime/alarm-engine.mjs", content: alarmEngineSource },
+    { path: "runtime/alarm-engine.d.mts", content: alarmEngineTypes },
+    { path: "src/framecraftHmiAlarmControl.ts", content: alarmControlSource.replaceAll('"../../runtime/', '"../runtime/') },
+    { path: "framecraft.alarms.json", content: JSON.stringify(emptyAlarmCatalog(), null, 2) + "\n" },
     { path: "runtime/gateway.d.mts", content: gatewayTypes },
     { path: "runtime/start-gateway.mjs", content: gatewayStartSource },
     { path: "runtime/vite-gateway.mjs", content: gatewayProxySource },

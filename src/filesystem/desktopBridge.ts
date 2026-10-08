@@ -4,6 +4,7 @@ import type { EditorNativeSession, ExportResult, PreviewExit, ProjectAnalysis, P
 import type { GeneratedProjectFile } from "../core/standardProject";
 import type { EditorDraftRecord, EditorReloadCheckpoint } from "../state/editorRecovery";
 import type { ConnectionConfigurationSnapshot } from "../core/plcConnections";
+import type { AlarmConfigurationSnapshot } from "../core/hmiAlarms";
 
 export const desktopAvailable = isTauri();
 
@@ -12,6 +13,12 @@ function requireDesktop() {
 }
 
 export const desktopBridge = {
+  async readAlarmConfiguration(root: string): Promise<AlarmConfigurationSnapshot> {
+    requireDesktop(); return invoke("read_alarm_configuration", { root });
+  },
+  async saveAlarmConfiguration(root: string, expected: AlarmConfigurationSnapshot, source: string): Promise<AlarmConfigurationSnapshot> {
+    requireDesktop(); return invoke("save_alarm_configuration", { root, expected, source });
+  },
   async readConnectionConfiguration(root: string): Promise<ConnectionConfigurationSnapshot> {
     requireDesktop();
     return invoke("read_connection_configuration", { root });

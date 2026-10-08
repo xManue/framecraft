@@ -1,11 +1,13 @@
 import { connectionDiagnostic, connectionMessages, createDiagnosticReporter, diagnosticText, safeNotify, type ConnectionDiagnostic } from "../../runtime/connection-diagnostics.mjs";
 import { normalizeMqttTagValue } from "../../runtime/connection-config.mjs";
+import { parseAlarmSnapshot, type AlarmSnapshot, type AlarmCommand } from "../../runtime/alarm-engine.mjs";
 export type { ConnectionDiagnostic } from "../../runtime/connection-diagnostics.mjs";
 export interface HmiGatewaySample {
   tag: string; connectionId: string; value?: string; qualityCode?: number; timestamp?: number; sourceTimestamp?: number;
   receivedAt: number; retained?: boolean; lastError?: string; errorDescription?: string; serverTimestamp?: number; opcUaStatusCode?: number;
 }
 export interface HmiGatewaySnapshot {
+  alarms?: AlarmSnapshot;
   version: 1; allowWrites: boolean;
   connections: { id: string; state: string; error?: string; diagnostic?: ConnectionDiagnostic }[];
   diagnostics?: ConnectionDiagnostic[];
@@ -105,6 +107,7 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
       if (!Array.isArray(value.diagnostics) || value.diagnostics.length > 100) throw new Error("Registro gateway non valido.");
       value.diagnostics = value.diagnostics.map(parseDiagnostic);
     }
+    if (value.alarms !== undefined) value.alarms = parseAlarmSnapshot(value.alarms);
     return value;
   };
   const poll = async (token: number) => {
@@ -112,7 +115,9 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
     try {
       const result = await json("/snapshot"); if (!running || token !== generation) return;
       if (!result.ok) throw commandError(httpCode(result.status));
-      const next = parse(result.data); snapshot = next; changeState("connected");
+      const next = parse(result.data);
+      if (next.alarms && snapshot?.alarms?.instanceId === next.alarms.instanceId && snapshot.alarms.revision > next.alarms.revision) next.alarms = structuredClone(snapshot.alarms);
+      snapshot = next; changeState("connected");
       if (!running || token !== generation) return;
       for (const event of next.diagnostics ?? []) {
         if (!event.id || seen.has(event.id)) continue;
@@ -132,6 +137,21 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
     get state() { return state; },
     start() { if (running) return; running = true; const token = ++generation; changeState("connecting"); void poll(token); },
     stop() { running = false; generation++; clearTimeout(timer); for (const controller of pending) controller.abort(); snapshot = undefined; last = ""; changeState("stopped"); },
+    async alarmAction(command: AlarmCommand, signal?: AbortSignal): Promise<AlarmSnapshot> {
+      if (!running || state !== "connected" || !snapshot?.alarms?.actionsEnabled || signal?.aborted) throw new Error("Presa visione non disponibile. Controlla servizio, sessione e autorizzazioni dell'operatore.");
+      const generationBefore = generation;
+      const instanceBefore = snapshot.alarms.instanceId;
+      let result;
+      try { result = await json("/alarm-action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) }, signal); }
+      catch { throw new Error("Esito presa visione non noto: aggiorna gli allarmi prima di riprovare. Nessun invio automatico."); }
+      if (!running || generationBefore !== generation) throw new Error("Sessione cambiata: aggiorna gli allarmi prima di agire di nuovo.");
+      if (!result.ok) throw new Error(result.status === 403 ? "Operatore non autorizzato: verifica accesso e permessi nel servizio." : result.status === 409 ? "L'allarme è cambiato o non permette questa operazione. Aggiorna la vista e selezionalo di nuovo." : "Operazione non completata: controlla la diagnostica del servizio.");
+      const next = parseAlarmSnapshot((result.data as { alarms?: unknown })?.alarms);
+      if (next.instanceId !== instanceBefore || snapshot?.alarms?.instanceId !== instanceBefore) throw new Error("Il servizio allarmi è cambiato. Aggiorna la vista prima di agire di nuovo.");
+      if (snapshot.alarms.revision > next.revision) return structuredClone(snapshot.alarms);
+      if (snapshot) snapshot.alarms = next;
+      return next;
+    },
     async read(tag: string, options: { mode?: number; maxAge?: number; signal?: AbortSignal } = {}): Promise<HmiGatewaySample> {
       if (options.signal?.aborted || !running || state !== "connected" || !snapshot) throw new HmiGatewayCommandError("Gateway non disponibile per la lettura.", "rejected");
       if (options.mode === 1 || options.maxAge === 0) throw new HmiGatewayCommandError("MQTT non supporta la lettura forzata dalla CPU: sono disponibili soltanto i campioni ricevuti.", "rejected");

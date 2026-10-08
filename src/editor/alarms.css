@@ -1,0 +1,13 @@
+.alarm-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 20px; background: #000a; }
+.alarm-dialog { width: min(1100px, 100%); max-height: calc(100dvh - 40px); overflow: auto; padding: 20px; background: #181e28; color: #edf3fb; border: 1px solid #64748b; border-radius: 12px; box-shadow: 0 20px 80px #0008; }
+.alarm-dialog header, .alarm-dialog footer, .alarm-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.alarm-dialog h2 { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.alarm-dialog p { line-height: 1.5; }.alarm-dialog small { color: #b5c4d8; }
+.alarm-dialog button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px 12px; background: #263547; color: #edf3fb; border: 1px solid #8291a5; border-radius: 6px; cursor: pointer; }
+.alarm-dialog button:disabled { opacity: .55; cursor: not-allowed; }.alarm-dialog :focus-visible { outline: 2px solid #6bc6ff; outline-offset: 2px; }
+.alarm-dialog fieldset { border: 0; padding: 0; min-width: 0; }.alarm-dialog details { border: 1px solid #59687b; padding: 12px; margin: 14px 0; border-radius: 6px; }.alarm-dialog summary { min-height: 32px; cursor: pointer; }
+.alarm-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 12px; margin: 12px 0; }
+.alarm-dialog label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }.alarm-dialog input, .alarm-dialog select { min-height: 44px; min-width: 0; width: 100%; background: #111720; color: #edf3fb; border: 1px solid #8291a5; border-radius: 5px; padding: 8px; }
+.alarm-dialog .alarm-check { flex-direction: row; align-items: center; margin: 12px 0; }.alarm-check input { width: 24px; }.alarm-error { padding: 10px; color: #ffd7d7; background: #50202a; border-radius: 6px; }.alarm-test-view { min-height: 300px; height: 420px; }
+.alarm-dialog footer { border-top: 1px solid #59687b; padding-top: 16px; margin-top: 16px; }.alarm-dialog footer span { flex: 1; min-width: min(280px, 100%); line-height: 1.5; color: #b5c4d8; }
+@media (max-width: 600px) { .alarm-backdrop { padding: 8px; }.alarm-dialog { padding: 12px; max-height: calc(100dvh - 16px); }.alarm-dialog p, .alarm-dialog label { font-size: 16px; } }

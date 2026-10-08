@@ -7,6 +7,15 @@ import { submenuPlacement } from "../src/core/hmiSectionMenu";
 import { standardProjectFiles, standardProjectPageCount, standardProjectSectionChoices } from "../src/core/standardProject";
 
 describe("generatore nuovo pannello standard", () => {
+  it("include catalogo vuoto e moduli allarme nel servizio e nel Runtime autonomo", () => {
+    const files = standardProjectFiles({ machineName: "Alarm pipeline", layout: "desktop-mobile", sections: ["alarms"] });
+    const file = (path: string) => files.find((item) => item.path === path)!.content;
+    expect(JSON.parse(file("framecraft.alarms.json")).alarms).toEqual([]);
+    expect(file("runtime/gateway.mjs")).toContain('from "./alarm-engine.mjs"'); expect(file("runtime/start-gateway.mjs")).toContain("framecraft.alarms.json");
+    expect(file("src/framecraftGateway.ts")).toContain('from "../runtime/alarm-engine.mjs"'); expect(file("src/framecraftHmiAlarmControl.ts")).toContain('from "../runtime/alarm-engine.mjs"');
+    expect(file("src/framecraftHmiRuntime.ts")).toContain("acceptAlarmSnapshot(snapshot.alarms)"); expect(file("runtime/alarm-engine.d.mts")).toContain("AlarmSnapshot");
+    expect(file("src/framecraftHmiRuntime.ts")).toContain("[data-hmi-alarm-root]");
+  });
   it("inserisce la scelta iniziale nel progetto HMI desktop+mobile, non nei pannelli solo desktop", () => {
     const files = standardProjectFiles({ machineName: "Linea {A} <test>", layout: "desktop-mobile", sections: ["main"] });
     const app = files.find((file) => file.path === "src/App.tsx")!.content, styles = files.find((file) => file.path === "src/styles.css")!.content;

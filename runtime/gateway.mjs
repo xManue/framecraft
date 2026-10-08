@@ -3,6 +3,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createMqttPlcConnection, normalizeMqttTagValue } from "./mqtt-driver.mjs";
 import { createOpcUaPlcConnection } from "./opcua-driver.mjs";
 import { validateConnectionCatalog } from "./connection-config.mjs";
+import { createAlarmEngine } from "./alarm-engine.mjs";
 import { ConnectionOperationError, connectionDiagnostic, createDiagnosticReporter, diagnosticText, safeNotify } from "./connection-diagnostics.mjs";
 
 const api = "/_framecraft/plc/v1";
@@ -40,11 +41,13 @@ export function createPlcGateway(catalog, variables, options = {}) {
     safeNotify(options.onDiagnostic, { ...diagnostic });
   };
   const report = createDiagnosticReporter(record, { protocol: "gateway" });
+  const alarms = options.alarmCatalog !== undefined ? createAlarmEngine(options.alarmCatalog, variables, { onEvent: options.onAlarmEvent }) : undefined;
   const connections = enabled.map((connection) => {
     const driver = (connection.protocol === "opcua" ? createOpcUaPlcConnection : createMqttPlcConnection)(connection, variables, {
       resolveSecret: options.resolveSecret,
       onError: options.onError,
       onDiagnostic: record,
+      onSample: (sample) => alarms?.updateSample(sample),
       onState: (state) => { states.set(connection.id, { ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) }); safeNotify(options.onState, state); },
     });
     for (const binding of connection.bindings) {
@@ -56,6 +59,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
     states.set(connection.id, { id: connection.id, state: "stopped" }); return driver;
   });
   const snapshot = () => ({ version: 1, allowWrites: config.allowWrites === true,
+    ...(alarms ? { alarms: { ...alarms.snapshot(), actionsEnabled: typeof options.authorizeAlarmAction === "function" } } : {}),
     diagnostics: diagnostics.map((event) => ({ ...event })),
     connections: [...states.values()].map((state) => ({ ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) })),
     tags: [...owners.values()].map(({ name, dataType, access, connectionId, writable }) => ({ name, dataType, access, connectionId, writable })),
@@ -76,6 +80,23 @@ export function createPlcGateway(catalog, variables, options = {}) {
       const actual = Buffer.from(typeof request.headers.authorization === "string" ? request.headers.authorization : ""); const expected = Buffer.from("Bearer " + token);
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw failure(401, "GATEWAY_AUTH");
       if (request.url === api + "/snapshot" && request.method === "GET") { respond(response, 200, snapshot()); return; }
+      if (request.url === api + "/alarm-action" && request.method === "POST") {
+        if (!alarms || typeof options.authorizeAlarmAction !== "function") { respond(response, 403, { error: "Presa visione non abilitata: configura autenticazione e autorizzazioni nel servizio. Il PIN del browser non basta." }); return; }
+        if ((request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw failure(415);
+        if (active >= 32) throw failure(429, "GATEWAY_BUSY");
+        active++; accepted = true;
+        const command = await body(request);
+        if (!command || typeof command.alarmId !== "string" || typeof command.occurrence !== "string" || !Number.isSafeInteger(command.revision) || !["acknowledge", "confirm"].includes(command.action)
+          || Object.keys(command).some((key) => !["alarmId", "occurrence", "revision", "action"].includes(key))) throw failure(400);
+        let actor, authorizationTimer;
+        try { actor = await Promise.race([options.authorizeAlarmAction(request, { ...command }), new Promise((resolve) => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch { /* Identity failures never authorize an alarm action. */ }
+        finally { clearTimeout(authorizationTimer); }
+        if (stopping) throw failure(503, "GATEWAY_OFFLINE");
+        if (typeof actor !== "string" || !actor.trim() || actor.length > 200 || /[\x00-\x1f]/.test(actor)) { respond(response, 403, { error: "Operatore non autorizzato alla presa visione o alla conferma di questo allarme." }); return; }
+        try { respond(response, 200, { alarms: { ...alarms.action(command, actor), actionsEnabled: true } }); }
+        catch (error) { respond(response, 409, { error: error.message }); }
+        return;
+      }
       if (request.url !== api + "/write" || request.method !== "POST") throw failure(404);
       if ((request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw failure(415);
       if (active >= 32) throw failure(429, "GATEWAY_BUSY");

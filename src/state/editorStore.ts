@@ -2486,9 +2486,15 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
           ? await desktopBridge.listProjectSourceFiles()
           : projectFilePaths(project.files);
         const sources = await readProjectSources(listed, (file) => desktopBridge.readFile(file), 1200);
+        let alarms: unknown;
+        if (desktopAvailable && typeof desktopBridge.readAlarmConfiguration === "function") {
+          const alarmFiles = await desktopBridge.readAlarmConfiguration(project.root);
+          if (alarmFiles.source !== null) { try { alarms = JSON.parse(alarmFiles.source); } catch { alarms = null; } }
+        }
+        if (get().project !== project) return [];
         // Le route si passano solo se il router e' stato letto davvero: senza, la navigazione non
         // si controlla, invece di accusare pulsanti giusti.
-        const issues = validateHmiProject({ sources, variables: plcVariables, resources: resourceCatalog, scripts: scriptCatalog, faceplates: faceplateCatalog, dataLogs: dataLogCatalog,
+        const issues = validateHmiProject({ sources, variables: plcVariables, resources: resourceCatalog, scripts: scriptCatalog, faceplates: faceplateCatalog, dataLogs: dataLogCatalog, alarms,
           routes: pages.length ? pages.map((page) => page.route) : undefined,
           pageRoutes: Object.fromEntries(pages.map((page) => [page.file, page.route])) });
         const errors = issues.filter((issue) => issue.severity === "error");

@@ -110,6 +110,37 @@ is restored when the local preview ends. This is not indirect PLC writing or ser
 Indirect screen-object/system-function parameters and PLC input transfers remain planned.
 Old generated panels are not automatically rewritten.
 
+## Configure and test alarms
+
+Open **Pannello → Allarmi**. In the large dialog, add an alarm, choose a declared
+readable PLC signal and set its message, class, area and priority. A Bool uses bit 0;
+integer signals support a selected bit, including exact 64-bit decimal strings.
+Analog alarms currently support above/below a fixed threshold with return hysteresis.
+Empty signals, duplicate bits/IDs, incompatible types and oversized histories block saving.
+
+Use **Prova locale** to apply values and Good/Bad/unknown quality without opening a
+PLC connection. **Prendi in visione** records that the operator has seen the alarm;
+it does not clear an active fault or write a PLC signal. A class can require no
+acknowledgment, acknowledgment, or acknowledgment plus confirmation after return.
+This follows the [Unified state/acknowledgment model](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/basics-rt-unified/acknowledgment-model-rt-unified).
+
+**Salva allarmi** writes `framecraft.alarms.json` using the native project/session
+guard and checks both the existing alarm file and PLC catalog before replacement.
+Invalid JSON is not silently replaced. The new desktop commands require the updated
+native app; this change does not restart a running app. New standard projects include
+the empty catalog, shared engine and live control. Old projects are not auto-migrated.
+
+With a configured gateway, acquisition runs in the Node service, shared by every
+browser, independently of the displayed page. Loss of signal quality preserves the
+last alarm condition and shows a warning; it never means the fault has cleared.
+Real acknowledgment is disabled unless a trusted server authorization hook is
+configured. Local PINs/roles and the gateway proxy token are not operator identities.
+See [runtime/README.md](runtime/README.md#allarmi-nel-servizio-condiviso).
+
+History is a bounded **service-session history**, not a persistent industrial archive.
+Server RBAC/audit, restart recovery, shelving, batch acknowledgment, multilingual texts,
+controller alarm events and commissioning remain open. No new npm dependencies.
+
 ## Pages and categories
 
 Use **Pagine → Nuova pagina** for the full-size creation window: choose a name,

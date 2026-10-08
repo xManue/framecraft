@@ -1269,7 +1269,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(RuntimeState::default())
-        .invoke_handler(tauri::generate_handler![get_editor_session, editor_draft::read_editor_draft, editor_draft::write_editor_draft, editor_draft::clear_editor_draft, connection_config::read_connection_configuration, connection_config::save_connection_configuration, create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, list_project_source_files, import_project_asset, export_project, start_preview, stop_preview, close_project, create_vite_project])
+        .invoke_handler(tauri::generate_handler![get_editor_session, editor_draft::read_editor_draft, editor_draft::write_editor_draft, editor_draft::clear_editor_draft, connection_config::read_connection_configuration, connection_config::save_connection_configuration, connection_config::read_alarm_configuration, connection_config::save_alarm_configuration, create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, list_project_source_files, import_project_asset, export_project, start_preview, stop_preview, close_project, create_vite_project])
         .build(tauri::generate_context!())
         .expect("error while building Framecraft");
     app.run(|app_handle, event| {

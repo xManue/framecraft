@@ -13,6 +13,7 @@ import { panelFormats } from "../canvas/panels";
 import type { ViewMode, Viewport } from "../core/types";
 import { layoutPresets, snapGrids, useEditorStore, type UiDensity, type WorkLayout } from "../state/editorStore";
 import { PlcConnectionsDialog } from "./PlcConnectionsDialog";
+import { AlarmsDialog } from "./AlarmsDialog";
 
 const viewModes: { id: ViewMode; label: string; description: string; icon: typeof Eye }[] = [
   { id: "visual", label: "Disegno", description: "Solo il pannello grafico", icon: Eye },
@@ -94,6 +95,7 @@ export function TopBar() {
   const errors = useEditorStore((state) => state.consoleEntries.filter((item) => item.level === "error").length);
   const [helpOpen, setHelpOpen] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [alarmsOpen, setAlarmsOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<TopMenu>();
   const menuRef = useRef<HTMLElement>(null);
 
@@ -189,6 +191,7 @@ export function TopBar() {
               <div className="topbar-menu-separator" />
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("plc"))}><Gauge size={15} /><span><strong>Variabili PLC e valori di prova</strong><small>Catalogo e prova locale dell’HMI, senza collegare un PLC</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setConnectionsOpen(true))}><Cable size={15} /><span><strong>Connessioni PLC</strong><small>Broker MQTT, mapping tag e gateway del pannello</small></span></button>
+              <button role="menuitem" onClick={() => runAndClose(() => setAlarmsOpen(true))}><FileCheck2 size={15} /><span><strong>Allarmi</strong><small>Segnali, soglie, presa visione e prova senza PLC</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("resources"))}><Languages size={15} /><span><strong>Testi e grafiche</strong><small>Lingue, risorse e asset del progetto</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("scripts"))}><Braces size={15} /><span><strong>Moduli JavaScript</strong><small>Funzioni globali e definizioni locali compilate</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("faceplates"))}><Blocks size={15} /><span><strong>Tipi faceplate</strong><small>Versioni, tag, proprietà, eventi e stato locale</small></span></button>
@@ -219,6 +222,7 @@ export function TopBar() {
       </div>
     </header>
     {connectionsOpen && <PlcConnectionsDialog key={project.root} onClose={() => setConnectionsOpen(false)} />}
+    {alarmsOpen && <AlarmsDialog key={project.root} onClose={() => setAlarmsOpen(false)} />}
     {helpOpen && <div className="help-backdrop" role="presentation" onMouseDown={() => setHelpOpen(false)}>
       <section className="quick-help" role="dialog" aria-modal="true" aria-labelledby="quick-help-title" onMouseDown={(event) => event.stopPropagation()}>
         <header><div><small>GUIDA RAPIDA</small><h2 id="quick-help-title">Come modificare un pannello</h2></div><button onClick={() => setHelpOpen(false)} aria-label="Chiudi guida"><X size={18} /></button></header>

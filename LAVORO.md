@@ -3707,6 +3707,52 @@ Verifiche del 5 ottobre 2026:
   server, collaudo CPU/TLS, verifica visiva desktop/touch, licenze/release, Optix e AI
   facoltativa non sono dichiarati completati da questi test.
 
+### 106. Allarmi operativi nel servizio condiviso (2026-10-08)
+
+- Pannello → Allarmi: finestra di configurazione ampia, nomi/testi/zona/priorità,
+  classi e tre modelli di chiusura, Bool/bit set-clear e soglie sopra/sotto con
+  isteresi. Solo tag dichiarati e leggibili, validazione di tipo/bit/collisioni,
+  prova locale senza rete e salvataggio esplicito del catalogo. Nessun dato macchina
+  inventato. Focus contenuto/restituito, label, target da 44 px e scarto confermato.
+- `framecraft.alarms.json` salvato con snapshot di sessione/progetto/catalogo PLC,
+  file temporaneo e sostituzione atomica: conflitti e JSON errato non sovrascrivono
+  il catalogo. Nuovi comandi nativi richiedono il desktop aggiornato; non è stato
+  riavviato o ricompilato l'eseguibile aperto dall'utente durante il lavoro.
+- Motore condiviso Node/offline: gli `onSample` MQTT e OPC UA aggiornano gli allarmi
+  indipendentemente dalle pagine/browser aperti. Bit interi esatti fino a 64 bit;
+  analogici scalari fino a 32 bit o Real/LReal. Primo segnale assente = sconosciuto;
+  qualità Bad/Uncertain/mancante e valori incompatibili conservano il guasto, non
+  inventano rientri. Presa visione distinta dal segnale, conferma dopo rientro valido.
+- Endpoint `alarm-action` con autenticazione gateway/origine e autorizzatore server
+  obbligatorio; default negato, nessun attore/PIN dal browser, timeout, errori privati
+  non esposti e ricontrollo occorrenza/revisione dopo autorizzazione asincrona.
+  Concorrenza/stati vecchi rifiutati; nessuna scrittura PLC o ritentativo automatico.
+  L'hook non implementa già identità/RBAC industriali: serve un backend verificato.
+- Vista live/storico di sessione, ricerca, zona/classe, priorità e pagine da 100 righe.
+  Filtri standard `Alarm_CTH`/`Alarm_History` conservati, filtro ambiguo segnalato;
+  nessuna scrittura implicita di tag troubleshooting. Controlli interni rispettano
+  blocchi dell'oggetto e non rilanciano il click del contenitore. Bozza ripristinata.
+- Revisioni monotone e `instanceId` impediscono rollback da risposte ritardate e
+  riuso dei comandi dopo riavvio. Scheduler alimentato solo dai nuovi eventi, senza
+  riprodurre lo storico iniziale/duplicati di polling; gap diagnosticati. È per
+  browser, non un esecutore server exactly-once: ownership multi-client da completare.
+- Pipeline «Nuovo pannello standard» include catalogo vuoto, motore, vista, tipi e
+  gateway aggiornato. Nessuna migrazione automatica dei vecchi pannelli. README,
+  guida Runtime e roadmap allineati alla documentazione ufficiale Siemens V21.
+- Verifiche mirate: motore/stati/tipi/qualità, dialogo e menu reali, filtri/accesso,
+  salvataggio nativo con conflitti/cambio progetto/sessione, Runtime esportato/Scheduler
+  e moduli generati; cataloghi null/false/non-oggetto bloccati prima dell'acquisizione;
+  broker MQTT/HTTP isolato con due client e server OPC UA locale. La prima nuova
+  fixture UA era disabilitata: corretta la fixture, prova specifica passata; nessun
+  falso successo o modifica al driver per aggirare il problema. TypeScript e build
+  editor isolata passati; avvisi di chunk/import misti preesistenti. Nessuna suite
+  generale, nuova dipendenza, contatto CPU o riavvio dell'app dell'utente.
+- Storico solo in memoria e limitato: restart perde eventi/prese visione. Restano
+  archivio/recovery/audit, identità/RBAC, batch/shelving, altri modelli/comparatori,
+  limiti da tag, import/multilingua, eventi controller, statistiche e notifiche.
+  Clear Alarm Log disabilitato con spiegazione. Nessuna dichiarazione di parità o
+  idoneità alla produzione; collaudo visivo desktop/touch e CPU reali ancora richiesto.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
@@ -3726,7 +3772,7 @@ Verifiche del 5 ottobre 2026:
 
 - **Roadmap WinCC, fase 3 da completare**: eventi specifici dei controlli, object model restante,
   JavaScript oltre il sottoinsieme IR, analisi di flusso intermodulo completa, closure/scoping
-  completi, moduli di libreria/versionati, motore allarmi reale, conferme PLC e altri metodi/driver
+  completi, moduli di libreria/versionati, ownership server degli eventi allarmi, conferme PLC e altri metodi/driver
   (`WCU-DYN-06`, `WCU-EVT-01/04/05/06/07/10`).
 - **Roadmap WinCC, fase 4 da completare**: altre proprietà colore specifiche oltre la prima API
   `PropertyFlashing` del punto 79, audit accessibilità generale e dimensioni minime dei target

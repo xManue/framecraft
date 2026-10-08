@@ -13,6 +13,7 @@ import { hmiFaceplateAttribute, hmiFaceplateBindingIssues, hmiFaceplateTypeIssue
 import { hmiTrendAttribute, hmiTrendIssues, parseHmiTrendConfig } from "./hmiTrend";
 import { hmiDataLogCatalogIssues, type HmiDataLogCatalog } from "./hmiDataLogs";
 import { hmiFunctionTrendAttribute, hmiFunctionTrendIssues, parseHmiFunctionTrendConfig } from "./hmiFunctionTrend";
+import { alarmCatalogIssues } from "./hmiAlarms";
 
 /** I quattro modi in cui un pannello si rompe senza dirlo, e che si vedono solo aprendo la pagina
  * giusta al momento sbagliato: un tag che non esiste, una dinamica lasciata a meta', due pagine con
@@ -29,6 +30,7 @@ export type HmiIssueKind =
   | "translation-missing"
   | "faceplate-invalid"
   | "data-log-invalid"
+  | "alarm-invalid"
   | "trend-invalid"
   | "page-number-duplicate"
   | "navigation-dangling";
@@ -56,6 +58,7 @@ export interface HmiValidationInput {
   faceplates?: HmiFaceplateCatalog;
   /** Data Log disponibili come sorgente storica dei controlli. */
   dataLogs?: HmiDataLogCatalog;
+  alarms?: unknown;
   /** Le route che il router conosce davvero. Se non arrivano, la navigazione non si controlla:
    * meglio tacere che accusare un progetto di cui non si e' letto il router. */
   routes?: readonly string[];
@@ -395,8 +398,9 @@ function checkScriptCatalog(catalog: HmiScriptCatalog | undefined, declared: Set
 
 /** Quello che il progetto dice di se' prima di uscire da Framecraft. Non tocca niente: legge i
  * sorgenti e mette in fila i problemi, file e riga, cosi' come li vedrebbe chi apre la pagina. */
-export function validateHmiProject({ sources, variables, resources, scripts, faceplates, dataLogs, routes, pageRoutes }: HmiValidationInput): HmiIssue[] {
+export function validateHmiProject({ sources, variables, resources, scripts, faceplates, dataLogs, alarms, routes, pageRoutes }: HmiValidationInput): HmiIssue[] {
   const issues: HmiIssue[] = [];
+  for (const issue of alarms === undefined ? [] : alarmCatalogIssues(alarms, variables)) issues.push({ kind: "alarm-invalid", severity: "error", file: "framecraft.alarms.json", line: 1, message: `Allarmi — ${issue.message}` });
   const declared = declaredTags(variables);
   const knownRoutes = routes ? new Set(routes.map((route) => (route.startsWith("/") ? route : `/${route}`))) : undefined;
   const routeByFile = new Map(Object.entries(pageRoutes ?? {}).map(([file, route]) => [file.replaceAll("\\", "/").toLocaleLowerCase(), route]));

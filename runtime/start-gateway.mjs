@@ -13,9 +13,12 @@ for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void st
 try {
   const catalog = JSON.parse(await readFile(new URL("framecraft.connections.json", root), "utf8"));
   const plc = JSON.parse(await readFile(new URL("framecraft.plc.json", root), "utf8"));
+  let alarmCatalog;
+  try { alarmCatalog = JSON.parse(await readFile(new URL("framecraft.alarms.json", root), "utf8")); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
   if (catalog.gateway?.enabled !== true) process.stdout.write((json ? JSON.stringify({ type: "gateway", state: "disabled" }) : "Gateway disabilitato; nessuna connessione PLC avviata.") + "\n");
   else {
-    gateway = createPlcGateway(catalog, plc.variables, { onDiagnostic: (event) => logger.write(event),
+    gateway = createPlcGateway(catalog, plc.variables, { alarmCatalog, onDiagnostic: (event) => logger.write(event),
       onState: (state) => process.stdout.write(JSON.stringify({ type: "connection", ...state }) + "\n") });
     if (!stopping) {
       await gateway.start();

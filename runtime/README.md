@@ -11,6 +11,83 @@ CA/server/client effimeri verificano TLS e mTLS, trust rifiutato, scadenza e hos
 non vengono installati nel trust del sistema. Serve OpenSSL (su Windows è usato quello di Git,
 se presente). Queste prove locali non dimostrano compatibilità con CPU/broker/trust aziendali.
 
+## Allarmi nel servizio condiviso
+
+Nell'editor, **Pannello → Allarmi** configura `framecraft.alarms.json`.
+Il catalogo nasce vuoto: nessun tag, testo macchina, soglia o comando viene inventato.
+Per provare: aggiungi un allarme, scegli un tag dichiarato e leggibile, compila il
+messaggio e applica un valore nella **Prova locale**. Bool usa bit 0; gli interi
+supportano bit fino alla larghezza dichiarata. LWord/LInt usano stringhe decimali
+esatte, mai numeri JavaScript già arrotondati. I tag analogici supportati hanno una
+soglia fissa sopra/sotto e isteresi di rientro; gli altri confronti Unified sono aperti.
+
+Il servizio carica il catalogo all'avvio manuale. Salvare nell'editor non riavvia
+gateway/PLC, non modifica connessioni né invia comandi. Il motore usa `onSample` dei
+driver MQTT e OPC UA, anche quando nessun browser mostra la pagina Allarmi. Ogni
+browser riceve lo stesso stato da `GET /_framecraft/plc/v1/snapshot`, campo `alarms`.
+La qualità deve essere Good conosciuta e il valore compatibile. Bad, Uncertain,
+errore o qualità mancante conservano l'ultima condizione e mostrano il problema;
+non generano un rientro. Nessun campione iniziale significa stato sconosciuto, non Normale.
+
+Classi: `none` chiude al rientro, `single` richiede anche la presa visione,
+`reset` richiede inoltre una conferma dopo rientro valido e presa visione.
+La presa visione può precedere o seguire il rientro e **non scrive nel PLC**.
+Una riattivazione pendente richiede una nuova presa visione; la nuova revisione
+invalida i pulsanti selezionati prima del cambiamento. Il modello deriva da
+[stati Unified](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/basics-rt-unified/alarm-states-rt-unified)
+e [presa visione](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/basics-rt-unified/acknowledgment-model-rt-unified).
+
+### Autorizzazione degli operatori: bloccata per impostazione iniziale
+
+`start-gateway.mjs` non dichiara identità o permessi dell'operatore: gli allarmi
+sono consultabili, ma presa visione/conferma sono bloccate. L'integrazione server
+deve fornire `createPlcGateway(..., { alarmCatalog, authorizeAlarmAction })`:
+il callback riceve la richiesta HTTP e il comando, verifica sessione, ruolo,
+allarme e azione e restituisce l'identificativo dell'operatore **verificato dal server**,
+oppure rifiuta. Non autorizzare restituendo un nome fisso, accettando `actor` dal
+browser o fidandosi del PIN locale. Il callback ha un timeout di 5 secondi.
+Autenticazione/RBAC e audit persistente dell'integrazione restano da implementare
+e collaudare; questo hook non è un prodotto di autenticazione completo.
+
+`POST /_framecraft/plc/v1/alarm-action` accetta soltanto `alarmId`, `occurrence`,
+`revision` e `action` (`acknowledge` o `confirm`), con JSON e le stesse protezioni
+token/origine del gateway. Dopo l'autorizzazione ricontrolla lo stato: una revisione
+vecchia o il replay vengono rifiutati (409); mancata autorizzazione dà 403. Un
+timeout HTTP non dimostra che l'azione sia fallita: aggiorna la vista prima di
+riprovare, senza retry automatico. Gli errori dell'identity provider non vengono
+restituiti al browser. `onAlarmEvent` permette una futura integrazione di audit;
+il buffer in memoria non offre integrità o durabilità industriale.
+
+### Vista, Scheduler e limiti dello storico
+
+I controlli Allarmi nei nuovi pannelli mostrano nome, stato, messaggio, zona e ora,
+con ricerca, filtro zona, priorità e pagine da 100 righe. I filtri di classe dello
+standard restano `AlarmClassName = 'Alarm_CTH'` e `AlarmClassName = 'Alarm_History'`:
+la pagina Storico mostra solo gli eventi della classe configurata, non rimappa
+implicitamente le classi macchina. Un filtro non supportato è segnalato e non ignorato.
+Nessuna scrittura dei tag di selezione/troubleshooting viene introdotta dal nuovo motore.
+
+Gli eventi alimentano i trigger Scheduler `Alarms`, senza duplicare gli stessi
+eventi a ogni polling, riprodurre lo storico iniziale o rilanciare eventi dopo un
+riavvio del servizio. Un buco nel buffer è diagnosticato, non recuperato inventando
+operazioni.
+Le revisioni monotone dello snapshot impediscono a risposte HTTP ritardate di
+riportare indietro qualità/stato o duplicare i trigger. Lo Scheduler è **per client
+browser**, non un esecutore unico sul server: due client possono eseguire ciascuno
+la propria regola sullo stesso evento. Non usare questo percorso come garanzia di
+comandi macchina exactly-once; ownership server e audit restano da implementare.
+Lo storico espone operatore verificato, ora del servizio e contatore degli eventi
+rimossi dal limite (`maxHistory`). È **solo storico di sessione**:
+arresto/riavvio perde buffer e prese visione; un nuovo `instanceId`/occorrenza
+impedisce di riutilizzare i vecchi comandi. Il primo segnale valido ricostruisce
+la condizione, ma non ricrea i vecchi eventi. `Clear Alarm Log` resta disabilitato
+con spiegazione finché non esiste un archivio con cancellazione/audit protetti.
+
+Prima della produzione servono archivio e ripristino verificati, identità/permessi
+server, audit, commissioning CPU, limiti/carico, traduzioni, shelving e operazioni
+multiple. Gli allarmi di eventi OPC UA/controller non sono i trigger scalari qui
+implementati. La prova locale è isolata e non certifica il funzionamento sulla macchina.
+
 ## Abilitazione in un pannello standard
 
 La pipeline copia servizio, client, tipi, proxy e questa guida. Per impostazione iniziale:

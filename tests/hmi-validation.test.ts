@@ -6,10 +6,17 @@ import { emptyHmiResourceCatalog } from "../src/core/hmiResources";
 import { parseHmiScriptCatalog } from "../src/core/hmiScriptModules";
 import { standardHmiFaceplateCatalog } from "../src/core/hmiFaceplates";
 import { defaultHmiTrendConfig, serializeHmiTrendConfig } from "../src/core/hmiTrend";
+import { emptyAlarmCatalog } from "../src/core/hmiAlarms";
 
 const tag = (name: string): PlcVariableDefinition => ({ name, dataType: "Int", access: "read", address: "%DB1.DBW0", description: "" });
 
 describe("controllo del pannello prima del salvataggio", () => {
+  it("include catalogo allarmi e segnala tag, bit e JSON non validi", () => {
+    const alarms = { ...emptyAlarmCatalog(), alarms: [{ id: "a", name: "Motor", text: "Controlla", tag: "Missing", className: "Alarm_CTH", priority: 1, enabled: true, trigger: { kind: "bit", bit: 31, activeWhen: "set" } }] };
+    const issues = validateHmiProject({ sources: {}, variables: [], alarms }); expect(issues.length).toBeGreaterThan(0); expect(issues.every((i) => i.kind === "alarm-invalid" && i.file === "framecraft.alarms.json")).toBe(true);
+    expect(validateHmiProject({ sources: {}, alarms: null })[0].message).toContain("Catalogo allarmi non valido");
+    expect(validateHmiProject({ sources: {}, variables: [], alarms: emptyAlarmCatalog() })).toEqual([]);
+  });
   it("controlla i tag di inizializzazione e delle funzioni che leggono export di altri moduli", () => {
     const scripts = parseHmiScriptCatalog({
       globalModules: [
