@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { testRunnerDefaults } from "./vitest.settings";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 export const privateStandardTests = readdirSync(new URL("./tests/", import.meta.url))
@@ -9,6 +10,7 @@ if (!localStandardAvailable) console.warn(`Export WinCC privati non presenti: ${
 
 export default defineConfig({
   test: {
+    ...testRunnerDefaults,
     environment: "node",
     include: ["tests/**/*.test.ts"],
     exclude: ["tests/_scratch.test.ts", ...(localStandardAvailable ? [] : privateStandardTests)],

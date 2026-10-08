@@ -7,5 +7,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "vitest.production.config.ts", "vitest.gateway.config.ts", "vitest.standard.config.ts"]
+  "include": ["vite.config.ts", "vitest.config.ts", "vitest.public.config.ts", "vitest.settings.ts", "vitest.production.config.ts", "vitest.recovery.config.ts", "vitest.gateway.config.ts", "vitest.standard.config.ts"]
 }

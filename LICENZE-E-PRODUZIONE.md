@@ -1,6 +1,6 @@
 # Licenze e gate di produzione
 
-Aggiornamento: 7 ottobre 2026. Questa è una verifica tecnica e un registro dei punti da
+Aggiornamento: 8 ottobre 2026. Questa è una verifica tecnica e un registro dei punti da
 chiudere, **non un'approvazione legale né un rilascio industriale approvato**.
 
 ## Inventario ripetibile
@@ -11,14 +11,17 @@ repository pubblico contiene solo codice: export JSON WinCC reali e foto di conf
 locali, esclusi da Git. Il push di un checkpoint non è un'approvazione al rilascio industriale.
 
 `npm run check:licenses` legge `package-lock.json` senza rete e percorre dipendenze transitive,
-peer e optional distinguendo editor, tooling e servizio MQTT. Interroga Cargo con
+peer e optional distinguendo editor, tooling e servizi MQTT/OPC UA. Interroga Cargo con
 `metadata --offline --locked --filter-platform` per il target host: oggi Windows x64 MSVC.
 Il report machine-readable è `.hmi-preview/license-audit.json` e non contiene credenziali.
 
-Esito attuale: 255 pacchetti npm, di cui 44 nello scope MQTT; 266 pacchetti Rust nel grafo Windows.
+Esito attuale dopo OPC UA e Vitest 5 (punto 103): 375 pacchetti npm, 44 nello scope MQTT e
+127 nello scope OPC UA; 266 pacchetti Rust nel grafo Windows. Gli scope possono sovrapporsi.
 Nessuna dipendenza npm obbligatoria mancante. I 44 pacchetti MQTT hanno metadati con licenze
 riconosciute dalla lista permissiva conservativa; occorre comunque raccoglierne licenze e notice.
 Il broker Aedes serve ai test e non viene installato nel servizio del pannello generato.
+Restano quattro revisioni npm e 41 Cargo; il report mantiene `releaseApproved: false` e
+il codice di uscita 1 atteso. I ricontrolli datati sotto sono snapshot precedenti, non il totale attuale.
 
 Ricontrolli offline del 2 ottobre 2026 dopo i dati strutturati negli script e dopo le protezioni
 HMR/reload e deposito persistente delle bozze dell'editor: inventario invariato, nessuna nuova
@@ -56,6 +59,12 @@ Il comando termina con codice 1 finché vi sono punti da rivedere e mantiene `re
 
 - `caniuse-lite@1.0.30001810`: CC-BY-4.0, attualmente nello scope tooling. Raccogliere attribuzione
   e notice se viene distribuito quel materiale; non etichettarlo come una licenza non commerciale.
+- `dequeue@1.0.5`: metadati UNKNOWN, solo tooling per il server OPC UA di test. Il LICENSE
+  installato dichiara BSD-2-Clause e copyright Sean M. Egan; conservare notice se distribuito.
+  Il gate sui metadati resta conservativo, non assegna automaticamente una licenza al pacchetto.
+- `precond@0.2.3`: metadati UNKNOWN nel grafo OPC UA; verificare e conservare il testo integrale
+  della licenza/notice prima della distribuzione. `tweetnacl@0.14.5` dichiara Unlicense, fuori
+  dall'allowlist attuale: revisione esplicita, non un divieto commerciale dedotto dal nome.
 - 41 voci Cargo richiedono verifica: comprendono MPL-2.0, Unicode-3.0, CC0-1.0, Zlib e dichiarazioni
   dual-license con sintassi legacy. L'elenco completo con versioni è nel report. Verificare quali
   file entrano nell'artefatto rilasciato e gli obblighi effettivi; non rimuovere le segnalazioni
@@ -75,7 +84,8 @@ Riferimenti primari: [licenza MQTT.js 5.16.0](https://github.com/mqttjs/MQTT.js/
 
 ## Audit vulnerabilità autorizzato
 
-Ricontrollo online del 7 ottobre 2026, dopo affidabilità MQTT e guida connessioni (punto 93).
+Snapshot del 7 ottobre 2026 dopo affidabilità MQTT (punto 93), seguito dal ricontrollo del
+8 ottobre dopo la migrazione tooling. Le tre segnalazioni sotto appartengono allo snapshot precedente.
 
 Il controllo online è stato autorizzato dall'utente; npm ha inviato nomi/versioni delle dipendenze
 a `registry.npmjs.org`, non sorgenti, tag PLC o credenziali. Non è stato eseguito `npm audit fix`.
@@ -89,10 +99,10 @@ a `registry.npmjs.org`, non sorgenti, tag PLC o credenziali. Non è stato esegui
   Vitest eredita anche la gravità delle dipendenze; non sono tre compromissioni accertate.
 - `npm audit --omit=dev --json`: zero vulnerabilità note nel sottoinsieme delle dipendenze npm
   di produzione dell'editor. Il controllo completo comprende anche MQTT installato per test/generazione.
-- Correzione tooling da implementare e collaudare separatamente: Vitest almeno 4.1.11 per il
+- Correzione allora da implementare e collaudare separatamente: Vitest almeno 4.1.11 per il
   mocker e Tinypool almeno 2.1.2 per entrambi gli advisory rilevati, rispettando i contratti del
   runner. Non forzati override incompatibili o aggiornamenti major automatici; la proposta
-  npm `vitest@5.0.3` non è stata applicata. I rischi dev/CI restano un gate aperto.
+  npm `vitest@5.0.3` non era stata applicata. Esito successivo riportato sotto.
 - Il problema riguarda il dev server del mocker esposto e le condizioni descritte nel
   [bollettino ufficiale Vitest GHSA-82fw-gwwq-j7x9](https://github.com/vitest-dev/vitest/security/advisories/GHSA-82fw-gwwq-j7x9).
   Non è una prova che un PLC o il pannello siano stati compromessi. Mantenere i server di sviluppo
@@ -103,6 +113,18 @@ a `registry.npmjs.org`, non sorgenti, tag PLC o credenziali. Non è stato esegui
   la prova di un incidente in questo checkout. Non includere runner/tooling nei servizi distribuiti.
 - Nessuna scansione RustSec o verifica di vulnerabilità del WebView/OS è stata completata in questa
   tranche. Zero segnalazioni npm non significa assenza di vulnerabilità o approvazione al rilascio.
+
+Ricontrollo dell'8 ottobre, punto 103: Vitest e mocker bloccati a 5.0.3, Tinypool rimosso dal
+lockfile e dal grafo installato, Vite invariato a 7.3.6. Nessun override incompatibile o
+`npm audit fix`. `npm audit --json` sul grafo completo termina con codice 0 e zero segnalazioni
+note, inclusi i pacchetti dev; è un risultato datato, da ripetere sulla distribuzione effettiva.
+Il runner non entra nel manifest del servizio generato. API test disabilitata nelle configurazioni,
+isolamento mantenuto e vecchio comportamento dei mock esplicito secondo la
+[migrazione ufficiale Vitest](https://vitest.dev/guide/migration/).
+Collaudo su Node 24.19.0 LTS: suite pubblica e ripetizioni mirate dei tre file inizialmente falliti,
+gateway, recovery, generatori compilati e build editor isolata (vedi punto 103).
+Questo chiude le segnalazioni npm censite al punto 93, non i gate Rust/OS, licenze/notice,
+autenticazione, storage o collaudo PLC. Node globale non modificato; nessun riavvio manuale dell'app.
 
 ## Gate industriali
 
@@ -122,7 +144,8 @@ Prima di autorizzare una release:
 7. HTTPS/reverse proxy protetto e servizio gestito, health check/restart, segreti fuori dal bundle,
    privilegi minimi e separazione di rete. Vite dev/preview non è il deployment industriale.
 8. Runtime supportati e versioni bloccate: baseline Node 24 LTS, non Node 26 Current usato qui per
-   test. La scelta segue le [release supportate di Node](https://nodejs.org/en/about/previous-releases).
+   test precedenti; i controlli del punto 103 usano Node 24.19.0. La scelta segue le
+   [release supportate di Node](https://nodejs.org/en/about/previous-releases).
    Non è stato modificato Node globale della macchina.
 9. Audit vulnerabilità/npm/Rust/OS e licenze/notice/SBOM della distribuzione effettiva; chiudere o
    accettare formalmente i rischi residui, senza usare il report come autorizzazione legale.

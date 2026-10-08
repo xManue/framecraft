@@ -3,12 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": { "node": "^22.13.0 || ^24.0.0 || >=26.0.0" },
   "scripts": {
     "dev": "tauri dev",
     "web:dev": "vite --configLoader runner",
     "build": "tsc -b && vite build --configLoader runner",
     "web:preview": "vite preview --configLoader runner --host 127.0.0.1 --port 1420",
     "test": "vitest run --config vitest.config.ts --configLoader runner",
+    "test:public": "vitest run --config vitest.public.config.ts --configLoader runner",
     "test:production": "vitest run --config vitest.production.config.ts --configLoader runner",
     "test:recovery": "vitest run --config vitest.recovery.config.ts --configLoader runner",
     "test:gateway": "vitest run --config vitest.gateway.config.ts --configLoader runner",
@@ -46,6 +48,6 @@
     "node-opcua-server": "2.186.17",
     "typescript": "~5.9.2",
     "vite": "^7.1.3",
-    "vitest": "^3.2.4"
+    "vitest": "5.0.3"
   }
 }

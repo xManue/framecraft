@@ -27,7 +27,14 @@ describe("collaudo separato della generazione Runtime di produzione", () => {
     const files = (compiled.standardProjectFiles as (config: unknown) => GeneratedProjectFile[])({ machineName: "Runtime", layout: "desktop", sections: ["main"] });
     expect(files.find((file) => file.path === "runtime/mqtt-driver.mjs")?.content).toContain("export function createMqttPlcConnection");
     expect(JSON.parse(files.find((file) => file.path === "framecraft.connections.json")!.content)).toEqual({ version: 1, connections: [] });
-    expect(files.find((file) => file.path === "runtime/gateway.mjs")?.content).toContain("export function createMqttGateway");
+    expect(files.find((file) => file.path === "runtime/gateway.mjs")?.content).toContain("export function createPlcGateway");
+    expect(files.find((file) => file.path === "runtime/gateway.mjs")?.content).toContain("export const createMqttGateway = createPlcGateway");
+    expect(files.find((file) => file.path === "runtime/opcua-driver.mjs")?.content).toContain("export function createOpcUaPlcConnection");
+    const manifest = JSON.parse(files.find((file) => file.path === "runtime/package.json")!.content);
+    expect(manifest.dependencies["node-opcua-client"]).toBe("2.186.17");
+    expect(manifest.dependencies["node-opcua-server"]).toBeUndefined();
+    expect(manifest.dependencies.vitest).toBeUndefined();
+    expect(manifest.devDependencies?.vitest).toBeUndefined();
     expect(JSON.parse(files.find((file) => file.path === "framecraft.runtime.json")!.content).gateway.enabled).toBe(false);
     const modules = new Map<string, Record<string, unknown>>();
     for (const name of ["runtime/connection-config.mjs", "runtime/connection-diagnostics.mjs"]) modules.set(name, evaluateModule(files.find((file) => file.path === name)!.content));

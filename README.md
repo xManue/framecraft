@@ -174,10 +174,23 @@ them it explicitly reports the excluded reference test files; this is not a clai
 fidelity to WinCC. `npm run test:standard` requires those exports and fails clearly when absent.
 Never create fake reference JSON merely to satisfy that test suite.
 
+`npm run test:public` explicitly excludes the private reference tests even when local exports
+exist. Use it for public CI or append the affected test paths for normal changes; do not run
+every suite after each edit. The one-off Vitest migration check and its targeted reruns are
+recorded in `LAVORO.md` (checkpoint 103).
+
+The runner is pinned to Vitest 5.0.3. Use Node 24 LTS (verified with 24.19.0); the manifest
+declares the compatible Node ranges. All test configurations leave the test API disabled,
+retain the previous mock-clearing behavior and preserve per-file isolation. Unit tests use
+at most two workers; process/build integrations use one. Transformed-module cache is local
+to ignored `.hmi-preview/vitest-cache/`. Node installed globally is not changed by these checks.
+
 Additional checks: `npm run test:gateway` uses isolated local MQTT TCP/TLS brokers, controlled
 MQTT 5 peers, HTTP gateways and generated-service processes. OpenSSL creates ephemeral CA,
 server and client certificates for TLS/mTLS faults; no system trust store is changed.
+The gateway checks also use an isolated OPC UA server with temporary trust and certificates.
 `npm run test:production` checks the bundled standalone generator and real Vite image watching;
+`npm run test:recovery` checks the compiled editor's reload recovery without restarting the app;
 `cargo test --offline` in
 `src-tauri` checks native lifecycle/recovery/configuration persistence. These checks do not
 prove interoperability with a real machine or its broker/trust, or approval for industrial use.

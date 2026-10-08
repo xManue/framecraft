@@ -3611,6 +3611,34 @@ Verifiche del 5 ottobre 2026:
 - Restano browsing/import nodi, array/UDT/subtype custom/64 bit/DateTime, metodi/eventi/allarmi UA,
   rinnovo PKI guidato, conferme applicative PLC, ruoli/audit/storage server e commissionamento CPU.
 
+### 103. Migrazione tooling sicura e collaudo LTS (2026-10-08)
+
+- Vitest/mocker bloccati a 5.0.3, Tinypool rimosso: nessun override incompatibile, Vite resta
+  7.3.6. Requisiti Node dichiarati nel manifest; verifiche con Node 24.19.0 LTS, senza modificare
+  Node globale né riavviare l'app utente. API test disabilitata e clearMocks falso espliciti;
+  isolamento per file conservato, due worker al massimo (uno per integration/build).
+- Cache moduli in .hmi-preview/vitest-cache ignorata. La fixture del runtime conserva solo
+  sorgenti/compilazioni immutabili: exports, timer, cataloghi e contesti restano istanze nuove.
+  Nessun aumento dei budget di esecuzione script o timeout per mascherare errori.
+- Nuovo test:public esclude sempre gli export privati; test e test:standard conservano il
+  comportamento precedente. Le modifiche normali richiedono solo i percorsi interessati.
+- Collaudo eccezionale del cambio runner: 99 file pubblici / 1346 casi. Primo passaggio:
+  96 file e 1327 casi passati, 19 errori in tre file. Fixture evidenziazione corretta per le
+  reazioni esplicite e dicitura gateway aggiornata da MQTT a PLC. Ripetuti soltanto i tre file:
+  8 evidenziazione, 33 oggetti grafici e 38 runtime generato passati; i timeout sotto carico
+  non si ripetono nel controllo isolato e la cache riduce il costo del test runtime.
+  Non dichiarato un secondo passaggio verde dell'intera suite. Il controllo mirato di
+  ritorno Desktop/Mobile, standard e preview comprende 47 casi passati, già inclusi sopra.
+- Integration: 58 gateway MQTT/OPC UA reali loopback, 16 recovery del vero store compilato,
+  3 generazione/bundling/watcher immagini. Allineata la fixture compilata al gateway comune,
+  mantenendo l'alias MQTT; verificato che il manifest runtime escluda server OPC UA e Vitest.
+  TypeScript e build editor isolata passati; restano gli avvisi di chunk/import misti.
+- Audit npm autorizzato sul grafo completo: codice 0, zero segnalazioni note. Inventario
+  offline: 375 npm, 44 scope MQTT, 127 OPC UA, nessuna dipendenza mancante; 4 review npm
+  e 41 Cargo/266 Windows. Dequeue è solo tooling, LICENSE installato BSD-2-Clause;
+  precond e tweetnacl restano le review SDK. Gate releaseApproved falso, nessuna approvazione
+  legale/industriale. Dati macchina, certificati, cache e artefatti restano esclusi da Git.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
@@ -3618,9 +3646,9 @@ Verifiche del 5 ottobre 2026:
 - **Mobile**: collaudo su dispositivi touch fisici e sui nuovi progetti reali; nessuna migrazione
   dei vecchi pannelli richiesta dall'utente. Le verifiche browser non sostituiscono il collaudo macchina.
 
-- **Sicurezza tooling**: migrare e collaudare Vitest/mocker/Tinypool a versioni corrette
-  per gli advisory del punto 93, senza override incompatibili. Ripetere suite pubblica,
-  integration/build e audit dell'artefatto distribuito; i log MQTT non chiudono questo gate.
+- **Sicurezza tooling**: migrazione e controlli del punto 103 completati per le segnalazioni
+  npm del punto 93. Ripetere audit/SBOM sull'artefatto realmente distribuito; restano Rust/OS
+  e i gate industriali. Conservare test mirati nel lavoro ordinario, senza suite generali a ogni edit.
 
 - **Affidabilità editor durante gli aggiornamenti**: HMR/reload coperti al punto 77 e deposito
   locale persistente al punto 78. Collaudare incidente e recovery nella finestra desktop reale
@@ -3648,7 +3676,7 @@ Verifiche del 5 ottobre 2026:
 - **Connettività trasversale**: trasporto asincrono MQTT nella IR integrato al punto 91;
   completare conferme PLC/payload avanzati, command layer restante e OPC UA avanzato; RBAC/audit/storage
   server e collaudo TLS/CPU fisiche o virtuali. Mai segreti nel browser o replay di comandi incerti.
-- **Produzione**: chiudere licenze/notice e diritti asset, collaudare upgrade Vitest, audit Rust/OS,
+- **Produzione**: chiudere licenze/notice e diritti asset, audit distribuzione/Rust/OS,
   packaging su runtime LTS e guasti/recovery nella finestra desktop e su progetti reali;
   collaudare il plugin senza checkout e distribuire/risolvere le sue dipendenze bare, oltre
   alla mappa delle risorse corretta al punto 81;

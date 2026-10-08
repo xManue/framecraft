@@ -30,10 +30,19 @@ interface GeneratedRuntime {
   requestRuntimeDataLog(logId?: string, loggedTagId?: string): number;
 }
 
-function loadGeneratedScriptRuntime(): typeof import("../src/core/hmiScript") {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftScriptRuntime.ts")!.content;
+const generatedSources = new Map(standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] }).map((file) => [file.path, file.content]));
+const compiledSources = new Map<string, string>();
+function compileSource(source: string): string {
+  const cached = compiledSources.get(source);
+  if (cached !== undefined) return cached;
   const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  compiledSources.set(source, javascript);
+  return javascript;
+}
+
+function loadGeneratedScriptRuntime(): typeof import("../src/core/hmiScript") {
+  const source = generatedSources.get("src/framecraftScriptRuntime.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   new Function("exports", "module", javascript)(exports, module);
@@ -41,9 +50,8 @@ function loadGeneratedScriptRuntime(): typeof import("../src/core/hmiScript") {
 }
 
 function loadGeneratedScriptModules(): { hmiScriptFunctions: typeof hmiScriptFunctions; createHmiScriptContextManager: typeof createHmiScriptContextManager } {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftScriptModules.ts")!.content;
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const source = generatedSources.get("src/framecraftScriptModules.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   new Function("exports", "module", "require", javascript)(exports, module, (id: string) => {
@@ -54,9 +62,8 @@ function loadGeneratedScriptModules(): { hmiScriptFunctions: typeof hmiScriptFun
 }
 
 function loadGeneratedTimers(): typeof createHmiTimerManager {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftHmiTimers.ts")!.content;
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const source = generatedSources.get("src/framecraftHmiTimers.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   new Function("exports", "module", javascript)(exports, module);
@@ -64,9 +71,8 @@ function loadGeneratedTimers(): typeof createHmiTimerManager {
 }
 
 function loadGeneratedPopups(): { createHmiFaceplatePopupDomSurface: typeof createHmiFaceplatePopupDomSurface; createHmiFaceplatePopupManager: typeof createHmiFaceplatePopupManager } {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftHmiPopups.ts")!.content;
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const source = generatedSources.get("src/framecraftHmiPopups.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   new Function("exports", "module", javascript)(exports, module);
@@ -74,9 +80,8 @@ function loadGeneratedPopups(): { createHmiFaceplatePopupDomSurface: typeof crea
 }
 
 function loadGeneratedFaceplateVisuals(): { renderHmiFaceplates: typeof renderHmiFaceplates } {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftHmiFaceplateVisuals.ts")!.content;
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const source = generatedSources.get("src/framecraftHmiFaceplateVisuals.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   new Function("exports", "module", javascript)(exports, module);
@@ -84,9 +89,8 @@ function loadGeneratedFaceplateVisuals(): { renderHmiFaceplates: typeof renderHm
 }
 
 function loadGeneratedTrend(): { renderHmiTrendControls: typeof renderHmiTrendControls } {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftHmiTrend.ts")!.content;
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const source = generatedSources.get("src/framecraftHmiTrend.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   new Function("exports", "module", javascript)(exports, module);
@@ -94,17 +98,16 @@ function loadGeneratedTrend(): { renderHmiTrendControls: typeof renderHmiTrendCo
 }
 
 function loadGeneratedFunctionTrend(): { renderHmiFunctionTrendControls: typeof renderHmiFunctionTrendControls } {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] }).find((file) => file.path === "src/framecraftHmiFunctionTrend.ts")!.content;
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const source = generatedSources.get("src/framecraftHmiFunctionTrend.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {}; const module = { exports };
   new Function("exports", "module", javascript)(exports, module);
   return module.exports as { renderHmiFunctionTrendControls: typeof renderHmiFunctionTrendControls };
 }
 
 function loadGeneratedDataLogs(): { createHmiDataLogRuntime: typeof createHmiDataLogRuntime } {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftHmiDataLogs.ts")!.content;
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const source = generatedSources.get("src/framecraftHmiDataLogs.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   new Function("exports", "module", javascript)(exports, module);
@@ -112,9 +115,8 @@ function loadGeneratedDataLogs(): { createHmiDataLogRuntime: typeof createHmiDat
 }
 
 function loadGeneratedSchedule(): { hmiAlarmMatches: typeof hmiAlarmMatches; nextHmiCalendarDue: typeof nextHmiCalendarDue } {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftHmiSchedule.ts")!.content;
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const source = generatedSources.get("src/framecraftHmiSchedule.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   new Function("exports", "module", javascript)(exports, module);
@@ -122,9 +124,8 @@ function loadGeneratedSchedule(): { hmiAlarmMatches: typeof hmiAlarmMatches; nex
 }
 
 function loadGeneratedFlashing(): { hmiFlashingCss: typeof hmiFlashingCss; hmiFlashingInlineStyle: typeof hmiFlashingInlineStyle; resolveHmiFlashing: typeof resolveHmiFlashing } {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftHmiFlashing.ts")!.content;
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const source = generatedSources.get("src/framecraftHmiFlashing.ts")!;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   new Function("exports", "module", javascript)(exports, module);
@@ -132,8 +133,7 @@ function loadGeneratedFlashing(): { hmiFlashingCss: typeof hmiFlashingCss; hmiFl
 }
 
 function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCatalog(), dataLogCatalog: HmiDataLogCatalog = emptyHmiDataLogCatalog("runtime-test"), gatewayEnabled = false): GeneratedRuntime {
-  const source = standardProjectFiles({ machineName: "Runtime", layout: "desktop", sections: ["main"] })
-    .find((file) => file.path === "src/framecraftHmiRuntime.ts")!.content
+  const source = generatedSources.get("src/framecraftHmiRuntime.ts")!
     .replace('import { executeHmiScript, executeHmiScriptAsync, inspectHmiScriptProgram } from "./framecraftScriptRuntime";', "const executeHmiScript = globalThis.__framecraftTestExecuteHmiScript; const executeHmiScriptAsync = globalThis.__framecraftTestExecuteHmiScriptAsync; const inspectHmiScriptProgram = globalThis.__framecraftTestInspectHmiScriptProgram;")
     .replace('import { hmiFlashingCss, hmiFlashingInlineStyle, resolveHmiFlashing, createHmiPropertyFlashing, createHmiPropertyFlashingDomSurface } from "./framecraftHmiFlashing";', "const { hmiFlashingCss, hmiFlashingInlineStyle, resolveHmiFlashing, createHmiPropertyFlashing, createHmiPropertyFlashingDomSurface } = globalThis.__framecraftTestHmiFlashing;")
     .replace('import { createHmiScriptContextManager } from "./framecraftScriptModules";', "const { createHmiScriptContextManager } = globalThis.__framecraftTestHmiScriptModules;")
@@ -150,7 +150,7 @@ function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCa
     .replace('import plcCatalogJson from "../framecraft.plc.json";', 'const plcCatalogJson = { variables: [{ name: "Runtime.Alternative" }, { name: "Motor.Speed" }] };')
     .replace('import runtimeCatalogJson from "../framecraft.runtime.json";', 'const runtimeCatalogJson = { gateway: { enabled: ' + gatewayEnabled + ', pollMs: 100 } };')
     .replace('import { createHmiGatewayClient, HmiGatewayCommandError, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";', "const createHmiGatewayClient = globalThis.__framecraftTestGateway; const HmiGatewayCommandError = globalThis.__framecraftTestGatewayError;");
-  const javascript = transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2020 } }).outputText;
+  const javascript = compileSource(source);
   const exports: Record<string, unknown> = {};
   const module = { exports };
   (globalThis as typeof globalThis & { __framecraftTestExecuteHmiScript?: typeof executeHmiScript }).__framecraftTestExecuteHmiScript = executeHmiScript;
@@ -413,7 +413,7 @@ describe("Runtime del pannello standard generato", () => {
     const dispose = runtime.installFramecraftHmiRuntime({ navigate: () => undefined, trace, error: errors });
     try {
       await vi.waitFor(() => expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10"));
-      expect(document.querySelector("[data-framecraft-gateway-status]")!.textContent).toBe("MQTT 1/1");
+      expect(document.querySelector("[data-framecraft-gateway-status]")!.textContent).toBe("PLC 1/1");
       expect(await runtime.requestRuntimeTagWrite("Motor.Speed", 30)).toMatchObject({ outcome: "delivered", plcConfirmed: false });
       expect(runtime.runtimeTagValues()["Motor.Speed"]).toBe("10"); expect(runtime.runtimeTagStatus()["Motor.Speed"].qualityCode).toBe(192);
       expect(document.querySelector("[data-framecraft-command-status]")!.textContent).toContain("non confermato dal PLC"); expect(errors).not.toHaveBeenCalled();

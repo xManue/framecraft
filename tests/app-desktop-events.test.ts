@@ -64,10 +64,10 @@ describe("desktop event lifecycle and loading screen", () => {
   });
 
   it("disposes late registrations and ignores their events after unmount", async () => {
-    const registrations: { resolve: (dispose: () => void) => void; dispose: ReturnType<typeof vi.fn> }[] = [];
+    const registrations: { resolve: (dispose: () => void) => void; dispose: ReturnType<typeof vi.fn<() => void>> }[] = [];
     events.listen.mockImplementation((name, callback) => {
       events.callbacks.set(name, callback);
-      return new Promise<() => void>((resolve) => registrations.push({ resolve, dispose: vi.fn() }));
+      return new Promise<() => void>((resolve) => registrations.push({ resolve, dispose: vi.fn<() => void>() }));
     });
     const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
     await act(async () => root.render(createElement(App)));

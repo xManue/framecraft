@@ -15,7 +15,7 @@ import framecraftPlugin from "../scripts/framecraft-vite-plugin.mjs";
 const { JSDOM } = createRequire(import.meta.url)("jsdom") as { JSDOM: new (html: string, options: object) => { window: Window & typeof globalThis & { close(): void } } };
 const initial = useEditorStore.getState();
 const file = "C:/panel/Page.tsx";
-const original = 'export function Page(){return <main><button>Mostra M2400</button><img src="macchina.png" alt="Macchina" /></main>}';
+const original = 'export function Page(){return <main><button data-fc-reacts="true">Mostra M2400</button><img src="macchina.png" alt="Macchina" /></main>}';
 let host: HTMLDivElement, root: Root, preview: InstanceType<typeof JSDOM>;
 let drawing: HTMLImageElement;
 let frames: Map<number, FrameRequestCallback>;
