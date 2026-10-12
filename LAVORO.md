@@ -3795,6 +3795,25 @@ Verifiche del 5 ottobre 2026:
   identità/RBAC/audit e commissioning restano aperti; Optix/AI e gate industriali non
   vengono dichiarati completati da questa tranche.
 
+### 108. Suggerimento della modifica visuale solo al primo accesso (2026-10-12)
+
+- Il riquadro “Clicca un elemento della pagina” non viene più riattivato a ogni
+  pagina: compare una sola volta per il profilo locale dell'editor. La prima
+  visualizzazione viene conservata anche senza premere la X e rispettata alla
+  riapertura dell'app; non dipende dal progetto o dal formato desktop/mobile.
+- Resta visibile sulla prima pagina finché l'utente lo chiude, usa uno dei suoi
+  pulsanti o inizia un'altra attività. Non torna dopo aver selezionato/deselezionato
+  elementi o alternato Modifica/Usa il pannello. I pulsanti aprono ancora i rispettivi
+  pannelli. Anteprima assente, in avvio o in errore non consumano la prima apparizione.
+- Memoria locale protetta da errori, con fallback per la sessione quando è negata.
+  Nessun riavvio dell'app dell'utente, migrazione HMI o nuova dipendenza.
+- Verifiche mirate: 19 casi passati nei soli test del suggerimento e del recupero
+  canvas, inclusi StrictMode, cambio pagina/progetto/formato e memoria non disponibile.
+  La prova di un nuovo avvio è simulata ricreando i moduli con la preferenza conservata;
+  non sostituisce un collaudo manuale nella finestra desktop.
+  Controllo TypeScript mirato del canvas e delle fixture passato con i tipi Vite del
+  progetto; le fixture usano i formati effettivi del pannello, non valori di viewport inventati.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

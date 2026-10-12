@@ -21,6 +21,7 @@ import { renderHmiFaceplates } from "../core/hmiFaceplateVisuals";
 import { renderHmiTrendControls } from "../core/hmiTrend";
 import { renderHmiFunctionTrendControls } from "../core/hmiFunctionTrend";
 import { createHmiDataLogRuntime } from "../core/hmiDataLogs";
+import { useVisualEditGuide } from "./visualEditGuide";
 import { createHmiPropertyFlashing, type HmiScreenItemSnapshot } from "../../scripts/hmi-property-flashing.mjs";
 
 const resizeHandles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -49,6 +50,7 @@ export function Canvas() {
   const previewPath = useEditorStore((state) => state.previewPath);
   const plcVariables = useEditorStore((state) => state.plcVariables);
   const requestedStatePage = useEditorStore((state) => state.requestedStatePage);
+  const activePageId = useEditorStore((state) => state.activePageId);
   const previewStatus = useEditorStore((state) => state.previewStatus);
   const previewError = useEditorStore((state) => state.previewError);
   const interactionMode = useEditorStore((state) => state.interactionMode);
@@ -101,7 +103,6 @@ export function Canvas() {
   const [contentWidth, setContentWidth] = useState(() => panelFormat(viewport).width);
   const [availableWidth, setAvailableWidth] = useState(1000);
   const [componentDropPoint, setComponentDropPoint] = useState<{ x: number; y: number }>();
-  const [guideDismissed, setGuideDismissed] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<TransformSession | undefined>(undefined);
@@ -187,6 +188,10 @@ export function Canvas() {
     url.pathname = previewPath || "/";
     return url.toString();
   }, [previewPath, previewUrl]);
+  const guide = useVisualEditGuide(
+    Boolean(previewSrc) && previewStatus === "ready" && interactionMode === "edit" && !selection && multiSelection.length === 0 && !highlightPicker && !zonePicking,
+    JSON.stringify([projectRoot, previewSrc, activePageId, requestedStatePage, viewport]),
+  );
   useEffect(() => {
     selectionProtocolRef.current = 0;
     previewSelectionVersionRef.current = 0;
@@ -586,10 +591,10 @@ export function Canvas() {
     setSelection(undefined);
     setSelectionRect(undefined);
     setMultiSelection([]);
-    setGuideDismissed(false);
   }, [previewPath, previewUrl, viewport]);
 
   const openPanel = (panel: "pages" | "components") => {
+    guide.dismiss();
     if (leftPanel !== panel || leftPanelCollapsed) setLeftPanel(panel);
   };
 
@@ -917,8 +922,8 @@ export function Canvas() {
       {highlightPicker.mode === "polygon" && <button type="button" className="region-picker-finish" onPointerDown={(event) => event.preventDefault()} onClick={() => frameRef.current?.contentWindow?.postMessage({ type: "framecraft:finish-region-pick", requestId: highlightPicker.requestId }, "*")}>Fine</button>}
       <button onClick={cancelHighlightSelection} aria-label="Annulla selezione evidenziazione" title="Annulla (Esc)"><X size={15} /></button>
     </div>}
-    {!guideDismissed && previewStatus === "ready" && interactionMode === "edit" && !selection && multiSelection.length === 0 && !highlightPicker && <aside className="canvas-start-guide" aria-label="Come iniziare">
-      <button className="canvas-guide-close" onClick={() => setGuideDismissed(true)} aria-label="Nascondi suggerimento"><X size={14} /></button>
+    {guide.visible && <aside className="canvas-start-guide" aria-label="Come iniziare">
+      <button className="canvas-guide-close" onClick={guide.dismiss} aria-label="Nascondi suggerimento"><X size={14} /></button>
       <small>MODIFICA VISUALE</small>
       <strong>Clicca un elemento della pagina</strong>
       <p>Compariranno subito testo, dimensioni, colori, azioni e variabile PLC nel pannello a destra.</p>
