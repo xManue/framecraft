@@ -67,6 +67,19 @@ selecting another element returns to **Aspetto**. Group/external-element sheets 
 faceplate type mini-editor retain their existing layouts. Local preview changes and saving
 the project are separate from publishing or commanding a PLC.
 
+## Trying a faceplate on the page
+
+Configure its type/version and bindings in **PLC e dati → Istanza faceplate**, then
+choose **Usa il pannello**. Its configured graphics render inside the project iframe,
+including nested instances and project-relative images. **PLC → Prova locale** supplies
+manual tag values; no PLC connection is started. The preview tooltip identifies this
+local test. **Modifica** restores the editable JSX content and original style.
+
+Interface events and their timer callbacks keep local tag values separate for each
+instance. Page/project changes cancel old contexts. Updating a popup's geometry or
+interface keeps its container; bound popups close on a page change. These checks do not
+replace server authorization or machine commissioning.
+
 ## Updating a faceplate instance
 
 In **Modifica → PLC e dati → Istanza faceplate**, select another released type/version.

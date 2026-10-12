@@ -34,6 +34,8 @@
       "../scripts/hmi-alarm-control.mjs": "scripts/hmi-alarm-control.mjs",
       "../scripts/hmi-alarm-summary.mjs": "scripts/hmi-alarm-summary.mjs",
       "../scripts/hmi-alarm-preview-surface.mjs": "scripts/hmi-alarm-preview-surface.mjs",
+      "../scripts/hmi-faceplate-visuals.mjs": "scripts/hmi-faceplate-visuals.mjs",
+      "../scripts/hmi-faceplate-preview.mjs": "scripts/hmi-faceplate-preview.mjs",
       "../runtime/alarm-labels.mjs": "runtime/alarm-labels.mjs"
     }
   }

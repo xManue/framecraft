@@ -11,22 +11,24 @@ import { simulationCommands } from "../src/core/plcSimulation";
  * l'editor calcola cosa diventano, l'anteprima glielo mette addosso — e quando si spegne, tutto
  * torna esattamente com'era. Quest'ultima e' la parte che conta: sul canvas c'e' il progetto vero,
  * e una simulazione che lascia tracce lo falsifica. */
+let previewPageId: string | undefined;
 function bridge() {
   class ResizeObserverStub { observe() {} disconnect() {} }
   vi.stubGlobal("ResizeObserver", ResizeObserverStub);
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
   vi.stubGlobal("cancelAnimationFrame", () => undefined);
-  const messages: { type: string; items?: { instanceId: string; raw: string }[]; instanceId?: string; eventType?: string; eventName?: string; raw?: string; gesture?: string; parameters?: Record<string, unknown>; popupId?: string }[] = [];
+  const messages: { type: string; items?: { instanceId: string; raw: string }[]; instanceId?: string; eventType?: string; eventName?: string; raw?: string; gesture?: string; parameters?: Record<string, unknown>; popupId?: string; alarmPreviewPageId?: string }[] = [];
   Object.defineProperty(window, "parent", {
     configurable: true,
     value: { postMessage: (message: never) => messages.push(message) },
   });
   const plugin = framecraftPlugin();
   window.eval(plugin.transformIndexHtml("<div id=\"root\"></div>").tags[0].children);
+  previewPageId = messages.find(message => message.type === "framecraft:ready")?.alarmPreviewPageId;
   return messages;
 }
 
-const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data }));
+const send = (data: Record<string, unknown>) => window.dispatchEvent(new MessageEvent("message", { data: { ...data, pageId: previewPageId }, source: window.parent, origin: "http://localhost:1420" }));
 const touchPointer = (type: string, x: number, y: number) => {
   const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
   Object.defineProperties(event, { pointerType: { value: "touch" }, pointerId: { value: 7 }, isPrimary: { value: true } });
@@ -206,6 +208,7 @@ describe("la simulazione degli stati PLC nell'anteprima", () => {
   it("mostra, aggiorna e chiude una finestra faceplate WinCC", () => {
     document.body.innerHTML = "";
     const messages = bridge();
+    send({ type: "framecraft:set-mode", mode: "navigate" });
     const state = {
       popupId: "faceplate-popup-1", scope: "screen", faceplateType: "Motor_V_1_0_0", title: "Motore M2400",
       interfaceValues: { Speed: { Tag: "Motor.Speed" }, Enabled: true }, parentBound: true, invisible: false,

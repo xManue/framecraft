@@ -5,6 +5,13 @@ chiudere, **non un'approvazione legale né un rilascio industriale approvato**.
 
 ## Inventario ripetibile
 
+Checkpoint 12 ottobre, faceplate cross-origin: il renderer ESM è codice Framecraft
+trasferito dalla sua implementazione TypeScript, senza asset o codice Siemens.
+La mappa Tauri include renderer e superficie di prova faceplate; manifest e lockfile
+rimangono invariati. Nessuna nuova dipendenza o audit generale in questa tranche.
+Risorse, test/generatore e compilazione non approvano licenze né rilascio industriale;
+packaging senza checkout, notice/diritti dell'artefatto finale e gate aperti restano tali.
+
 Checkpoint 12 ottobre, prova allarmi nel canvas: i renderer condivisi e il ponte sono
 codice Framecraft trasferito dai moduli già presenti, non sorgenti o asset Siemens.
 La mappa Tauri include ora gli helper allarmi e le etichette comuni. Nessun manifest o

@@ -75,7 +75,7 @@ async function tick(ms: number) {
 }
 
 function deliver(frame: Window, data: Record<string, unknown>) {
-  window.dispatchEvent(new MessageEvent("message", { data, source: frame }));
+  window.dispatchEvent(new MessageEvent("message", { data, source: frame, origin: "http://127.0.0.1:4173" }));
 }
 
 function selection(source: SourceRef, instanceId: string, version: number, index = 0, x = 20) {

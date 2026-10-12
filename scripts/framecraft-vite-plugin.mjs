@@ -7,6 +7,8 @@ import { alarmStateLabel } from "../runtime/alarm-labels.mjs";
 import { hmiAlarmElementBlocked, createHmiAlarmControlWith } from "./hmi-alarm-control.mjs";
 import { hmiAlarmSummaryAttribute, hmiAlarmSummaryCss, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView, createHmiAlarmSummaryWith } from "./hmi-alarm-summary.mjs";
 import { createHmiAlarmPreviewSurfaceWith, createHmiAlarmPreviewBridgeWith } from "./hmi-alarm-preview-surface.mjs";
+import { hmiFaceplateVisualRuntimeModuleSource } from "./hmi-faceplate-visuals.mjs";
+import { createHmiFaceplatePreview } from "./hmi-faceplate-preview.mjs";
 
 export function installPanelLayoutPreference(root, key, storage = () => root.defaultView.sessionStorage) {
   const valid = (value) => ["auto", "desktop", "mobile"].includes(value);
@@ -53,6 +55,8 @@ const createHmiAlarmControl = (host, action, rowFilter) => (${String(createHmiAl
 const createHmiAlarmSummary = (host, options) => (${String(createHmiAlarmSummaryWith)})(host, options, { alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked });
 const createHmiAlarmPreviewSurface = (root, options) => (${String(createHmiAlarmPreviewSurfaceWith)})(root, options, { createHmiAlarmControl, createHmiAlarmSummary });
 const createHmiAlarmPreviewBridge = (view, options) => (${String(createHmiAlarmPreviewBridgeWith)})(view, options, createHmiAlarmPreviewSurface);
+const faceplateRenderers = (() => { ${hmiFaceplateVisualRuntimeModuleSource().replace(/^export /gm, "")} return { renderHmiFaceplates }; })();
+const createHmiFaceplatePreview = (${String(createHmiFaceplatePreview)});
 `;
 
 const bridgeScript = sharedHelpers + String.raw`
@@ -107,6 +111,8 @@ const bridgeScript = sharedHelpers + String.raw`
   const simulated = new Map();
   let simulationOn = false;
   const alarmPreview = createHmiAlarmPreviewBridge(window, { active: () => mode === "navigate" && simulationOn, navigate: (route) => navigateHmiTarget(route) });
+  const faceplatePreview = createHmiFaceplatePreview(window, { active: () => mode === "navigate", pageId: () => alarmPreview.pageId, instanceId: (host) => instanceId(host) }, faceplateRenderers);
+  window.addEventListener("pagehide", (event) => { if (event.persisted) faceplatePreview.reset(); else faceplatePreview.dispose(); });
   window.addEventListener("pagehide", (event) => { if (event.persisted) alarmPreview.suspend(); else alarmPreview.dispose(); });
   let collectSignature = "";
   let screenItemsSignature = "";
@@ -437,9 +443,9 @@ const bridgeScript = sharedHelpers + String.raw`
   let alarmScreenKey;
   const sendReady = () => {
     const key = JSON.stringify([window.location.pathname, window.__framecraftCurrentPage]);
-    if (alarmScreenKey !== undefined && key !== alarmScreenKey) alarmPreview.newPage();
+    if (alarmScreenKey !== undefined && key !== alarmScreenKey) { alarmPreview.newPage(); faceplatePreview.reset(); }
     alarmScreenKey = key;
-    window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items(), alarmPreviewProtocol: 1, alarmPreviewPageId: alarmPreview.pageId }, "*");
+    window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items(), alarmPreviewProtocol: 1, alarmPreviewPageId: alarmPreview.pageId, faceplatePreviewProtocol: 1 }, "*");
   };
   window.addEventListener("pageshow", (event) => { if (event.persisted) { alarmPreview.newPage(); sendReady(); } });
   // Where a point of the page falls inside the drawing the outline is written in: the corners the
@@ -606,7 +612,7 @@ const bridgeScript = sharedHelpers + String.raw`
     } catch { return { raw: null, items: [] }; }
   };
   const alarmInternal = (event) => Boolean(event.target?.closest?.("[data-hmi-alarm-root], [data-hmi-alarm-summary-root]"));
-  const hmiEventTarget = (event) => alarmInternal(event) ? null : event.target?.closest?.("[data-hmi-events]");
+  const hmiEventTarget = (event) => alarmInternal(event) || event.target?.closest?.("[data-hmi-faceplate-interface-trigger]") ? null : event.target?.closest?.("[data-hmi-events]");
   const emitHmiEvent = (element, eventType, context = {}) => {
     if (mode !== "navigate" || !element) return;
     if (!propertyFlashingSurface.allowsReactions(element)) return;
@@ -635,7 +641,7 @@ const bridgeScript = sharedHelpers + String.raw`
       const binding = JSON.parse(raw);
       if (!binding?.eventBindings?.[detail.name]?.script) return;
     } catch { return; }
-    window.parent.postMessage({ type: "framecraft:faceplate-event", instanceId: instanceId(owner), raw, eventName: detail.name, parameters, screenItems: propertyFlashingSurface.items() }, "*");
+    window.parent.postMessage({ type: "framecraft:faceplate-event", instanceId: instanceId(owner), raw, eventName: detail.name, parameters, screenItems: propertyFlashingSurface.items(), previewPageId: alarmPreview.pageId }, "*");
   };
   const navigateHmiTarget = (target) => {
     if (!target) return;
@@ -713,6 +719,7 @@ const bridgeScript = sharedHelpers + String.raw`
   const collectDynamizations = (force) => {
     // Come il resto del ponte: la raccolta puo' arrivare quando la pagina non c'e' piu'.
     if (typeof document === "undefined" || typeof window === "undefined") return;
+    faceplatePreview.refresh();
     const items = [];
     for (const element of document.querySelectorAll("[data-hmi-dynamizations]")) {
       const raw = element.getAttribute("data-hmi-dynamizations");
@@ -813,6 +820,7 @@ const bridgeScript = sharedHelpers + String.raw`
     propertyFlashingSurface.resume();
   };
   const popupWindows = new Map();
+  const popupStates = new Map();
   const popupElement = (popupId) => [...document.querySelectorAll("[data-framecraft-popup-id]")]
     .find((element) => element.getAttribute("data-framecraft-popup-id") === popupId);
   const popupText = (value) => value && typeof value === "object" && typeof value.Tag === "string" ? "Tag: " + value.Tag : String(value ?? "");
@@ -861,6 +869,7 @@ const bridgeScript = sharedHelpers + String.raw`
       document.body.append(root);
     }
     popupWindows.set(state.popupId, root);
+    popupStates.set(state.popupId, state);
     root.dataset.windowFlags = String(state.windowFlags ?? 0);
     root.setAttribute("aria-label", String(state.title || state.faceplateType || "Faceplate"));
     const flags = Number(state.windowFlags) || 0;
@@ -872,7 +881,7 @@ const bridgeScript = sharedHelpers + String.raw`
     const left = parentClamp ? Math.min(leftLimit, Math.max(0, Number(state.left) || 0)) : Number(state.left) || 0;
     const top = parentClamp ? Math.min(topLimit, Math.max(0, Number(state.top) || 0)) : Number(state.top) || 0;
     Object.assign(root.style, {
-      display: state.visible === false ? "none" : "flex",
+      display: mode === "edit" || state.visible === false ? "none" : "flex",
       left: left + "px", top: top + "px",
       width: state.adaptWindow ? "max-content" : width + "px",
       height: state.adaptWindow ? "auto" : height + "px",
@@ -889,29 +898,37 @@ const bridgeScript = sharedHelpers + String.raw`
     if (close) close.style.display = flags & 64 ? "block" : "none";
     const body = root.querySelector("[data-framecraft-popup-body]");
     if (body) {
-      body.replaceChildren();
-      const type = document.createElement("div");
-      type.textContent = String(state.faceplateType || "Faceplate");
-      Object.assign(type.style, { fontWeight: "700", marginBottom: "10px" });
-      const faceplate = document.createElement("div");
-      faceplate.setAttribute("data-hmi-popup-faceplate-type", String(state.faceplateType || ""));
-      faceplate.setAttribute("data-hmi-popup-interface", JSON.stringify(state.interfaceValues || {}));
-      Object.assign(faceplate.style, { position: "relative", maxWidth: "100%", marginBottom: "10px", overflow: "auto" });
-      body.append(type, faceplate);
-      for (const [name, value] of Object.entries(state.interfaceValues || {})) {
+      let type = body.querySelector(":scope > [data-framecraft-popup-type-label]");
+      let faceplate = body.querySelector(":scope > [data-hmi-popup-faceplate-type]");
+      if (!type) { type = document.createElement("div"); type.dataset.framecraftPopupTypeLabel = ""; Object.assign(type.style, { fontWeight: "700", marginBottom: "10px" }); body.append(type); }
+      if (!faceplate || faceplate.dataset.hmiPopupFaceplateType !== String(state.faceplateType || "")) {
+        faceplate?.remove(); faceplate = document.createElement("div");
+        faceplate.dataset.hmiPopupFaceplateType = String(state.faceplateType || "");
+        Object.assign(faceplate.style, { position: "relative", maxWidth: "100%", marginBottom: "10px", overflow: "auto" }); body.append(faceplate);
+      }
+      const label = String(state.faceplateType || "Faceplate"); if (type.textContent !== label) type.textContent = label;
+      const serialized = JSON.stringify(state.interfaceValues || {});
+      if (faceplate.dataset.hmiPopupInterface !== serialized) faceplate.dataset.hmiPopupInterface = serialized;
+      if (body.dataset.framecraftPopupInterfaceSignature !== serialized) {
+        body.dataset.framecraftPopupInterfaceSignature = serialized;
+        for (const row of body.querySelectorAll(":scope > [data-framecraft-popup-interface]")) row.remove();
+        for (const [name, value] of Object.entries(state.interfaceValues || {})) {
         const row = document.createElement("div");
         row.setAttribute("data-framecraft-popup-interface", name);
         Object.assign(row.style, { display: "grid", gridTemplateColumns: "minmax(80px,1fr) 1.4fr", gap: "10px", padding: "5px 0", borderTop: "1px solid #d9e1e6" });
         const label = document.createElement("span"); label.textContent = name;
         const output = document.createElement("output"); output.textContent = popupText(value);
         row.append(label, output); body.append(row);
+        }
       }
     }
+    faceplatePreview.refresh();
   };
   const closePopup = (state) => {
     const root = state?.popupId ? popupWindows.get(state.popupId) || popupElement(state.popupId) : null;
     root?.remove();
     if (state?.popupId) popupWindows.delete(state.popupId);
+    if (state?.popupId) popupStates.delete(state.popupId);
   };
   const clearRegionPick = () => {
     if (regionFrame) cancelAnimationFrame(regionFrame);
@@ -996,6 +1013,7 @@ const bridgeScript = sharedHelpers + String.raw`
   regionCursor.textContent = 'html[data-framecraft-region-picking],html[data-framecraft-region-picking] *{cursor:crosshair!important;user-select:none!important}';
   (document.head || document.documentElement).append(regionCursor);
   window.addEventListener("message", (event) => {
+    if (event.data?.type === "framecraft:faceplate-preview") { faceplatePreview.receive(event); return; }
     if (event.data?.type === "framecraft:alarm-preview" || event.data?.type === "framecraft:alarm-command-result") { alarmPreview.receive(event); return; }
     if (event.data?.type === "framecraft:set-mode") {
       if (event.data.mode === "navigate") { cancelDrag(); endControlledTransform(true); }
@@ -1004,6 +1022,8 @@ const bridgeScript = sharedHelpers + String.raw`
       if (mode === "navigate") { cancelNudge(); cancelRegionPick(); }
       document.documentElement.dataset.framecraftMode = mode;
       alarmPreview.refresh();
+      faceplatePreview.refresh();
+      for (const state of popupStates.values()) renderPopup(state);
       if (mode === "navigate") queueMicrotask(emitLoadedEvents);
     } else if (event.data?.type === "framecraft:open-state-page" && typeof event.data.value === "string") {
       window.__framecraftRequestedPage = event.data.value;
@@ -1036,9 +1056,9 @@ const bridgeScript = sharedHelpers + String.raw`
         origin.dispatchEvent(new CustomEvent("framecraft:faceplate-event", { bubbles: true, detail: { name: emitted.name, parameters: emitted.parameters || {} } }));
       }
     } else if (event.data?.type === "framecraft:popup-open" || event.data?.type === "framecraft:popup-update") {
-      renderPopup(event.data.state);
+      if (faceplatePreview.accepts(event)) renderPopup(event.data.state);
     } else if (event.data?.type === "framecraft:popup-close") {
-      closePopup(event.data.state);
+      if (faceplatePreview.accepts(event)) closePopup(event.data.state);
     } else if (event.data?.type === "framecraft:preview-style") {
       const element = sourceElement(event.data.source, event.data.instanceId);
       if (element) Object.assign(element.style, event.data.styles);

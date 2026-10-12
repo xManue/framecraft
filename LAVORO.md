@@ -3860,6 +3860,43 @@ Verifiche del 5 ottobre 2026:
   packaging senza checkout, archivio/audit e collaudo visivo/touch/CPU restano aperti;
   Optix e AI non vengono dichiarati completati.
 
+### 110. Faceplate reali nella prova della pagina cross-origin (2026-10-12)
+
+- Il parent invia catalogo, valori manuali e tag locali tramite snapshot con origine
+  esatta e token pagina; il ponte disegna tipi, proprietà, composizione e popup nel
+  documento del progetto. Nessun accesso DOM cross-origin, rete o collegamento PLC.
+  Le immagini relative risolvono sul progetto; tooltip di prova e ripristino della
+  bozza in Modifica senza cambiare palette, geometria o font configurati.
+- Renderer unico ESM con facciata/declarazioni TypeScript; i moduli Runtime della
+  pipeline derivano dalla stessa implementazione e il pacchetto desktop include
+  i due helper nuovi. Default delle proprietà parent propagati ai figli; contenuti
+  HTML/SVG personalizzati non sovrascritti e scritture popup idempotenti.
+- Eventi di interfaccia non duplicano il click del contenitore e scrivono solo nei
+  tag locali dell'istanza. Il primo test dei timer ha rilevato che il wrapper eventi
+  non inoltrava contesto/tag locali: corretto nel wrapper, senza rimuovere le prove.
+  Timer con valori locali, cancellazione/isActive e scarto del contesto precedente;
+  niente write di nomi locali nel namespace PLC o in altre istanze.
+- Popup conservano l'host durante geometria/visibilità/interfaccia. In Modifica sono
+  nascosti; quelli legati alla pagina precedente si chiudono con il token nuovo.
+  Guardia su eventi prima della coda/dopo l'esecuzione e letture catalogo faceplate/
+  Data Log all'apertura che non installano risultati di un progetto superato.
+- Verifiche mirate: otto casi Canvas con vero ponte, DOM negato, due istanze, script,
+  timer, popup, HMR, documenti/immagini e messaggi estranei; renderer/delegazione eventi,
+  solo due regressioni selezione/flashing, simulazione, generatore dopo bundling e
+  tipi controllati. Fixture del vecchio popup aggiornata a origine/token/mode reali;
+  nessuna riduzione delle verifiche per far passare il prodotto. Nessuna suite generale,
+  agente, CPU contattata o riavvio manuale dell'app.
+- Esiti finali: 19 casi Canvas/eventi, 18 renderer/simulazione, due regressioni selezione,
+  dieci casi del ponte allarmi e generazione Runtime dopo bundling superati. TypeScript,
+  build editor in cartella locale separata e singolo test Rust della mappa risorse superati.
+  Gli avvisi di import statico/dinamico della build restano; nessun installer creato e
+  nessun collaudo su finestra desktop reale, touch o CPU implicito in questi esiti.
+- Riferimenti Siemens V21 ricontrollati e guide/architettura aggiornate. WCU-FP-* resta
+  PARZIALE: eventi annidati, API complete, UDT, migrazione massiva e collaudo reale
+  non sono completati da questa tranche. Passaggio delle curve/storico al ponte ancora
+  da completare, poi restanti capacità WinCC, Optix e AI facoltativa. Export reali,
+  foto, credenziali e output di build non pubblicati; gate licenze/produzione aperti.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

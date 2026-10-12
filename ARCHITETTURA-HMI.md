@@ -237,10 +237,39 @@ nel figlio evita di indebolire la same-origin policy. Il costo è un protocollo 
 con handshake e cancellazioni, invece di chiamate DOM dirette. Questa architettura non
 abilita né autentica il servizio industriale e non modifica il progetto a ogni campione.
 Restano il collaudo desktop/touch, carico prolungato, packaging senza checkout e il passaggio
-equivalente dei vecchi renderer preview di faceplate/trend al ponte: il loro accesso DOM
-opzionale viene protetto dagli errori, non reso cross-origin. Archivio, audit e autorizzazioni
+equivalente dei vecchi renderer preview dei trend al ponte: il loro accesso DOM opzionale
+viene protetto dagli errori, non reso cross-origin. I faceplate sono trasferiti al ponte come
+descritto sotto. Archivio, audit e autorizzazioni
 server restano gate separati. Riesaminare volumi/frequenza degli snapshot prima di estendere
 questa prova a grandi cataloghi o ai futuri modelli Optix.
+
+## Faceplate nella prova locale cross-origin
+
+Flusso: catalogo e valori manuali dell'editor → snapshot con origine e token pagina esatti
+→ renderer nel documento del progetto → evento di interfaccia → IR del parent → nuovi
+valori locali o manuali. L'editor non legge `contentDocument` per disegnare il faceplate.
+Il renderer ESM e la facciata TypeScript condividono un'implementazione con i moduli
+copiati dallo standard: nessun codice ricevuto nei messaggi viene eseguito dal ponte.
+
+I tag locali sono identificati per istanza e contratto/versione; i default configurati
+delle proprietà vengono propagati ai figli. I timer ricevono valori locali e `isActive`,
+invece di scrivere per errore nel namespace globale. Il wrapper eventi inoltra queste
+opzioni alla stessa IR, compresi segnale di cancellazione e trasporto già supportati.
+Origine/finestra/token, progetto, catalogo e modalità vengono verificati prima della
+coda e dopo l'esecuzione; la IR verifica il contesto prima di ulteriori effetti.
+
+Il ponte conserva nodi/stile della bozza e li ripristina in Modifica. La raccolta DOM
+già esistente aggiorna i nuovi host senza un secondo observer; scritture ripetute sui
+popup sono idempotenti. Geometria, visibilità e cambio interfaccia non ricreano il loro
+host. La chiusura dei popup legati alla pagina usa il nuovo token, evitando finestre
+orfane. Contenuto HTML/SVG personalizzato non viene sostituito dal renderer.
+
+Scelta: trasmettere dati di catalogo e stato, invece di indebolire la same-origin policy
+o duplicare il renderer. Il costo è serializzazione/handshake; il vantaggio è anche la
+risoluzione corretta delle immagini nel progetto, non sull'origine dell'editor. Questo
+protocollo locale non sostituisce autenticazione/audit del servizio. Riesaminare grandi
+cataloghi e frequenza degli snapshot prima di aumentarne il carico; curve e storico
+richiedono ancora il passaggio del loro renderer e query locali attraverso il ponte.
 
 ## Interfaccia intuitiva e barra comandi
 

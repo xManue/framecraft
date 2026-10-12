@@ -1,4 +1,4 @@
-import { executeHmiScript, executeHmiScriptAsync, inspectHmiScript, type HmiScriptExecution, type HmiScriptPopupManager, type HmiScriptProgram, type HmiScriptRuntimeFunction, type HmiScriptRuntimeVariable, type HmiScriptScalar, type HmiScriptScope, type HmiScriptScreenItemManager, type HmiScriptTagStatus, type HmiScriptTimerManager } from "./hmiScript";
+import { executeHmiScript, executeHmiScriptAsync, inspectHmiScript, type HmiScriptExecution, type HmiScriptExecutionOptions, type HmiScriptPopupManager, type HmiScriptProgram, type HmiScriptRuntimeFunction, type HmiScriptRuntimeVariable, type HmiScriptScalar, type HmiScriptScope, type HmiScriptScreenItemManager, type HmiScriptTagStatus, type HmiScriptTimerManager } from "./hmiScript";
 
 export const hmiEventsAttribute = "data-hmi-events";
 
@@ -18,7 +18,7 @@ export interface HmiEventBinding {
   program?: HmiScriptProgram;
 }
 
-export interface HmiEventContext {
+export interface HmiEventContext extends Pick<HmiScriptExecutionOptions, "transport" | "transportTimeoutMs" | "localTags" | "localTagValues" | "signal" | "isActive"> {
   gesture?: HmiGesture;
   key?: string;
   command?: string;
@@ -121,7 +121,7 @@ export function executeHmiEvent(binding: HmiEventBinding, values: Readonly<Recor
   if (inspection.error || !program) {
     return { writes: {}, traces: [], navigation: [], operatorMessages: [], faceplateEvents: [], tagStatus: {}, steps: 0, error: inspection.error ?? "Script evento non compilato." };
   }
-  return executeHmiScript(program, values, { locals: eventLocals(context), tagStatus: context.tagStatus, functions: context.functions, variables: context.variables, globalScope: context.globalScope, timerManager: context.timerManager, popupManager: context.popupManager, screenItems: context.screenItems });
+  return executeHmiScript(program, values, { ...context, locals: eventLocals(context) });
 }
 
 export async function executeHmiEventAsync(binding: HmiEventBinding, values: Readonly<Record<string, string>>, context: HmiEventContext = {}): Promise<HmiScriptExecution> {
@@ -130,5 +130,5 @@ export async function executeHmiEventAsync(binding: HmiEventBinding, values: Rea
   if (inspection.error || !program) {
     return { writes: {}, traces: [], navigation: [], operatorMessages: [], faceplateEvents: [], tagStatus: {}, steps: 0, error: inspection.error ?? "Script evento non compilato." };
   }
-  return executeHmiScriptAsync(program, values, { locals: eventLocals(context), tagStatus: context.tagStatus, functions: context.functions, variables: context.variables, globalScope: context.globalScope, timerManager: context.timerManager, popupManager: context.popupManager, screenItems: context.screenItems });
+  return executeHmiScriptAsync(program, values, { ...context, locals: eventLocals(context) });
 }

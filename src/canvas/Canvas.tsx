@@ -12,12 +12,11 @@ import { simulationCommands } from "../core/plcSimulation";
 import { parseHmiDynamizations } from "../core/hmiDynamizations";
 import { hmiTextDictionary } from "../core/hmiResources";
 import { executeHmiEventAsync, parseHmiEvents } from "../core/hmiEvents";
-import { parseHmiFaceplateBinding } from "../core/hmiFaceplates";
+import { parseHmiFaceplateBinding, type HmiFaceplateTypeDefinition } from "../core/hmiFaceplates";
 import { executeHmiScriptAsync, type HmiScriptFaceplateEvent, type HmiScriptProgram } from "../core/hmiScript";
 import { createHmiScriptContextManager } from "../core/hmiScriptModules";
 import { createHmiTimerManager } from "../core/hmiTimers";
 import { createHmiFaceplatePopupManager } from "../core/hmiPopupManager";
-import { renderHmiFaceplates } from "../core/hmiFaceplateVisuals";
 import { renderHmiTrendControls } from "../core/hmiTrend";
 import { renderHmiFunctionTrendControls } from "../core/hmiFunctionTrend";
 import { createHmiDataLogRuntime } from "../core/hmiDataLogs";
@@ -69,6 +68,7 @@ export function Canvas() {
   const resourceCatalog = useEditorStore((state) => state.resourceCatalog);
   const scriptCatalog = useEditorStore((state) => state.scriptCatalog);
   const dataLogCatalog = useEditorStore((state) => state.dataLogCatalog);
+  const faceplateCatalog = useEditorStore((state) => state.faceplateCatalog);
   const alarmConfiguration = useEditorStore((state) => state.alarmPreviewConfiguration);
   const projectRoot = useEditorStore((state) => state.project?.root);
   const setMultiSelection = useEditorStore((state) => state.setMultiSelection);
@@ -106,7 +106,7 @@ export function Canvas() {
   const [availableWidth, setAvailableWidth] = useState(1000);
   const [componentDropPoint, setComponentDropPoint] = useState<{ x: number; y: number }>();
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const alarmPageRef = useRef<{ pageId: string; window: Window; origin: string } | undefined>(undefined);
+  const alarmPageRef = useRef<{ pageId: string; window: Window; origin: string; faceplate?: boolean } | undefined>(undefined);
   const alarmPreviewRef = useRef<ReturnType<typeof hmiAlarmPreviewSession>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<TransformSession | undefined>(undefined);
@@ -134,7 +134,7 @@ export function Canvas() {
   const hmiPopupManagerRef = useRef<ReturnType<typeof createHmiFaceplatePopupManager> | undefined>(undefined);
   if (!hmiPopupManagerRef.current) {
     const send = (type: "framecraft:popup-open" | "framecraft:popup-update" | "framecraft:popup-close", state: unknown) => {
-      frameRef.current?.contentWindow?.postMessage({ type, state }, "*");
+      sendAlarmMessage({ type, state });
       if (type !== "framecraft:popup-close") window.setTimeout(renderFaceplateVisuals, 0);
     };
     hmiPopupManagerRef.current = createHmiFaceplatePopupManager({
@@ -156,7 +156,7 @@ export function Canvas() {
         const program: HmiScriptProgram = callback.kind === "inline"
           ? callback.program
           : { version: 1, statements: [{ kind: "module-call", call: callback.call }] };
-        const result = await executeHmiScriptAsync(program, store.simulation.values, {
+        const result = await executeHmiScriptAsync(program, { ...store.simulation.values, ...(context?.localTagValues ?? {}) }, {
           tagStatus: store.simulation.status,
           ...(context ?? hmiScriptContexts.options(store.scriptCatalog, store.previewPath, "events")),
           timerManager: manager,
@@ -167,8 +167,9 @@ export function Canvas() {
         for (const operatorMessage of result.operatorMessages) store.addPreviewOutput("stdout", `[HMI OPERATORE] ${operatorMessage.tag}: ${operatorMessage.oldValue} → ${operatorMessage.newValue} · ${operatorMessage.reason}`);
         if (result.error) store.addPreviewOutput("stderr", `[HMI TIMER ${timer.id}] ${result.error}`);
         let wrote = false;
-        for (const [tag, value] of Object.entries(result.writes)) { store.setSimulationValue(tag, value); wrote = true; }
-        for (const [tag, status] of Object.entries(result.tagStatus)) store.setSimulationStatus(tag, status);
+        for (const [tag, value] of Object.entries(result.writes)) { if (context?.localTags?.has(tag) && context.localTagValues) context.localTagValues[tag] = value; else { store.setSimulationValue(tag, value); wrote = true; } }
+        for (const [tag, status] of Object.entries(result.tagStatus)) if (!context?.localTags?.has(tag)) store.setSimulationStatus(tag, status);
+        renderFaceplateVisuals();
         if (wrote && !store.simulation.on) store.setSimulationOn(true);
         if (result.navigation.length) {
           store.addPreviewOutput("stdout", `[HMI TIMER ${timer.id}] naviga → ${result.navigation.join(", ")}`);
@@ -291,17 +292,21 @@ export function Canvas() {
   }
 
   function renderFaceplateVisuals() {
-    const root = previewDocument();
-    if (!root) return;
+    if (!alarmPageRef.current?.faceplate) return;
     const store = useEditorStore.getState();
-    renderHmiFaceplates(root, store.faceplateCatalog, store.simulation.values, {
-      localValues: (host, type) => {
-        const instanceId = (host as HTMLElement).dataset.framecraftInstanceId;
-        const current = instanceId ? faceplateLocalStateRef.current.get(instanceId) : undefined;
-        if (current) return current.values;
-        return Object.fromEntries(type.localTags.map((tag) => [tag.name, tag.startValue ?? (/bool/i.test(tag.dataType) ? "false" : /string/i.test(tag.dataType) ? "" : "0")]));
-      },
-    });
+    sendAlarmMessage({ type: "framecraft:faceplate-preview", catalog: store.faceplateCatalog, values: store.simulation.on ? store.simulation.values : {},
+      locals: Object.fromEntries([...faceplateLocalStateRef.current].map(([id, local]) => [id, { signature: local.signature, values: { ...local.values } }])) });
+  }
+
+  function faceplateLocalState(instanceId: string, type: HmiFaceplateTypeDefinition) {
+    if (!type.localTags.length) return undefined;
+    const signature = `${type.id}@${type.version}:${type.localTags.map((tag) => `${tag.name}=${tag.startValue ?? ""}`).join("|")}`;
+    let local = faceplateLocalStateRef.current.get(instanceId);
+    if (!local || local.signature !== signature) {
+      local = { signature, names: new Set(type.localTags.map((tag) => tag.name)), values: Object.fromEntries(type.localTags.map((tag) => [tag.name, tag.startValue ?? (/bool/i.test(tag.dataType) ? "false" : /string/i.test(tag.dataType) ? "" : "0")])) };
+      faceplateLocalStateRef.current.set(instanceId, local);
+    }
+    return local;
   }
 
   function renderTrendVisuals() {
@@ -490,12 +495,12 @@ export function Canvas() {
 
   useEffect(() => {
     sendSimulation();
-    renderFaceplateVisuals();
     renderTrendVisuals();
     if (simulation.on) dataLogRuntime.updateSnapshot(simulation.values, simulation.status);
   }, [simulation.on, simulation.values, simulation.status, simulation.elements, resourceCatalog, scriptCatalog, dataLogRuntime, previewPath, previewSrc, plcVariables]);
 
   useEffect(sendAlarmPreview, [alarmConfiguration, projectRoot, simulation.on, simulation.values, simulation.status, interactionMode, previewSrc]);
+  useEffect(renderFaceplateVisuals, [faceplateCatalog, simulation.on, simulation.values, interactionMode, previewSrc]);
 
   useEffect(() => {
     if (!simulation.on) return;
@@ -775,7 +780,9 @@ export function Canvas() {
         else if (key === "z") void (shift ? store.redo() : store.undo());
       } else if (event.data.type === "framecraft:ready") {
         if (event.data.alarmPreviewProtocol === 1 && typeof event.data.alarmPreviewPageId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(event.data.alarmPreviewPageId) && event.origin === alarmOrigin()) {
-          alarmPageRef.current = { pageId: event.data.alarmPreviewPageId, window: event.source as Window, origin: event.origin };
+          const changed = alarmPageRef.current && alarmPageRef.current.pageId !== event.data.alarmPreviewPageId;
+          alarmPageRef.current = { pageId: event.data.alarmPreviewPageId, window: event.source as Window, origin: event.origin, faceplate: event.data.faceplatePreviewProtocol === 1 };
+          if (changed) { faceplateLocalStateRef.current.clear(); hmiPopupManager.closeParentBound("screen"); }
         }
         transformRef.current?.cancel?.();
         hmiPropertyFlashing.reset();
@@ -794,11 +801,12 @@ export function Canvas() {
         sendMode();
         sendSimulation();
         sendAlarmPreview();
+        renderFaceplateVisuals();
         sendStatePage();
         sendSnap();
         sendMultiSelection();
         sendLanguage();
-        for (const state of hmiPopupManager.states()) frameRef.current?.contentWindow?.postMessage({ type: "framecraft:popup-open", state }, "*");
+        for (const state of hmiPopupManager.states()) sendAlarmMessage({ type: "framecraft:popup-open", state });
         window.setTimeout(() => { renderFaceplateVisuals(); renderTrendVisuals(); }, 0);
         const currentSelectedId = useEditorStore.getState().selectedId;
         const currentDocument = useEditorStore.getState().document;
@@ -843,25 +851,13 @@ export function Canvas() {
           const store = useEditorStore.getState();
           const instance = message.faceplateRaw ? parseHmiFaceplateBinding(message.faceplateRaw) : undefined;
           const type = instance && store.faceplateCatalog.types.find((candidate) => candidate.id === instance.typeId && candidate.version === instance.version);
-          let localState: { signature: string; values: Record<string, string>; names: Set<string> } | undefined;
-          if (message.faceplateInstanceId && type?.localTags.length) {
-            const signature = `${type.id}@${type.version}:${type.localTags.map((tag) => `${tag.name}=${tag.startValue ?? ""}`).join("|")}`;
-            localState = faceplateLocalStateRef.current.get(message.faceplateInstanceId);
-            if (!localState || localState.signature !== signature) {
-              localState = {
-                signature,
-                names: new Set(type.localTags.map((tag) => tag.name)),
-                values: Object.fromEntries(type.localTags.map((tag) => [tag.name, tag.startValue ?? (/bool/i.test(tag.dataType) ? "false" : /string/i.test(tag.dataType) ? "" : "0")])),
-              };
-              faceplateLocalStateRef.current.set(message.faceplateInstanceId, localState);
-            }
-          }
+          const localState = message.faceplateInstanceId && type ? faceplateLocalState(message.faceplateInstanceId, type) : undefined;
           const values = { ...store.simulation.values, ...(localState?.values ?? {}) };
           const navigation: string[] = [];
           const faceplateEvents: HmiScriptFaceplateEvent[] = [];
           let wrote = false;
           for (const binding of bindings) {
-            const result = await executeHmiEventAsync(binding, values, { gesture: message.gesture, key: message.key, command: message.command, interfaceEvent: message.interfaceEvent, tagStatus: store.simulation.status, ...hmiScriptContexts.options(store.scriptCatalog, store.previewPath, "events"), timerManager: hmiTimerManager, popupManager: hmiPopupManager, screenItems });
+            const result = await executeHmiEventAsync(binding, values, { gesture: message.gesture, key: message.key, command: message.command, interfaceEvent: message.interfaceEvent, tagStatus: store.simulation.status, ...hmiScriptContexts.options(store.scriptCatalog, store.previewPath, "events"), timerManager: hmiTimerManager, popupManager: hmiPopupManager, screenItems, localTags: localState?.names, localTagValues: localState?.values });
             for (const trace of result.traces) store.addPreviewOutput("stdout", `[HMI ${binding.event}] ${trace}`);
             for (const operatorMessage of result.operatorMessages) store.addPreviewOutput("stdout", `[HMI OPERATORE] ${operatorMessage.tag}: ${operatorMessage.oldValue} → ${operatorMessage.newValue} · ${operatorMessage.reason}`);
             if (result.error) store.addPreviewOutput("stderr", `[HMI ${binding.event}] ${result.error}`);
@@ -892,9 +888,13 @@ export function Canvas() {
         }).catch((error) => useEditorStore.getState().addPreviewOutput("stderr", `[HMI ${message.eventType}] ${error instanceof Error ? error.message : String(error)}`));
       } else if (event.data.type === "framecraft:faceplate-event") {
         const message = event.data;
+        const page = alarmPageRef.current, project = useEditorStore.getState().project, catalog = useEditorStore.getState().faceplateCatalog;
+        const current = () => !!page?.faceplate && alarmPageRef.current?.pageId === page.pageId && frameRef.current?.contentWindow === page.window && event.source === page.window && event.origin === page.origin && event.origin === alarmOrigin() && message.previewPageId === page.pageId && useEditorStore.getState().project?.root === project?.root && useEditorStore.getState().faceplateCatalog === catalog && useEditorStore.getState().interactionMode === "navigate";
+        if (!current()) return;
         hmiScreenItemsRef.current = message.screenItems ?? hmiScreenItemsRef.current;
         const screenItems = hmiPropertyFlashing.context(message.instanceId);
         hmiScriptQueueRef.current = hmiScriptQueueRef.current.then(async () => {
+          if (!current()) return;
           const store = useEditorStore.getState();
           const instance = parseHmiFaceplateBinding(message.raw);
           const type = instance && store.faceplateCatalog.types.find((candidate) => candidate.id === instance.typeId && candidate.version === instance.version);
@@ -905,20 +905,23 @@ export function Canvas() {
             return;
           }
           const parameters = Object.fromEntries(definition.parameters.map((parameter) => [parameter.name, message.parameters?.[parameter.name] ?? null]));
-          const result = await executeHmiEventAsync({ event: "InterfaceEvent", ...handler }, { ...store.simulation.values }, {
+          const localState = faceplateLocalState(message.instanceId, type);
+          const result = await executeHmiEventAsync({ event: "InterfaceEvent", ...handler }, { ...store.simulation.values, ...(localState?.values ?? {}) }, {
             interfaceEvent: message.eventName, parameters, tagStatus: store.simulation.status,
-            ...hmiScriptContexts.options(store.scriptCatalog, store.previewPath, "events"), timerManager: hmiTimerManager, popupManager: hmiPopupManager, screenItems,
+            ...hmiScriptContexts.options(store.scriptCatalog, store.previewPath, "events"), timerManager: hmiTimerManager, popupManager: hmiPopupManager, screenItems, isActive: current, localTags: localState?.names, localTagValues: localState?.values,
           });
+          if (!current()) return;
           for (const trace of result.traces) store.addPreviewOutput("stdout", `[HMI FACEPLATE ${message.eventName}] ${trace}`);
           for (const operatorMessage of result.operatorMessages) store.addPreviewOutput("stdout", `[HMI OPERATORE] ${operatorMessage.tag}: ${operatorMessage.oldValue} → ${operatorMessage.newValue} · ${operatorMessage.reason}`);
           if (result.error) store.addPreviewOutput("stderr", `[HMI FACEPLATE ${message.eventName}] ${result.error}`);
           const writes = Object.entries(result.writes);
-          for (const [tag, value] of writes) store.setSimulationValue(tag, value);
-          for (const [tag, status] of Object.entries(result.tagStatus)) store.setSimulationStatus(tag, status);
-          if (writes.length && !store.simulation.on) store.setSimulationOn(true);
+          let wroteGlobal = false;
+          for (const [tag, value] of writes) { if (localState?.names.has(tag)) localState.values[tag] = value; else { store.setSimulationValue(tag, value); wroteGlobal = true; } }
+          for (const [tag, status] of Object.entries(result.tagStatus)) if (!localState?.names.has(tag)) store.setSimulationStatus(tag, status);
+          if (wroteGlobal && !store.simulation.on) store.setSimulationOn(true);
           renderFaceplateVisuals();
           if (result.navigation.length) hmiPopupManager.closeParentBound("screen");
-          frameRef.current?.contentWindow?.postMessage({ type: "framecraft:hmi-event-result", instanceId: message.instanceId, navigation: result.navigation, faceplateEvents: result.faceplateEvents, faceplateFromParent: true }, "*");
+          sendAlarmMessage({ type: "framecraft:hmi-event-result", instanceId: message.instanceId, navigation: result.navigation, faceplateEvents: result.faceplateEvents, faceplateFromParent: true });
         }).catch((error) => useEditorStore.getState().addPreviewOutput("stderr", `[HMI FACEPLATE ${message.eventName}] ${error instanceof Error ? error.message : String(error)}`));
       } else if (event.data.type === "framecraft:popup-user-close") {
         try { hmiPopupManager.close({ popupId: event.data.popupId }); }

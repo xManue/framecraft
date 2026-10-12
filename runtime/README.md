@@ -88,6 +88,27 @@ server, audit, commissioning CPU, limiti/carico, traduzioni, shelving e operazio
 multiple. Gli allarmi di eventi OPC UA/controller non sono i trigger scalari qui
 implementati. La prova locale è isolata e non certifica il funzionamento sulla macchina.
 
+### Provare un faceplate sulla pagina nell'editor
+
+Configura tipo/versione e interfaccia nell'Inspector → **PLC e dati → Istanza faceplate**,
+poi passa a **Usa il pannello**. Il ponte disegna il contenuto del tipo dentro la pagina:
+oggetti, proprietà configurate, istanze annidate e immagini relative al progetto. Per i
+segnali di processo inserisci valori manuali in **PLC → Prova locale**. Non viene collegata
+una CPU; il tooltip del controllo distingue la prova locale. Un tag mancante non riceve
+valori PLC inventati: rimane la grafica statica progettata.
+
+Gli eventi di interfaccia usano i tag locali della propria istanza, anche nei timer.
+Le altre istanze e il namespace PLC non vengono modificati. Cambiare pagina/progetto
+invalida i vecchi eventi; i timer ricevono il controllo di contesto già previsto dalla IR.
+**Modifica** ripristina nodi e stile della bozza. Il tipo non sovrascrive contenuti interni
+personalizzati, mentre HMR di un host gestito conserva la nuova bozza.
+
+I popup conservano lo stesso contenitore quando cambiano posizione, visibilità o
+interfaccia. Quelli legati alla pagina precedente si chiudono al cambio pagina. Restano
+da completare eventi annidati, screen window generiche, opzioni/object model completo,
+stampa/profili delle curve e collaudo visivo/touch/CPU. La prova non certifica produzione,
+autorizzazioni o sicurezza del PLC.
+
 ### Provare gli allarmi sulla pagina nell'editor
 
 Salva il catalogo da **Pannello → Allarmi**, inserisci i controlli nella pagina e apri

@@ -29,6 +29,24 @@ const outer: HmiFaceplateTypeDefinition = {
 const catalog: HmiFaceplateCatalog = { version: 1, types: [outer, inner] };
 
 describe("visualizzazione dei tipi faceplate", () => {
+  it("propaga ai figli i valori di proprietà già configurati anche se l'istanza usa il default", () => {
+    document.body.innerHTML = '<div data-hmi-faceplate></div>';
+    const host = document.querySelector<HTMLElement>('[data-hmi-faceplate]')!;
+    const nestedCatalog: HmiFaceplateCatalog = { ...catalog, types: [{ ...outer, nestedInstances: outer.nestedInstances.map(nested => ({ ...nested, propertyBindings: { Caption: "Label" } })) }, { ...inner, interfaceProperties: [{ name: "Caption", dataType: "ConfigurationString" }], visualization: [{ id: "Caption", type: "text", left: 0, top: 0, width: 100, height: 20, bindings: [{ property: "Text", source: "property", name: "Caption" }] }] }] };
+    host.dataset.hmiFaceplate = JSON.stringify({ typeId: "motor", version: "1.2.3", tagBindings: {}, propertyValues: {}, eventBindings: {} });
+    renderHmiFaceplates(document, nestedCatalog, {});
+    expect(host.querySelector('[data-hmi-faceplate-object="Caption"]')?.textContent).toBe("Motore");
+  });
+  it("usa il documento proprietario anche per un documento non montato nella finestra", () => {
+    const other = document.implementation.createHTMLDocument("Faceplate");
+    const host = other.createElement("div"); other.body.append(host);
+    host.dataset.hmiFaceplate = JSON.stringify({ typeId: "motor", version: "1.2.3", tagBindings: {}, propertyValues: {}, eventBindings: {} });
+    renderHmiFaceplates(other, catalog, {});
+    expect(host.querySelector('[data-hmi-faceplate-visual-root]')?.ownerDocument).toBe(other);
+    const event = vi.fn(); host.addEventListener("framecraft:faceplate-event", event);
+    host.querySelector<HTMLButtonElement>('[data-hmi-faceplate-object="Open"]')!.click();
+    expect(event).toHaveBeenCalledOnce();
+  });
   it("renderizza oggetti, dinamizzazioni, eventi e composizione annidata", () => {
     document.body.innerHTML = '<div id="host" data-hmi-faceplate></div>';
     const host = document.querySelector<HTMLElement>("#host")!;

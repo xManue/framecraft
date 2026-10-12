@@ -217,11 +217,11 @@ export type PreviewMessage =
   /** Evento WinCC dichiarativo scattato nell'anteprima in modalità Usa pannello. */
   | { type: "framecraft:hmi-event"; instanceId: string; eventType: import("./hmiEvents").HmiEventType; raw: string; gesture?: import("./hmiEvents").HmiGesture; key?: string; command?: string; interfaceEvent?: string; faceplateInstanceId?: string; faceplateRaw?: string; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[] }
   /** Evento emesso dall'interno di un faceplate e collegato allo script della sua istanza. */
-  | { type: "framecraft:faceplate-event"; instanceId: string; raw: string; eventName: string; parameters: Record<string, import("./hmiScript").HmiScriptScalar>; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[] }
+  | { type: "framecraft:faceplate-event"; instanceId: string; raw: string; eventName: string; parameters: Record<string, import("./hmiScript").HmiScriptScalar>; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[]; previewPageId?: string }
   | { type: "framecraft:popup-user-close"; popupId: string }
   | { type: "framecraft:state-page"; value: string }
   | { type: "framecraft:alarm-command"; pageId: string; requestId: string; instanceId: string; command: import("../../runtime/alarm-engine.mjs").AlarmCommand }
-  | { type: "framecraft:ready"; path: string; selectionProtocol?: number; selectionVersion?: number; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[]; alarmPreviewProtocol?: number; alarmPreviewPageId?: string }
+  | { type: "framecraft:ready"; path: string; selectionProtocol?: number; selectionVersion?: number; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[]; alarmPreviewProtocol?: number; alarmPreviewPageId?: string; faceplatePreviewProtocol?: number }
   | { type: "framecraft:shortcut"; key: string; shift: boolean }
   | { type: "framecraft:resize"; width: number; height: number };
 

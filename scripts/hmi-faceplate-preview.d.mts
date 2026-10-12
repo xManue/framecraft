@@ -1,0 +1,2 @@
+import type { renderHmiFaceplates } from "./hmi-faceplate-visuals.mjs";
+export function createHmiFaceplatePreview(view: Window, options: { active(): boolean; pageId(): string; instanceId(host: Element): string }, runtime: { renderHmiFaceplates: typeof renderHmiFaceplates }): { accepts(event: MessageEvent): boolean; receive(event: MessageEvent): void; refresh(): void; reset(): void; dispose(): void };

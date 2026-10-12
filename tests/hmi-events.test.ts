@@ -1,7 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { executeHmiEvent, executeHmiEventAsync, hmiEventTypesFor, newHmiEvent, parseHmiEvents, serializeHmiEvents } from "../src/core/hmiEvents";
+import type { HmiScriptTimerManager } from "../src/core/hmiScript";
 
 describe("eventi Runtime HMI", () => {
+  it("inoltra la cancellazione del contesto senza eseguire scritture", async () => {
+    const binding = { event: "Tapped" as const, script: 'Tags("Command").Write(1);' };
+    const context = { isActive: () => false };
+    expect(executeHmiEvent(binding, {}, context).writes).toEqual({});
+    const result = await executeHmiEventAsync(binding, {}, context);
+    expect(result.writes).toEqual({}); expect(result.error).toContain("contesto");
+  });
+  it("trasmette ai timer l'identità del contesto e i valori dei tag locali", async () => {
+    const set = vi.fn<HmiScriptTimerManager["set"]>(() => 1), localTags = new Set(["Counter"]), localTagValues = { Counter: "5" }, isActive = () => true;
+    const result = await executeHmiEventAsync({ event: "InterfaceEvent", script: 'HMIRuntime.Timers.SetTimeout(() => { Tags("Counter").Write(9); }, 30);' }, {}, { localTags, localTagValues, isActive, timerManager: { set, clear: vi.fn() } });
+    expect(result.error).toBeUndefined(); expect(set).toHaveBeenCalledOnce();
+    const context = set.mock.calls[0][3]!;
+    expect(context.localTags).toBe(localTags); expect(context.localTagValues).toBe(localTagValues); expect(context.isActive).toBe(isActive);
+  });
   it("salva insieme allo script il programma sicuro per il pannello generato", () => {
     const raw = serializeHmiEvents([{ event: "Tapped", script: 'HMIRuntime.Tags.SysFct.SetTagValue("Command", 1);' }]);
     expect(raw).toContain('"program":{"version":1');

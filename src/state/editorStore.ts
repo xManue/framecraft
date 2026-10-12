@@ -1442,8 +1442,8 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         void readPlcCatalog(project.root).then((plcVariables) => set({ plcVariables }));
         void readResourceCatalog(project.root).then((resourceCatalog) => set({ resourceCatalog }));
         void readScriptCatalog(project.root).then((scriptCatalog) => set({ scriptCatalog }));
-        void readFaceplateCatalog(project.root).then((faceplateCatalog) => set({ faceplateCatalog }));
-        void readDataLogCatalog(project.root).then((dataLogCatalog) => set({ dataLogCatalog }));
+        void readFaceplateCatalog(project.root).then((faceplateCatalog) => { if (get().project === project) set({ faceplateCatalog }); });
+        void readDataLogCatalog(project.root).then((dataLogCatalog) => { if (get().project === project) set({ dataLogCatalog }); });
         void get().refreshAlarmPreviewConfiguration();
         const sessionId = crypto.randomUUID();
         set({ previewSessionId: sessionId, previewProcessExited: false });
