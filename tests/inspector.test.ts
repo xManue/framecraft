@@ -15,7 +15,7 @@ import { Inspector } from "../src/inspector/Inspector";
 import { parseSource } from "../src/source-parser/parseSource";
 import { emptyHmiResourceCatalog } from "../src/core/hmiResources";
 import { serializeHmiFaceplateBinding, standardHmiFaceplateCatalog } from "../src/core/hmiFaceplates";
-import { defaultHmiTrendConfig, serializeHmiTrendConfig } from "../src/core/hmiTrend";
+import { defaultHmiTrendConfig, parseHmiTrendConfig, serializeHmiTrendConfig } from "../src/core/hmiTrend";
 import { defaultHmiFunctionTrendConfig, parseHmiFunctionTrendConfig, serializeHmiFunctionTrendConfig } from "../src/core/hmiFunctionTrend";
 
 async function activatePropertyTab(container: HTMLElement, label: string) {
@@ -284,6 +284,22 @@ describe("istanza faceplate Unified", () => {
 });
 
 describe("Trend Control Unified", () => {
+  it("registra fuso e aggregazione nella configurazione del controllo", async () => {
+    const config = defaultHmiTrendConfig(), document = parseSource("src/Page.tsx", `export function Page(){return <div data-hmi-type="HmiTrendControl" data-hmi-trend='${serializeHmiTrendConfig(config)}' />}`);
+    const node = Object.values(document.nodes).find(item => item.type === "div")!;
+    const originalUpdate = useEditorStore.getState().updateAttribute, update = vi.fn();
+    useEditorStore.setState({ document, selectedId: node.id, updateAttribute: update });
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    const container = window.document.createElement("div"), root = createRoot(container);
+    try {
+      await act(async () => root.render(createElement(Inspector))); await activatePropertyTab(container, "PLC e dati");
+      const field = (label: string) => [...container.querySelectorAll<HTMLLabelElement>("label")].find(item => item.querySelector("span")?.textContent === label)!.querySelector<HTMLSelectElement>("select")!;
+      const zone = field("Fuso orario del grafico"); await act(async () => { zone.value = "Europe/Rome"; zone.dispatchEvent(new Event("change", { bubbles: true })); });
+      expect(update.mock.calls.at(-1)![0]).toBe("data-hmi-trend"); expect(parseHmiTrendConfig(update.mock.calls.at(-1)![1])?.timeZone).toBe("Europe/Rome");
+      const aggregation = field("Campioni oltre i pixel disponibili"); await act(async () => { aggregation.value = "min-max"; aggregation.dispatchEvent(new Event("change", { bubbles: true })); });
+      expect(parseHmiTrendConfig(update.mock.calls.at(-1)![1])?.aggregation).toBe("min-max");
+    } finally { await act(async () => root.unmount()); useEditorStore.setState({ updateAttribute: originalUpdate, document: undefined, selectedId: undefined }); }
+  });
   it("configura curve, tag, assi, soglie e comandi Runtime dall'Inspector", async () => {
     const config = defaultHmiTrendConfig();
     config.trends[0] = { ...config.trends[0], name: "Temperatura", tag: "Oven.Temperature", lowThreshold: 20, highThreshold: 80 };

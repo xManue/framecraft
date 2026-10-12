@@ -24,7 +24,7 @@ export function createHmiTrendPreviewModel(runtime: HmiDataLogRuntime, catalog: 
           && Number.isFinite(query.from) && Number.isFinite(query.to) && Math.abs(query.from) <= 8.64e15 && Math.abs(query.to) <= 8.64e15 && query.from <= query.to
           && catalog.logs.some(log => log.id === query.logId && log.tags.some(tag => tag.id === query.loggedTagId));
         if (!valid) return { key: query?.key, error: "Scegli un Data Log e una variabile archiviata validi per la curva." };
-        return { key: query.key, samples: runtime.query(query.logId, query.loggedTagId, query.from, query.to).map(sample => ({ time: sample.time, value: sample.value, qualityCode: sample.qualityCode })) };
+        return { key: query.key, samples: runtime.query(query.logId, query.loggedTagId, query.from, query.to, true).map(sample => ({ time: sample.time, value: sample.value, qualityCode: sample.qualityCode })) };
       });
       return { type: "framecraft:trend-history-result", lease, historyRevision: revision, requestId: message.requestId, results };
     },

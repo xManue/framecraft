@@ -630,7 +630,7 @@ const bridgeScript = sharedHelpers + String.raw`
     } catch { return { raw: null, items: [] }; }
   };
   const alarmInternal = (event) => Boolean(event.target?.closest?.("[data-hmi-alarm-root], [data-hmi-alarm-summary-root]"));
-  const trendInternal = (event) => Boolean(event.target?.closest?.("[data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]"));
+  const trendInternal = (event) => Boolean(event.target?.closest?.("[data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-time-zone], [data-hmi-trend-aggregation], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]"));
   const hmiEventTarget = (event) => alarmInternal(event) || trendInternal(event) || event.target?.closest?.("[data-hmi-faceplate-interface-trigger]") ? null : event.target?.closest?.("[data-hmi-events]");
   const emitHmiEvent = (element, eventType, context = {}) => {
     if (mode !== "navigate" || !element) return;

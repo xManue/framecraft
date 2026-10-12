@@ -48,6 +48,37 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); browser?.window.close(); host.remove(); useEditorStore.setState(initial, true); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("curve nel canvas cross-origin con ponte reale", () => {
+  it("mantiene fuso e aggregazione di sessione passando tra Modifica e Usa", async () => {
+    owner().setAttribute("data-hmi-events", JSON.stringify([{ event: "Tapped", script: 'Tags("Unexpected").Write(1);' }]));
+    const designed = owner().getAttribute("data-hmi-trend"); await usePanel();
+    const zone = owner().querySelector<HTMLSelectElement>("[data-hmi-trend-time-zone]")!, aggregation = owner().querySelector<HTMLSelectElement>("[data-hmi-trend-aggregation]")!;
+    await act(async () => { zone.click(); zone.value = "Europe/Rome"; zone.dispatchEvent(new frame.Event("change", { bubbles: true })); aggregation.click(); aggregation.value = "min-max"; aggregation.dispatchEvent(new frame.Event("change", { bubbles: true })); });
+    await flush(); expect(received.some(message => message.type === "framecraft:hmi-event")).toBe(false);
+    await act(async () => useEditorStore.getState().setInteractionMode("edit")); await flush();
+    expect(owner().textContent).toBe("Bozza tempo"); await usePanel();
+    expect(owner().querySelector<HTMLSelectElement>("[data-hmi-trend-time-zone]")!.value).toBe("Europe/Rome");
+    expect(owner().querySelector<HTMLSelectElement>("[data-hmi-trend-aggregation]")!.value).toBe("min-max");
+    expect(owner().getAttribute("data-hmi-trend")).toBe(designed); expect(network).not.toHaveBeenCalled();
+  });
+  it("la media temporale nel ponte usa il campione precedente alla finestra, anche dalla cache", async () => {
+    vi.setSystemTime(new Date("2026-10-12T12:00:00Z")); await configureArchive();
+    const config = defaultHmiTrendConfig(); config.online = false; config.timeRangeMs = 1000; config.trends[0] = { ...config.trends[0], source: "log", logId: "archive", loggedTagId: "y", mode: "values" };
+    owner().setAttribute("data-hmi-trend", serializeHmiTrendConfig(config));
+    vi.spyOn(frame.SVGElement.prototype, "getBoundingClientRect").mockReturnValue({ width: 1, height: 260, top: 0, left: 0 } as DOMRect);
+    await usePanel(); await flush(2100);
+    for (const value of [100, 200, 300]) { await act(async () => useEditorStore.getState().setSimulationValue("Y", String(value))); await flush(100); }
+    await flush(300);
+    const snapshot = sent.filter(message => message.type === "framecraft:trend-preview").at(-1)!;
+    const result = sent.filter(message => message.type === "framecraft:trend-history-result").at(-1)!.results.find((item: { key: string }) => item.key === '["archive","y"]');
+    const samples = result.samples as { time: number; value: string }[], end = snapshot.now as number, start = end - 1000;
+    expect(samples.some(sample => sample.time < start)).toBe(true);
+    expect(samples.filter(sample => sample.time >= start && sample.time <= end).length).toBeGreaterThan(1);
+    let weighted = 0;
+    for (const [index, sample] of samples.entries()) weighted += Number(sample.value) * Math.max(0, Math.min(end, samples[index + 1]?.time ?? end) - Math.max(start, sample.time));
+    const title = owner().querySelector('[data-hmi-trend-quality] title')!.textContent!;
+    expect(title).toContain("punto aggregato"); expect(Number(title.split(";")[0].split(": ")[1])).toBeCloseTo(weighted / 1000);
+    expect(network).not.toHaveBeenCalled();
+  });
   it("disegna tempo e XY con valori manuali senza accedere al DOM dal parent", async () => {
     expect(owner().textContent).toBe("Bozza tempo"); await usePanel();
     expect(owner().querySelector('[data-hmi-trend-root]')).not.toBeNull();

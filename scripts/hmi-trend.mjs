@@ -6,12 +6,86 @@ const timeZoomRange = trendRuntimeZoomRange;
 const timeQualityClass = trendQualityClass;
 export const hmiTrendAttribute = "data-hmi-trend";
 export const hmiTrendModes = ["points", "interpolated", "stepped", "values"];
+export const hmiTrendAggregations = ["time-average-stepped", "min-max", "none"];
+export const hmiTrendTimeZones = [["local", "Ora del dispositivo"], ["UTC", "UTC"], ["Europe/Rome", "Roma"], ["Europe/London", "Londra"], ["America/New_York", "New York"], ["Asia/Tokyo", "Tokyo"]];
+const trendDateFormatters = new Map();
 const trendStates = new WeakMap();
 const trendListenerHosts = new WeakSet();
 const trendString = (value, fallback = "") => typeof value === "string" ? value : fallback;
 const trendNumber = (value, fallback) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
 const trendOptionalNumber = (value) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
 const trendBool = (value, fallback) => typeof value === "boolean" ? value : fallback;
+export function trendTimeZoneValid(timeZone) {
+    try { new Intl.DateTimeFormat("it-IT", { timeZone: timeZone === "local" ? undefined : timeZone }); return typeof timeZone === "string" && !!timeZone.trim(); }
+    catch { return false; }
+}
+export function trendFormatTime(time, timeZone = "local", date = false) {
+    const zone = timeZone === "local" ? new Intl.DateTimeFormat().resolvedOptions().timeZone : timeZone;
+    const key = JSON.stringify([zone, date]);
+    let formatter = trendDateFormatters.get(key);
+    if (!formatter) {
+        const options = { timeZone: zone, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZoneName: "longOffset", ...(date ? { year: "numeric", month: "2-digit", day: "2-digit" } : {}) };
+        try { formatter = new Intl.DateTimeFormat("it-IT", options); }
+        catch { formatter = new Intl.DateTimeFormat("it-IT", { ...options, timeZone: "UTC" }); }
+        if (trendDateFormatters.size >= 32) trendDateFormatters.clear();
+        trendDateFormatters.set(key, formatter);
+    }
+    return Number.isFinite(time) && Math.abs(time) <= 8.64e15 ? formatter.format(time) : "Data non valida";
+}
+function trendWorstSample(first, next) {
+    const severity = { good: 0, unknown: 1, uncertain: 2, bad: 3 };
+    return !first || severity[timeQualityClass(next.qualityCode)] > severity[timeQualityClass(first.qualityCode)] ? next : first;
+}
+export function aggregateTrendSamples(source, from, to, pixels, mode = "time-average-stepped") {
+    const ordered = source.filter(sample => Number.isFinite(sample.time) && Number.isFinite(sample.value));
+    if (ordered.some((sample, index) => index && sample.time < ordered[index - 1].time)) ordered.sort((a, b) => a.time - b.time);
+    const raw = ordered.filter(sample => sample.time >= from && sample.time <= to);
+    const width = Math.max(1, Math.min(4096, Math.floor(Number.isFinite(pixels) ? pixels : 532)));
+    if (mode === "none" || !hmiTrendAggregations.includes(mode) || raw.length <= width || !Number.isFinite(from) || !Number.isFinite(to) || to <= from)
+        return { samples: raw, rawCount: raw.length, aggregated: false, buckets: width };
+    const duration = (to - from) / width;
+    const bucketAt = time => Math.max(0, Math.min(width - 1, Math.floor((time - from) / duration)));
+    const buckets = Array.from({ length: width }, () => ({ firstPoint: undefined, lastPoint: undefined, minimum: undefined, maximum: undefined, coverage: 0, mean: 0, worst: undefined, first: undefined, last: undefined }));
+    for (const sample of raw) {
+        const bucket = buckets[bucketAt(sample.time)];
+        bucket.firstPoint ??= sample;
+        bucket.lastPoint = sample;
+        if (!bucket.minimum || sample.value < bucket.minimum.value) bucket.minimum = sample;
+        if (!bucket.maximum || sample.value > bucket.maximum.value) bucket.maximum = sample;
+        bucket.worst = trendWorstSample(bucket.worst, sample);
+    }
+    if (mode === "time-average-stepped") {
+        for (let index = 0; index < ordered.length; index++) {
+            const sample = ordered[index];
+            let start = Math.max(from, sample.time);
+            const end = Math.min(to, ordered[index + 1]?.time ?? to);
+            for (let bucketIndex = bucketAt(start); bucketIndex < width && start < end; bucketIndex++) {
+                const bucket = buckets[bucketIndex];
+                const stop = Math.min(end, bucketIndex === width - 1 ? to : from + (bucketIndex + 1) * duration);
+                if (stop <= start) continue;
+                const weight = stop - start, total = bucket.coverage + weight;
+                bucket.mean = bucket.mean * (bucket.coverage / total) + sample.value * (weight / total);
+                bucket.coverage = total;
+                bucket.first ??= start;
+                bucket.last = stop;
+                bucket.worst = trendWorstSample(bucket.worst, sample);
+                start = stop;
+            }
+        }
+    }
+    const samples = buckets.flatMap(bucket => {
+        if (!bucket.worst) return [];
+        if (mode === "time-average-stepped") {
+            if (!bucket.coverage) return [{ ...bucket.lastPoint, qualityCode: bucket.worst.qualityCode, aggregated: true }];
+            const bad = timeQualityClass(bucket.worst.qualityCode) === "bad";
+            return [{ time: (bucket.first + bucket.last) / 2, value: bad ? bucket.worst.value : bucket.mean, qualityCode: bucket.worst.qualityCode, aggregated: true }];
+        }
+        if (timeQualityClass(bucket.worst.qualityCode) === "bad") return [{ ...bucket.worst, aggregated: true }];
+        return [...new Set([bucket.firstPoint, bucket.minimum, bucket.maximum, bucket.lastPoint])].sort((a, b) => a.time - b.time)
+            .map(point => ({ ...point, qualityCode: bucket.worst.qualityCode, aggregated: true }));
+    });
+    return { samples, rawCount: raw.length, aggregated: true, buckets: width };
+}
 function normalizeTrendAxis(value) {
     const item = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const scale = ["linear", "logarithmic", "negative-logarithmic"].includes(String(item.scale)) ? item.scale : "linear";
@@ -52,6 +126,8 @@ export function defaultHmiTrendConfig() {
         caption: "Andamento processo",
         timeRangeMs: 60_000,
         sampleIntervalMs: 1_000,
+        timeZone: "local",
+        aggregation: "time-average-stepped",
         online: true,
         showToolbar: true,
         showLegend: true,
@@ -87,6 +163,8 @@ export function parseHmiTrendConfig(value) {
         caption: trendString(item.caption, fallback.caption),
         timeRangeMs: Math.round(trendNumber(item.timeRangeMs, fallback.timeRangeMs)),
         sampleIntervalMs: Math.round(trendNumber(item.sampleIntervalMs, fallback.sampleIntervalMs)),
+        timeZone: trendString(item.timeZone, fallback.timeZone).trim(),
+        aggregation: hmiTrendAggregations.includes(item.aggregation) ? item.aggregation : fallback.aggregation,
         online: trendBool(item.online, fallback.online),
         showToolbar: trendBool(item.showToolbar, fallback.showToolbar),
         showLegend: trendBool(item.showLegend, fallback.showLegend),
@@ -105,6 +183,8 @@ export function serializeHmiTrendConfig(config) {
 }
 export function hmiTrendIssues(config, variables, dataLogs) {
     const issues = [];
+    if (!trendTimeZoneValid(config.timeZone))
+        issues.push({ severity: "error", message: "Fuso orario non valido. Scegli Ora del dispositivo, UTC o un identificatore come Europe/Rome. Nel grafico viene usato UTC finché lo correggi." });
     if (config.timeRangeMs < 1_000)
         issues.push({ severity: "error", message: "L'intervallo visualizzato deve essere almeno 1 secondo." });
     if (config.sampleIntervalMs < 100)
@@ -262,7 +342,7 @@ function trendState(host, config) {
     if (current?.signature === signature)
         return current;
     host.querySelector(":scope > [data-hmi-trend-root]")?.replaceChildren();
-    const state = { signature, config, samples: new Map(), displayedSamples: new Map(), paused: false, zoom: 1, panMs: 0, hidden: new Set(config.trends.filter((trend) => !trend.visible).map((trend) => trend.id)), values: {}, options: {}, sources: new Map(), views: new Map(), plots: [], zoomArea: false };
+    const state = { signature, config, samples: new Map(), displayedSamples: new Map(), displayedSourceSamples: new Map(), paused: false, zoom: 1, panMs: 0, hidden: new Set(config.trends.filter((trend) => !trend.visible).map((trend) => trend.id)), values: {}, options: {}, sources: new Map(), views: new Map(), plots: [], zoomArea: false };
     trendStates.set(host, state);
     return state;
 }
@@ -301,6 +381,8 @@ function installTrendListeners(host) {
             state.viewTime = undefined;
             state.views.clear();
             state.zoomArea = false;
+            state.timeZoneOverride = undefined;
+            state.aggregationOverride = undefined;
         }
         else if (action === "zoom-area")
             state.zoomArea = !state.zoomArea;
@@ -328,6 +410,8 @@ function installTrendListeners(host) {
             state.zoom = 1;
             state.panMs = 0;
         }
+        else if (target.dataset.hmiTrendTimeZone !== undefined) state.timeZoneOverride = target.value;
+        else if (target.dataset.hmiTrendAggregation !== undefined && hmiTrendAggregations.includes(target.value)) state.aggregationOverride = target.value;
         else if (target.dataset.hmiTrendVisibility) {
             if (target.checked)
                 state.hidden.delete(target.dataset.hmiTrendVisibility);
@@ -375,6 +459,15 @@ function trendChrome(root, config) {
             range.append(option);
         }
         toolbar.append(range);
+        for (const [attribute, label, choices] of [["hmiTrendTimeZone", "Fuso orario del grafico", [...hmiTrendTimeZones, ...(!hmiTrendTimeZones.some(([id]) => id === config.timeZone) ? [[config.timeZone, config.timeZone || "Fuso non valido"]] : [])]], ["hmiTrendAggregation", "Aggregazione dei campioni", [["time-average-stepped", "Media temporale a gradini"], ["min-max", "Conserva picchi (min/max)"], ["none", "Tutti i campioni"]]]]) {
+            const field = doc.createElement("select");
+            field.dataset[attribute] = "";
+            field.setAttribute("aria-label", label);
+            field.title = label;
+            Object.assign(field.style, { minHeight: "44px", maxWidth: "100%", color: "#20262b", background: "#fff" });
+            for (const [value, text] of choices) { const option = doc.createElement("option"); option.value = value; option.textContent = text; field.append(option); }
+            toolbar.append(field);
+        }
         root.append(toolbar);
         const sources = doc.createElement("div");
         sources.dataset.hmiTrendSourcesRoot = "";
@@ -409,6 +502,11 @@ function trendChrome(root, config) {
     quality.dataset.hmiTrendQualityNote = "";
     Object.assign(quality.style, { margin: "0", padding: "4px 9px", background: "#fff3dd", color: "#7a4200" });
     root.append(quality);
+    const info = doc.createElement("p");
+    info.dataset.hmiTrendDisplayInfo = "";
+    info.setAttribute("role", "status");
+    Object.assign(info.style, { margin: "0", padding: "4px 9px", color: "#465057", overflowWrap: "anywhere" });
+    root.append(info);
 }
 export function renderHmiTrendControl(host, values, options = {}) {
     const designed = parseHmiTrendConfig(host.dataset.hmiTrend);
@@ -424,7 +522,7 @@ export function renderHmiTrendControl(host, values, options = {}) {
         host.replaceChildren(root);
     }
     const state = trendState(host, designed);
-    const config = { ...designed, trends: designed.trends.map((trend) => ({ ...trend, ...state.sources.get(trend.id) })) };
+    const config = { ...designed, timeZone: state.timeZoneOverride ?? designed.timeZone, aggregation: state.aggregationOverride ?? designed.aggregation, trends: designed.trends.map((trend) => ({ ...trend, ...state.sources.get(trend.id) })) };
     state.config = config;
     state.values = values;
     state.options = options;
@@ -470,17 +568,22 @@ export function renderHmiTrendControl(host, values, options = {}) {
     const rangeSelect = root.querySelector("[data-hmi-trend-range]");
     if (rangeSelect)
         rangeSelect.value = String(state.windowOverrideMs ?? config.timeRangeMs);
+    const zoneSelect = root.querySelector("[data-hmi-trend-time-zone]");
+    if (zoneSelect) zoneSelect.value = config.timeZone;
+    const aggregationSelect = root.querySelector("[data-hmi-trend-aggregation]");
+    if (aggregationSelect) aggregationSelect.value = config.aggregation;
     const sourceRoot = root.querySelector("[data-hmi-trend-sources-root]");
     if (sourceRoot)
         timeSourcePicker(sourceRoot, config.trends.map((trend) => ({ id: trend.id, name: trend.name, sources: { value: { source: trend.source, tag: trend.tag, logId: trend.logId, loggedTagId: trend.loggedTagId } } })), { tags: [...new Set([...(options.sources?.tags ?? []), ...Object.keys(values), ...designed.trends.filter((trend) => trend.source === "online").map((trend) => trend.tag).filter(Boolean)])].sort(), logs: options.sources?.logs ?? [] }, (id, sources) => {
             state.sources.set(id, sources.value);
             state.samples.delete(id);
             state.displayedSamples.delete(id);
+            state.displayedSourceSamples.delete(id);
             state.lastSampleAt = undefined;
             state.views.clear();
             state.viewTime = undefined;
             renderHmiTrendControl(host, state.values, { ...state.options, sample: false });
-        }, () => { state.sources.clear(); state.samples.clear(); state.displayedSamples.clear(); state.lastSampleAt = undefined; state.views.clear(); state.viewTime = undefined; renderHmiTrendControl(host, state.values, { ...state.options, sample: false }); });
+        }, () => { state.sources.clear(); state.samples.clear(); state.displayedSamples.clear(); state.displayedSourceSamples.clear(); state.lastSampleAt = undefined; state.views.clear(); state.viewTime = undefined; renderHmiTrendControl(host, state.values, { ...state.options, sample: false }); });
     const svg = root.querySelector(":scope > svg");
     svg.replaceChildren();
     svg.setAttribute("aria-label", config.caption + ": " + config.trends.length + " curve in " + config.areas.length + " aree");
@@ -492,18 +595,39 @@ export function renderHmiTrendControl(host, values, options = {}) {
     const windowMs = end - start;
     const shown = config.trends.filter((trend) => !state.hidden.has(trend.id));
     const visibleSamples = new Map();
+    const sourceSamples = new Map();
     for (const trend of shown) {
-        const source = state.paused ? state.displayedSamples.get(trend.id) ?? [] : trend.source === "log" && options.history ? options.history(trend, start, end) : state.samples.get(trend.id) ?? [];
-        visibleSamples.set(trend.id, source.filter((sample) => sample.time >= start && sample.time <= end).map((sample) => ({ ...sample })));
+        const source = state.paused ? state.displayedSourceSamples.get(trend.id) ?? [] : trend.source === "log" && options.history ? options.history(trend, start, end) : state.samples.get(trend.id) ?? [];
+        let previous;
+        const visible = source.filter(sample => {
+            if (sample.time < start && (!previous || sample.time >= previous.time)) previous = sample;
+            return sample.time >= start && sample.time <= end;
+        }).map(sample => ({ ...sample }));
+        visibleSamples.set(trend.id, visible);
+        sourceSamples.set(trend.id, previous ? [{ ...previous }, ...visible] : visible);
     }
     state.displayedSamples = visibleSamples;
-    const qualityCounts = [...visibleSamples.values()].flat().reduce((counts, sample) => { const quality = timeQualityClass(sample.qualityCode); if (quality === "bad" || quality === "uncertain")
-        counts[quality]++; return counts; }, { bad: 0, uncertain: 0 });
+    state.displayedSourceSamples = sourceSamples;
+    const qualityCounts = { bad: 0, uncertain: 0, unknown: 0 };
+    for (const samples of visibleSamples.values()) for (const sample of samples) {
+        const quality = timeQualityClass(sample.qualityCode);
+        if (quality !== "good") qualityCounts[quality]++;
+    }
     const qualityNote = root.querySelector("[data-hmi-trend-quality-note]");
-    qualityNote.hidden = !qualityCounts.bad && !qualityCounts.uncertain;
-    qualityNote.textContent = "Qualità campioni: " + qualityCounts.uncertain + " incerti (cerchio vuoto), " + qualityCounts.bad + " non validi (croce; linea interrotta).";
+    qualityNote.hidden = !qualityCounts.bad && !qualityCounts.uncertain && !qualityCounts.unknown;
+    qualityNote.textContent = "Qualità campioni: " + qualityCounts.uncertain + " incerti (cerchio vuoto), " + qualityCounts.bad + " non validi (croce; linea interrotta), " + qualityCounts.unknown + " senza qualità disponibile (non significa Good).";
     const plotLeft = 54;
     const plotWidth = 532;
+    const pixelWidth = svg.getBoundingClientRect().width;
+    const reducedSamples = new Map(shown.map(trend => [trend.id, aggregateTrendSamples(sourceSamples.get(trend.id) ?? [], start, end, pixelWidth > 0 ? pixelWidth * plotWidth / 640 : plotWidth, config.aggregation)]));
+    const originalCount = [...reducedSamples.values()].reduce((sum, result) => sum + result.rawCount, 0);
+    const displayedCount = [...reducedSamples.values()].reduce((sum, result) => sum + result.samples.length, 0);
+    const zoneValid = trendTimeZoneValid(config.timeZone);
+    const zone = zoneValid ? config.timeZone : "UTC";
+    const displayInfo = root.querySelector("[data-hmi-trend-display-info]");
+    displayInfo.setAttribute("role", zoneValid ? "status" : "alert");
+    displayInfo.textContent = (zoneValid ? "Fuso: " + (zone === "local" ? "ora del dispositivo" : zone) : "Fuso non valido: visualizzazione in UTC. Correggilo nell’Inspector.") + " · " + trendFormatTime(start, zone, true) + " → " + trendFormatTime(end, zone, true)
+        + ([...reducedSamples.values()].some(result => result.aggregated) ? " · " + originalCount + " campioni → " + displayedCount + " punti (" + (config.aggregation === "min-max" ? "min/max" : "media temporale a gradini") + "). Solo disegno: righello e CSV conservano i campioni originali. Qualità peggiore per pixel; intervalli non validi interrotti." : "");
     const plotTop = 14;
     const plotBottom = 222;
     const areaGap = config.areas.length > 1 ? 7 : 0;
@@ -546,7 +670,7 @@ export function renderHmiTrendControl(host, values, options = {}) {
             if (config.showGrid)
                 appendTrendText(grid, "line", "", { x1: x, y1: plot.top, x2: x, y2: plot.top + plot.height });
             if (areaIndex === plots.length - 1)
-                appendTrendText(svg, "text", new Date(start + windowMs * index / 5).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }), { x, y: 244, "text-anchor": "middle", fill: "#465057", "font-size": 10 });
+                appendTrendText(svg, "text", trendFormatTime(start + windowMs * index / 5, zone), { x, y: 244, "text-anchor": "middle", fill: "#465057", "font-size": 8 });
         }
         appendTrendText(areaGroup, "rect", "", { x: plot.left, y: plot.top, width: plot.width, height: plot.height, fill: "none", stroke: "#70777c" });
         appendTrendText(areaGroup, "text", plot.area.name, { x: plot.left + 5, y: plot.top + 11, fill: "#59636a", "font-size": 8, "font-weight": 700 });
@@ -563,7 +687,7 @@ export function renderHmiTrendControl(host, values, options = {}) {
         clip.setAttribute("overflow", "hidden");
         areaGroup.append(clip);
         for (const trend of areaTrends) {
-            const samples = visibleSamples.get(trend.id) ?? [];
+            const samples = reducedSamples.get(trend.id)?.samples ?? [];
             const axis = trend.axis === "right" ? rightAxis : leftAxis;
             const range = trend.axis === "right" ? rightRange : leftRange;
             const points = samples.flatMap((sample) => {
@@ -593,7 +717,7 @@ export function renderHmiTrendControl(host, values, options = {}) {
                         ? appendTrendText(clip, "path", "", { d: "M" + (x - 4) + " " + (y - 4) + "L" + (x + 4) + " " + (y + 4) + "M" + (x - 4) + " " + (y + 4) + "L" + (x + 4) + " " + (y - 4), fill: "none", stroke: trendArgb(trend.color), "stroke-width": 2 })
                         : appendTrendText(clip, "circle", "", { cx: x, cy: y, r: invalid ? 4 : 3, fill: invalid ? "#fff" : trendArgb(trend.color), stroke: trendArgb(trend.color), "stroke-width": invalid ? 2 : 1 });
                     marker.setAttribute("data-hmi-trend-quality", quality);
-                    appendTrendText(marker, "title", trend.name + ": " + sample.value + "; qualità " + quality + " (" + (sample.qualityCode ?? "non disponibile") + ")");
+                    appendTrendText(marker, "title", trend.name + ": " + sample.value + "; " + trendFormatTime(sample.time, zone, true) + "; qualità " + quality + " (" + (sample.qualityCode ?? "non disponibile") + ")" + (sample.aggregated ? "; punto aggregato, non un campione originale" : ""));
                 }
                 if (trend.mode === "values")
                     appendTrendText(clip, "text", String(sample.value), { x: x + 4, y: y - 4, fill: trendArgb(trend.color), "font-size": 9 });
@@ -612,7 +736,8 @@ export function renderHmiTrendControl(host, values, options = {}) {
     if (state.rulerRatio !== undefined) {
         const x = plotLeft + plotWidth * state.rulerRatio;
         const at = start + windowMs * state.rulerRatio;
-        appendTrendText(svg, "line", "", { x1: x, y1: plotTop, x2: x, y2: plotBottom, stroke: "#20262b", "stroke-width": 1.5 });
+        const ruler = appendTrendText(svg, "line", "", { x1: x, y1: plotTop, x2: x, y2: plotBottom, stroke: "#20262b", "stroke-width": 1.5 });
+        appendTrendText(ruler, "title", trendFormatTime(at, zone, true));
         const readings = shown.flatMap((trend) => { const samples = visibleSamples.get(trend.id) ?? []; const closest = samples.reduce((best, sample) => !best || Math.abs(sample.time - at) < Math.abs(best.time - at) ? sample : best, undefined); return closest ? [`${trend.name}: ${closest.value}`] : []; });
         appendTrendText(svg, "text", readings.join("  ·  ") || "Nessun campione", { x: Math.min(x + 5, 420), y: plotTop + 13, fill: "#20262b", "font-size": 10, "font-weight": 700 });
     }
@@ -647,5 +772,6 @@ export function hmiTrendJsx() {
 }
 export function hmiTrendRuntimeModuleSource() {
     const source = `// @ts-nocheck\nconst hmiTrendAttribute = ${JSON.stringify(hmiTrendAttribute)};\nconst hmiTrendModes = ${JSON.stringify(hmiTrendModes)};\nconst trendStates = new WeakMap();\nconst trendListenerHosts = new WeakSet();\n${hmiTrendRuntimeUiModuleSource()}\nconst timeSourcePicker = renderTrendSourcePicker;\nconst timeAreaZoom = installTrendAreaZoom;\nconst timeZoomDragging = trendAreaZoomDragging;\nconst timeZoomRange = trendRuntimeZoomRange;\nconst timeQualityClass = trendQualityClass;\nconst trendString = ${String(trendString)};\nconst trendNumber = ${String(trendNumber)};\nconst trendOptionalNumber = ${String(trendOptionalNumber)};\nconst trendBool = ${String(trendBool)};\n${String(normalizeTrendAxis)}\n${String(normalizeTrendArea)}\n${String(normalizeTrendSeries)}\n${String(defaultHmiTrendConfig)}\nexport ${String(parseHmiTrendConfig)}\n${String(trendArgb)}\n${String(trendAxisValue)}\n${String(trendAxisLabel)}\n${String(trendAxisRange)}\n${String(trendPath)}\n${String(trendCsv)}\n${String(downloadTrendCsv)}\n${String(appendTrendText)}\n${String(trendState)}\n${String(installTrendListeners)}\n${String(trendChrome)}\nexport ${String(renderHmiTrendControl)}\nexport ${String(renderHmiTrendControls)}\nexport ${String(clearHmiTrendHistory)}\n`;
-    return source.replace(String(trendCsv), String(trendCsvCell) + "\n" + String(trendCsv));
+    const helpers = `const hmiTrendAggregations = ${JSON.stringify(hmiTrendAggregations)};\nconst hmiTrendTimeZones = ${JSON.stringify(hmiTrendTimeZones)};\nconst trendDateFormatters = new Map();\n${String(trendTimeZoneValid)}\n${String(trendFormatTime)}\n${String(trendWorstSample)}\n${String(aggregateTrendSamples)}\n`;
+    return source.replace("const trendStates = new WeakMap();", helpers + "const trendStates = new WeakMap();").replace(String(trendCsv), String(trendCsvCell) + "\n" + String(trendCsv));
 }

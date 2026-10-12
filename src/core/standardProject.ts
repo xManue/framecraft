@@ -429,7 +429,7 @@ function renderFaceplateVisuals() {
 function renderTrendControls() {
   const sources = { tags: plcCatalogJson.variables.map((variable: { name: string }) => variable.name), logs: dataLogCatalogJson.logs };
   renderHmiTrendControls(document, values, { status: tagStatus, sources, history: (trend, from, to) => trend.logId && trend.loggedTagId
-    ? dataLogRuntime.query(trend.logId, trend.loggedTagId, from, to).flatMap((sample: { time: number; value: string; qualityCode?: number }) => {
+    ? dataLogRuntime.query(trend.logId, trend.loggedTagId, from, to, true).flatMap((sample: { time: number; value: string; qualityCode?: number }) => {
       const value = Number(sample.value);
       return sample.value.trim() && Number.isFinite(value) ? [{ time: sample.time, value, qualityCode: sample.qualityCode }] : [];
     })
@@ -875,7 +875,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       (options.error ?? console.error)(\`[HMI \${eventType}] \${error instanceof Error ? error.message : String(error)}\`);
     });
   };
-  const target = (event: Event) => event.target instanceof Element && !event.target.closest("[data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-faceplate-interface-trigger], [data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]") ? event.target.closest("[data-hmi-events]") : null;
+  const target = (event: Event) => event.target instanceof Element && !event.target.closest("[data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-faceplate-interface-trigger], [data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-time-zone], [data-hmi-trend-aggregation], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]") ? event.target.closest("[data-hmi-events]") : null;
   const down = (event: Event) => run(target(event), "Down");
   const up = (event: Event) => run(target(event), "Up");
   const tapped = (event: Event) => run(target(event), "Tapped");

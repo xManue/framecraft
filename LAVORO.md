@@ -3990,6 +3990,47 @@ Verifiche del 5 ottobre 2026:
   Roadmap WinCC/Optix/AI e gate industriali restano aperti; export reali, foto,
   segreti e output di build esclusi dal commit.
 
+### 114. Fusi orari e aggregazione delle curve per pixel (2026-10-12)
+
+- Inspector e toolbar Runtime del Trend Control temporale: ora del dispositivo, UTC,
+  fusi IANA comuni/personalizzati; timestamp con offset per distinguere le ore ripetute
+  nel cambio d’ora. Fuso non valido segnalato con rimedio e ripiego esplicito UTC.
+  CSV sempre ISO UTC; cambio fuso non modifica timestamp, dati, sorgenti o progetto.
+- Configurazioni precedenti compatibili: local e media temporale a gradini predefiniti.
+  Aggregazione quando i campioni superano i pixel CSS disponibili, massimo 4096 bucket;
+  media pesata sulla durata del valore mantenuto e modalità min/max (primo/ultimo/min/max).
+  Nessuna media aritmetica spacciata per TimeAverageStepped, nessun valore inventato prima
+  del primo campione noto. Riduzione della sola geometria: assi, righello e CSV originali.
+- Qualità peggiore per bucket; Bad rende invalido tutto il pixel per evitare continuità
+  apparente. Min/max non espone picchi validi dentro un pixel che contiene Bad; i campioni
+  restano disponibili nel righello e nel CSV. Qualità assente dichiarata, non convertita
+  in Good. Contatori/descrizione rendono distinguibili dati originali e punti aggregati.
+- Query Data Log opzionale con un solo predecessore, clonato come gli altri risultati.
+  Query ordinarie immutate; ponte/cache della prova e Runtime standard usano lo stesso
+  predecessore per la media al bordo sinistro. Pausa conserva anche quel campione;
+  cambio Modifica/Usa conserva preferenze di sessione, Vista originale torna al progetto.
+- La regressione mirata ha riprodotto un click sui nuovi selettori che attivava l’azione
+  del contenitore: corretti i filtri di anteprima e Runtime standard, senza inviare
+  eventi/azioni HMI quando si cambia soltanto il fuso o l’aggregazione del grafico.
+- Implementazione ESM condivisa tra anteprima e progetto generato, senza dipendenze,
+  font, database timezone o codice vendor aggiunti. Intl del browser fornisce i fusi:
+  aggiornamento dati timezone e target desktop richiedono collaudo. Nessuna CPU collegata,
+  agente, suite generale o riavvio manuale dell’app; export/foto/segreti/build esclusi.
+- Test mirati: ora legale/invernale e ora ripetuta Roma, media a gradini vs aritmetica,
+  predecessore e copertura parziale, ordinamento/duplicati, limiti frazionari e centomila
+  campioni, picchi/qualità, CSV/righello originali, campi Inspector, ponte/cache reali e
+  mantenimento sessione. Singola generazione dopo bundling prova gli stessi helper.
+  Esiti: 65 casi frontend pertinenti, generazione Runtime dopo bundling, TypeScript
+  e build editor separata superati; avvisi di import statico/dinamico preesistenti.
+  La skill UI guida etichette/rimedi senza cambiare tema; revisione e documentazione
+  mantengono espliciti i limiti. Non è un collaudo fisico, visivo o di carico desktop.
+- Fonti Siemens V21 ricontrollate: [aggregazione valori](https://docs.tia.siemens.cloud/r/en-us/v21/operating-unified-pc-rt-unified/controls-rt-unified/displaying-tags-in-runtime-rt-unified/trend-control-rt-unified/value-aggregation-rt-unified),
+  [fusi dei controlli](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/overview-of-screen-objects-rt-unified/controls-rt-unified/overview-of-the-time-zones-rt-unified).
+  Framecraft usa una griglia deterministica di pixel CSS e IANA, non replica i codici
+  numerici né l’algoritmo interno di caricamento del vendor. WCU-CTL-05 resta PARZIALE:
+  stampa, profili, object model e collaudo reale aperti; WinCC restante, poi Optix e AI
+  facoltativa, con gate industriali/licenze, restano l’obiettivo completo.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
@@ -4018,8 +4059,8 @@ Verifiche del 5 ottobre 2026:
   pagine, eventi annidati, opzioni container, contesto esatto di `Faceplate.Close`, screen window
   generiche, UDT e migrazione massiva/nidata delle versioni; confronto e migrazione della singola
   istanza al punto 104 (`WCU-FP-*`, `WCU-ENG-12`, `WCU-TAG-05`).
-- **Roadmap WinCC, fase 6 da completare**: stampa, profili e object model dei trend; sul temporale
-  restano anche fusi orari e aggregazione per pixel
+- **Roadmap WinCC, fase 6 da completare**: stampa, profili, codici fuso vendor/object model
+  dei trend e collaudo reale; fusi IANA e aggregazione per pixel aggiunti al punto 114
   (`WCU-CTL-05/06`, `WCU-DAT-04/05`).
 - **Roadmap WinCC, fase 7 da completare**: collegare i Data Log a driver e storage industriali,
   supporti esterni, rotazione, backup e diagnostica spazio (`WCU-TAG-08`, `WCU-DAT-01/02/03`).

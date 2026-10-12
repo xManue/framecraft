@@ -118,6 +118,22 @@ For historical curves, choose a declared Data Log and logged variable. The previ
 the editor's local archive on demand, preserving timestamps and quality rather than
 inventing samples. A stalled query shows a remedy; **Vista originale** explicitly retries.
 Source changes belong to the current preview session, not the project configuration.
+Time trends offer **Fuso orario del grafico** and aggregation in the Inspector and
+Runtime toolbar. Device time, UTC and IANA zones include the UTC offset, so repeated
+daylight-saving hours remain distinguishable. Invalid zones show a remedy and fall
+back explicitly to UTC; CSV timestamps remain ISO UTC.
+
+When samples outnumber available CSS pixels, **Media temporale a gradini** weighs
+each held value by its duration, including one predecessor at the left boundary when
+available. It does not invent coverage before the first known value. **Conserva picchi
+(min/max)** keeps the first/last/min/max valid values per pixel; pixels containing Bad
+are represented as invalid instead of connecting through them. The worst quality is
+retained, including unknown quality. **Tutti i campioni** disables display aggregation
+and can be slower. The graph reports original/displayed counts; the ruler and CSV
+retain the original samples, not aggregated display points. This applies to numeric
+time trends, not X/Y paths. Numeric vendor time-zone IDs and the full control object
+model remain outside this tranche; device timezone data/native load require commissioning.
+
 **CSV** prepares the displayed data in the editor window, not the sandboxed iframe;
 the window/browser handles the download. This does not confirm a native file save or
 machine commissioning. See **runtime/README.md** and **LICENZE-E-PRODUZIONE.md** for limits.

@@ -49,16 +49,25 @@ export function createHmiTrendPreview(view, options, renderers) {
     }
   };
   const schedule = () => { if (!scheduled) { scheduled = true; const current = epoch(); view.queueMicrotask(() => { if (current === epoch()) flush(); }); } };
-  const history = (source, from, to, host) => {
+  const windowSamples = (samples, from, to, includePrevious) => {
+    let previous;
+    const result = samples.filter(sample => {
+      if (includePrevious && sample.time < from && (!previous || sample.time >= previous.time)) previous = sample;
+      return sample.time >= from && sample.time <= to;
+    });
+    if (previous) result.unshift(previous);
+    return result;
+  };
+  const history = (source, from, to, host, includePrevious = false) => {
     if (!active() || !source.logId || !source.loggedTagId || !Number.isFinite(from) || !Number.isFinite(to) || from > to) return [];
     const key = JSON.stringify([source.logId, source.loggedTagId]), found = cache.get(key);
     if (failed.has(key)) { status(host, failed.get(key)); return []; }
-    if (found && found.from <= from && found.to >= to) return found.samples.filter(sample => sample.time >= from && sample.time <= to);
+    if (found && found.from <= from && found.to >= to) return windowSamples(found.samples, from, to, includePrevious);
     const old = queued.get(key), query = { key, logId: source.logId, loggedTagId: source.loggedTagId,
       from: Math.min(found?.from ?? from, old?.from ?? from, Math.floor(from / 1000) * 1000),
       to: Math.max(found?.to ?? to, old?.to ?? to, Math.ceil(to / 1000) * 1000 + 1000) };
     queued.set(key, query); schedule(); status(host, "Caricamento dello storico locale… nessun PLC collegato.");
-    return found?.samples.filter(sample => sample.time >= from && sample.time <= to) ?? [];
+    return found ? windowSamples(found.samples, from, to, includePrevious) : [];
   };
   const exportCsv = (host, fileName, content) => {
     if (!active()) return; const requestId = `c${++sequence}`;
@@ -76,7 +85,7 @@ export function createHmiTrendPreview(view, options, renderers) {
       const before = hosts.get(host), signature = host.getAttribute("data-hmi-trend") ?? host.getAttribute("data-hmi-function-trend");
       if (onlyChanged && before.owned && host.contains(before.owned) && before.signature === signature) continue;
       const common = { now: packet.now, sample, status: packet.status, sources: packet.sources, exportCsv: (name, content) => exportCsv(host, name, content) };
-      if (host.hasAttribute("data-hmi-trend")) renderers.time.render(host, packet.values, { ...common, history: (source, from, to) => history(source, from, to, host).flatMap(sample => {
+      if (host.hasAttribute("data-hmi-trend")) renderers.time.render(host, packet.values, { ...common, history: (source, from, to) => history(source, from, to, host, true).flatMap(sample => {
         const value = Number(sample.value); return sample.value.trim() && Number.isFinite(value) ? [{ time: sample.time, value, qualityCode: sample.qualityCode }] : [];
       }) });
       else renderers.xy.render(host, packet.values, { ...common, history: (source, from, to) => history(source, from, to, host) });

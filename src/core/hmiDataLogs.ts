@@ -83,7 +83,7 @@ export interface HmiDataLogRuntime {
   updateSnapshot(values: Readonly<Record<string, string>>, status?: Readonly<Record<string, HmiDataLogTagStatus>>): number;
   request(logId?: string, loggedTagId?: string): number;
   tick(at?: number): number;
-  query(logId: string, loggedTagId: string, from?: number, to?: number): HmiDataLogSample[];
+  query(logId: string, loggedTagId: string, from?: number, to?: number, includePrevious?: boolean): HmiDataLogSample[];
   subscribe(listener: () => void): () => void;
   flush(): void;
   clear(logId?: string): void;
@@ -362,8 +362,15 @@ export function createHmiDataLogRuntime(input: HmiDataLogCatalog | unknown, opti
       return written;
     },
     tick,
-    query(logId, loggedTagId, from = Number.NEGATIVE_INFINITY, to = Number.POSITIVE_INFINITY) {
-      return (samples.get(keyOf(logId, loggedTagId)) ?? []).filter((sample) => sample.time >= from && sample.time <= to).map((sample) => ({ ...sample }));
+    query(logId, loggedTagId, from = Number.NEGATIVE_INFINITY, to = Number.POSITIVE_INFINITY, includePrevious = false) {
+      const result: HmiDataLogSample[] = [];
+      let previous: HmiDataLogSample | undefined;
+      for (const sample of samples.get(keyOf(logId, loggedTagId)) ?? []) {
+        if (sample.time >= from && sample.time <= to) result.push({ ...sample });
+        else if (includePrevious && sample.time < from && (!previous || sample.time >= previous.time)) previous = sample;
+      }
+      if (previous && from <= to) result.unshift({ ...previous });
+      return result;
     },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     flush() { flushAggregates(now(), true); if (persistTimer !== undefined) { clearTimeout(persistTimer); persistTimer = undefined; } persist(); },

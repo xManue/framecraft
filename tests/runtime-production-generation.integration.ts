@@ -126,6 +126,27 @@ describe("collaudo separato della generazione Runtime di produzione", () => {
     const renderTime = time.renderHmiTrendControl as (host: HTMLElement, values: Record<string, string>, options: { now: number; status: Record<string, { qualityCode: number }> }) => boolean;
     expect(renderTime(timeHost, { Temperature: "25" }, { now: 1_000, status: { Temperature: { qualityCode: 64 } } })).toBe(true);
     expect(timeHost.querySelector('[data-hmi-trend-quality="uncertain"]')).not.toBeNull();
+    const denseHost = browser.window.document.createElement("div"); denseHost.setAttribute("data-hmi-trend", JSON.stringify({ timeRangeMs: 1000, timeZone: "Europe/Rome", trends: [{ source: "log", logId: "archive", loggedTagId: "value", mode: "values" }] }));
+    const denseSamples = Array.from({ length: 1001 }, (_, time) => ({ time, value: time < 900 ? 0 : time < 990 ? 100 : 0, qualityCode: 192 }));
+    const denseRender = time.renderHmiTrendControl as (host: HTMLElement, values: Record<string, string>, options: { now: number; history: () => typeof denseSamples }) => boolean;
+    denseRender(denseHost, {}, { now: 1000, history: () => denseSamples });
+    Object.defineProperty(denseHost.querySelector("svg")!, "getBoundingClientRect", { value: () => ({ width: 1 }) });
+    denseRender(denseHost, {}, { now: 1000, history: () => denseSamples });
+    expect(denseHost.querySelector('[data-hmi-trend-quality] title')?.textContent).toContain("Curva 1: 9;");
+    expect(denseHost.querySelector('[data-hmi-trend-display-info]')?.textContent).toContain("Europe/Rome");
+    expect(denseHost.querySelectorAll("circle")).toHaveLength(1);
+    const runtimeSource = files.find(file => file.path === "src/framecraftHmiRuntime.ts")!.content;
+    const targetSource = runtimeSource.split("\n").find(line => line.trim().startsWith("const target = (event: Event)"))!;
+    const targetJs = transpileModule(targetSource, { compilerOptions: { target: ScriptTarget.ES2020 } }).outputText;
+    const runtimeWindow = browser.window as typeof browser.window & { Element: typeof Element; Event: typeof Event };
+    const eventTarget = new Function("Element", targetJs + "\nreturn target;")(runtimeWindow.Element) as (event: Event) => Element | null;
+    const eventHost = browser.window.document.createElement("div"); eventHost.setAttribute("data-hmi-events", "[]");
+    for (const attribute of ["data-hmi-trend-time-zone", "data-hmi-trend-aggregation"]) {
+      const control = browser.window.document.createElement("select"); control.setAttribute(attribute, ""); eventHost.append(control);
+      const click = new runtimeWindow.Event("click", { bubbles: true }); control.dispatchEvent(click); expect(eventTarget(click)).toBeNull();
+    }
+    const ordinary = browser.window.document.createElement("button"); eventHost.append(ordinary);
+    const click = new runtimeWindow.Event("click", { bubbles: true }); ordinary.dispatchEvent(click); expect(eventTarget(click)).toBe(eventHost);
     timeHost.querySelector<HTMLButtonElement>('[data-trend-source-action="apply"]')!.click(); expect(timeHost.querySelector('[data-trend-source-status]')!.textContent).toContain("sessione Runtime");
     const flashing = modules.get("src/framecraftHmiFlashing.ts")!;
     const surface = (flashing.createHmiPropertyFlashingDomSurface as typeof import("../scripts/hmi-property-flashing.mjs").createHmiPropertyFlashingDomSurface)(browser.window.document);

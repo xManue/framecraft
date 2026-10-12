@@ -4,6 +4,12 @@ import { type HmiTrendSourceCatalog } from "./hmi-trend-runtime-ui.mjs";
 export declare const hmiTrendAttribute = "data-hmi-trend";
 export function trendCsvCell(value: unknown): string;
 export declare const hmiTrendModes: readonly ["points", "interpolated", "stepped", "values"];
+export declare const hmiTrendAggregations: readonly ["time-average-stepped", "min-max", "none"];
+export declare const hmiTrendTimeZones: readonly (readonly [string, string])[];
+export type HmiTrendAggregation = (typeof hmiTrendAggregations)[number];
+export function trendTimeZoneValid(timeZone: string): boolean;
+export function trendFormatTime(time: number, timeZone?: string, date?: boolean): string;
+export function aggregateTrendSamples(source: readonly HmiTrendSample[], from: number, to: number, pixels: number, mode?: HmiTrendAggregation): { samples: HmiTrendSample[]; rawCount: number; aggregated: boolean; buckets: number };
 export type HmiTrendMode = (typeof hmiTrendModes)[number];
 export type HmiTrendAxisSide = "left" | "right";
 export type HmiTrendScale = "linear" | "logarithmic" | "negative-logarithmic";
@@ -41,6 +47,8 @@ export interface HmiTrendConfig {
     caption: string;
     timeRangeMs: number;
     sampleIntervalMs: number;
+    timeZone: string;
+    aggregation: HmiTrendAggregation;
     online: boolean;
     showToolbar: boolean;
     showLegend: boolean;
@@ -61,6 +69,7 @@ export interface HmiTrendSample {
     time: number;
     value: number;
     qualityCode?: number;
+    aggregated?: boolean;
 }
 export interface HmiTrendRenderOptions {
     now?: number;
