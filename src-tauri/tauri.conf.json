@@ -37,6 +37,10 @@
       "../scripts/hmi-faceplate-visuals.mjs": "scripts/hmi-faceplate-visuals.mjs",
       "../scripts/hmi-faceplate-preview.mjs": "scripts/hmi-faceplate-preview.mjs",
       "../scripts/editor-shortcuts.mjs": "scripts/editor-shortcuts.mjs",
+      "../scripts/hmi-trend.mjs": "scripts/hmi-trend.mjs",
+      "../scripts/hmi-function-trend.mjs": "scripts/hmi-function-trend.mjs",
+      "../scripts/hmi-trend-runtime-ui.mjs": "scripts/hmi-trend-runtime-ui.mjs",
+      "../scripts/hmi-trend-preview.mjs": "scripts/hmi-trend-preview.mjs",
       "../runtime/alarm-labels.mjs": "runtime/alarm-labels.mjs"
     }
   }

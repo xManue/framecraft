@@ -5,6 +5,12 @@ chiudere, **non un'approvazione legale né un rilascio industriale approvato**.
 
 ## Inventario ripetibile
 
+Checkpoint 12 ottobre, curve cross-origin: renderer tempo/XY e helper UI sono codice
+Framecraft trasferito meccanicamente dai moduli TypeScript, con facciate/declarazioni.
+Ponte, cache e CSV non aggiungono dipendenze, font, asset o codice Siemens; lockfile
+invariati. La mappa Tauri include i quattro helper. Test/compilazione/generatore non
+certificano export nativo, carico, touch, CPU, licenze o rilascio industriale: gate aperti.
+
 Checkpoint 12 ottobre, impostazioni/scorciatoie: catalogo e helper condiviso sono codice
 Framecraft; dialogo usa React, Zustand e Lucide già presenti. Nessuna nuova dipendenza,
 asset di terzi o modifica dei lockfile; helper aggiunto alla mappa risorse Tauri.

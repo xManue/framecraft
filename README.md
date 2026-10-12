@@ -88,6 +88,8 @@ separate from the automated checks.
 
 ## Trying a faceplate on the page
 
+See also **Trying trend controls** below for local process/history plots.
+
 Configure its type/version and bindings in **PLC e dati → Istanza faceplate**, then
 choose **Usa il pannello**. Its configured graphics render inside the project iframe,
 including nested instances and project-relative images. **PLC → Prova locale** supplies
@@ -98,6 +100,22 @@ Interface events and their timer callbacks keep local tag values separate for ea
 instance. Page/project changes cancel old contexts. Updating a popup's geometry or
 interface keeps its container; bound popups close on a page change. These checks do not
 replace server authorization or machine commissioning.
+
+## Trying trend controls
+
+Configure a Trend Control or Function Trend in **PLC e dati**, then choose **Usa il
+pannello**. Supply manual values in **PLC → Prova locale**. Time plots and X/Y plots
+render inside the project iframe; their local-test note distinguishes them from a PLC
+connection. Toolbar pause, zoom, area zoom, ruler and source choices use the shared
+Runtime renderer. **Modifica** restores the original editable content.
+
+For historical curves, choose a declared Data Log and logged variable. The preview queries
+the editor's local archive on demand, preserving timestamps and quality rather than
+inventing samples. A stalled query shows a remedy; **Vista originale** explicitly retries.
+Source changes belong to the current preview session, not the project configuration.
+**CSV** prepares the displayed data in the editor window, not the sandboxed iframe;
+the window/browser handles the download. This does not confirm a native file save or
+machine commissioning. See **runtime/README.md** and **LICENZE-E-PRODUZIONE.md** for limits.
 
 ## Updating a faceplate instance
 

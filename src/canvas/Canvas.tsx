@@ -17,9 +17,8 @@ import { executeHmiScriptAsync, type HmiScriptFaceplateEvent, type HmiScriptProg
 import { createHmiScriptContextManager } from "../core/hmiScriptModules";
 import { createHmiTimerManager } from "../core/hmiTimers";
 import { createHmiFaceplatePopupManager } from "../core/hmiPopupManager";
-import { renderHmiTrendControls } from "../core/hmiTrend";
-import { renderHmiFunctionTrendControls } from "../core/hmiFunctionTrend";
 import { createHmiDataLogRuntime } from "../core/hmiDataLogs";
+import { createHmiTrendPreviewModel, downloadHmiTrendPreviewCsv } from "../core/hmiTrendPreview";
 import { useVisualEditGuide } from "./visualEditGuide";
 import { hmiAlarmPreviewSession } from "../core/hmiAlarmPreview";
 import { useEditorShortcuts } from "../state/editorShortcuts";
@@ -110,7 +109,7 @@ export function Canvas() {
   const [availableWidth, setAvailableWidth] = useState(1000);
   const [componentDropPoint, setComponentDropPoint] = useState<{ x: number; y: number }>();
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const alarmPageRef = useRef<{ pageId: string; window: Window; origin: string; faceplate?: boolean; shortcuts?: boolean } | undefined>(undefined);
+  const alarmPageRef = useRef<{ pageId: string; window: Window; origin: string; faceplate?: boolean; shortcuts?: boolean; trend?: boolean } | undefined>(undefined);
   const alarmPreviewRef = useRef<ReturnType<typeof hmiAlarmPreviewSession>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<TransformSession | undefined>(undefined);
@@ -189,6 +188,8 @@ export function Canvas() {
     storageKey: `framecraft:editor-data-logs:${projectRoot ?? dataLogCatalog.projectKey}`,
     onError: (message) => useEditorStore.getState().addPreviewOutput("stderr", message),
   }), [dataLogCatalog, projectRoot]);
+  const trendOwner = useMemo(() => ({ root: projectRoot, model: createHmiTrendPreviewModel(dataLogRuntime, dataLogCatalog) }), [dataLogRuntime]);
+  const trendOwnerRef = useRef(trendOwner); trendOwnerRef.current = trendOwner;
   useEffect(() => {
     const model = hmiAlarmPreviewSession(useEditorStore);
     alarmPreviewRef.current = model;
@@ -291,10 +292,6 @@ export function Canvas() {
     frameRef.current?.contentWindow?.postMessage({ type: "framecraft:collect-dynamizations" }, "*");
   }
 
-  function previewDocument() {
-    try { return frameRef.current?.contentDocument; } catch { return null; }
-  }
-
   function renderFaceplateVisuals() {
     if (!alarmPageRef.current?.faceplate) return;
     const store = useEditorStore.getState();
@@ -325,27 +322,16 @@ export function Canvas() {
   }
 
   function renderTrendVisuals() {
-    const root = previewDocument();
-    if (!root) return;
     const store = useEditorStore.getState();
-    const sources = { tags: store.plcVariables.map((variable) => variable.name), logs: store.dataLogCatalog.logs };
-    renderHmiTrendControls(root, store.simulation.values, {
-      sample: store.simulation.on,
-      status: store.simulation.status,
-      sources,
-      history: (trend, from, to) => trend.logId && trend.loggedTagId
-        ? dataLogRuntime.query(trend.logId, trend.loggedTagId, from, to).flatMap((sample) => {
-          const value = Number(sample.value);
-          return sample.value.trim() && Number.isFinite(value) ? [{ time: sample.time, value, qualityCode: sample.qualityCode }] : [];
-        })
-        : [],
-    });
-    renderHmiFunctionTrendControls(root, store.simulation.values, {
-      sample: store.simulation.on,
-      status: store.simulation.status,
-      sources,
-      history: (source, from, to) => source.logId && source.loggedTagId ? dataLogRuntime.query(source.logId, source.loggedTagId, from, to) : [],
-    });
+    const owner = trendOwnerRef.current;
+    if (!alarmPageRef.current?.trend || store.interactionMode !== "navigate" || store.project?.root !== owner.root || store.dataLogCatalog !== owner.model.catalog) return;
+    sendAlarmMessage(owner.model.snapshot(store.simulation, store.plcVariables.map(variable => variable.name)));
+  }
+
+  function trendMessageCurrent(event: MessageEvent, pageId: string, lease: string) {
+    const page = alarmPageRef.current, owner = trendOwnerRef.current, store = useEditorStore.getState();
+    return !!page?.trend && event.source === page.window && event.origin === page.origin && event.origin === alarmOrigin() && page.pageId === pageId && owner.model.lease === lease
+      && store.project?.root === owner.root && store.dataLogCatalog === owner.model.catalog && store.interactionMode === "navigate" && !store.loading && !store.reloadRecovery;
   }
 
   function sendSimulation() {
@@ -510,13 +496,14 @@ export function Canvas() {
 
   useEffect(() => {
     sendSimulation();
-    renderTrendVisuals();
     if (simulation.on) dataLogRuntime.updateSnapshot(simulation.values, simulation.status);
+    renderTrendVisuals();
   }, [simulation.on, simulation.values, simulation.status, simulation.elements, resourceCatalog, scriptCatalog, dataLogRuntime, previewPath, previewSrc, plcVariables]);
 
   useEffect(sendAlarmPreview, [alarmConfiguration, projectRoot, simulation.on, simulation.values, simulation.status, interactionMode, previewSrc]);
   useEffect(renderFaceplateVisuals, [faceplateCatalog, simulation.on, simulation.values, interactionMode, previewSrc]);
   useEffect(sendShortcuts, [shortcutBindings, previewSrc]);
+  useEffect(renderTrendVisuals, [interactionMode]);
 
   useEffect(() => {
     if (!simulation.on) return;
@@ -524,10 +511,11 @@ export function Canvas() {
       const current = useEditorStore.getState().simulation;
       return { values: current.values, status: current.status };
     });
-    const unsubscribe = dataLogRuntime.subscribe(renderTrendVisuals);
+    const owner = trendOwner;
+    const unsubscribe = dataLogRuntime.subscribe(() => { if (trendOwnerRef.current === owner) { owner.model.changed(); renderTrendVisuals(); } });
     dataLogRuntime.updateSnapshot(simulation.values, simulation.status);
-    return () => { unsubscribe(); dataLogRuntime.stop(); };
-  }, [dataLogRuntime, simulation.on]);
+    return () => { unsubscribe(); dataLogRuntime.stop(); if (trendOwnerRef.current === owner) { owner.model.changed(); renderTrendVisuals(); } };
+  }, [dataLogRuntime, trendOwner, simulation.on]);
 
   useEffect(() => {
     const timer = window.setInterval(renderTrendVisuals, 250);
@@ -798,7 +786,7 @@ export function Canvas() {
       } else if (event.data.type === "framecraft:ready") {
         if (event.data.alarmPreviewProtocol === 1 && typeof event.data.alarmPreviewPageId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(event.data.alarmPreviewPageId) && event.origin === alarmOrigin()) {
           const changed = alarmPageRef.current && alarmPageRef.current.pageId !== event.data.alarmPreviewPageId;
-          alarmPageRef.current = { pageId: event.data.alarmPreviewPageId, window: event.source as Window, origin: event.origin, faceplate: event.data.faceplatePreviewProtocol === 1, shortcuts: event.data.editorShortcutsProtocol === 1 };
+          alarmPageRef.current = { pageId: event.data.alarmPreviewPageId, window: event.source as Window, origin: event.origin, faceplate: event.data.faceplatePreviewProtocol === 1, shortcuts: event.data.editorShortcutsProtocol === 1, trend: event.data.trendPreviewProtocol === 1 };
           if (changed) { faceplateLocalStateRef.current.clear(); hmiPopupManager.closeParentBound("screen"); }
         }
         transformRef.current?.cancel?.();
@@ -820,6 +808,7 @@ export function Canvas() {
         sendAlarmPreview();
         renderFaceplateVisuals();
         sendShortcuts();
+        renderTrendVisuals();
         sendStatePage();
         sendSnap();
         sendMultiSelection();
@@ -904,6 +893,17 @@ export function Canvas() {
           renderFaceplateVisuals();
           frameRef.current?.contentWindow?.postMessage({ type: "framecraft:hmi-event-result", instanceId: message.instanceId, navigation, faceplateEvents }, "*");
         }).catch((error) => useEditorStore.getState().addPreviewOutput("stderr", `[HMI ${message.eventType}] ${error instanceof Error ? error.message : String(error)}`));
+      } else if (event.data.type === "framecraft:trend-history") {
+        const message = event.data; if (!trendMessageCurrent(event, message.pageId, message.lease)) return;
+        const response = trendOwnerRef.current.model.history(message);
+        if (response) sendAlarmMessage(response);
+      } else if (event.data.type === "framecraft:trend-csv") {
+        const message = event.data;
+        if (!trendMessageCurrent(event, message.pageId, message.lease) || typeof message.requestId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(message.requestId)) return;
+        let error: string | undefined;
+        try { downloadHmiTrendPreviewCsv(message.fileName, message.content); }
+        catch (caught) { error = caught instanceof Error ? caught.message : "Impossibile preparare il CSV di prova."; useEditorStore.getState().addPreviewOutput("stderr", error); }
+        sendAlarmMessage({ type: "framecraft:trend-csv-result", lease: message.lease, requestId: message.requestId, error });
       } else if (event.data.type === "framecraft:faceplate-event") {
         const message = event.data;
         const page = alarmPageRef.current, project = useEditorStore.getState().project, catalog = useEditorStore.getState().faceplateCatalog;

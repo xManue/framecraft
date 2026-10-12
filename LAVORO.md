@@ -3931,6 +3931,40 @@ Verifiche del 5 ottobre 2026:
   pubblicati. Macro/sequenze e comandi del Runtime HMI non sono inclusi in questa tranche;
   restano curve/storico nel ponte, WinCC restante, Optix, AI facoltativa e gate produzione.
 
+### 112. Curve e storico nella prova locale cross-origin (2026-10-12)
+
+- Il test con Canvas/ponte reali e contentDocument negato riproduceva l’assenza del
+  grafico. Rimosso l’accesso DOM dal parent: disegno nel documento del progetto con
+  la stessa implementazione ESM del Runtime generato, facciate e dichiarazioni TS.
+  Risorse incluse nel pacchetto desktop, nessuna dipendenza aggiunta.
+- Valori/qualità manuali e sorgenti via snapshot; Data Log interrogato nel parent solo
+  per gli intervalli richiesti. Cache/revisioni, lease/catalogo/progetto/pagina/origine
+  verificati, richieste vecchie scartate. Batch e timeout limitati; mancata risposta
+  spiegata nel controllo, Vista originale per retry esplicito, niente campioni inventati.
+- Tempo e X/Y conservano toolbar, zoom/pan/area, righello, pausa, visibilità, sorgenti,
+  intervalli, qualità e CSV. Modifica ripristina nodi/attributi della bozza; HMR conserva
+  la nuova bozza. Raccolta idempotente dei controlli evita il ciclo delle mutazioni SVG.
+  Clear/ripristino XY non duplica listener; selettori mostrano le sorgenti di sessione.
+- Comandi interni non duplicano gli eventi del contenitore e rispettano il blocco
+  d’interazione nella prova. Filtro coerente anche nel Runtime standard, comprese le
+  azioni dei pulsanti interfaccia faceplate già marcate dal renderer condiviso.
+- CSV preparato dal parent, senza estendere il sandbox. Celle quotate e prefissi formula
+  trattati come testo, numeri negativi preservati; messaggi distinguono preparazione
+  e salvataggio. Il download reale desktop deve ancora essere collaudato.
+- Test mirati con dati sintetici e ponte reale: grafici, storico aggiornato, pausa,
+  Modifica/Usa, HMR, contenuti SVG personalizzati, permessi, origini, pagina/catalogo,
+  sorgenti temporanee, timeout/retry e CSV. Renderer/modello, generazione dopo bundling
+  e risorse desktop verificati. Nessuna suite generale, agente, CPU o riavvio manuale.
+- Esiti: 40 casi curve/modello/renderer, 13 regressioni del ponte allarmi/scorciatoie,
+  singola generazione Runtime dopo bundling e singolo test Rust risorse superati.
+  TypeScript e build editor separata superati; avvisi import statico/dinamico preesistenti.
+  Fixture HMR corretta per eseguire requestAnimationFrame e valore verificato nel righello,
+  non attribuito impropriamente alla legenda che mostra solo il nome della curva.
+- Documentazione Siemens V21 ricontrollata e guide/architettura aggiornate. WCU-CTL-05/06
+  resta PARZIALE: fusi orari, aggregazione per pixel, stampa/profili, object model e
+  collaudo reale restano. Poi restanti capacità WinCC, Optix e AI facoltativa; gate
+  industriali/licenze aperti. Export reali, foto, segreti e output di build esclusi dal push.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

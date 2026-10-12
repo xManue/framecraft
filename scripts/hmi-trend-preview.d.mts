@@ -1,0 +1,3 @@
+import type { renderHmiTrendControl, clearHmiTrendHistory } from "./hmi-trend.mjs";
+import type { renderHmiFunctionTrendControl } from "./hmi-function-trend.mjs";
+export function createHmiTrendPreview(view: Window, options: { active(): boolean; pageId(): string; instanceId(host: Element): string; allowed?(host: Element): boolean }, renderers: { time: { render: typeof renderHmiTrendControl; clear: typeof clearHmiTrendHistory }; xy: { render: typeof renderHmiFunctionTrendControl; clear(host: HTMLElement): void } }): { accepts(event: MessageEvent): boolean; receive(event: MessageEvent): void; refresh(): void; reset(): void; dispose(): void };

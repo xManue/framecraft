@@ -9,6 +9,9 @@ import { hmiAlarmSummaryAttribute, hmiAlarmSummaryCss, defaultHmiAlarmSummaryCon
 import { createHmiAlarmPreviewSurfaceWith, createHmiAlarmPreviewBridgeWith } from "./hmi-alarm-preview-surface.mjs";
 import { hmiFaceplateVisualRuntimeModuleSource } from "./hmi-faceplate-visuals.mjs";
 import { createHmiFaceplatePreview } from "./hmi-faceplate-preview.mjs";
+import { hmiTrendRuntimeModuleSource } from "./hmi-trend.mjs";
+import { hmiFunctionTrendRuntimeModuleSource } from "./hmi-function-trend.mjs";
+import { createHmiTrendPreview } from "./hmi-trend-preview.mjs";
 import { editorCommands, defaultEditorShortcuts, normalizeEditorShortcut, editorShortcutIssue, editorShortcutsIssue, parseEditorShortcuts, editorShortcutFromEvent, editorCommandForShortcut } from "./editor-shortcuts.mjs";
 
 export function installPanelLayoutPreference(root, key, storage = () => root.defaultView.sessionStorage) {
@@ -58,6 +61,9 @@ const createHmiAlarmPreviewSurface = (root, options) => (${String(createHmiAlarm
 const createHmiAlarmPreviewBridge = (view, options) => (${String(createHmiAlarmPreviewBridgeWith)})(view, options, createHmiAlarmPreviewSurface);
 const faceplateRenderers = (() => { ${hmiFaceplateVisualRuntimeModuleSource().replace(/^export /gm, "")} return { renderHmiFaceplates }; })();
 const createHmiFaceplatePreview = (${String(createHmiFaceplatePreview)});
+const timeTrendRenderers = (() => { ${hmiTrendRuntimeModuleSource().replace(/^export /gm, "")} return { render: renderHmiTrendControl, clear: clearHmiTrendHistory }; })();
+const xyTrendRenderers = (() => { ${hmiFunctionTrendRuntimeModuleSource().replace(/^export /gm, "")} return { render: renderHmiFunctionTrendControl, clear: clearHmiFunctionTrendHistory }; })();
+const createHmiTrendPreview = (${String(createHmiTrendPreview)});
 const editorCommands = ${JSON.stringify(editorCommands)};
 const defaultEditorShortcuts = (${String(defaultEditorShortcuts)});
 const normalizeEditorShortcut = (${String(normalizeEditorShortcut)});
@@ -122,6 +128,8 @@ const bridgeScript = sharedHelpers + String.raw`
   const alarmPreview = createHmiAlarmPreviewBridge(window, { active: () => mode === "navigate" && simulationOn, navigate: (route) => navigateHmiTarget(route) });
   let editorShortcutBindings = defaultEditorShortcuts(), editorShortcutOrigin;
   const faceplatePreview = createHmiFaceplatePreview(window, { active: () => mode === "navigate", pageId: () => alarmPreview.pageId, instanceId: (host) => instanceId(host) }, faceplateRenderers);
+  const trendPreview = createHmiTrendPreview(window, { active: () => mode === "navigate", pageId: () => alarmPreview.pageId, instanceId: (host) => instanceId(host), allowed: (host) => propertyFlashingSurface.allowsInteraction(host) }, { time: timeTrendRenderers, xy: xyTrendRenderers });
+  window.addEventListener("pagehide", (event) => { if (event.persisted) trendPreview.reset(); else trendPreview.dispose(); });
   window.addEventListener("pagehide", (event) => { if (event.persisted) faceplatePreview.reset(); else faceplatePreview.dispose(); });
   window.addEventListener("pagehide", (event) => { if (event.persisted) alarmPreview.suspend(); else alarmPreview.dispose(); });
   let collectSignature = "";
@@ -453,9 +461,9 @@ const bridgeScript = sharedHelpers + String.raw`
   let alarmScreenKey;
   const sendReady = () => {
     const key = JSON.stringify([window.location.pathname, window.__framecraftCurrentPage]);
-    if (alarmScreenKey !== undefined && key !== alarmScreenKey) { alarmPreview.newPage(); faceplatePreview.reset(); }
+    if (alarmScreenKey !== undefined && key !== alarmScreenKey) { alarmPreview.newPage(); faceplatePreview.reset(); trendPreview.reset(); }
     alarmScreenKey = key;
-    window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items(), alarmPreviewProtocol: 1, alarmPreviewPageId: alarmPreview.pageId, faceplatePreviewProtocol: 1, editorShortcutsProtocol: 1 }, "*");
+    window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items(), alarmPreviewProtocol: 1, alarmPreviewPageId: alarmPreview.pageId, faceplatePreviewProtocol: 1, editorShortcutsProtocol: 1, trendPreviewProtocol: 1 }, "*");
   };
   window.addEventListener("pageshow", (event) => { if (event.persisted) { alarmPreview.newPage(); sendReady(); } });
   // Where a point of the page falls inside the drawing the outline is written in: the corners the
@@ -622,7 +630,8 @@ const bridgeScript = sharedHelpers + String.raw`
     } catch { return { raw: null, items: [] }; }
   };
   const alarmInternal = (event) => Boolean(event.target?.closest?.("[data-hmi-alarm-root], [data-hmi-alarm-summary-root]"));
-  const hmiEventTarget = (event) => alarmInternal(event) || event.target?.closest?.("[data-hmi-faceplate-interface-trigger]") ? null : event.target?.closest?.("[data-hmi-events]");
+  const trendInternal = (event) => Boolean(event.target?.closest?.("[data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]"));
+  const hmiEventTarget = (event) => alarmInternal(event) || trendInternal(event) || event.target?.closest?.("[data-hmi-faceplate-interface-trigger]") ? null : event.target?.closest?.("[data-hmi-events]");
   const emitHmiEvent = (element, eventType, context = {}) => {
     if (mode !== "navigate" || !element) return;
     if (!propertyFlashingSurface.allowsReactions(element)) return;
@@ -730,6 +739,7 @@ const bridgeScript = sharedHelpers + String.raw`
     // Come il resto del ponte: la raccolta puo' arrivare quando la pagina non c'e' piu'.
     if (typeof document === "undefined" || typeof window === "undefined") return;
     faceplatePreview.refresh();
+    trendPreview.refresh();
     const items = [];
     for (const element of document.querySelectorAll("[data-hmi-dynamizations]")) {
       const raw = element.getAttribute("data-hmi-dynamizations");
@@ -1023,6 +1033,7 @@ const bridgeScript = sharedHelpers + String.raw`
   regionCursor.textContent = 'html[data-framecraft-region-picking],html[data-framecraft-region-picking] *{cursor:crosshair!important;user-select:none!important}';
   (document.head || document.documentElement).append(regionCursor);
   window.addEventListener("message", (event) => {
+    if (event.data?.type === "framecraft:trend-preview" || event.data?.type === "framecraft:trend-history-result" || event.data?.type === "framecraft:trend-csv-result") { trendPreview.receive(event); return; }
     if (event.data?.type === "framecraft:set-shortcuts") {
       if (event.source !== window.parent || !event.origin || event.origin === "null" || editorShortcutOrigin && editorShortcutOrigin !== event.origin || event.data.pageId !== alarmPreview.pageId) return;
       editorShortcutOrigin = event.origin;
@@ -1039,6 +1050,7 @@ const bridgeScript = sharedHelpers + String.raw`
       document.documentElement.dataset.framecraftMode = mode;
       alarmPreview.refresh();
       faceplatePreview.refresh();
+      trendPreview.refresh();
       for (const state of popupStates.values()) renderPopup(state);
       if (mode === "navigate") queueMicrotask(emitLoadedEvents);
     } else if (event.data?.type === "framecraft:open-state-page" && typeof event.data.value === "string") {

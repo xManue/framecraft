@@ -236,10 +236,9 @@ Scelte: un motore nel parent evita contatori e storici divergenti tra widget; il
 nel figlio evita di indebolire la same-origin policy. Il costo è un protocollo asincrono
 con handshake e cancellazioni, invece di chiamate DOM dirette. Questa architettura non
 abilita né autentica il servizio industriale e non modifica il progetto a ogni campione.
-Restano il collaudo desktop/touch, carico prolungato, packaging senza checkout e il passaggio
-equivalente dei vecchi renderer preview dei trend al ponte: il loro accesso DOM opzionale
-viene protetto dagli errori, non reso cross-origin. I faceplate sono trasferiti al ponte come
-descritto sotto. Archivio, audit e autorizzazioni
+Restano il collaudo desktop/touch, carico prolungato e packaging senza checkout. Faceplate
+e trend sono trasferiti al ponte come descritto sotto, senza letture DOM cross-origin.
+Archivio, audit e autorizzazioni
 server restano gate separati. Riesaminare volumi/frequenza degli snapshot prima di estendere
 questa prova a grandi cataloghi o ai futuri modelli Optix.
 
@@ -268,8 +267,35 @@ Scelta: trasmettere dati di catalogo e stato, invece di indebolire la same-origi
 o duplicare il renderer. Il costo è serializzazione/handshake; il vantaggio è anche la
 risoluzione corretta delle immagini nel progetto, non sull'origine dell'editor. Questo
 protocollo locale non sostituisce autenticazione/audit del servizio. Riesaminare grandi
-cataloghi e frequenza degli snapshot prima di aumentarne il carico; curve e storico
-richiedono ancora il passaggio del loro renderer e query locali attraverso il ponte.
+cataloghi e frequenza degli snapshot prima di aumentarne il carico.
+
+## Curve e storico nella prova locale cross-origin
+
+Flusso: valori manuali/qualità e catalogo sorgenti del parent → snapshot con origine,
+pagina, lease del modello e revisione storico → renderer nel documento del progetto.
+I renderer ESM sono la stessa implementazione dei moduli Runtime generati; facciate
+TypeScript conservano i contratti. Nessun import TypeScript richiesto al plugin del
+progetto e nessun codice ricevuto nei messaggi viene valutato.
+
+Lo storico resta nel Data Log locale del parent. Il figlio raggruppa query per sorgente
+e intervallo e mantiene una cache di righe/finestre per revisione; il parent verifica
+pagina/origine/modello, catalogo e intervallo prima di interrogare l’archivio. La nuova
+revisione invalida richieste/cache precedenti. Limiti: 128 query per batch, otto batch
+in volo, timeout di tre secondi; errore esplicito e retry con Vista originale. Nessun
+trasferimento dell’intero archivio ogni 250 ms e nessuna connessione PLC nella prova.
+
+Scelta: conservare stato, grafica e interazioni nel figlio, invece di indebolire la
+same-origin policy o duplicare il renderer. La raccolta DOM esistente disegna solo host
+nuovi/modificati, non ogni mutazione prodotta dagli SVG: evita un ciclo di ridisegni.
+Modifica ripristina nodi/attributi originali; HMR conserva la bozza aggiornata. I listener
+XY restano unici anche dopo clear/ripristino, e le sorgenti di sessione restano visibili
+nel selettore. Comandi interni non duplicano Tapped del contenitore, anche nello standard.
+
+Il CSV della vista passa al parent per preparare un Blob/download con nome sanitizzato;
+il sandbox non viene allargato. Quote CSV e celle formula trattate come testo sono
+condivise con il Runtime. Il messaggio conferma preparazione, non il salvataggio nativo.
+Riesaminare carico/memoria dei grandi archivi, streaming CSV, tastiere/touch e pacchetto
+reale. Storage industriale, identità/RBAC/audit e commissioning restano gate separati.
 
 ## Interfaccia intuitiva e barra comandi
 

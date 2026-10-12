@@ -221,7 +221,9 @@ export type PreviewMessage =
   | { type: "framecraft:popup-user-close"; popupId: string }
   | { type: "framecraft:state-page"; value: string }
   | { type: "framecraft:alarm-command"; pageId: string; requestId: string; instanceId: string; command: import("../../runtime/alarm-engine.mjs").AlarmCommand }
-  | { type: "framecraft:ready"; path: string; selectionProtocol?: number; selectionVersion?: number; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[]; alarmPreviewProtocol?: number; alarmPreviewPageId?: string; faceplatePreviewProtocol?: number; editorShortcutsProtocol?: number }
+  | import("./hmiTrendPreview").HmiTrendHistoryMessage
+  | import("./hmiTrendPreview").HmiTrendCsvMessage
+  | { type: "framecraft:ready"; path: string; selectionProtocol?: number; selectionVersion?: number; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[]; alarmPreviewProtocol?: number; alarmPreviewPageId?: string; faceplatePreviewProtocol?: number; editorShortcutsProtocol?: number; trendPreviewProtocol?: number }
   | { type: "framecraft:shortcut"; key: string; shift: boolean; command?: import("../../scripts/editor-shortcuts.mjs").EditorCommandId; shortcut?: string; pageId?: string; editing?: boolean }
   | { type: "framecraft:resize"; width: number; height: number };
 

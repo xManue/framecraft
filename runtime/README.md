@@ -109,6 +109,28 @@ da completare eventi annidati, screen window generiche, opzioni/object model com
 stampa/profili delle curve e collaudo visivo/touch/CPU. La prova non certifica produzione,
 autorizzazioni o sicurezza del PLC.
 
+### Provare curve e storico sulla pagina nell’editor
+
+Configura il controllo in **PLC e dati** e scegli **Usa il pannello**. Inserisci valori
+manuali in **PLC → Prova locale**: il controllo mostra la dicitura PROVA LOCALE e non
+avvia connessioni PLC. Curve temporali e X/Y, pausa, zoom/pan, righello, selettore delle
+sorgenti e intervalli restano quelli del Runtime condiviso. Tornare a Modifica ripristina
+la bozza; la vista e le sorgenti temporanee dello stesso host si conservano in Usa.
+
+Le sorgenti storiche interrogano il Data Log locale dell’editor, non un archivio della CPU.
+Sono richiesti solo gli intervalli necessari, con cache per sorgente e revisione. Timestamp
+e qualità restano quelli dei campioni; il temporale ignora valori non numerici, X/Y
+mantiene anche gli array supportati. Query estranee o vecchie non installano risultati.
+Se lo storico non risponde, il controllo spiega come usare **Vista originale** per riprovare,
+senza una serie infinita di richieste automatiche. Controlla Data Log/variabile e diagnostica
+se la sorgente manca. Non viene inventato un campione per riempire il grafico.
+
+**CSV** prepara i dati della vista nella finestra dell’editor: il sandbox dell’iframe non
+riceve permessi di download aggiuntivi. Le celle testuali sono quotate e i prefissi formula
+trattati come testo; i numeri negativi restano numeri. Preparazione non equivale a conferma
+del salvataggio nativo. Restano collaudo desktop/touch, export sul pacchetto distribuito,
+profili/stampa, fusi orari, aggregazione per pixel e archivi industriali con RBAC/audit.
+
 ### Provare gli allarmi sulla pagina nell'editor
 
 Salva il catalogo da **Pannello → Allarmi**, inserisci i controlli nella pagina e apri
