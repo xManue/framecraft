@@ -5,6 +5,12 @@ chiudere, **non un'approvazione legale né un rilascio industriale approvato**.
 
 ## Inventario ripetibile
 
+Checkpoint 12 ottobre, impostazioni/scorciatoie: catalogo e helper condiviso sono codice
+Framecraft; dialogo usa React, Zustand e Lucide già presenti. Nessuna nuova dipendenza,
+asset di terzi o modifica dei lockfile; helper aggiunto alla mappa risorse Tauri.
+Preferenze e comandi riguardano l'editor, non introducono autorizzazioni PLC o macro
+industriali. Collaudo tastiere/layout nativi e pacchetto reale restano separati dai test.
+
 Checkpoint 12 ottobre, faceplate cross-origin: il renderer ESM è codice Framecraft
 trasferito dalla sua implementazione TypeScript, senza asset o codice Siemens.
 La mappa Tauri include renderer e superficie di prova faceplate; manifest e lockfile

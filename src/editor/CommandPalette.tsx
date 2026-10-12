@@ -1,34 +1,43 @@
-import { Code2, FolderOpen, RotateCcw, Save, ShieldCheck, TerminalSquare, Undo2, Users, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Code2, FolderOpen, Keyboard, MousePointer2, Wrench, X, ZoomIn } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { editorCommands, formatEditorShortcut } from "../../scripts/editor-shortcuts.mjs";
+import { editorCommandEnabled, runEditorCommand } from "../core/editorCommands";
 import { useEditorStore } from "../state/editorStore";
+import { useEditorShortcuts } from "../state/editorShortcuts";
+
+const icons: Record<string, typeof Keyboard> = { Comandi: Keyboard, File: FolderOpen, Modifica: MousePointer2, Visualizza: Code2, Strumenti: Wrench, "Zoom e guide": ZoomIn };
 
 export function CommandPalette() {
-  const [query, setQuery] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const close = useEditorStore((state) => state.setPaletteOpen);
-  const open = useEditorStore((state) => state.chooseAndOpenProject);
-  const save = useEditorStore((state) => state.save);
-  const undo = useEditorStore((state) => state.undo);
-  const redo = useEditorStore((state) => state.redo);
-  const setMode = useEditorStore((state) => state.setViewMode);
-  const setConsole = useEditorStore((state) => state.setConsoleOpen);
-  const openAccess = useEditorStore((state) => state.openUserAccess);
-  const check = useEditorStore((state) => state.checkHmiProject);
-  useEffect(() => { inputRef.current?.focus(); }, []);
-  const commands = useMemo(() => [
-    { name: "Apri un altro progetto", hint: "Ctrl+O", icon: FolderOpen, action: () => void open() },
-    { name: "Salva la modifica corrente", hint: "Ctrl+S", icon: Save, action: () => void save() },
-    { name: "Annulla ultima modifica", hint: "Ctrl+Z", icon: Undo2, action: () => void undo() },
-    { name: "Ripristina modifica", hint: "Ctrl+Shift+Z", icon: RotateCcw, action: () => void redo() },
-    { name: "Mostra pagina e codice", hint: "", icon: Code2, action: () => setMode("split") },
-    { name: "Gestisci account e permessi", hint: "", icon: Users, action: () => void openAccess() },
-    { name: "Controlla il pannello", hint: "", icon: ShieldCheck, action: () => void check() },
-    { name: "Apri diagnostica", hint: "", icon: TerminalSquare, action: () => setConsole(true) },
-  ].filter((item) => item.name.toLowerCase().includes(query.toLowerCase())), [open, openAccess, query, redo, save, setConsole, setMode, undo]);
+  const [query, setQuery] = useState(""), [selected, setSelected] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null), panel = useRef<HTMLElement>(null);
+  const state = useEditorStore(), bindings = useEditorShortcuts(store => store.bindings);
+  const close = state.setPaletteOpen;
+  const commands = editorCommands.filter(command => command.id !== "commands" && `${command.label} ${command.description}`.toLocaleLowerCase("it").includes(query.toLocaleLowerCase("it")));
+  const available = commands.filter(command => editorCommandEnabled(command.id, state));
+  const active = available[Math.min(selected, available.length - 1)];
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null; inputRef.current?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); close(false); }
+      if (event.key !== "Tab") return;
+      const nodes = [...(panel.current?.querySelectorAll<HTMLElement>('input, button:not(:disabled)') ?? [])];
+      const index = nodes.indexOf(document.activeElement as HTMLElement);
+      if (event.shiftKey && index <= 0) { event.preventDefault(); nodes.at(-1)?.focus(); }
+      else if (!event.shiftKey && (index < 0 || index === nodes.length - 1)) { event.preventDefault(); nodes[0]?.focus(); }
+    };
+    document.addEventListener("keydown", keydown, true);
+    return () => { document.removeEventListener("keydown", keydown, true); if (previous?.isConnected) previous.focus({ preventScroll: true }); };
+  }, [close]);
+  useEffect(() => { panel.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: "nearest" }); }, [active?.id]);
+  function run(command: typeof editorCommands[number]) { close(false); void runEditorCommand(command.id); }
   return <div className="palette-backdrop" onMouseDown={() => close(false)} role="presentation">
-    <section className="command-palette" role="dialog" aria-modal="true" aria-label="Comandi rapidi" onMouseDown={(event) => event.stopPropagation()}>
-      <div className="palette-input"><span>&gt;</span><input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Escape" && close(false)} placeholder="Cerca un comando…" /><button onClick={() => close(false)} aria-label="Chiudi"><X size={15} /></button></div>
-      <div className="palette-results"><small>COMANDI</small>{commands.map(({ name, hint, icon: Icon, action }) => <button key={name} onClick={() => { action(); close(false); }}><Icon size={15} /><span>{name}</span><kbd>{hint}</kbd></button>)}</div>
+    <section className="command-palette" ref={panel} role="dialog" aria-modal="true" aria-label="Comandi rapidi" onMouseDown={event => event.stopPropagation()}>
+      <div className="palette-input"><span>&gt;</span><input ref={inputRef} aria-label="Cerca un comando" value={query} onChange={event => { setQuery(event.target.value); setSelected(0); }} onKeyDown={event => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setSelected(index => Math.max(0, Math.min(available.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))); }
+        if (event.key === "Enter" && active) { event.preventDefault(); run(active); }
+      }} placeholder="Cerca: salva, duplica, zoom…" /><button onClick={() => close(false)} aria-label="Chiudi comandi"><X size={15} /></button></div>
+      <div className="palette-results"><small>COMANDI · ↑ ↓ PER SCEGLIERE · INVIO PER ESEGUIRE</small>{commands.map(command => { const Icon = icons[command.group]; return <button key={command.id} disabled={!editorCommandEnabled(command.id, state)} aria-current={active?.id === command.id ? "true" : undefined} onClick={() => run(command)}><Icon size={15} /><span>{command.label}</span>{bindings[command.id].length > 0 && <kbd>{formatEditorShortcut(bindings[command.id][0], mac)}</kbd>}</button>; })}{!commands.length && <p>Nessun comando trovato.</p>}</div>
     </section>
   </div>;
 }

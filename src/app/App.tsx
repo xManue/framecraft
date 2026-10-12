@@ -12,6 +12,9 @@ import { editorCheckpointFresh } from "../state/editorRecovery";
 import { installEditorDraftRecovery } from "../state/editorDraft";
 import { MessageNotice } from "../editor/MessageNotice";
 import { describeEditorMessage } from "../core/editorMessages";
+import { installEditorKeyboardShortcuts } from "../core/editorCommands";
+import { useEditorShortcuts } from "../state/editorShortcuts";
+import { EditorSettings } from "../editor/EditorSettings";
 
 export function App() {
   return <EditorErrorBoundary><EditorApp /></EditorErrorBoundary>;
@@ -109,13 +112,7 @@ function EditorApp() {
   const retryBackup = useEditorStore((state) => state.retryDraftBackup);
   const paletteOpen = useEditorStore((state) => state.paletteOpen);
   const userAccessOpen = useEditorStore((state) => state.userAccessOpen);
-  const setPaletteOpen = useEditorStore((state) => state.setPaletteOpen);
-  const save = useEditorStore((state) => state.save);
-  const saveAs = useEditorStore((state) => state.saveProjectAs);
-  const undo = useEditorStore((state) => state.undo);
-  const redo = useEditorStore((state) => state.redo);
-  const remove = useEditorStore((state) => state.deleteSelection);
-  const duplicate = useEditorStore((state) => state.duplicateSelection);
+  const settingsOpen = useEditorShortcuts((state) => state.open);
 
   useEffect(() => {
     if (!desktopAvailable) return;
@@ -147,41 +144,7 @@ function EditorApp() {
     return () => { active = false; disposes.forEach((dispose) => dispose()); fileTimers.forEach((timer) => window.clearTimeout(timer)); };
   }, []);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (useEditorStore.getState().reloadRecovery) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest?.("dialog[open]")) return;
-      // A key can arrive with the document itself as its target, and asking that for `matches` throws
-      // inside the listener, which used to kill every shortcut for the rest of the session.
-      const editing = Boolean(target?.matches?.("input, textarea, select, [contenteditable=true]"));
-      const mod = event.ctrlKey || event.metaKey;
-      if (mod && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setPaletteOpen(true);
-      } else if (mod && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        void (event.shiftKey ? saveAs() : save());
-      } else if (mod && event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        void useEditorStore.getState().chooseAndOpenProject();
-      } else if (!editing && mod && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        void (event.shiftKey ? redo() : undo());
-      } else if (!editing && mod && event.key.toLowerCase() === "y") {
-        event.preventDefault();
-        void redo();
-      } else if (!editing && (event.key === "Delete" || event.key === "Del" || event.key === "Backspace" || event.code === "Delete")) {
-        event.preventDefault();
-        void remove();
-      } else if (!editing && mod && event.key.toLowerCase() === "d") {
-        event.preventDefault();
-        void duplicate();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [duplicate, redo, remove, save, saveAs, setPaletteOpen, undo]);
+  useEffect(() => installEditorKeyboardShortcuts(), []);
 
   return (
     <>
@@ -189,6 +152,7 @@ function EditorApp() {
       {!reloadRecovery && project && backupError && <aside className="draft-backup-warning" role="alert"><MessageNotice context="backup" raw={backupError} /><button onClick={() => void retryBackup()}>Riprova il backup</button></aside>}
       {paletteOpen && <CommandPalette />}
       {userAccessOpen && <UserAccessWindow />}
+      {settingsOpen && <EditorSettings />}
     </>
   );
 }

@@ -3897,6 +3897,40 @@ Verifiche del 5 ottobre 2026:
   da completare, poi restanti capacità WinCC, Optix e AI facoltativa. Export reali,
   foto, credenziali e output di build non pubblicati; gate licenze/produzione aperti.
 
+### 111. Impostazioni dell’editor e comandi rapidi personalizzabili (2026-10-12)
+
+- File → Impostazioni dell’editor apre una pagina ampia con Area di lavoro e Scorciatoie
+  e comandi. Disposizioni/pannelli personalizzati, dimensione interfaccia, griglia e guide
+  usano le preferenze esistenti; non modificano il pannello HMI finale.
+- Catalogo condiviso di 25 comandi: file, modifiche, viste, Modifica/Usa, strumenti, zoom e
+  guide. Fino a tre combinazioni per comando, rimozione/disattivazione, ricerca, registrazione
+  diretta dei tasti, controlli su conflitti e tasti riservati, ripristino predefiniti e salva.
+  Le modifiche alle scorciatoie sono bozze fino al salvataggio; chiudere le scarta. Errore
+  di persistenza non sostituisce le preferenze attive. Stato locale versionato, niente rete.
+- Ctrl+K apre la ricerca dei comandi, con frecce/Invio, comandi non disponibili disabilitati,
+  hint aggiornati nei menu, focus confinato e ripristinato alla chiusura. Gestore tastiera
+  unico per la shell; nel canvas stesso matcher e snapshot con origine/token pagina.
+  Cambiare combinazione disattiva quella vecchia senza riavviare; cambio pagina riallinea
+  le preferenze. Il protocollo nuovo rifiuta messaggi legacy senza token, obsoleti o estranei.
+- Campo di testo mantiene undo/eliminazione nativi; niente comandi distruttivi in Usa,
+  dietro dialoghi o durante caricamento/recupero/esportazione. Modificatori solo premuti,
+  composizione e ripetizioni dei comandi ignorati, ma repeat delle frecce di movimento
+  conservato. Cancellazione resta legata alla copia selezionata e al contesto corrente.
+- Predefiniti senza Ctrl+Alt per evitare dipendenze dalla distinzione con AltGr; zoom con
+  entrambe le varianti del tasto +. AltGr non è registrato come scorciatoia; avviso chiaro
+  se il browser interpreta così la combinazione. Riferimento verificato: [MDN getModifierState](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/getModifierState).
+- Il primo test UI ha trovato l'avviso di conflitto riferito al comando modificato invece
+  del proprietario precedente: corretto nel prodotto. Test nuovi e regressioni mirate di
+  barra, canvas, selezione e risorse; nessuna suite generale, agente o riavvio manuale.
+  Le prove automatiche non certificano finestra desktop/tastiera fisica o pacchetto finale.
+- Esiti: 61 casi frontend distinti verificati nel blocco (25 tastiera/impostazioni/canvas,
+  23 barra, 12 protocollo selezione, una cancellazione obsoleta), incluso repeat delle
+  frecce; singolo test Rust risorse, TypeScript e build finale separata superati.
+  Restano i precedenti avvisi di import statico/dinamico della build; nessun installer.
+- Nessuna dipendenza nuova, codice o export Siemens copiato, JSON macchina, foto o segreti
+  pubblicati. Macro/sequenze e comandi del Runtime HMI non sono inclusi in questa tranche;
+  restano curve/storico nel ponte, WinCC restante, Optix, AI facoltativa e gate produzione.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

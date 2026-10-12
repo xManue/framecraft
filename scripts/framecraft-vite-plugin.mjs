@@ -9,6 +9,7 @@ import { hmiAlarmSummaryAttribute, hmiAlarmSummaryCss, defaultHmiAlarmSummaryCon
 import { createHmiAlarmPreviewSurfaceWith, createHmiAlarmPreviewBridgeWith } from "./hmi-alarm-preview-surface.mjs";
 import { hmiFaceplateVisualRuntimeModuleSource } from "./hmi-faceplate-visuals.mjs";
 import { createHmiFaceplatePreview } from "./hmi-faceplate-preview.mjs";
+import { editorCommands, defaultEditorShortcuts, normalizeEditorShortcut, editorShortcutIssue, editorShortcutsIssue, parseEditorShortcuts, editorShortcutFromEvent, editorCommandForShortcut } from "./editor-shortcuts.mjs";
 
 export function installPanelLayoutPreference(root, key, storage = () => root.defaultView.sessionStorage) {
   const valid = (value) => ["auto", "desktop", "mobile"].includes(value);
@@ -57,6 +58,14 @@ const createHmiAlarmPreviewSurface = (root, options) => (${String(createHmiAlarm
 const createHmiAlarmPreviewBridge = (view, options) => (${String(createHmiAlarmPreviewBridgeWith)})(view, options, createHmiAlarmPreviewSurface);
 const faceplateRenderers = (() => { ${hmiFaceplateVisualRuntimeModuleSource().replace(/^export /gm, "")} return { renderHmiFaceplates }; })();
 const createHmiFaceplatePreview = (${String(createHmiFaceplatePreview)});
+const editorCommands = ${JSON.stringify(editorCommands)};
+const defaultEditorShortcuts = (${String(defaultEditorShortcuts)});
+const normalizeEditorShortcut = (${String(normalizeEditorShortcut)});
+const editorShortcutIssue = (${String(editorShortcutIssue)});
+const editorShortcutsIssue = (${String(editorShortcutsIssue)});
+const parseEditorShortcuts = (${String(parseEditorShortcuts)});
+const editorShortcutFromEvent = (${String(editorShortcutFromEvent)});
+const editorCommandForShortcut = (${String(editorCommandForShortcut)});
 `;
 
 const bridgeScript = sharedHelpers + String.raw`
@@ -111,6 +120,7 @@ const bridgeScript = sharedHelpers + String.raw`
   const simulated = new Map();
   let simulationOn = false;
   const alarmPreview = createHmiAlarmPreviewBridge(window, { active: () => mode === "navigate" && simulationOn, navigate: (route) => navigateHmiTarget(route) });
+  let editorShortcutBindings = defaultEditorShortcuts(), editorShortcutOrigin;
   const faceplatePreview = createHmiFaceplatePreview(window, { active: () => mode === "navigate", pageId: () => alarmPreview.pageId, instanceId: (host) => instanceId(host) }, faceplateRenderers);
   window.addEventListener("pagehide", (event) => { if (event.persisted) faceplatePreview.reset(); else faceplatePreview.dispose(); });
   window.addEventListener("pagehide", (event) => { if (event.persisted) alarmPreview.suspend(); else alarmPreview.dispose(); });
@@ -445,7 +455,7 @@ const bridgeScript = sharedHelpers + String.raw`
     const key = JSON.stringify([window.location.pathname, window.__framecraftCurrentPage]);
     if (alarmScreenKey !== undefined && key !== alarmScreenKey) { alarmPreview.newPage(); faceplatePreview.reset(); }
     alarmScreenKey = key;
-    window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items(), alarmPreviewProtocol: 1, alarmPreviewPageId: alarmPreview.pageId, faceplatePreviewProtocol: 1 }, "*");
+    window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items(), alarmPreviewProtocol: 1, alarmPreviewPageId: alarmPreview.pageId, faceplatePreviewProtocol: 1, editorShortcutsProtocol: 1 }, "*");
   };
   window.addEventListener("pageshow", (event) => { if (event.persisted) { alarmPreview.newPage(); sendReady(); } });
   // Where a point of the page falls inside the drawing the outline is written in: the corners the
@@ -1013,6 +1023,12 @@ const bridgeScript = sharedHelpers + String.raw`
   regionCursor.textContent = 'html[data-framecraft-region-picking],html[data-framecraft-region-picking] *{cursor:crosshair!important;user-select:none!important}';
   (document.head || document.documentElement).append(regionCursor);
   window.addEventListener("message", (event) => {
+    if (event.data?.type === "framecraft:set-shortcuts") {
+      if (event.source !== window.parent || !event.origin || event.origin === "null" || editorShortcutOrigin && editorShortcutOrigin !== event.origin || event.data.pageId !== alarmPreview.pageId) return;
+      editorShortcutOrigin = event.origin;
+      editorShortcutBindings = parseEditorShortcuts({ version: 1, bindings: event.data.bindings });
+      return;
+    }
     if (event.data?.type === "framecraft:faceplate-preview") { faceplatePreview.receive(event); return; }
     if (event.data?.type === "framecraft:alarm-preview" || event.data?.type === "framecraft:alarm-command-result") { alarmPreview.receive(event); return; }
     if (event.data?.type === "framecraft:set-mode") {
@@ -1453,26 +1469,28 @@ const bridgeScript = sharedHelpers + String.raw`
     }, 260);
   };
   document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || event.isComposing) return;
     if (inlineTarget) {
       if (event.key === "Enter") { event.preventDefault(); inlineTarget.element.blur(); }
       if (event.key === "Escape") { inlineTarget.element.textContent = inlineTarget.original; inlineTarget.element.blur(); }
       return;
     }
-    const editing = event.target instanceof Element && event.target.matches("input, textarea, [contenteditable=true]");
-    // The editor shell never sees a key pressed inside the preview, so the shortcuts it owns are
-    // forwarded. Without this, undo, redo and save are dead for as long as the canvas has focus.
-    const modifier = event.ctrlKey || event.metaKey;
-    const shortcut = modifier && !event.altKey ? event.key.toLowerCase() : "";
-    if (shortcut === "s" || (!editing && (shortcut === "z" || shortcut === "y" || shortcut === "d"))) {
+    const editing = event.target instanceof Element && !!event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+    const shortcut = editorShortcutFromEvent(event), command = editorCommandForShortcut(editorShortcutBindings, shortcut, { editing, mode });
+    if (command) {
       event.preventDefault();
-      event.stopPropagation();
-      window.parent.postMessage({ type: "framecraft:shortcut", key: shortcut, shift: event.shiftKey }, "*");
+      event.stopImmediatePropagation();
+      const selected = command === "delete" && selectedSource ? sourceElement(selectedSource, selectedInstanceId) : null;
+      if (selected) {
+        window.parent.postMessage({ type: "framecraft:delete", source: selectedSource, instanceId: selectedInstanceId, info: describeElement(selected, selectedSource), shortcut, pageId: alarmPreview.pageId }, editorShortcutOrigin || "*");
+        selectedSource = null; selectedInstanceId = null;
+      } else window.parent.postMessage({ type: "framecraft:shortcut", key: command === "delete" ? "delete" : event.key.toLowerCase(), shift: event.shiftKey, command, shortcut, editing, pageId: alarmPreview.pageId }, editorShortcutOrigin || "*");
       return;
     }
     // Arrow keys move the selection by a pixel, ten with Shift. It is the only way to place an
     // element exactly without typing numbers into the property sheet, and the mouse cannot do it.
     const step = arrowSteps[event.key];
-    if (mode === "edit" && step && !editing && selectedSource) {
+    if (mode === "edit" && step && !editing && !event.ctrlKey && !event.metaKey && !event.altKey && selectedSource) {
       const target = sourceElement(selectedSource, selectedInstanceId);
       if (target && !isClickThrough(target)) {
         event.preventDefault();
@@ -1481,22 +1499,6 @@ const bridgeScript = sharedHelpers + String.raw`
         nudge(target, step[0] * size, step[1] * size);
         return;
       }
-    }
-    const deleting = event.key === "Delete" || event.key === "Del" || event.key === "Backspace" || event.code === "Delete";
-    if (mode === "edit" && deleting && !editing) {
-      event.preventDefault();
-      event.stopPropagation();
-      // Naming the element instead of sending a bare command is what makes Canc predictable: the
-      // editor deletes what the preview shows as selected, even when its own selection lags behind.
-      const selected = selectedSource ? sourceElement(selectedSource, selectedInstanceId) : null;
-      if (selected) {
-        window.parent.postMessage({ type: "framecraft:delete", source: selectedSource, instanceId: selectedInstanceId, info: describeElement(selected, selectedSource) }, "*");
-        selectedSource = null;
-        selectedInstanceId = null;
-        return;
-      }
-      // Without a local selection the editor still owns one, so the command is forwarded as it was.
-      window.parent.postMessage({ type: "framecraft:shortcut", key: "delete", shift: false }, "*");
     }
   }, true);
   document.addEventListener("focusout", (event) => {

@@ -67,6 +67,25 @@ selecting another element returns to **Aspetto**. Group/external-element sheets 
 faceplate type mini-editor retain their existing layouts. Local preview changes and saving
 the project are separate from publishing or commanding a PLC.
 
+## Editor settings and keyboard shortcuts
+
+Open **File → Impostazioni dell’editor**. **Area di lavoro** contains panel layouts,
+interface size, smart guides and grid spacing; these preferences apply immediately
+without changing the HMI source. **Scorciatoie e comandi** lets you search 25 commands,
+click a combination and press replacement keys. Each command accepts up to three
+combinations. Remove all combinations to disable its shortcut; save to apply the draft.
+Resetting defaults changes the draft, not the saved preferences until you save.
+
+The editor keeps preferences locally across projects. Menus and **Comandi rapidi**
+display the saved keys. **Ctrl+K** opens command search; arrows select a command and
+Enter executes it. The same bindings work inside the preview canvas and after changing
+pages. Duplicate bindings and common system/text-editing shortcuts are rejected.
+Undo/delete/duplicate are restricted to Modifica, and text fields retain their native
+editing keys. Global save and command search remain available while typing.
+These are editor commands, not HMI scripts or PLC command macros. Shift/Alt drag gestures
+and arrow nudges remain fixed. Native keyboard/layout and packaged-app validation remain
+separate from the automated checks.
+
 ## Trying a faceplate on the page
 
 Configure its type/version and bindings in **PLC e dati → Istanza faceplate**, then

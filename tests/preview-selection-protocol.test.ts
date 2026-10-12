@@ -262,7 +262,7 @@ describe("preview selection protocol", () => {
     }));
     await new Promise((resolve) => preview.current.setTimeout(resolve, 30));
     preview.current.document.dispatchEvent(new preview.current.KeyboardEvent("keydown", {
-      key: "ArrowRight", code: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true,
+      key: "ArrowRight", code: "ArrowRight", shiftKey: true, repeat: true, bubbles: true, cancelable: true,
     }));
     expect(preview.elements[1].style.translate).toBe("18px 3px");
     await new Promise((resolve) => preview.current.setTimeout(resolve, 350));

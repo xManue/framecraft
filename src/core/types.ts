@@ -207,7 +207,7 @@ export type PreviewMessage =
   | { type: "framecraft:select-many"; items: SelectionItem[]; selectionVersion?: number }
   | { type: "framecraft:group-drag-move"; items: SelectionItem[] }
   | { type: "framecraft:group-drag-end"; items: SelectionItem[] }
-  | { type: "framecraft:delete"; source: SourceRef; instanceId?: string; info?: RenderedInfo }
+  | { type: "framecraft:delete"; source: SourceRef; instanceId?: string; info?: RenderedInfo; shortcut?: string; pageId?: string }
   | { type: "framecraft:highlight-anchor"; index: number; x: number; y: number; done: boolean }
   | { type: "framecraft:highlight-insert"; afterIndex: number; x: number; y: number }
   | { type: "framecraft:highlight-remove"; index: number }
@@ -221,8 +221,8 @@ export type PreviewMessage =
   | { type: "framecraft:popup-user-close"; popupId: string }
   | { type: "framecraft:state-page"; value: string }
   | { type: "framecraft:alarm-command"; pageId: string; requestId: string; instanceId: string; command: import("../../runtime/alarm-engine.mjs").AlarmCommand }
-  | { type: "framecraft:ready"; path: string; selectionProtocol?: number; selectionVersion?: number; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[]; alarmPreviewProtocol?: number; alarmPreviewPageId?: string; faceplatePreviewProtocol?: number }
-  | { type: "framecraft:shortcut"; key: string; shift: boolean }
+  | { type: "framecraft:ready"; path: string; selectionProtocol?: number; selectionVersion?: number; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[]; alarmPreviewProtocol?: number; alarmPreviewPageId?: string; faceplatePreviewProtocol?: number; editorShortcutsProtocol?: number }
+  | { type: "framecraft:shortcut"; key: string; shift: boolean; command?: import("../../scripts/editor-shortcuts.mjs").EditorCommandId; shortcut?: string; pageId?: string; editing?: boolean }
   | { type: "framecraft:resize"; width: number; height: number };
 
 /** Where a "save as" copy of the working project landed, plus whatever the copy had to skip. */

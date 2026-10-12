@@ -4,7 +4,7 @@ import {
   AlignVerticalDistributeCenter, ArrowLeft, Blocks, Cable, Check, ChevronDown,
   Code2, Columns2, Compass, Database, Eye, FileCheck2, FolderOpen, Gauge, HardDriveDownload,
   HelpCircle, Languages, LayoutTemplate, Magnet, Maximize, Minus, MonitorCog,
-  MousePointer2, Pencil, Play, Plus, Redo2, RefreshCw, Save,
+  MousePointer2, Pencil, Play, Plus, Redo2, RefreshCw, Save, Keyboard, Settings, Copy,
   TerminalSquare, Trash2, Undo2, X, ZoomIn,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -14,6 +14,8 @@ import type { ViewMode, Viewport } from "../core/types";
 import { layoutPresets, snapGrids, useEditorStore, type UiDensity, type WorkLayout } from "../state/editorStore";
 import { PlcConnectionsDialog } from "./PlcConnectionsDialog";
 import { AlarmsDialog } from "./AlarmsDialog";
+import { formatEditorShortcut, type EditorCommandId } from "../../scripts/editor-shortcuts.mjs";
+import { useEditorShortcuts } from "../state/editorShortcuts";
 
 const viewModes: { id: ViewMode; label: string; description: string; icon: typeof Eye }[] = [
   { id: "visual", label: "Disegno", description: "Solo il pannello grafico", icon: Eye },
@@ -54,6 +56,11 @@ export function TopBar() {
   const setMode = useEditorStore((state) => state.setViewMode);
   const previewUrl = useEditorStore((state) => state.previewUrl);
   const save = useEditorStore((state) => state.save);
+  const duplicate = useEditorStore((state) => state.duplicateSelection);
+  const setPaletteOpen = useEditorStore((state) => state.setPaletteOpen);
+  const shortcutBindings = useEditorShortcuts((state) => state.bindings);
+  const setSettingsOpen = useEditorShortcuts((state) => state.setOpen);
+  const shortcut = (id: EditorCommandId) => shortcutBindings[id].length ? formatEditorShortcut(shortcutBindings[id][0], /Mac|iPhone|iPad/.test(navigator.platform)) : "";
   const saveAs = useEditorStore((state) => state.saveProjectAs);
   const exporting = useEditorStore((state) => state.exporting);
   const undo = useEditorStore((state) => state.undo);
@@ -135,9 +142,10 @@ export function TopBar() {
             <button className={activeMenu === "file" ? "active" : ""} onClick={() => toggleMenu("file")} aria-expanded={activeMenu === "file"} aria-haspopup="menu">File <ChevronDown size={12} /></button>
             {activeMenu === "file" && <div className="topbar-dropdown" role="menu" aria-label="File">
               <button role="menuitem" onClick={() => runAndClose(() => void switchProject())}><FolderOpen size={15} /><span><strong>Apri o cambia progetto</strong><small>Scegli un’altra cartella di lavoro</small></span></button>
-              <button role="menuitem" onClick={() => runAndClose(() => void save())}><Save size={15} /><span><strong>Salva</strong><small>Registra la modifica corrente</small></span><kbd>Ctrl S</kbd></button>
+              <button role="menuitem" onClick={() => runAndClose(() => void save())}><Save size={15} /><span><strong>Salva</strong><small>Registra la modifica corrente</small></span><kbd>{shortcut("save")}</kbd></button>
               <button role="menuitem" disabled={exporting} onClick={() => runAndClose(() => void saveAs())}><HardDriveDownload size={15} /><span><strong>{exporting ? "Esportazione in corso…" : "Esporta copia"}</strong><small>Scegli la cartella della copia finale</small></span></button>
               <div className="topbar-menu-separator" />
+              <button role="menuitem" onClick={() => runAndClose(() => setSettingsOpen(true))}><Settings size={15} /><span><strong>Impostazioni dell’editor</strong><small>Area di lavoro, guide e scorciatoie personalizzabili</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => void closeProject())}><ArrowLeft size={15} /><span><strong>Chiudi progetto</strong><small>Torna alla schermata iniziale</small></span></button>
             </div>}
           </div>
@@ -145,9 +153,11 @@ export function TopBar() {
           <div className="topbar-menu">
             <button className={activeMenu === "edit" ? "active" : ""} onClick={() => toggleMenu("edit")} aria-expanded={activeMenu === "edit"} aria-haspopup="menu">Modifica <ChevronDown size={12} /></button>
             {activeMenu === "edit" && <div className="topbar-dropdown topbar-dropdown-scroll" role="menu" aria-label="Modifica">
-              <button role="menuitem" disabled={!undoCount} onClick={() => runAndClose(() => void undo())}><Undo2 size={15} /><span><strong>Annulla</strong><small>{undoCount ? `${undoCount} azioni disponibili` : "Nessuna azione da annullare"}</small></span><kbd>Ctrl Z</kbd></button>
-              <button role="menuitem" disabled={!redoCount} onClick={() => runAndClose(() => void redo())}><Redo2 size={15} /><span><strong>Ripristina</strong><small>{redoCount ? `${redoCount} azioni disponibili` : "Nessuna azione da ripristinare"}</small></span><kbd>Ctrl ⇧ Z</kbd></button>
-              <button role="menuitem" disabled={!selectedId && !multiSelection.length} onClick={() => runAndClose(() => void deleteSelection())}><Trash2 size={15} /><span><strong>Elimina selezione</strong><small>Rimuove gli elementi scelti</small></span><kbd>Canc</kbd></button>
+              <button role="menuitem" disabled={!undoCount} onClick={() => runAndClose(() => void undo())}><Undo2 size={15} /><span><strong>Annulla</strong><small>{undoCount ? `${undoCount} azioni disponibili` : "Nessuna azione da annullare"}</small></span><kbd>{shortcut("undo")}</kbd></button>
+              <button role="menuitem" disabled={!redoCount} onClick={() => runAndClose(() => void redo())}><Redo2 size={15} /><span><strong>Ripristina</strong><small>{redoCount ? `${redoCount} azioni disponibili` : "Nessuna azione da ripristinare"}</small></span><kbd>{shortcut("redo")}</kbd></button>
+              <button role="menuitem" disabled={!selectedId} onClick={() => runAndClose(() => void duplicate())}><Copy size={15} /><span><strong>Duplica elemento</strong><small>Crea una copia dell’elemento selezionato</small></span><kbd>{shortcut("duplicate")}</kbd></button>
+              <button role="menuitem" disabled={!selectedId && !multiSelection.length} onClick={() => runAndClose(() => void deleteSelection())}><Trash2 size={15} /><span><strong>Elimina selezione</strong><small>Rimuove gli elementi scelti</small></span><kbd>{shortcut("delete")}</kbd></button>
+              <button role="menuitem" onClick={() => runAndClose(() => setPaletteOpen(true))}><Keyboard size={15} /><span><strong>Comandi rapidi</strong><small>Cerca un comando e premi Invio</small></span><kbd>{shortcut("commands")}</kbd></button>
               <small className="topbar-menu-heading">GUIDE E ALLINEAMENTO</small>
               <button role="menuitemcheckbox" aria-checked={snap.enabled} onClick={() => setSnap({ enabled: !snap.enabled })}><Magnet size={15} /><span><strong>Guide intelligenti</strong><small>Bordi, centri e distanze si agganciano</small></span>{snap.enabled && <Check size={14} />}</button>
               <label className="topbar-menu-select"><Magnet size={15} /><span><strong>Passo griglia</strong><small>Usato quando non c’è un bordo vicino</small></span><select value={snap.grid} disabled={!snap.enabled} onChange={(event) => setSnap({ grid: Number(event.target.value) })} aria-label="Passo griglia"><option value={0}>Libero</option>{snapGrids.map((step) => <option key={step} value={step}>{step} px</option>)}</select></label>
@@ -204,7 +214,7 @@ export function TopBar() {
             <button className={activeMenu === "help" ? "active" : ""} onClick={() => toggleMenu("help")} aria-expanded={activeMenu === "help"} aria-haspopup="menu">Aiuto <ChevronDown size={12} /></button>
             {activeMenu === "help" && <div className="topbar-dropdown topbar-dropdown-right" role="menu" aria-label="Aiuto">
               <button role="menuitem" onClick={() => runAndClose(() => setHelpOpen(true))}><HelpCircle size={15} /><span><strong>Guida rapida</strong><small>Modifica, collegamenti PLC e prova del pannello</small></span></button>
-              <button role="menuitem" onClick={() => runAndClose(() => setHelpOpen(true))}><MousePointer2 size={15} /><span><strong>Scorciatoie e gesti</strong><small>Tastiera, selezione multipla e trascinamento</small></span></button>
+              <button role="menuitem" onClick={() => runAndClose(() => setSettingsOpen(true, "shortcuts"))}><Keyboard size={15} /><span><strong>Scorciatoie e comandi</strong><small>Scegli le tue combinazioni di tasti</small></span><kbd>{shortcut("settings")}</kbd></button>
             </div>}
           </div>
         </nav>
@@ -232,7 +242,7 @@ export function TopBar() {
           <article><span><b>3</b><Cable size={18} /></span><strong>Controlla il PLC</strong><p>Seleziona un oggetto e usa la sezione <b>Variabile PLC</b>. Il catalogo completo rimane nel pannello PLC.</p></article>
           <article><span><b>4</b><Play size={18} /></span><strong>Prova e salva</strong><p><b>Pannello → Prova pannello</b> mostra il risultato senza editor. Quando è corretto usa <b>File → Esporta copia</b>.</p></article>
         </div>
-        <footer><span><kbd>Ctrl Z</kbd> annulla</span><span><kbd>Canc</kbd> elimina</span><span><kbd>Shift</kbd> trascina dritto</span><span><kbd>Alt</kbd> ignora le guide</span></footer>
+        <footer><span><kbd>{shortcut("undo") || "Non assegnata"}</kbd> annulla</span><span><kbd>{shortcut("delete") || "Non assegnata"}</kbd> elimina</span><span><kbd>Shift</kbd> trascina dritto</span><span><kbd>Alt</kbd> ignora le guide</span></footer>
       </section>
     </div>}
   </>;

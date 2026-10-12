@@ -240,6 +240,7 @@ Queste non sono richieste per la parità: sono ciò che deve rendere Framecraft 
 | FC-MORE-13 | Contratto tipizzato PLC/HMI generato da UDT e verificato in CI | DA FARE |
 | FC-MORE-14 | Matrice autorizzazioni e interlock generata e revisionabile | DA FARE |
 | FC-MORE-15 | Stima prestazioni: tag, cicli, trend, archivi e peso pagina | DA FARE |
+| FC-MORE-16 | Preferenze editor e comandi rapidi personalizzabili | PARZIALE: pagina Impostazioni, 25 comandi, fino a tre combinazioni, conflitti, ricerca/Invio, persistenza locale e ponte canvas fatti al punto 111; sequenze/macro e collaudo tastiere native da fare |
 
 ## Ordine di implementazione
 

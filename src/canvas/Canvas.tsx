@@ -22,6 +22,9 @@ import { renderHmiFunctionTrendControls } from "../core/hmiFunctionTrend";
 import { createHmiDataLogRuntime } from "../core/hmiDataLogs";
 import { useVisualEditGuide } from "./visualEditGuide";
 import { hmiAlarmPreviewSession } from "../core/hmiAlarmPreview";
+import { useEditorShortcuts } from "../state/editorShortcuts";
+import { editorCommandForShortcut, type EditorCommandId } from "../../scripts/editor-shortcuts.mjs";
+import { editorModalOpen, runEditorCommand } from "../core/editorCommands";
 import { createHmiPropertyFlashing, type HmiScreenItemSnapshot } from "../../scripts/hmi-property-flashing.mjs";
 
 const resizeHandles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -69,6 +72,7 @@ export function Canvas() {
   const scriptCatalog = useEditorStore((state) => state.scriptCatalog);
   const dataLogCatalog = useEditorStore((state) => state.dataLogCatalog);
   const faceplateCatalog = useEditorStore((state) => state.faceplateCatalog);
+  const shortcutBindings = useEditorShortcuts((state) => state.bindings);
   const alarmConfiguration = useEditorStore((state) => state.alarmPreviewConfiguration);
   const projectRoot = useEditorStore((state) => state.project?.root);
   const setMultiSelection = useEditorStore((state) => state.setMultiSelection);
@@ -106,7 +110,7 @@ export function Canvas() {
   const [availableWidth, setAvailableWidth] = useState(1000);
   const [componentDropPoint, setComponentDropPoint] = useState<{ x: number; y: number }>();
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const alarmPageRef = useRef<{ pageId: string; window: Window; origin: string; faceplate?: boolean } | undefined>(undefined);
+  const alarmPageRef = useRef<{ pageId: string; window: Window; origin: string; faceplate?: boolean; shortcuts?: boolean } | undefined>(undefined);
   const alarmPreviewRef = useRef<ReturnType<typeof hmiAlarmPreviewSession>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<TransformSession | undefined>(undefined);
@@ -296,6 +300,17 @@ export function Canvas() {
     const store = useEditorStore.getState();
     sendAlarmMessage({ type: "framecraft:faceplate-preview", catalog: store.faceplateCatalog, values: store.simulation.on ? store.simulation.values : {},
       locals: Object.fromEntries([...faceplateLocalStateRef.current].map(([id, local]) => [id, { signature: local.signature, values: { ...local.values } }])) });
+  }
+
+  function sendShortcuts() {
+    if (alarmPageRef.current?.shortcuts) sendAlarmMessage({ type: "framecraft:set-shortcuts", bindings: useEditorShortcuts.getState().bindings });
+  }
+
+  function shortcutIsCurrent(event: MessageEvent, pageId: string | undefined, shortcut: string | undefined, command: EditorCommandId, editing = false) {
+    const page = alarmPageRef.current, store = useEditorStore.getState();
+    return !!page?.shortcuts && event.source === page.window && event.origin === page.origin && event.origin === alarmOrigin() && pageId === page.pageId
+      && !!store.project && !store.loading && !store.exporting && !store.reloadRecovery && !editorModalOpen()
+      && editorCommandForShortcut(useEditorShortcuts.getState().bindings, shortcut, { editing, mode: store.interactionMode }) === command;
   }
 
   function faceplateLocalState(instanceId: string, type: HmiFaceplateTypeDefinition) {
@@ -501,6 +516,7 @@ export function Canvas() {
 
   useEffect(sendAlarmPreview, [alarmConfiguration, projectRoot, simulation.on, simulation.values, simulation.status, interactionMode, previewSrc]);
   useEffect(renderFaceplateVisuals, [faceplateCatalog, simulation.on, simulation.values, interactionMode, previewSrc]);
+  useEffect(sendShortcuts, [shortcutBindings, previewSrc]);
 
   useEffect(() => {
     if (!simulation.on) return;
@@ -731,12 +747,17 @@ export function Canvas() {
         });
       } else if (event.data.type === "framecraft:delete") {
         const { source, info } = event.data;
+        const message = event.data;
+        const current = () => useEditorStore.getState().interactionMode === "edit" && (message.shortcut
+          ? shortcutIsCurrent(event, message.pageId, message.shortcut, "delete")
+          : !alarmPageRef.current?.shortcuts && !editorModalOpen() && useEditorShortcuts.getState().bindings.delete.some(shortcut => shortcut === "Delete" || shortcut === "Backspace"));
+        if (!current()) return;
         // The preview says which copy it had selected, so the delete lands on that one even when the
         // editor's own selection is a step behind.
         if (info) setSelectionInfo(info);
         const intent = selectionIntentRef.current;
         void selectSource(source).then(async (selected) => {
-          if (!selected || !selectionIsCurrent(source, intent)) return;
+          if (!selected || !current() || !selectionIsCurrent(source, intent)) return;
           await deleteSelection();
           if (intent === selectionIntentRef.current) clearSelectionIfDeleted();
         });
@@ -763,25 +784,21 @@ export function Canvas() {
         setMultiSelection(event.data.items);
         void commitMultiSelection(event.data.items);
       } else if (event.data.type === "framecraft:shortcut") {
-        // Keys pressed inside the preview never reach the editor shell, so the canvas replays the
-        // shortcuts the shell owns. Without this, undo, redo and save are dead while the user works
-        // in the very place they spend all their time.
-        const { key, shift } = event.data;
+        const message = event.data;
         const store = useEditorStore.getState();
-        // Leaving the outline over a deleted element is what made the next Canc look dead: it hit a
-        // selection that no longer existed.
-        if (key === "delete") {
+        const legacy = typeof message.key !== "string" ? undefined : message.key === "delete" ? "Delete" : `Mod+${message.shift ? "Shift+" : ""}${message.key.toUpperCase()}`;
+        const command = message.command ?? editorCommandForShortcut(useEditorShortcuts.getState().bindings, legacy, { mode: store.interactionMode });
+        if (!command || (message.command ? !shortcutIsCurrent(event, message.pageId, message.shortcut, command, message.editing)
+          : !alarmPageRef.current || alarmPageRef.current.shortcuts || event.origin !== alarmOrigin() || editorModalOpen())) return;
+        if (command === "delete") {
           const intent = selectionIntentRef.current;
-          void store.deleteSelection().then(() => { if (intent === selectionIntentRef.current) clearSelectionIfDeleted(); });
+          void runEditorCommand(command).then(() => { if (intent === selectionIntentRef.current) clearSelectionIfDeleted(); });
         }
-        else if (key === "s") void store.save();
-        else if (key === "d") void store.duplicateSelection();
-        else if (key === "y") void store.redo();
-        else if (key === "z") void (shift ? store.redo() : store.undo());
+        else void runEditorCommand(command);
       } else if (event.data.type === "framecraft:ready") {
         if (event.data.alarmPreviewProtocol === 1 && typeof event.data.alarmPreviewPageId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(event.data.alarmPreviewPageId) && event.origin === alarmOrigin()) {
           const changed = alarmPageRef.current && alarmPageRef.current.pageId !== event.data.alarmPreviewPageId;
-          alarmPageRef.current = { pageId: event.data.alarmPreviewPageId, window: event.source as Window, origin: event.origin, faceplate: event.data.faceplatePreviewProtocol === 1 };
+          alarmPageRef.current = { pageId: event.data.alarmPreviewPageId, window: event.source as Window, origin: event.origin, faceplate: event.data.faceplatePreviewProtocol === 1, shortcuts: event.data.editorShortcutsProtocol === 1 };
           if (changed) { faceplateLocalStateRef.current.clear(); hmiPopupManager.closeParentBound("screen"); }
         }
         transformRef.current?.cancel?.();
@@ -802,6 +819,7 @@ export function Canvas() {
         sendSimulation();
         sendAlarmPreview();
         renderFaceplateVisuals();
+        sendShortcuts();
         sendStatePage();
         sendSnap();
         sendMultiSelection();
