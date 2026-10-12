@@ -33,7 +33,9 @@ export function AlarmsDialog({ onClose }: { onClose(): void }) {
     const request = ++sequence.current; setPhase("loading"); setError("");
     try {
       const next = await desktopBridge.readAlarmConfiguration(initial.root);
-      const tags = next.plc ? parsePlcCatalog(next.plc) : [];
+      if (!mounted.current || sequence.current !== request || useEditorStore.getState().project !== initial) return;
+      useEditorStore.getState().installAlarmPreviewConfiguration(initial, next);
+      const tags = next.plc === null ? [] : parsePlcCatalog(next.plc);
       const parsed = next.source === null ? emptyAlarmCatalog() : parseAlarmCatalog(next.source);
       if (!mounted.current || sequence.current !== request || useEditorStore.getState().project !== initial) return;
       if (next.source !== null && alarmCatalogIssues(parsed, tags).length) setMessage("Controlla gli errori qui sotto prima di salvare o provare.");
@@ -76,6 +78,7 @@ export function AlarmsDialog({ onClose }: { onClose(): void }) {
     try {
       const next = await desktopBridge.saveAlarmConfiguration(initial.root, snapshot, JSON.stringify(catalog, null, 2) + "\n");
       if (!mounted.current || useEditorStore.getState().project !== initial) return;
+      useEditorStore.getState().installAlarmPreviewConfiguration(initial, next);
       setSnapshot(next); setBase(JSON.stringify(catalog)); setMessage("Catalogo salvato. Nessun comando o collegamento PLC avviato. Il servizio carica gli allarmi al prossimo avvio manuale."); setPhase("ready");
     } catch (caught) { if (mounted.current) { setPhase("ready"); setError(caught instanceof Error ? caught.message : "Salvataggio non riuscito. Le modifiche restano in questa finestra."); } }
   }

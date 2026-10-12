@@ -38,7 +38,7 @@ describe("collaudo separato della generazione Runtime di produzione", () => {
     expect(manifest.devDependencies?.vitest).toBeUndefined();
     expect(JSON.parse(files.find((file) => file.path === "framecraft.runtime.json")!.content).gateway.enabled).toBe(false);
     const modules = new Map<string, Record<string, unknown>>();
-    for (const name of ["runtime/connection-config.mjs", "runtime/connection-diagnostics.mjs", "runtime/alarm-engine.mjs"]) modules.set(name, evaluateModule(files.find((file) => file.path === name)!.content, (id) => {
+    for (const name of ["runtime/connection-config.mjs", "runtime/connection-diagnostics.mjs", "runtime/alarm-labels.mjs", "runtime/alarm-engine.mjs", "src/framecraftHmiAlarmControl.mjs", "src/framecraftHmiAlarmSummary.mjs"]) modules.set(name, evaluateModule(files.find((file) => file.path === name)!.content, (id) => {
       const dependency = modules.get(path.posix.normalize(path.posix.join(path.posix.dirname(name), id)));
       if (!dependency) throw new Error(`Dipendenza allarmi generata mancante: ${id}`);
       return dependency;

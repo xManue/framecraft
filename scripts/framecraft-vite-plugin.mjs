@@ -3,6 +3,10 @@ import * as t from "@babel/types";
 import { equalGapOffset, gridOffset, snapOffset } from "./framecraft-snap.mjs";
 import { overlayCandidate } from "./framecraft-picking.mjs";
 import { createHmiPropertyFlashingDomSurface } from "./hmi-property-flashing.mjs";
+import { alarmStateLabel } from "../runtime/alarm-labels.mjs";
+import { hmiAlarmElementBlocked, createHmiAlarmControlWith } from "./hmi-alarm-control.mjs";
+import { hmiAlarmSummaryAttribute, hmiAlarmSummaryCss, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView, createHmiAlarmSummaryWith } from "./hmi-alarm-summary.mjs";
+import { createHmiAlarmPreviewSurfaceWith, createHmiAlarmPreviewBridgeWith } from "./hmi-alarm-preview-surface.mjs";
 
 export function installPanelLayoutPreference(root, key, storage = () => root.defaultView.sessionStorage) {
   const valid = (value) => ["auto", "desktop", "mobile"].includes(value);
@@ -44,7 +48,12 @@ export function installPanelLayoutPreference(root, key, storage = () => root.def
 // The bridge is shipped to the previewed project as source text, so the maths it needs is not
 // imported by it but written into it. Stringifying the real functions keeps one copy: what the
 // tests check is exactly what runs inside the page.
-const sharedHelpers = [snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installPanelLayoutPreference].map((helper) => String(helper)).join("\n");
+const sharedHelpers = `const hmiAlarmSummaryAttribute = ${JSON.stringify(hmiAlarmSummaryAttribute)};\nconst hmiAlarmSummaryCss = ${JSON.stringify(hmiAlarmSummaryCss)};\n` + [snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installPanelLayoutPreference, alarmStateLabel, hmiAlarmElementBlocked, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView].map((helper) => String(helper)).join("\n") + `
+const createHmiAlarmControl = (host, action, rowFilter) => (${String(createHmiAlarmControlWith)})(host, action, rowFilter, { alarmStateLabel, hmiAlarmElementBlocked });
+const createHmiAlarmSummary = (host, options) => (${String(createHmiAlarmSummaryWith)})(host, options, { alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked });
+const createHmiAlarmPreviewSurface = (root, options) => (${String(createHmiAlarmPreviewSurfaceWith)})(root, options, { createHmiAlarmControl, createHmiAlarmSummary });
+const createHmiAlarmPreviewBridge = (view, options) => (${String(createHmiAlarmPreviewBridgeWith)})(view, options, createHmiAlarmPreviewSurface);
+`;
 
 const bridgeScript = sharedHelpers + String.raw`
 (() => {
@@ -97,6 +106,8 @@ const bridgeScript = sharedHelpers + String.raw`
   // si spegne la pagina torna quella che il progetto disegna davvero.
   const simulated = new Map();
   let simulationOn = false;
+  const alarmPreview = createHmiAlarmPreviewBridge(window, { active: () => mode === "navigate" && simulationOn, navigate: (route) => navigateHmiTarget(route) });
+  window.addEventListener("pagehide", (event) => { if (event.persisted) alarmPreview.suspend(); else alarmPreview.dispose(); });
   let collectSignature = "";
   let screenItemsSignature = "";
   let collectFrame = 0;
@@ -423,7 +434,14 @@ const bridgeScript = sharedHelpers + String.raw`
     const index = item?.info?.listIndex ?? item?.info?.instanceIndex ?? 0;
     return matches[index] || matches[0] || null;
   };
-  const sendReady = () => window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items() }, "*");
+  let alarmScreenKey;
+  const sendReady = () => {
+    const key = JSON.stringify([window.location.pathname, window.__framecraftCurrentPage]);
+    if (alarmScreenKey !== undefined && key !== alarmScreenKey) alarmPreview.newPage();
+    alarmScreenKey = key;
+    window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items(), alarmPreviewProtocol: 1, alarmPreviewPageId: alarmPreview.pageId }, "*");
+  };
+  window.addEventListener("pageshow", (event) => { if (event.persisted) { alarmPreview.newPage(); sendReady(); } });
   // Where a point of the page falls inside the drawing the outline is written in: the corners the
   // user drags are in the coordinates of that <svg>, not in pixels of the window.
   const svgPointOf = (svg, clientX, clientY) => {
@@ -587,6 +605,8 @@ const bridgeScript = sharedHelpers + String.raw`
       return { raw, items: Array.isArray(parsed) ? parsed : [] };
     } catch { return { raw: null, items: [] }; }
   };
+  const alarmInternal = (event) => Boolean(event.target?.closest?.("[data-hmi-alarm-root], [data-hmi-alarm-summary-root]"));
+  const hmiEventTarget = (event) => alarmInternal(event) ? null : event.target?.closest?.("[data-hmi-events]");
   const emitHmiEvent = (element, eventType, context = {}) => {
     if (mode !== "navigate" || !element) return;
     if (!propertyFlashingSurface.allowsReactions(element)) return;
@@ -668,6 +688,7 @@ const bridgeScript = sharedHelpers + String.raw`
   // La pagina cambia sotto i piedi a ogni salvataggio (l'HMR non ricarica): finche' la simulazione
   // e' accesa si guarda se la lista degli oggetti dinamizzati e' diventata un'altra.
   const selectionMutationObserver = new MutationObserver((records) => {
+    if (records.every((record) => record.attributeName !== "data-hmi-alarm-summary" && record.target.nodeType === 1 && record.target.closest("[data-hmi-alarm-root], [data-hmi-alarm-summary-root]"))) return;
     scheduleTrackedSelection(); scheduleCollect();
     if (records.some((record) => record.type !== "attributes" || record.attributeName === "data-hmi-text")) scheduleLanguage();
     if (records.some((record) => record.type === "childList" || record.attributeName === "data-hmi-events")) emitLoadedEvents();
@@ -975,12 +996,14 @@ const bridgeScript = sharedHelpers + String.raw`
   regionCursor.textContent = 'html[data-framecraft-region-picking],html[data-framecraft-region-picking] *{cursor:crosshair!important;user-select:none!important}';
   (document.head || document.documentElement).append(regionCursor);
   window.addEventListener("message", (event) => {
+    if (event.data?.type === "framecraft:alarm-preview" || event.data?.type === "framecraft:alarm-command-result") { alarmPreview.receive(event); return; }
     if (event.data?.type === "framecraft:set-mode") {
       if (event.data.mode === "navigate") { cancelDrag(); endControlledTransform(true); }
       if (event.data.mode === "edit") { propertyFlashingSurface.applyProperties([]); propertyFlashingSurface.apply([]); }
       mode = event.data.mode === "navigate" ? "navigate" : "edit";
       if (mode === "navigate") { cancelNudge(); cancelRegionPick(); }
       document.documentElement.dataset.framecraftMode = mode;
+      alarmPreview.refresh();
       if (mode === "navigate") queueMicrotask(emitLoadedEvents);
     } else if (event.data?.type === "framecraft:open-state-page" && typeof event.data.value === "string") {
       window.__framecraftRequestedPage = event.data.value;
@@ -994,6 +1017,7 @@ const bridgeScript = sharedHelpers + String.raw`
       simulationOn = event.data.on !== false;
       if (!simulationOn) clearSimulation();
       else applySimulation(event.data.commands);
+      alarmPreview.refresh();
     } else if (event.data?.type === "framecraft:property-flashing") {
       propertyFlashingSurface.items();
       propertyFlashingSurface.apply(Array.isArray(event.data.commands) ? event.data.commands : []);
@@ -1488,25 +1512,25 @@ const bridgeScript = sharedHelpers + String.raw`
     event.stopPropagation();
     window.parent.postMessage({ type: "framecraft:drop", source, jsx, ...dropPosition(element, event) }, "*");
   }, true);
-  document.addEventListener("pointerdown", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Down"), true);
-  document.addEventListener("pointerup", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Up"), true);
-  document.addEventListener("click", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Tapped"), true);
-  document.addEventListener("dblclick", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "DoubleTapped"), true);
-  document.addEventListener("change", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Change"), true);
-  document.addEventListener("focusin", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Activated"), true);
-  document.addEventListener("focusout", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "Deactivated"), true);
-  document.addEventListener("contextmenu", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "ContextTapped"), true);
+  document.addEventListener("pointerdown", (event) => emitHmiEvent(hmiEventTarget(event), "Down"), true);
+  document.addEventListener("pointerup", (event) => emitHmiEvent(hmiEventTarget(event), "Up"), true);
+  document.addEventListener("click", (event) => emitHmiEvent(hmiEventTarget(event), "Tapped"), true);
+  document.addEventListener("dblclick", (event) => emitHmiEvent(hmiEventTarget(event), "DoubleTapped"), true);
+  document.addEventListener("change", (event) => emitHmiEvent(hmiEventTarget(event), "Change"), true);
+  document.addEventListener("focusin", (event) => emitHmiEvent(hmiEventTarget(event), "Activated"), true);
+  document.addEventListener("focusout", (event) => emitHmiEvent(hmiEventTarget(event), "Deactivated"), true);
+  document.addEventListener("contextmenu", (event) => emitHmiEvent(hmiEventTarget(event), "ContextTapped"), true);
   document.addEventListener("keydown", (event) => {
-    const owner = event.target?.closest?.("[data-hmi-events]");
+    const owner = hmiEventTarget(event);
     emitHmiEvent(owner, "KeyDown", { key: event.key });
     emitHmiEvent(owner, "HotKey", { key: event.key });
   }, true);
-  document.addEventListener("keyup", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "KeyUp", { key: event.key }), true);
-  document.addEventListener("framecraft:interface-event", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "InterfaceEvent", { interfaceEvent: typeof event.detail === "string" ? event.detail : "InterfaceEvent" }), true);
+  document.addEventListener("keyup", (event) => emitHmiEvent(hmiEventTarget(event), "KeyUp", { key: event.key }), true);
+  document.addEventListener("framecraft:interface-event", (event) => emitHmiEvent(hmiEventTarget(event), "InterfaceEvent", { interfaceEvent: typeof event.detail === "string" ? event.detail : "InterfaceEvent" }), true);
   document.addEventListener("framecraft:faceplate-event", emitFaceplateInterfaceEvent, true);
-  document.addEventListener("framecraft:command-fired", (event) => emitHmiEvent(event.target?.closest?.("[data-hmi-events]"), "CommandFired", { command: typeof event.detail === "string" ? event.detail : "Command" }), true);
+  document.addEventListener("framecraft:command-fired", (event) => emitHmiEvent(hmiEventTarget(event), "CommandFired", { command: typeof event.detail === "string" ? event.detail : "Command" }), true);
   document.addEventListener("pointerdown", (event) => {
-    if (mode === "navigate" && event.pointerType === "touch" && event.isPrimary !== false) {
+    if (mode === "navigate" && !alarmInternal(event) && event.pointerType === "touch" && event.isPrimary !== false) {
       hmiGestureStart = { pointerId: event.pointerId, target: event.target, x: event.clientX, y: event.clientY, time: Date.now() };
     }
   }, true);
@@ -1535,6 +1559,7 @@ const bridgeScript = sharedHelpers + String.raw`
     if (typeof window.__framecraftCurrentPage === "string" && window.__framecraftCurrentPage !== lastStatePage) {
       lastStatePage = window.__framecraftCurrentPage;
       window.parent.postMessage({ type: "framecraft:state-page", value: lastStatePage }, "*");
+      if (alarmScreenKey !== JSON.stringify([window.location.pathname, lastStatePage])) sendReady();
     }
   };
   document.documentElement.dataset.framecraftMode = mode;

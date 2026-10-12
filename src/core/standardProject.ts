@@ -38,6 +38,12 @@ import alarmEngineSource from "../../runtime/alarm-engine.mjs?raw";
 import alarmEngineTypes from "../../runtime/alarm-engine.d.mts?raw";
 import alarmControlSource from "./hmiAlarmControl.ts?raw";
 import alarmSummarySource from "./hmiAlarmSummary.ts?raw";
+import alarmLabelSource from "../../runtime/alarm-labels.mjs?raw";
+import alarmLabelTypes from "../../runtime/alarm-labels.d.mts?raw";
+import alarmControlJs from "../../scripts/hmi-alarm-control.mjs?raw";
+import alarmControlTypes from "../../scripts/hmi-alarm-control.d.mts?raw";
+import alarmSummaryJs from "../../scripts/hmi-alarm-summary.mjs?raw";
+import alarmSummaryTypes from "../../scripts/hmi-alarm-summary.d.mts?raw";
 
 /** Il pannello nuovo, gia' allo standard.
  *
@@ -512,7 +518,8 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAlarmIndicator"], [data-hmi-type="HmiAlarmLine"]')) if (!alarmSummaries.has(host)) alarmSummaries.set(host, createHmiAlarmSummary(host, { action: performAlarmAction, routes: options.routes, navigate: (route) => navigateTarget(route) }));
     for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-hmi-action="clear-alarm-log"]')) {
       if (!alarmClearButtons.has(button)) alarmClearButtons.set(button, { disabled: button.disabled, title: button.title });
-      button.disabled = true; button.title = "Storico della sessione: cancellazione e archivio industriale non ancora abilitati.";
+      if (!button.disabled) button.disabled = true;
+      const title = "Storico della sessione: cancellazione e archivio industriale non ancora abilitati."; if (button.title !== title) button.title = title;
     }
     for (const control of alarmControls.values()) control.update(alarmSnapshot, !gatewayConfig.enabled && !!localAlarms || gatewayClient?.state === "connected");
     for (const control of alarmSummaries.values()) control.update(alarmSnapshot, !gatewayConfig.enabled && !!localAlarms || gatewayClient?.state === "connected");
@@ -1054,7 +1061,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   window.addEventListener("framecraft:alarm-state", alarmChanged);
   window.addEventListener("framecraft:data-log-request", requestDataLog);
   const observer = new MutationObserver((records) => {
-    const interactionAttributes = ["disabled", "hidden", "inert", "aria-disabled", "style", "class"];
+    const interactionAttributes = ["disabled", "hidden", "inert", "aria-disabled", "style", "class", "data-fc-reacts", "data-fc-user-requires", "data-fc-user-granted", "data-fc-user-visible-requires", "data-fc-user-visible-granted"];
     if (records.every((record) => record.type === "attributes" && interactionAttributes.includes(record.attributeName ?? ""))) {
       const hosts = [...alarmControls.keys(), ...alarmSummaries.keys()];
       if (records.some((record) => record.target instanceof Element && hosts.some((host) => record.target.contains(host)))) renderAlarmControls();
@@ -1063,7 +1070,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     if (records.every((record) => record.attributeName !== "data-hmi-alarm-summary" && record.target instanceof Element && record.target.closest("[data-hmi-trend-root], [data-hmi-function-trend-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root]"))) return;
     scanLoaded(); syncCycles(); requestRefresh(); renderRuntimeFaceplates(); renderTrendControls(); renderGatewayStatus(gatewayClient?.state ?? "stopped"); renderAlarmControls();
   });
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-hmi-events", "data-hmi-dynamizations", "data-hmi-faceplate", "data-hmi-trend", "data-hmi-function-trend", "data-hmi-alarm-summary", "disabled", "hidden", "inert", "aria-disabled", "style", "class"] });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-hmi-events", "data-hmi-dynamizations", "data-hmi-faceplate", "data-hmi-trend", "data-hmi-function-trend", "data-hmi-alarm-summary", "disabled", "hidden", "inert", "aria-disabled", "style", "class", "data-fc-reacts", "data-fc-user-requires", "data-fc-user-granted", "data-fc-user-visible-requires", "data-fc-user-visible-granted"] });
   if (!gatewayConfig.enabled) for (const error of scriptContexts.initialize(scriptCatalog, undefined, "scheduler", values, { tagStatus })) (options.error ?? console.error)("[HMI SCRIPT scheduler] " + error);
   scanLoaded();
   syncCycles();
@@ -1723,10 +1730,16 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/mqtt-driver.d.mts", content: mqttDriverTypes },
     { path: "runtime/start-mqtt.mjs", content: mqttStartSource },
     { path: "runtime/gateway.mjs", content: gatewaySource },
+    { path: "runtime/alarm-labels.mjs", content: alarmLabelSource },
+    { path: "runtime/alarm-labels.d.mts", content: alarmLabelTypes },
     { path: "runtime/alarm-engine.mjs", content: alarmEngineSource },
     { path: "runtime/alarm-engine.d.mts", content: alarmEngineTypes },
-    { path: "src/framecraftHmiAlarmControl.ts", content: alarmControlSource.replaceAll('"../../runtime/', '"../runtime/') },
-    { path: "src/framecraftHmiAlarmSummary.ts", content: alarmSummarySource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
+    { path: "src/framecraftHmiAlarmControl.mjs", content: alarmControlJs },
+    { path: "src/framecraftHmiAlarmControl.d.mts", content: alarmControlTypes },
+    { path: "src/framecraftHmiAlarmSummary.mjs", content: alarmSummaryJs.replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
+    { path: "src/framecraftHmiAlarmSummary.d.mts", content: alarmSummaryTypes.replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
+    { path: "src/framecraftHmiAlarmControl.ts", content: alarmControlSource.replaceAll('"../../scripts/hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
+    { path: "src/framecraftHmiAlarmSummary.ts", content: alarmSummarySource.replaceAll('"../../scripts/hmi-alarm-summary.mjs"', '"./framecraftHmiAlarmSummary.mjs"') },
     { path: "framecraft.alarms.json", content: JSON.stringify(emptyAlarmCatalog(), null, 2) + "\n" },
     { path: "runtime/gateway.d.mts", content: gatewayTypes },
     { path: "runtime/start-gateway.mjs", content: gatewayStartSource },

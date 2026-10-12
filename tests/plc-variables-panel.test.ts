@@ -12,8 +12,17 @@ import { PlcVariablesPanel } from "../src/editor/PlcVariablesPanel";
 import { parseSource } from "../src/source-parser/parseSource";
 import { useEditorStore } from "../src/state/editorStore";
 import { parseHmiScriptCatalog } from "../src/core/hmiScriptModules";
+import { emptyAlarmCatalog } from "../src/core/hmiAlarms";
 
 describe("simulazione PLC dei trend", () => {
+  it("offre anche i segnali allarme abilitati e spiega Usa il pannello senza inviare comandi", async () => {
+    const before = useEditorStore.getState(), container = document.createElement("div"), root = createRoot(container); Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    try {
+      const catalog = emptyAlarmCatalog(); catalog.alarms = [true, false].map((enabled, i) => ({ id: "a" + i, name: "Motor " + i, text: "Controlla", tag: "Signal" + i, className: "Alarm_CTH", priority: 1, enabled, trigger: { kind: "bit", bit: 0, activeWhen: "set" } }));
+      useEditorStore.setState({ project: undefined, document: undefined, alarmPreviewConfiguration: { catalog, variables: [] }, scriptCatalog: parseHmiScriptCatalog({}), dataLogCatalog: emptyHmiDataLogCatalog(), simulation: { on: true, values: {}, status: {}, elements: [], unresolved: [] } }); await act(async () => root.render(createElement(PlcVariablesPanel)));
+      expect(container.querySelector('[aria-label="Valore simulato Signal0"]')).not.toBeNull(); expect(container.querySelector('[aria-label="Valore simulato Signal1"]')).toBeNull(); expect(container.textContent).toContain("Usa il pannello"); expect(container.textContent).toContain("Modifica ripristina la bozza");
+    } finally { await act(async () => root.unmount()); useEditorStore.setState(before, true); }
+  });
   it("spiega la prova locale anche quando è spenta, senza promettere un simulatore del programma PLC", async () => {
     const before = useEditorStore.getState(); const container = document.createElement("div"); const root = createRoot(container);
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });

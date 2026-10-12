@@ -158,6 +158,15 @@ No catalog, unknown quality or a lost service is never shown as a healthy zero.
 without connecting to a PLC. Configuration is persisted in JSX and supports undo.
 Invalid JSON or a code-computed configuration is never silently replaced.
 
+To try the objects placed on an actual page, save the catalog in **Pannello → Allarmi**,
+then open **PLC → Prova locale**, click **Attiva valori di prova**, enter the alarm tag's
+value and choose **Usa il pannello** in the top bar. The indicator, line and alarm list
+use the same local engine for that editor project. **Modifica** restores their editable
+JSX content and closes details; **Ferma la prova locale** resets test history and
+acknowledgments, without clearing any machine archive. Missing values remain unknown.
+The preview is labelled **SIMULAZIONE · nessun PLC collegato** and does not connect to
+MQTT/OPC UA. Unsaved edits inside the alarm configuration dialog do not alter this catalog.
+
 New standard panels include both controllers; existing panels and machine templates
 are not rewritten. The object model, complete vendor properties and physical touch/CPU
 commissioning remain open. See the [runtime guide](runtime/README.md#indicatori-e-righe-allarme).

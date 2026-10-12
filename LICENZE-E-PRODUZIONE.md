@@ -5,6 +5,14 @@ chiudere, **non un'approvazione legale né un rilascio industriale approvato**.
 
 ## Inventario ripetibile
 
+Checkpoint 12 ottobre, prova allarmi nel canvas: i renderer condivisi e il ponte sono
+codice Framecraft trasferito dai moduli già presenti, non sorgenti o asset Siemens.
+La mappa Tauri include ora gli helper allarmi e le etichette comuni. Nessun manifest o
+lockfile npm/Cargo viene modificato e non viene aggiunta una dipendenza. Non è stato
+eseguito un nuovo audit generale in questa tranche: gli esiti sotto restano quelli del
+precedente ricontrollo. Verifica delle risorse superata, ma packaging senza checkout,
+licenze/notice dell'artefatto finale e `releaseApproved: false` restano gate aperti.
+
 Il configuratore grafico delle connessioni del 5 ottobre non aggiunge dipendenze. Il ricontrollo
 offline conferma inventario e gate aperti indicati sotto. Su scelta esplicita dell'utente, il
 repository pubblico contiene solo codice: export JSON WinCC reali e foto di confronto rimangono

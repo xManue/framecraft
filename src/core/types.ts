@@ -220,7 +220,8 @@ export type PreviewMessage =
   | { type: "framecraft:faceplate-event"; instanceId: string; raw: string; eventName: string; parameters: Record<string, import("./hmiScript").HmiScriptScalar>; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[] }
   | { type: "framecraft:popup-user-close"; popupId: string }
   | { type: "framecraft:state-page"; value: string }
-  | { type: "framecraft:ready"; path: string; selectionProtocol?: number; selectionVersion?: number; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[] }
+  | { type: "framecraft:alarm-command"; pageId: string; requestId: string; instanceId: string; command: import("../../runtime/alarm-engine.mjs").AlarmCommand }
+  | { type: "framecraft:ready"; path: string; selectionProtocol?: number; selectionVersion?: number; screenItems?: import("../../scripts/hmi-property-flashing.mjs").HmiScreenItemSnapshot[]; alarmPreviewProtocol?: number; alarmPreviewPageId?: string }
   | { type: "framecraft:shortcut"; key: string; shift: boolean }
   | { type: "framecraft:resize"; width: number; height: number };
 

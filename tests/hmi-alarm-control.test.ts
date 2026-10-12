@@ -37,7 +37,9 @@ describe("vista allarmi operativi", () => {
     engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); const action = vi.fn(async (command) => { engine.action(command, "Operatore"); control.update({ ...engine.snapshot(), actionsEnabled: true }); }); const control = createHmiAlarmControl(host, action);
     control.update({ ...engine.snapshot(), actionsEnabled: true }); button(host, "Motor").focus(); button(host, "Motor").click(); expect(document.activeElement).toBe(button(host, "Motor"));
     button(host, "Prendi in visione").click(); await vi.waitFor(() => expect(action).toHaveBeenCalledOnce());
-    expect(engine.snapshot().rows[0]).toMatchObject({ active: true, acknowledged: true, pending: true }); expect(host.textContent).toContain("non è stato modificato"); control.dispose();
+    expect(engine.snapshot().rows[0]).toMatchObject({ active: true, acknowledged: true, pending: true }); expect(host.textContent).toContain("non è stato modificato");
+    control.update({ ...engine.snapshot(), actionsEnabled: true }); expect(host.textContent).toContain("Presa visione registrata");
+    button(host, "Motor").click(); expect(host.textContent).not.toContain("Presa visione registrata"); control.dispose();
   });
   it("campione nuovo invalida la selezione; perdita servizio non permette comandi", () => {
     const host = document.createElement("div"); document.body.append(host); const engine = createAlarmEngine(catalog, variables), action = vi.fn(); const control = createHmiAlarmControl(host, action);

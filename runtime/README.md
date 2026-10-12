@@ -88,6 +88,34 @@ server, audit, commissioning CPU, limiti/carico, traduzioni, shelving e operazio
 multiple. Gli allarmi di eventi OPC UA/controller non sono i trigger scalari qui
 implementati. La prova locale è isolata e non certifica il funzionamento sulla macchina.
 
+### Provare gli allarmi sulla pagina nell'editor
+
+Salva il catalogo da **Pannello → Allarmi**, inserisci i controlli nella pagina e apri
+**PLC → Prova locale**. Premi **Attiva valori di prova**, compila il valore del segnale
+usato dall'allarme e passa a **Usa il pannello** nella barra superiore. Indicatore, riga
+e lista usano un motore locale condiviso, senza driver, connessioni o comandi PLC.
+La dicitura **SIMULAZIONE · nessun PLC collegato** distingue questa prova dal Runtime.
+
+Un valore mai compilato resta sconosciuto, non Good/zero. La qualità di prova esplicita
+resta valida anche per gli allarmi; Bad conserva l'ultimo guasto. Presa visione e conferma
+agiscono soltanto sullo stato locale, ricontrollando gli ultimi valori e la revisione.
+Un timeout non ritenta l'azione; il messaggio indica come riaprire la prova. Gli esiti
+restano leggibili durante aggiornamenti identici, finché cambia stato o selezione.
+
+**Modifica** chiude il dettaglio e ripristina nodi e stile della bozza, mantenendo lo
+stato della prova finché è attiva; il solo cambio alla vista Codice non perde lo stato
+degli allarmi. **Ferma la prova locale** azzera storico e prese visione locali anche senza
+canvas; una nuova sessione non accetta i comandi precedenti. Cambio progetto o catalogo
+invalida lo stato vecchio. Le modifiche non salvate nella finestra Allarmi restano una
+prova separata; il canvas legge soltanto la coppia catalogo/variabili validata su disco.
+File assente e JSON invalido non sono equivalenti. Correggi i file e usa **Riprova lettura** nella
+finestra Allarmi: la lettura aggiornata ripristina la configurazione della prova.
+
+Il rendering avviene nel ponte della pagina, senza accesso al DOM cross-origin da parte
+dell'editor. Origine, finestra, pagina e istanza della prova sono controllate; questi
+controlli non costituiscono autenticazione/RBAC del servizio industriale. Il servizio
+reale resta separato e non viene avviato o collegato automaticamente all'anteprima.
+
 ### Indicatori e righe allarme
 
 Da **Aggiungi → HMI e PLC** inserisci **Indicatore allarmi** o **Riga allarmi**.
@@ -96,7 +124,8 @@ pendenti/attivi/da prendere in visione, colori e visibilità. Classi e zone usan
 nomi esatti separati da virgole; vuoto include tutte. La configurazione vive
 in `data-hmi-alarm-summary`, versione 1, non in un nuovo tag PLC.
 La prova locale di **Pannello → Allarmi** mostra i due riepiloghi sullo stesso
-motore della lista. Nel canvas di modifica resta la bozza selezionabile; il
+motore della lista; **PLC → Prova locale → Usa il pannello** descritto sopra prova invece
+i controlli inseriti nella pagina. Nel canvas di modifica resta la bozza selezionabile; il
 servizio reale non viene collegato automaticamente all'anteprima dell'editor.
 
 L'indicatore distingue guasti attivi, presa visione mancante e conferma di rientro.

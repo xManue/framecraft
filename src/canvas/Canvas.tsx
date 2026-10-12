@@ -22,6 +22,7 @@ import { renderHmiTrendControls } from "../core/hmiTrend";
 import { renderHmiFunctionTrendControls } from "../core/hmiFunctionTrend";
 import { createHmiDataLogRuntime } from "../core/hmiDataLogs";
 import { useVisualEditGuide } from "./visualEditGuide";
+import { hmiAlarmPreviewSession } from "../core/hmiAlarmPreview";
 import { createHmiPropertyFlashing, type HmiScreenItemSnapshot } from "../../scripts/hmi-property-flashing.mjs";
 
 const resizeHandles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -68,6 +69,7 @@ export function Canvas() {
   const resourceCatalog = useEditorStore((state) => state.resourceCatalog);
   const scriptCatalog = useEditorStore((state) => state.scriptCatalog);
   const dataLogCatalog = useEditorStore((state) => state.dataLogCatalog);
+  const alarmConfiguration = useEditorStore((state) => state.alarmPreviewConfiguration);
   const projectRoot = useEditorStore((state) => state.project?.root);
   const setMultiSelection = useEditorStore((state) => state.setMultiSelection);
   const commitMultiSelection = useEditorStore((state) => state.commitMultiSelection);
@@ -104,6 +106,8 @@ export function Canvas() {
   const [availableWidth, setAvailableWidth] = useState(1000);
   const [componentDropPoint, setComponentDropPoint] = useState<{ x: number; y: number }>();
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const alarmPageRef = useRef<{ pageId: string; window: Window; origin: string } | undefined>(undefined);
+  const alarmPreviewRef = useRef<ReturnType<typeof hmiAlarmPreviewSession>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<TransformSession | undefined>(undefined);
   // How many times this page has already been allowed to resize the canvas, and the size it has
@@ -180,6 +184,11 @@ export function Canvas() {
     storageKey: `framecraft:editor-data-logs:${projectRoot ?? dataLogCatalog.projectKey}`,
     onError: (message) => useEditorStore.getState().addPreviewOutput("stderr", message),
   }), [dataLogCatalog, projectRoot]);
+  useEffect(() => {
+    const model = hmiAlarmPreviewSession(useEditorStore);
+    alarmPreviewRef.current = model;
+    return () => { if (alarmPreviewRef.current === model) alarmPreviewRef.current = undefined; };
+  }, [alarmConfiguration, projectRoot]);
   const fittedZoom = fitCanvasZoom(availableWidth, contentWidth);
   const effectiveZoom = fitCanvas ? fittedZoom : zoom;
   const previewSrc = useMemo(() => {
@@ -188,6 +197,7 @@ export function Canvas() {
     url.pathname = previewPath || "/";
     return url.toString();
   }, [previewPath, previewUrl]);
+  useEffect(() => { alarmPageRef.current = undefined; }, [previewSrc, projectRoot]);
   const guide = useVisualEditGuide(
     Boolean(previewSrc) && previewStatus === "ready" && interactionMode === "edit" && !selection && multiSelection.length === 0 && !highlightPicker && !zonePicking,
     JSON.stringify([projectRoot, previewSrc, activePageId, requestedStatePage, viewport]),
@@ -210,6 +220,22 @@ export function Canvas() {
 
   function sendMode() {
     frameRef.current?.contentWindow?.postMessage({ type: "framecraft:set-mode", mode: interactionMode }, "*");
+  }
+
+  function alarmOrigin() {
+    const url = useEditorStore.getState().previewUrl;
+    if (!url) return undefined;
+    try { const origin = new URL(url).origin; return origin === "null" ? undefined : origin; } catch { return undefined; }
+  }
+
+  function sendAlarmMessage(message: Record<string, unknown>) {
+    const page = alarmPageRef.current, view = frameRef.current?.contentWindow;
+    if (page && view === page.window && page.origin === alarmOrigin()) view.postMessage({ ...message, pageId: page.pageId }, page.origin);
+  }
+
+  function sendAlarmPreview() {
+    const snapshot = alarmPreviewRef.current?.update(), state = useEditorStore.getState();
+    sendAlarmMessage({ type: "framecraft:alarm-preview", snapshot, enabled: state.simulation.on, routes: [...new Set(state.pages.map((page) => page.route))] });
   }
 
   function sendRegionPick() {
@@ -260,8 +286,12 @@ export function Canvas() {
     frameRef.current?.contentWindow?.postMessage({ type: "framecraft:collect-dynamizations" }, "*");
   }
 
+  function previewDocument() {
+    try { return frameRef.current?.contentDocument; } catch { return null; }
+  }
+
   function renderFaceplateVisuals() {
-    const root = frameRef.current?.contentDocument;
+    const root = previewDocument();
     if (!root) return;
     const store = useEditorStore.getState();
     renderHmiFaceplates(root, store.faceplateCatalog, store.simulation.values, {
@@ -275,7 +305,7 @@ export function Canvas() {
   }
 
   function renderTrendVisuals() {
-    const root = frameRef.current?.contentDocument;
+    const root = previewDocument();
     if (!root) return;
     const store = useEditorStore.getState();
     const sources = { tags: store.plcVariables.map((variable) => variable.name), logs: store.dataLogCatalog.logs };
@@ -464,6 +494,8 @@ export function Canvas() {
     renderTrendVisuals();
     if (simulation.on) dataLogRuntime.updateSnapshot(simulation.values, simulation.status);
   }, [simulation.on, simulation.values, simulation.status, simulation.elements, resourceCatalog, scriptCatalog, dataLogRuntime, previewPath, previewSrc, plcVariables]);
+
+  useEffect(sendAlarmPreview, [alarmConfiguration, projectRoot, simulation.on, simulation.values, simulation.status, interactionMode, previewSrc]);
 
   useEffect(() => {
     if (!simulation.on) return;
@@ -742,6 +774,9 @@ export function Canvas() {
         else if (key === "y") void store.redo();
         else if (key === "z") void (shift ? store.redo() : store.undo());
       } else if (event.data.type === "framecraft:ready") {
+        if (event.data.alarmPreviewProtocol === 1 && typeof event.data.alarmPreviewPageId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(event.data.alarmPreviewPageId) && event.origin === alarmOrigin()) {
+          alarmPageRef.current = { pageId: event.data.alarmPreviewPageId, window: event.source as Window, origin: event.origin };
+        }
         transformRef.current?.cancel?.();
         hmiPropertyFlashing.reset();
         hmiScreenItemsRef.current = event.data.screenItems ?? [];
@@ -757,6 +792,8 @@ export function Canvas() {
         // A new page starts with its own budget: this one is allowed to say how big it is.
         sizeGrants.current = 0;
         sendMode();
+        sendSimulation();
+        sendAlarmPreview();
         sendStatePage();
         sendSnap();
         sendMultiSelection();
@@ -771,6 +808,15 @@ export function Canvas() {
         sendHighlightPreview();
         if (useEditorStore.getState().simulation.on) collectDynamizations();
         void syncPreviewPath(event.data.path);
+      } else if (event.data.type === "framecraft:alarm-command") {
+        const message = event.data, page = alarmPageRef.current;
+        if (!page || event.source !== page.window || event.origin !== page.origin || event.origin !== alarmOrigin() || message.pageId !== page.pageId || typeof message.requestId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(message.requestId) || typeof message.instanceId !== "string" || message.instanceId.length > 128) return;
+        let error: string | undefined;
+        try { if (!alarmPreviewRef.current) throw new Error("La prova allarmi non è disponibile. Aggiorna la vista prima di agire."); alarmPreviewRef.current.action(message.command, message.instanceId); }
+        catch (cause) { error = cause instanceof Error ? cause.message.slice(0, 1024) : "La prova allarmi non ha completato l'azione. Aggiorna la vista e riprova."; }
+        sendAlarmPreview();
+        sendAlarmMessage({ type: "framecraft:alarm-command-result", requestId: message.requestId, instanceId: message.instanceId, ok: !error, ...(error ? { error } : {}) });
+        if (error) useEditorStore.getState().addPreviewOutput("stderr", `[PROVA ALLARMI] ${error}`);
       } else if (event.data.type === "framecraft:highlight-anchor") {
         const { index, x, y, done } = event.data;
         void useEditorStore.getState().moveHighlightAnchor(index, x, y, done);

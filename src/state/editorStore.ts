@@ -26,6 +26,8 @@ import { emptyHmiScriptCatalog, parseHmiScriptCatalog, type HmiScriptCatalog } f
 import { emptyHmiFaceplateCatalog, hmiFaceplateAttribute, hmiFaceplateCatalogName, parseHmiFaceplateCatalog, serializeHmiFaceplateBinding, type HmiFaceplateCatalog } from "../core/hmiFaceplates";
 import { planHmiFaceplateMigration, selectedFaceplateBinding, type FaceplateMigrationOptions } from "../core/hmiFaceplateMigration";
 import { emptyHmiDataLogCatalog, hmiDataLogCatalogName, parseHmiDataLogCatalog, type HmiDataLogCatalog } from "../core/hmiDataLogs";
+import { emptyAlarmCatalog, parseAlarmCatalog, type AlarmConfigurationSnapshot, type AlarmPreviewConfiguration } from "../core/hmiAlarms";
+import { parsePlcCatalog } from "../core/plcVariables";
 import { clearEditorReloadCheckpoint, installEditorReloadRecovery, readEditorReloadCheckpoint, recoverEditorReload, type EditorReloadRecovery } from "./editorRecovery";
 import { cleanDiagnosticText } from "../core/editorMessages";
 import { detectPages, insertReactRoute } from "../core/pages";
@@ -165,6 +167,7 @@ export interface EditorState {
   faceplateCatalog: HmiFaceplateCatalog;
   /** Archivi di processo e modalità di acquisizione usati da Trend e Runtime. */
   dataLogCatalog: HmiDataLogCatalog;
+  alarmPreviewConfiguration?: AlarmPreviewConfiguration;
   /** Cosa non torna nel pannello: tag vuoti, dinamiche a meta', numeri di pagina doppi, pulsanti
    * che portano dove non c'e' niente. Si riempie col controllo, e prima di ogni esportazione. */
   hmiIssues: HmiIssue[];
@@ -340,6 +343,8 @@ export interface EditorState {
   refreshFaceplateCatalog: () => Promise<void>;
   /** Rilegge il catalogo Data Log dopo il salvataggio. */
   refreshDataLogCatalog: () => Promise<void>;
+  refreshAlarmPreviewConfiguration: () => Promise<void>;
+  installAlarmPreviewConfiguration: (project: ProjectAnalysis, snapshot: AlarmConfigurationSnapshot) => void;
   /** Lingua con cui la simulazione risolve i testi multilingua. */
   setResourceLanguage: (language: string) => void;
   /** Fills a data-driven table with the catalog signals whose name or tag table matches. */
@@ -462,15 +467,17 @@ interface EditorTransientRuntime {
   declaredEdits: number;
   callSiteRequest?: string;
   previewExits: Map<string, PreviewExit>;
+  alarmPreviewReadSequence: number;
 }
 
 type EditorHotData = { store?: UseBoundStore<StoreApi<EditorState>>; runtime?: EditorTransientRuntime; recoveryTask?: Promise<void> };
 const hotData = import.meta.hot?.data as EditorHotData | undefined;
 const runtime: EditorTransientRuntime = hotData?.runtime ?? {
-  projectOpening: false, previewRefreshSequence: 0, selectionSequence: 0,
+  projectOpening: false, previewRefreshSequence: 0, selectionSequence: 0, alarmPreviewReadSequence: 0,
   contractCache: new Map(), declaredEdits: 0, previewExits: new Map(),
 };
 runtime.previewExits ??= new Map();
+runtime.alarmPreviewReadSequence ??= 0;
 if (hotData) hotData.runtime = runtime;
 
 function projectFilePaths(entries: FileEntry[]): string[] {
@@ -1281,11 +1288,11 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
 
     // Spegnendo la simulazione si buttano via anche gli elementi raccolti: alla riaccensione la
     // pagina puo' essere un'altra, e chiederglielo di nuovo costa un messaggio.
-    setSimulationOn: (on) => set((state) => ({
+    setSimulationOn: (on) => { set((state) => ({
       simulation: on
         ? { ...state.simulation, on: true }
         : { on: false, values: state.simulation.values, status: state.simulation.status, elements: [], unresolved: [] },
-    })),
+    })); if (on && get().project && !get().alarmPreviewConfiguration) void get().refreshAlarmPreviewConfiguration(); },
     setSimulationValue: (tag, value) => set((state) => ({
       simulation: { ...state.simulation, values: { ...state.simulation.values, [tag]: value } },
     })),
@@ -1423,6 +1430,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         const recentProjects = [workingCopy.root, ...get().recentProjects.filter((item) => item !== root && item !== workingCopy.root && item !== workingCopy.originalRoot)].slice(0, 8);
         persistRecentProjects(recentProjects);
         set({ project, document, plcVariables: [], resourceCatalog: emptyHmiResourceCatalog(), scriptCatalog: emptyHmiScriptCatalog(), faceplateCatalog: emptyHmiFaceplateCatalog(), dataLogCatalog: emptyHmiDataLogCatalog(), hmiIssues: [], projectComponents: [], pages: pageData.pages, pageCategories: pageData.pageCategories, routerFile: pageData.routerFile, routerEditable: pageData.routerEditable,
+          alarmPreviewConfiguration: undefined, simulation: { on: false, values: {}, status: {}, elements: [], unresolved: [] },
           activePageId: firstPage?.id, requestedStatePage: firstPage?.stateValue,
           previewUrl: undefined, previewPath: firstPage?.route ?? "/", recentProjects, history: [], future: [], dirty: false, externalRoots: [], selectedId: undefined, selectionRect: undefined, selectionStyles: {}, selectionInfo: undefined, editScope: "instance", unresolvedSelection: undefined,
           highlightPicker: undefined, standalonePreviewOpen: false, previewStatus: "starting", leftPanel: pageData.pages.length ? "pages" : "project", leftPanelCollapsed: false,
@@ -1436,6 +1444,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         void readScriptCatalog(project.root).then((scriptCatalog) => set({ scriptCatalog }));
         void readFaceplateCatalog(project.root).then((faceplateCatalog) => set({ faceplateCatalog }));
         void readDataLogCatalog(project.root).then((dataLogCatalog) => set({ dataLogCatalog }));
+        void get().refreshAlarmPreviewConfiguration();
         const sessionId = crypto.randomUUID();
         set({ previewSessionId: sessionId, previewProcessExited: false });
         try {
@@ -1481,6 +1490,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       // Returning to the project list must always succeed, even if the host cannot stop the preview.
       try { await desktopBridge.closeProject(); } catch (error) { reportError(error); }
       set({ project: undefined, document: undefined, pages: [], routerFile: undefined, routerEditable: false, activePageId: undefined, requestedStatePage: undefined, selectedId: undefined, selectionRect: undefined, selectionStyles: {}, plcVariables: [], resourceCatalog: emptyHmiResourceCatalog(), scriptCatalog: emptyHmiScriptCatalog(), faceplateCatalog: emptyHmiFaceplateCatalog(), dataLogCatalog: emptyHmiDataLogCatalog(), hmiIssues: [], projectComponents: [],
+        alarmPreviewConfiguration: undefined, simulation: { on: false, values: {}, status: {}, elements: [], unresolved: [] },
         previewUrl: undefined, previewPath: "/", previewStatus: "idle", previewError: undefined, previewRestarting: false, previewSessionId: undefined, previewProcessExited: false, lastError: undefined, highlightPicker: undefined,
         standalonePreviewOpen: false, history: [], future: [], dirty: false, loading: false, userAccessConfig: undefined, userAccessOpen: false, userAccessBusy: false, panelManifest: undefined, zonePicking: undefined, unlockedPages: [], unlockedFiles: [] });
     },
@@ -2175,7 +2185,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       const project = get().project;
       if (!project) return;
       const plcVariables = await readPlcCatalog(project.root);
-      if (get().project === project) set({ plcVariables });
+      if (get().project === project) { set({ plcVariables }); void get().refreshAlarmPreviewConfiguration(); }
     },
 
     async refreshResourceCatalog() {
@@ -2204,6 +2214,31 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       if (!project) return;
       const dataLogCatalog = await readDataLogCatalog(project.root);
       if (get().project === project) set({ dataLogCatalog });
+    },
+    installAlarmPreviewConfiguration(project, snapshot) {
+      if (get().project !== project) return;
+      runtime.alarmPreviewReadSequence++;
+      try {
+        const variables = snapshot.plc === null ? [] : parsePlcCatalog(snapshot.plc);
+        const catalog = snapshot.source === null ? emptyAlarmCatalog() : parseAlarmCatalog(snapshot.source, variables);
+        const next = { catalog, variables: variables.map(({ name, dataType, access, detected }) => ({ name, dataType, access, ...(detected ? { detected } : {}) })) };
+        if (JSON.stringify(get().alarmPreviewConfiguration) !== JSON.stringify(next)) set({ alarmPreviewConfiguration: next });
+      } catch {
+        set({ alarmPreviewConfiguration: undefined });
+        reportWarning("Prova allarmi non disponibile: apri Pannello → Allarmi e correggi catalogo e segnali PLC. Il JSON non è stato sostituito.");
+      }
+    },
+    async refreshAlarmPreviewConfiguration() {
+      const project = get().project; if (!project) return;
+      const request = ++runtime.alarmPreviewReadSequence;
+      try {
+        const snapshot = await desktopBridge.readAlarmConfiguration(project.root);
+        if (get().project === project && request === runtime.alarmPreviewReadSequence) get().installAlarmPreviewConfiguration(project, snapshot);
+      } catch {
+        if (get().project !== project || request !== runtime.alarmPreviewReadSequence) return;
+        set({ alarmPreviewConfiguration: undefined });
+        reportWarning("Prova allarmi non disponibile: apri Pannello → Allarmi e riprova la lettura. Se manca il comando nativo, serve l'app desktop aggiornata. Nessun PLC è stato collegato.");
+      }
     },
 
     setResourceLanguage(language) {

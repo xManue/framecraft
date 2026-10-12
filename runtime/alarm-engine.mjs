@@ -85,12 +85,7 @@ function bitValue(value, type, bit) {
   return (BigInt.asUintN(width, number) & (1n << BigInt(bit))) !== 0n;
 }
 
-export function alarmStateLabel(row) {
-  if (row.active === null) return "In attesa del segnale";
-  if (row.active) return row.acknowledged ? "Attivo · preso in visione" : "Attivo";
-  if (row.pending) return row.acknowledged ? "Rientrato · da confermare" : "Rientrato · da prendere in visione";
-  return "Normale";
-}
+export { alarmStateLabel } from "./alarm-labels.mjs";
 
 export function parseAlarmSnapshot(value) {
   if (!object(value) || value.version !== 1 || !text(value.instanceId, 80) || !Number.isSafeInteger(value.revision) || value.revision < 0 || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !Array.isArray(value.rows) || value.rows.length > 2000 || !Array.isArray(value.history) || value.history.length > 10000

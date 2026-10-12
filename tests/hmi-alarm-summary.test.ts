@@ -14,6 +14,18 @@ const button = (host: ParentNode, text: string) => [...host.querySelectorAll<HTM
 const mount = (kind = "HmiAlarmIndicator", config = defaultHmiAlarmSummaryConfig()) => { const host = document.createElement("div"); host.dataset.hmiType = kind; host.setAttribute(hmiAlarmSummaryAttribute, serializeHmiAlarmSummaryConfig(config)); document.body.append(host); return host; };
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
 describe("riepiloghi allarmi: configurazione e stati", () => {
+  it("i dettagli hanno etichette uniche anche senza randomUUID nel browser", () => {
+    const engine = create(); known(engine); sample(engine, 0);
+    vi.spyOn(crypto, "randomUUID").mockImplementation(() => { throw Error("Not available in this browser"); });
+    const hosts = [mount(), mount()];
+    const controls = hosts.map(host => createHmiAlarmSummary(host, { action: vi.fn() }));
+    try {
+      controls.forEach(control => control.update(engine.snapshot())); hosts.forEach(host => button(host, "Mostra allarmi").click());
+      const labels = [...document.querySelectorAll('[role="dialog"]')].map(dialog => dialog.getAttribute("aria-labelledby"));
+      expect(labels).toHaveLength(2); expect(new Set(labels).size).toBe(2);
+      labels.forEach(label => expect(document.getElementById(label!)?.textContent).toBe("Allarmi"));
+    } finally { controls.forEach(control => control.dispose()); }
+  });
   it("palette e JSX persistono il contratto senza inventare tag o contatori", () => {
     for (const [kind, type] of [["indicator", "HmiAlarmIndicator"], ["line", "HmiAlarmLine"]] as const) {
       const source = hmiAlarmSummaryJsx(kind); expect(source).toContain(type); expect(source).toContain("In attesa dei segnali"); expect(source).not.toContain("data-plc-variable");

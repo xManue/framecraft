@@ -198,6 +198,50 @@ copiati dallo standard, con connessioni disabilitate inizialmente. Vedi `runtime
 Importare sorgenti vendor può aiutare la migrazione, ma round-trip verso IDE, licenze/token vendor
 e deploy sui loro Runtime non sono requisiti del prodotto.
 
+## Allarmi nella prova locale dell'editor
+
+Requisito: provare i controlli inseriti nella pagina con valori compilati dall'utente,
+senza attivare driver o copiare la logica del motore in ogni widget. Il documento
+dell'editor (porta 1420 o origine Tauri) e quello del progetto (Vite su un'altra porta)
+sono origini differenti. `allow-same-origin` non rende accessibile il DOM dell'iframe:
+l'accesso diretto non può essere il contratto del rendering della prova.
+
+Il flusso è: lettura nativa della coppia catalogo/variabili → cache validata e priva di
+indirizzi PLC → motore locale dell'editor → snapshot via `postMessage` → renderer nel
+ponte dell'iframe. La presa visione percorre la direzione opposta, con risposta e nuovo
+snapshot. I renderer sono gli stessi moduli copiati nel pannello autonomo; dipendenze
+esplicite mantengono eseguibile il codice del ponte anche sotto il caricatore Vite.
+
+Il protocollo `alarm-preview` versione 1 richiede un handshake nella risposta `ready`.
+Ogni pagina ha un `pageId`, rinnovato anche sui cambi di pagina React rilevati dal ponte;
+ogni motore ha un `instanceId`. L'editor verifica finestra dell'iframe, origine corrente
+e pagina prima di agire, e invia dati con `targetOrigin` esatto. Il ponte accetta solo
+messaggi della finestra parent e dell'origine concordata. Le richieste riportano
+occorrenza e revisione; il motore ricontrolla i valori più recenti prima dell'azione.
+Le attese sono limitate a 128 e scadono dopo tre secondi, senza retry. Stop, cambio pagina,
+catalogo/progetto o Modifica invalidano le azioni in corso. Il cambio pagina conserva
+il motore condiviso del progetto ma non autorizza comandi del token precedente.
+
+La cache scarta letture tardive di altri progetti e richieste superate. JSON invalido
+disabilita la configurazione; solo `null` indica un file assente. Un catalogo invariato
+conserva l'identità del motore anche se vengono riletti i metadati del progetto. La sessione
+locale vive con lo store, non col montaggio del canvas: vista Codice e rimontaggio React
+non perdono le prese visione; Stop invalida lo stato anche senza canvas. Il cambio di
+catalogo/progetto rilascia modello e sottoscrizione; HMR del modulo rilascia le sessioni.
+Nel canvas i nodi originali sono ripristinati in Modifica o a prova ferma; i controlli
+interni non attivano gli eventi del contenitore né un ciclo
+di selezione. HMR sullo stesso nodo o su nuove istanze conserva la nuova bozza.
+
+Scelte: un motore nel parent evita contatori e storici divergenti tra widget; il rendering
+nel figlio evita di indebolire la same-origin policy. Il costo è un protocollo asincrono
+con handshake e cancellazioni, invece di chiamate DOM dirette. Questa architettura non
+abilita né autentica il servizio industriale e non modifica il progetto a ogni campione.
+Restano il collaudo desktop/touch, carico prolungato, packaging senza checkout e il passaggio
+equivalente dei vecchi renderer preview di faceplate/trend al ponte: il loro accesso DOM
+opzionale viene protetto dagli errori, non reso cross-origin. Archivio, audit e autorizzazioni
+server restano gate separati. Riesaminare volumi/frequenza degli snapshot prima di estendere
+questa prova a grandi cataloghi o ai futuri modelli Optix.
+
 ## Interfaccia intuitiva e barra comandi
 
 La quantità di funzioni WinCC e Optix non deve trasformarsi in una fila di icone indecifrabili. La

@@ -12,10 +12,12 @@ describe("generatore nuovo pannello standard", () => {
     const file = (path: string) => files.find((item) => item.path === path)!.content;
     expect(JSON.parse(file("framecraft.alarms.json")).alarms).toEqual([]);
     expect(file("runtime/gateway.mjs")).toContain('from "./alarm-engine.mjs"'); expect(file("runtime/start-gateway.mjs")).toContain("framecraft.alarms.json");
-    expect(file("src/framecraftGateway.ts")).toContain('from "../runtime/alarm-engine.mjs"'); expect(file("src/framecraftHmiAlarmControl.ts")).toContain('from "../runtime/alarm-engine.mjs"');
+    expect(file("src/framecraftGateway.ts")).toContain('from "../runtime/alarm-engine.mjs"'); expect(file("src/framecraftHmiAlarmControl.ts")).toContain('from "./framecraftHmiAlarmControl.mjs"');
+    expect(file("src/framecraftHmiAlarmControl.mjs")).toContain('from "../runtime/alarm-labels.mjs"'); expect(file("src/framecraftHmiAlarmControl.d.mts")).toContain('from "../runtime/alarm-engine.mjs"');
     expect(file("src/framecraftHmiRuntime.ts")).toContain("acceptAlarmSnapshot(snapshot.alarms)"); expect(file("runtime/alarm-engine.d.mts")).toContain("AlarmSnapshot");
     expect(file("src/framecraftHmiRuntime.ts")).toContain("[data-hmi-alarm-root]");
-    expect(file("src/framecraftHmiAlarmSummary.ts")).toContain('from "../runtime/alarm-engine.mjs"'); expect(file("src/framecraftHmiAlarmSummary.ts")).toContain('from "./framecraftHmiAlarmControl"'); expect(file("src/framecraftHmiAlarmSummary.ts")).not.toContain("../../runtime/");
+    expect(file("src/framecraftHmiAlarmSummary.ts")).toContain('from "./framecraftHmiAlarmSummary.mjs"'); expect(file("src/framecraftHmiAlarmSummary.mjs")).toContain('from "./framecraftHmiAlarmControl.mjs"'); expect(file("src/framecraftHmiAlarmSummary.d.mts")).toContain('from "../runtime/alarm-engine.mjs"'); expect(file("src/framecraftHmiAlarmSummary.ts")).not.toContain("../../runtime/");
+    expect(file("src/framecraftHmiAlarmSummary.d.mts")).toContain('import("./framecraftHmiAlarmControl.mjs")'); expect(file("src/framecraftHmiAlarmSummary.d.mts")).not.toContain('"./hmi-alarm-control.mjs"');
     expect(file("src/framecraftHmiRuntime.ts")).toContain('data-hmi-type="HmiAlarmIndicator"'); expect(file("src/framecraftHmiRuntime.ts")).toContain('data-hmi-type="HmiAlarmLine"'); expect(file("src/App.tsx")).toContain("routes: [...new Set(Object.values(screenRoutes))]");
   });
   it("inserisce la scelta iniziale nel progetto HMI desktop+mobile, non nei pannelli solo desktop", () => {

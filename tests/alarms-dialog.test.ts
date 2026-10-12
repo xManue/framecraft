@@ -50,6 +50,14 @@ describe("Allarmi: configurazione e prova guidata", () => {
     vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue({ ...initial(), source: '{"secret":"NEVER_PRINT_ME' }); await mount();
     expect(document.body.textContent).toContain("JSON allarmi non valido"); expect(document.body.textContent).not.toContain("NEVER_PRINT_ME"); expect(desktopBridge.saveAlarmConfiguration).not.toHaveBeenCalled();
   });
+  it("un file PLC vuoto blocca la prova e non conserva una configurazione precedente", async () => {
+    useEditorStore.getState().installAlarmPreviewConfiguration(project, initial());
+    expect(useEditorStore.getState().alarmPreviewConfiguration).toBeDefined();
+    vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue({ ...initial(), plc: "" }); await mount();
+    expect(button("Riprova lettura")).toBeDefined();
+    expect(useEditorStore.getState().alarmPreviewConfiguration).toBeUndefined();
+    expect(desktopBridge.saveAlarmConfiguration).not.toHaveBeenCalled();
+  });
   it("conflitto conserva la bozza; Escape chiede di scartare e focus torna al chiamante", async () => {
     const opener = document.createElement("button"); document.body.append(opener); opener.focus(); await mount(); await createAlarm();
     vi.mocked(desktopBridge.saveAlarmConfiguration).mockRejectedValue(new Error("Catalogo cambiato. Ricarica.")); await click(button("Salva allarmi")); expect(field("Nome").value).toBe("Motor"); expect(document.body.textContent).toContain("Ricarica");

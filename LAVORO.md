@@ -3814,6 +3814,52 @@ Verifiche del 5 ottobre 2026:
   Controllo TypeScript mirato del canvas e delle fixture passato con i tipi Vite del
   progetto; le fixture usano i formati effettivi del pannello, non valori di viewport inventati.
 
+### 109. Allarmi inseriti nella pagina: prova locale tramite ponte (2026-10-12)
+
+- Indicatore, riga e lista allarmi inseriti nel pannello rispondono ai valori di prova
+  dell'editor in **Usa il pannello**. Un solo motore locale per il progetto, con stato,
+  qualità e revisione; nessun driver o collegamento PLC. Segnale non compilato = sconosciuto,
+  non Good/zero. La dicitura SIMULAZIONE distingue la prova dal Runtime autonomo.
+- **Modifica** chiude popup e ripristina nodi/stile della bozza. **Ferma la prova locale**
+  azzera storico/prese visione locali; catalogo o progetto nuovo invalida il motore vecchio.
+  Dialogo Allarmi e cache leggono la coppia catalogo/variabili nativa validata, senza
+  indirizzi PLC nel modello. JSON errato non diventa catalogo vuoto, `null` è il solo file
+  assente; letture tardive/superate non installano dati. Le modifiche non salvate del dialogo
+  restano separate. Lettura corretta e salvataggio aggiornano la prova del canvas.
+- Confine cross-origin verificato: renderer nel ponte dell'iframe, non chiamate DOM
+  dal parent. Handshake, origine esatta, finestra, pageId e instanceId; il token pagina
+  cambia anche sulle transizioni React rilevate senza cambio URL. Il motore conserva
+  lo stato tra pagine ma rifiuta comandi di token, istanza, occorrenza o revisione vecchi.
+  Richieste limitate, timeout con rimedio e nessun retry; i click interni non propagano
+  eventi HMI del contenitore. Stop/Modifica chiudono le attese, nessun replay.
+- Controlli condivisi in helper ESM dichiarati e copiati dalla pipeline standard, inclusi
+  nella mappa risorse desktop. Dipendenze esplicite per la generazione del ponte: il primo
+  test integrato ha rilevato i riferimenti riscritti dal caricatore Vite, corretti nel
+  prodotto senza sostituire il vero plugin nella fixture. Sessione del motore nello store,
+  acquisita in effect per lo StrictMode reale dell'app: la vista Codice non perde la prova,
+  Stop funziona anche senza canvas e il cambio catalogo/progetto rilascia la sottoscrizione.
+  HMR sullo stesso nodo o su un nuovo host preserva la
+  bozza aggiornata. Clear Alarm Log di prova disabilitato con spiegazione, aggiornamenti
+  idempotenti senza loop. Etichette popup uniche senza richiedere randomUUID al browser.
+- Esito presa visione/errori conservato durante aggiornamenti identici; nuova selezione,
+  stato o istanza non conserva esiti vecchi. Accesso, reazioni, visibilità/CSS continuano
+  a bloccare i dettagli e le azioni. Queste protezioni locali non sostituiscono RBAC/audit server.
+- Verifiche mirate: modello/cache, dialogo/menu, pannello PLC, controlli/riepiloghi e
+  pipeline; dieci casi Canvas con vero ponte e accesso DOM negato, inclusi StrictMode,
+  origini/finestre/snapshot falsi, vecchie pagine/istanze, stop e timeout. Coperti anche
+  metadati riletti e smontaggio per vista Codice senza perdita dello stato locale.
+  Verificate simulazione/eventi e selezione senza ciclo; prova separata del generatore dopo bundling,
+  test Rust delle sole risorse desktop, TypeScript e build editor isolata. I mock usano
+  firme/API e formati reali; nessuna suite generale, agente, contatto CPU o riavvio dell'app.
+  Restano gli avvisi di chunk/import misti già presenti.
+- Guide e architettura aggiornate con flusso, contratto, alternative e limiti; riferimenti
+  Siemens V21 ricontrollati. WCU-CTL-03/04 restano PARZIALE. Il rendering preview diretto
+  precedente di faceplate/trend è protetto dall'accesso negato, non dichiarato cross-origin
+  funzionante: il trasferimento al ponte è il prossimo lavoro pertinente. Nessun pannello
+  vecchio migrato, nuova dipendenza, asset vendor o export reale nel repository. Licenze,
+  packaging senza checkout, archivio/audit e collaudo visivo/touch/CPU restano aperti;
+  Optix e AI non vengono dichiarati completati.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

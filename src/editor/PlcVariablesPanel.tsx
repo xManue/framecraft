@@ -28,6 +28,7 @@ const catalogName = "framecraft.plc.json";
 export function PlcVariablesPanel() {
   const project = useEditorStore((state) => state.project);
   const tagCatalog = useEditorStore((state) => state.plcVariables);
+  const alarmConfiguration = useEditorStore((state) => state.alarmPreviewConfiguration);
   const [variables, setVariables] = useState<PlcVariableDefinition[]>([]);
   const [query, setQuery] = useState("");
   const [editingName, setEditingName] = useState<string>();
@@ -182,9 +183,10 @@ export function PlcVariablesPanel() {
         if (task.trigger.kind === "tag" && task.trigger.tag) tags.add(task.trigger.tag);
       }
       for (const log of dataLogCatalog.logs.filter((log) => log.enabled)) for (const logged of log.tags) { if (logged.tag) tags.add(logged.tag); if (logged.mode === "on-demand" && logged.triggerTag) tags.add(logged.triggerTag); }
+      for (const alarm of alarmConfiguration?.catalog.alarms ?? []) if (alarm.enabled) tags.add(alarm.tag);
       return [...tags].sort();
     },
-    [document, simulation.elements, simulation.values, simulation.status, tagCatalog, dataLogCatalog, scriptCatalog, previewPath],
+    [document, simulation.elements, simulation.values, simulation.status, tagCatalog, dataLogCatalog, scriptCatalog, previewPath, alarmConfiguration],
   );
 
   const qualityLabel = (qualityCode: number) => {
@@ -219,15 +221,15 @@ export function PlcVariablesPanel() {
         sono quelle del `ValueConverter` dello standard, e quello che non si puo' risolvere lo dice. */}
     <div className="plc-sim">
       <strong className="plc-sim-heading">Valori di prova · locale</strong>
-      <small>Prova colori, visibilità, testi, eventi e curve dell’HMI inserendo valori a mano. Non esegue il programma PLC e non legge né invia comandi alla macchina.</small>
+      <small>Prova colori, visibilità, testi, eventi, curve e allarmi inserendo valori a mano. Non esegue il programma PLC e non legge né invia comandi alla macchina. Per i controlli allarme seleziona Usa il pannello; Modifica ripristina la bozza.</small>
       <button className={`plc-sim-run ${simulation.on ? "on" : ""}`} onClick={() => setSimulationOn(!simulation.on)} disabled={!project}>
         {simulation.on ? <Square size={14} /> : <Play size={14} />}{simulation.on ? "Ferma la prova locale" : "Attiva valori di prova"}
       </button>
       {simulation.on && <>
         <small>
           {simulatedTags.length
-            ? `${simulatedTags.length} tag usati dalla pagina, dagli script o dai Data Log. Per un booleano prova 0 e 1; per le curve X/Y puoi usare un array JSON come [10,20,30]. Questi valori restano locali, non sono acquisiti dal PLC.`
-            : "Questa pagina e i Data Log non usano ancora tag nelle animazioni, negli eventi o nei trend."}
+            ? `${simulatedTags.length} tag usati dalla pagina, dagli script, dai Data Log o dagli allarmi. Per un booleano prova 0 e 1; per le curve X/Y puoi usare un array JSON come [10,20,30]. Questi valori restano locali, non sono acquisiti dal PLC.`
+            : "Questa pagina, i Data Log e il catalogo allarmi non usano ancora tag di prova."}
         </small>
         {simulatedTags.map((tag) => <div className="plc-sim-tag" key={tag}>
           <label className="plc-sim-row">
