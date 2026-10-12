@@ -88,6 +88,49 @@ server, audit, commissioning CPU, limiti/carico, traduzioni, shelving e operazio
 multiple. Gli allarmi di eventi OPC UA/controller non sono i trigger scalari qui
 implementati. La prova locale è isolata e non certifica il funzionamento sulla macchina.
 
+### Indicatori e righe allarme
+
+Da **Aggiungi → HMI e PLC** inserisci **Indicatore allarmi** o **Riga allarmi**.
+Nell'Inspector, **PLC e dati** configura titolo, classi, zone, priorità minima,
+pendenti/attivi/da prendere in visione, colori e visibilità. Classi e zone usano
+nomi esatti separati da virgole; vuoto include tutte. La configurazione vive
+in `data-hmi-alarm-summary`, versione 1, non in un nuovo tag PLC.
+La prova locale di **Pannello → Allarmi** mostra i due riepiloghi sullo stesso
+motore della lista. Nel canvas di modifica resta la bozza selezionabile; il
+servizio reale non viene collegato automaticamente all'anteprima dell'editor.
+
+L'indicatore distingue guasti attivi, presa visione mancante e conferma di rientro.
+Il conteggio può mostrare anche i rientrati ancora da gestire. **Mostra anche senza
+allarmi** disattivato nasconde il contenuto solo quando tutti i segnali filtrati
+sono validi e non ci sono pendenti. Un catalogo vuoto, un filtro senza risultati,
+segnali sconosciuti/Bad o la perdita del servizio non diventano una spunta verde.
+L'ultimo guasto rimane visibile con lo stato di qualità; senza servizio il
+contatore corrente mostra `—`. Il lampeggio è opzionale, limitato all'icona e
+disattivato quando il dispositivo richiede la riduzione del movimento.
+
+La riga mostra 1–3 messaggi, classe, ID, stato e **ora di attivazione**, locale o UTC.
+Non prende in visione gli allarmi dalla riga. Per una zona critica si può scegliere
+la priorità più alta sull'intero insieme filtrato: è una scelta Framecraft, non una
+replica esatta dell'ordinamento Siemens delle sole righe già visualizzate.
+Riferimenti: [Alarm indicator V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/displaying-and-using-alarms-rt-unified/alarm-indicator-rt-unified)
+e [Alarm line V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/displaying-and-using-alarms-rt-unified/alarm-line-rt-unified).
+
+**Apri dettaglio filtrato** è opzionale (spento per la riga). Il popup conserva
+classe/zona/priorità/modalità, ricerca e selezione revisionata della lista; apertura
+e navigazione non prendono in visione né scrivono segnali PLC. Una destinazione
+esterna o assente non viene aperta. Presa visione/conferma restano negate senza
+l'autorizzazione server descritta sopra. Il popup si chiude al cambio dei filtri,
+rimozione dell'oggetto o blocco di visibilità/interazione, anche via CSS/script.
+Esc chiude e restituisce il focus; i click interni non eseguono quelli del contenitore.
+
+JSON errato = messaggio esplicito, nessun fallback che ignori i filtri. La sostituzione
+in Inspector richiede conferma; configurazioni calcolate nel codice restano intatte.
+**Nuovo pannello standard** copia i moduli e passa al Runtime le route disponibili,
+senza inserire automaticamente gli oggetti nelle schermate macchina o migrare pannelli
+vecchi. Misure e stile dei due nuovi controlli sono Framecraft, non dati di export reali.
+Restano object model/eventi/proprietà completi, profili, altri fusi e timestamp di
+modifica, oltre ai gate di archivio, identità/audit e collaudo visivo/touch/CPU.
+
 ## Abilitazione in un pannello standard
 
 La pipeline copia servizio, client, tipi, proxy e questa guida. Per impostazione iniziale:

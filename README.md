@@ -141,6 +141,27 @@ History is a bounded **service-session history**, not a persistent industrial ar
 Server RBAC/audit, restart recovery, shelving, batch acknowledgment, multilingual texts,
 controller alarm events and commissioning remain open. No new npm dependencies.
 
+### Add an alarm indicator or alarm line
+
+Choose **Aggiungi → HMI e PLC → Indicatore allarmi** or **Riga allarmi**, then open
+the selected element's **PLC e dati** tab. Set its title, classes/areas (exact names,
+comma-separated; empty means all), minimum priority and the alarm state to display.
+The indicator separates active faults, pending acknowledgment and pending confirmation.
+The line shows one to three messages, ordered by recency or global priority, with
+activation time in local time or UTC. It is read-only unless you enable the separate detail view.
+
+**Mostra allarmi** opens a filtered list; an optional linked page must exist in the
+project. Viewing does not send PLC commands. Acknowledgment follows the existing server
+authorization rules. Hidden/disabled elements cannot act through an already-open popup.
+No catalog, unknown quality or a lost service is never shown as a healthy zero.
+**Pannello → Allarmi → Prova locale** shows both controls alongside the test list,
+without connecting to a PLC. Configuration is persisted in JSX and supports undo.
+Invalid JSON or a code-computed configuration is never silently replaced.
+
+New standard panels include both controllers; existing panels and machine templates
+are not rewritten. The object model, complete vendor properties and physical touch/CPU
+commissioning remain open. See the [runtime guide](runtime/README.md#indicatori-e-righe-allarme).
+
 ## Pages and categories
 
 Use **Pagine → Nuova pagina** for the full-size creation window: choose a name,

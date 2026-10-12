@@ -14,6 +14,8 @@ import { hmiTrendAttribute, hmiTrendIssues, parseHmiTrendConfig } from "./hmiTre
 import { hmiDataLogCatalogIssues, type HmiDataLogCatalog } from "./hmiDataLogs";
 import { hmiFunctionTrendAttribute, hmiFunctionTrendIssues, parseHmiFunctionTrendConfig } from "./hmiFunctionTrend";
 import { alarmCatalogIssues } from "./hmiAlarms";
+import { hmiAlarmSummaryAttribute, hmiAlarmSummaryIssues } from "./hmiAlarmSummary";
+import { parseSource } from "../source-parser/parseSource";
 
 /** I quattro modi in cui un pannello si rompe senza dirlo, e che si vedono solo aprendo la pagina
  * giusta al momento sbagliato: un tag che non esiste, una dinamica lasciata a meta', due pagine con
@@ -106,6 +108,19 @@ function checkFaceplates(file: string, source: string, catalog: HmiFaceplateCata
       issues.push({ kind: "faceplate-invalid", severity: issue.severity, file, line, message: `${fileName(file)}:${line} — ${issue.message}` });
     }
   }
+}
+
+function checkAlarmSummaries(file: string, source: string, routes: readonly string[] | undefined, issues: HmiIssue[]) {
+  if (!source.includes(hmiAlarmSummaryAttribute)) return;
+  try {
+    for (const node of Object.values(parseSource(file, source).nodes)) {
+      const line = node.source.line;
+      if (node.dynamicProps.includes(hmiAlarmSummaryAttribute)) { issues.push({ kind: "alarm-invalid", severity: "warning", file, line, message: `${fileName(file)} — configurazione riepilogo calcolata nel codice: non verificabile prima del Runtime.` }); continue; }
+      if (!Object.prototype.hasOwnProperty.call(node.props, hmiAlarmSummaryAttribute)) continue;
+      let config: unknown; try { config = JSON.parse(String(node.props[hmiAlarmSummaryAttribute])); } catch { config = undefined; }
+      for (const message of hmiAlarmSummaryIssues(config, routes)) issues.push({ kind: "alarm-invalid", severity: "error", file, line, message: `${fileName(file)} — ${message}` });
+    }
+  } catch { issues.push({ kind: "alarm-invalid", severity: "error", file, line: 1, message: `${fileName(file)} — impossibile leggere la configurazione allarmi: correggi prima il JSX della pagina.` }); }
 }
 
 function checkTrends(file: string, source: string, variables: readonly PlcVariableDefinition[] | undefined, dataLogs: HmiDataLogCatalog | undefined, issues: HmiIssue[]) {
@@ -410,6 +425,7 @@ export function validateHmiProject({ sources, variables, resources, scripts, fac
     checkDynamizations(file, source, declared, resources, scripts, scope, issues, variables);
     checkEvents(file, source, declared, scripts, scope, issues);
     checkFaceplates(file, source, faceplates, variables, issues);
+    checkAlarmSummaries(file, source, knownRoutes ? [...knownRoutes] : undefined, issues);
     checkTrends(file, source, variables, dataLogs, issues);
     checkMultilingualTexts(file, source, resources, issues);
     checkNavigation(file, source, knownRoutes, issues);

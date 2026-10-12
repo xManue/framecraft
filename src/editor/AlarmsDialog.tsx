@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Bell, Plus, Save, Trash2, X } from "lucide-react";
 import { alarmCatalogIssues, createAlarmEngine, emptyAlarmCatalog, parseAlarmCatalog, type AlarmCatalog, type AlarmConfigurationSnapshot, type AlarmDefinition } from "../core/hmiAlarms";
 import { createHmiAlarmControl } from "../core/hmiAlarmControl";
+import { createHmiAlarmSummary, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryAttribute, serializeHmiAlarmSummaryConfig } from "../core/hmiAlarmSummary";
 import { parsePlcCatalog } from "../core/plcVariables";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
@@ -18,7 +19,7 @@ export function AlarmsDialog({ onClose }: { onClose(): void }) {
   const [snapshot, setSnapshot] = useState<AlarmConfigurationSnapshot>(), [catalog, setCatalog] = useState<AlarmCatalog>(emptyAlarmCatalog), [base, setBase] = useState("");
   const [selected, setSelected] = useState(0), [error, setError] = useState(""), [message, setMessage] = useState(""), [phase, setPhase] = useState<"loading" | "ready" | "saving" | "error">("loading");
   const [confirmClose, setConfirmClose] = useState(false), [testValue, setTestValue] = useState("0"), [quality, setQuality] = useState("192");
-  const dialog = useRef<HTMLElement>(null), view = useRef<HTMLDivElement>(null), mounted = useRef(true), sequence = useRef(0), titleId = useId();
+  const dialog = useRef<HTMLElement>(null), view = useRef<HTMLDivElement>(null), indicatorView = useRef<HTMLDivElement>(null), lineView = useRef<HTMLDivElement>(null), mounted = useRef(true), sequence = useRef(0), titleId = useId();
   const closeRef = useRef(onClose); closeRef.current = onClose;
   const dirty = !!snapshot && JSON.stringify(catalog) !== base;
   const variables = useMemo(() => snapshot?.plc ? parsePlcCatalog(snapshot.plc) : [], [snapshot?.plc]);
@@ -58,9 +59,14 @@ export function AlarmsDialog({ onClose }: { onClose(): void }) {
   useEffect(() => {
     if (!engine || !view.current) return;
     const control = createHmiAlarmControl(view.current, async (command) => { engine.action(command, "Prova locale"); });
-    const update = () => control.update({ ...engine.snapshot(), actionsEnabled: true });
+    const summaries = ([['indicator', indicatorView.current], ['line', lineView.current]] as const).flatMap(([kind, host]) => {
+      if (!host) return [];
+      host.setAttribute(hmiAlarmSummaryAttribute, serializeHmiAlarmSummaryConfig({ ...defaultHmiAlarmSummaryConfig(kind), openDetails: false }));
+      return [createHmiAlarmSummary(host, { action: async () => { throw new Error("Usa la lista della prova per la presa visione."); } })];
+    });
+    const update = () => { const next = { ...engine.snapshot(), actionsEnabled: true }; control.update(next); for (const summary of summaries) summary.update(next); };
     update(); const unsubscribe = engine.subscribe(update);
-    return () => { unsubscribe(); control.dispose(); };
+    return () => { unsubscribe(); control.dispose(); for (const summary of summaries) summary.dispose(); };
   }, [engine]);
   const change = (next: AlarmCatalog) => { setCatalog(next); setMessage(""); setConfirmClose(false); };
   const patch = (values: Partial<AlarmDefinition>) => change({ ...catalog, alarms: catalog.alarms.map((item, index) => index === selected ? { ...item, ...values } : item) });
@@ -92,7 +98,7 @@ export function AlarmsDialog({ onClose }: { onClose(): void }) {
         {selectedAlarm.trigger.kind === "bit" ? <><Field label="Numero bit (Bool = 0)" value={selectedAlarm.trigger.bit} number min={0} max={63} onChange={(value) => { if (selectedAlarm.trigger.kind === "bit") patch({ trigger: { ...selectedAlarm.trigger, bit: value === "" ? NaN : Number(value) } }); }} /><Field label="Attivo quando il bit vale" value={selectedAlarm.trigger.activeWhen} choices={[{ value: "set", label: "1" }, { value: "clear", label: "0" }]} onChange={(value) => { if (selectedAlarm.trigger.kind === "bit") patch({ trigger: { ...selectedAlarm.trigger, activeWhen: value as "set" | "clear" } }); }} /></> : <><Field label="Soglia" value={selectedAlarm.trigger.limit} number onChange={(value) => { if (selectedAlarm.trigger.kind !== "bit") patch({ trigger: { ...selectedAlarm.trigger, limit: value === "" ? NaN : Number(value) } }); }} /><Field label="Isteresi di rientro" value={selectedAlarm.trigger.hysteresis} number min={0} onChange={(value) => { if (selectedAlarm.trigger.kind !== "bit") patch({ trigger: { ...selectedAlarm.trigger, hysteresis: value === "" ? NaN : Number(value) } }); }} /></>}
       </div><label className="alarm-check"><input type="checkbox" checked={selectedAlarm.enabled} onChange={(event) => patch({ enabled: event.target.checked })} /> Allarme abilitato</label><button type="button" onClick={() => { change({ ...catalog, alarms: catalog.alarms.filter((_, index) => index !== selected) }); setSelected(0); }}><Trash2 size={16} /> Rimuovi dal catalogo</button></>}
       {!!issues.length && <div className="alarm-error" role="alert"><strong>Prima di salvare:</strong><ul>{issues.slice(0, 20).map((issue, index) => <li key={index}>{issue.path}: {issue.message}</li>)}</ul>{issues.length > 20 && <p>Altri {issues.length - 20} problemi nel catalogo.</p>}</div>}
-      <details open><summary>Prova locale · nessuna connessione PLC</summary><p>Questa prova usa gli stessi stati del servizio. Cambiare la configurazione azzera solo la prova locale.</p><div className="alarm-fields"><Field label="Valore del segnale selezionato" value={testValue} onChange={setTestValue} /><Field label="Qualità del segnale" value={quality} choices={[{ value: "192", label: "Buona" }, { value: "0", label: "Non valida / connessione persa" }, { value: "", label: "Sconosciuta" }]} onChange={setQuality} /><button type="button" disabled={!engine || !selectedAlarm} onClick={() => engine?.updateSample({ tag: selectedAlarm.tag, value: testValue, qualityCode: quality === "" ? undefined : Number(quality) })}>Applica segnale di prova</button></div>{engine ? <div ref={view} className="alarm-test-view" /> : <p>Completa i campi e correggi gli errori per attivare la prova.</p>}</details>
+      <details open><summary>Prova locale · nessuna connessione PLC</summary><p>Questa prova usa gli stessi stati del servizio. Cambiare la configurazione azzera solo la prova locale.</p><div className="alarm-fields"><Field label="Valore del segnale selezionato" value={testValue} onChange={setTestValue} /><Field label="Qualità del segnale" value={quality} choices={[{ value: "192", label: "Buona" }, { value: "0", label: "Non valida / connessione persa" }, { value: "", label: "Sconosciuta" }]} onChange={setQuality} /><button type="button" disabled={!engine || !selectedAlarm} onClick={() => engine?.updateSample({ tag: selectedAlarm.tag, value: testValue, qualityCode: quality === "" ? undefined : Number(quality) })}>Applica segnale di prova</button></div>{engine ? <><div className="alarm-preview-summaries"><div ref={indicatorView} data-hmi-type="HmiAlarmIndicator" /><div ref={lineView} data-hmi-type="HmiAlarmLine" /></div><div ref={view} className="alarm-test-view" /></> : <p>Completa i campi e correggi gli errori per attivare la prova.</p>}</details>
     </fieldset>}
     <footer>{confirmClose ? <><span>Hai modifiche non salvate. Vuoi scartarle?</span><button type="button" onClick={() => setConfirmClose(false)}>Continua modifica</button><button type="button" onClick={onClose}>Scarta e chiudi</button></> : <><span>Storico limitato alla sessione; archivio e autorizzazioni industriali restano da completare.</span><button type="button" disabled={!dirty || phase !== "ready" || !!issues.length} onClick={() => void save()}><Save size={16} /> {phase === "saving" ? "Salvataggio…" : "Salva allarmi"}</button></>}</footer>
   </section></div>, document.body);

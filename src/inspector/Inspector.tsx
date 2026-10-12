@@ -16,6 +16,7 @@ import { plcVariablesMatching } from "../core/tagImport";
 import { availableDynamizedProperties, hmiDynamizationAttribute, newHmiDynamization, parseHmiDynamizations, removeHmiDynamization, replaceHmiDynamization, serializeHmiDynamizations } from "../core/hmiDynamizations";
 import { HmiIndirectTagEditor } from "./HmiIndirectTagEditor";
 import { hmiFlashingContrast, hmiFlashingProperties } from "../core/hmiFlashing";
+import { defaultHmiAlarmSummaryConfig, hmiAlarmSummaryAttribute, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, type HmiAlarmSummaryConfig } from "../core/hmiAlarmSummary";
 import { inspectHmiExpression } from "../core/hmiExpression";
 import { inspectHmiScript } from "../core/hmiScript";
 import { hmiScriptFunctions, hmiScriptGlobalDefinition, hmiScriptVariables } from "../core/hmiScriptModules";
@@ -29,6 +30,7 @@ import { highlightShapePath, insertPathAnchor, movePathAnchor, pathAnchors, path
 import { useEditorStore, type FaceplateMigrationTarget, type ListBinding, type SelectionProblem } from "../state/editorStore";
 import { translatedCoordinate } from "./coordinates";
 import { borderStyles, formatBorder, parseBorder, type BorderParts } from "./borderValue";
+import "./alarmSummary.css";
 
 function rounded(value: number) {
   return Math.round(value * 10) / 10;
@@ -629,6 +631,36 @@ function HmiFaceplateSection({ node, expandSignal }: { node: EditorNode; expandS
     </>}
     {issues.map((issue, index) => <p key={index} className={`dynamization-expression-status ${issue.severity === "error" ? "error" : ""}`}>{issue.message}</p>)}
     <button type="button" className="link-button" onClick={() => setLeftPanel("faceplates")}>Gestisci tipi e versioni</button>
+  </InspectorSection>;
+}
+
+function HmiAlarmSummarySection({ node, expandSignal }: { node: EditorNode; expandSignal?: number }) {
+  const update = useEditorStore((state) => state.updateAttribute), pages = useEditorStore((state) => state.pages);
+  const [resetAllowed, setResetAllowed] = useState(false);
+  const [formError, setFormError] = useState("");
+  const kind = node.props["data-hmi-type"] === "HmiAlarmLine" ? "line" : "indicator";
+  if (!["HmiAlarmLine", "HmiAlarmIndicator"].includes(String(node.props["data-hmi-type"]))) return null;
+  const dynamic = node.dynamicProps.includes(hmiAlarmSummaryAttribute), raw = node.props[hmiAlarmSummaryAttribute], config = dynamic ? undefined : raw === undefined ? defaultHmiAlarmSummaryConfig(kind) : parseHmiAlarmSummaryConfig(raw);
+  const write = (value: HmiAlarmSummaryConfig) => { const issues = hmiAlarmSummaryIssues(value); if (issues.length) { setFormError(issues[0]); return; } setFormError(""); void update(hmiAlarmSummaryAttribute, serializeHmiAlarmSummaryConfig(value)); };
+  return <InspectorSection title={kind === "line" ? "Riga allarmi" : "Indicatore allarmi"} icon={<Info size={12} />} initiallyOpen expandSignal={expandSignal}>
+    <p className="inspector-hint">Riceve gli allarmi del servizio o della prova locale. Zero non significa segnale valido: la qualità resta sempre visibile. Nessun comando PLC automatico.</p>
+    {formError && <p role="alert">{formError} Il valore precedente è conservato.</p>}
+    {!config ? <><p role="alert">{dynamic ? "Configurazione calcolata nel codice: per modificarla qui devi sostituirla esplicitamente." : "Configurazione non valida. Non viene sostituita automaticamente."}</p><label><input type="checkbox" checked={resetAllowed} onChange={(event) => setResetAllowed(event.target.checked)} /> Sostituisci la configurazione attuale</label><button type="button" disabled={!resetAllowed} onClick={() => write(defaultHmiAlarmSummaryConfig(kind))}>Usa configurazione iniziale</button></> : (() => {
+      const patch = (values: Partial<HmiAlarmSummaryConfig>) => write({ ...config, ...values });
+      const names = (value: string) => value.split(",").map((name) => name.trim()).filter(Boolean);
+      return <div className="alarm-summary-fields">
+        <DynamizationTextField label="Titolo riepilogo" value={config.caption} onCommit={(caption) => patch({ caption })} />
+        <DynamizationTextField label="Classi (separate da virgola)" value={config.classes.join(", ")} placeholder="Vuoto = tutte" onCommit={(value) => patch({ classes: names(value) })} />
+        <DynamizationTextField label="Zone (separate da virgola)" value={config.areas.join(", ")} placeholder="Vuoto = tutte" onCommit={(value) => patch({ areas: names(value) })} />
+        <DynamizationTextField label="Priorità minima" value={String(config.minPriority)} onCommit={(value) => patch({ minPriority: value.trim() === "" ? NaN : Number(value) })} />
+        <label className="dynamization-field"><span>Quali allarmi</span><select value={config.mode} onChange={(event) => patch({ mode: event.target.value as HmiAlarmSummaryConfig["mode"] })}><option value="pending">Pendenti · anche rientrati da gestire</option><option value="active">Solo guasti ancora attivi</option><option value="unacknowledged">Da prendere in visione</option></select></label>
+        {kind === "line" ? <><label className="dynamization-field"><span>Ordine dei messaggi</span><select value={config.order} onChange={(event) => patch({ order: event.target.value as HmiAlarmSummaryConfig["order"] })}><option value="latest">Più recenti prima</option><option value="priority">Priorità più alta prima</option></select></label><label className="dynamization-field"><span>Numero di messaggi</span><select value={config.rows} onChange={(event) => patch({ rows: Number(event.target.value) })}>{[1, 2, 3].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label className="dynamization-field"><span>Orario dei messaggi</span><select value={config.timeZone} onChange={(event) => patch({ timeZone: event.target.value as "local" | "UTC" })}><option value="local">Locale del dispositivo</option><option value="UTC">UTC</option></select></label></> : <label className="dynamization-field"><span>Contenuto indicatore</span><select value={config.display} onChange={(event) => patch({ display: event.target.value as HmiAlarmSummaryConfig["display"] })}><option value="icon-text">Icona e contatore</option><option value="icon">Solo icona · stato sempre visibile</option><option value="text">Solo contatore</option></select></label>}
+        <div className="trend-option-grid"><label><input type="checkbox" checked={config.showAlways} onChange={(event) => patch({ showAlways: event.target.checked })} /> Mostra anche senza allarmi</label><label><input type="checkbox" checked={config.openDetails} onChange={(event) => patch({ openDetails: event.target.checked })} /> Apri dettaglio filtrato</label>{kind === "indicator" && <label><input type="checkbox" checked={config.flash} onChange={(event) => patch({ flash: event.target.checked })} /> Lampeggia con allarmi pendenti</label>}</div>
+        <div className="property-pair">{([['alarmColor', 'Colore allarme'], ['normalColor', 'Colore senza allarmi']] as const).map(([name, label]) => <label className="dynamization-field" key={name}><span>{label}</span><input type="color" value={config[name]} onChange={(event) => patch({ [name]: event.target.value })} /></label>)}</div>
+        {config.openDetails && <label className="dynamization-field"><span>Pagina collegata al dettaglio</span><select value={config.pageRoute ?? ""} onChange={(event) => patch({ pageRoute: event.target.value || undefined })}><option value="">Nessuna · solo elenco filtrato</option>{pages.map((page) => <option key={page.route} value={page.route}>{page.name}</option>)}{config.pageRoute && !pages.some((page) => page.route === config.pageRoute) && <option value={config.pageRoute}>{config.pageRoute} · non presente</option>}</select></label>}
+        {hmiAlarmSummaryIssues(config, pages.map((page) => page.route)).map((issue, index) => <p role="alert" key={index}>{issue}</p>)}
+      </div>;
+    })()}
   </InspectorSection>;
 }
 
@@ -1870,6 +1902,7 @@ export function Inspector() {
       <HmiDynamizationSection node={node} expandSignal={expandSignal} />
       <HmiFaceplateSection node={node} expandSignal={expandSignal} />
       <HmiTrendSection node={node} expandSignal={expandSignal} />
+      <HmiAlarmSummarySection key={node.id} node={node} expandSignal={expandSignal} />
       <HmiFunctionTrendSection node={node} expandSignal={expandSignal} />
     </div>
     <div key={`${selectionKey}:details`} id="element-panel-details" role="tabpanel" aria-labelledby="element-tab-details" hidden={tab !== "details"}>

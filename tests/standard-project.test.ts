@@ -15,6 +15,8 @@ describe("generatore nuovo pannello standard", () => {
     expect(file("src/framecraftGateway.ts")).toContain('from "../runtime/alarm-engine.mjs"'); expect(file("src/framecraftHmiAlarmControl.ts")).toContain('from "../runtime/alarm-engine.mjs"');
     expect(file("src/framecraftHmiRuntime.ts")).toContain("acceptAlarmSnapshot(snapshot.alarms)"); expect(file("runtime/alarm-engine.d.mts")).toContain("AlarmSnapshot");
     expect(file("src/framecraftHmiRuntime.ts")).toContain("[data-hmi-alarm-root]");
+    expect(file("src/framecraftHmiAlarmSummary.ts")).toContain('from "../runtime/alarm-engine.mjs"'); expect(file("src/framecraftHmiAlarmSummary.ts")).toContain('from "./framecraftHmiAlarmControl"'); expect(file("src/framecraftHmiAlarmSummary.ts")).not.toContain("../../runtime/");
+    expect(file("src/framecraftHmiRuntime.ts")).toContain('data-hmi-type="HmiAlarmIndicator"'); expect(file("src/framecraftHmiRuntime.ts")).toContain('data-hmi-type="HmiAlarmLine"'); expect(file("src/App.tsx")).toContain("routes: [...new Set(Object.values(screenRoutes))]");
   });
   it("inserisce la scelta iniziale nel progetto HMI desktop+mobile, non nei pannelli solo desktop", () => {
     const files = standardProjectFiles({ machineName: "Linea {A} <test>", layout: "desktop-mobile", sections: ["main"] });

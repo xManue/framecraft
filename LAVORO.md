@@ -3753,6 +3753,48 @@ Verifiche del 5 ottobre 2026:
   Clear Alarm Log disabilitato con spiegazione. Nessuna dichiarazione di parità o
   idoneità alla produzione; collaudo visivo desktop/touch e CPU reali ancora richiesto.
 
+### 107. Indicatori e righe allarme nel pannello autonomo (2026-10-12)
+
+- Nuovi componenti **Indicatore allarmi** e **Riga allarmi** in Aggiungi → HMI e PLC.
+  Misure/stile Framecraft, non attribuiti all'export macchina; nessun tag, valore,
+  indirizzo o collegamento inventato e nessuna riscrittura dei template reali.
+- Configurazione nell'Inspector → PLC e dati: titolo, classi/zone/priorità minima,
+  pendenti/attivi/da prendere in visione, contenuto, colori, visibilità e lampeggio
+  opzionale; riga con 1–3 messaggi, recenza/priorità globale e orario locale/UTC.
+  Persistenza JSX, undo/redo e selezione dello stesso elemento verificati con store reale.
+  JSON errato o configurazione calcolata nel codice richiedono sostituzione esplicita.
+  Campi errati non corrompono il contratto precedente. Il controllo progetto legge
+  anche gli attributi JSX con stringa in espressione, senza eseguire codice o commenti.
+- Motore condiviso: contatori separati per guasto, presa visione e conferma, qualità
+  sconosciuta/Bad e servizio perso espliciti. Nessun catalogo/filtro vuoto/segnale
+  assente mostrato come stato normale. La scomparsa è ammessa solo con tutti i
+  segnali validi e nessun pendente; perdita qualità conserva l'ultimo guasto.
+- Dettaglio filtrato con focus contenuto/restituito ed Esc, route solo interne
+  presenti, aggiornamenti live e presa visione sul percorso server già protetto.
+  Nessun comando PLC all'apertura/navigazione, replay o click del contenitore.
+  Cambio filtri, rimozione, blocchi dell'utente e CSS/script chiudono il popup;
+  selezione nascosta dai filtri e oggetto non utilizzabile non autorizzano azioni.
+- Pannello → Allarmi mostra i due riepiloghi nella prova locale, sullo stesso motore
+  della tabella, senza rete. Pipeline standard copia i moduli, riscrive gli import
+  e passa le route al Runtime; aggiornamenti DOM senza loop e ripristino bozza allo
+  smontaggio. Non vengono migrati automaticamente pannelli esistenti.
+- Verifiche mirate: 134 casi in sette file interessati passati nelle selezioni
+  specifiche; prova separata del generatore dopo bundling, TypeScript e build editor
+  isolata passati. Due aspettative della nuova fixture Inspector corrette per
+  identità AST a intervalli variabili e salvataggio reale dello store: nessuna
+  modifica al prodotto per aggirarle. Ultimo stato di errore controllato anche
+  per colore/descrizione accessibile, che non conservano il precedente stato normale.
+  Il blocco temporaneo delle approvazioni ha impedito una prima build, non eseguita;
+  servizio successivamente ripristinato e controlli completati. Avvisi preesistenti
+  di chunk/import misti restano. Nessuna suite generale, agente, nuova dipendenza,
+  contatto CPU o riavvio dell'app dell'utente; export macchina e segreti restano locali.
+- README e guida Runtime aggiornati secondo Siemens V21, distinguendo i miglioramenti
+  Framecraft (priorità globale e dettaglio opzionale della riga) dal comportamento vendor.
+  WCU-CTL-04 passa a PARZIALE, non FATTO: mancano object model/eventi/proprietà completi,
+  profili, altri fusi/timestamp di modifica e verifica visiva/touch. Archivio/recovery,
+  identità/RBAC/audit e commissioning restano aperti; Optix/AI e gate industriali non
+  vengono dichiarati completati da questa tranche.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

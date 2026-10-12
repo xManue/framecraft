@@ -114,6 +114,8 @@ describe("collaudo separato della generazione Runtime di produzione", () => {
     const fx = modules.get("src/framecraftHmiFunctionTrend.ts")!;
     const { JSDOM } = createRequire(import.meta.url)("jsdom") as { JSDOM: new () => { window: { document: Document; close(): void } } };
     const browser = new JSDOM();
+    const alarmSummary = modules.get("src/framecraftHmiAlarmSummary.ts") as typeof import("../src/core/hmiAlarmSummary"), summaryHost = browser.window.document.createElement("div"); summaryHost.dataset.hmiType = "HmiAlarmIndicator"; summaryHost.textContent = "Bozza"; browser.window.document.body.append(summaryHost);
+    const summary = alarmSummary.createHmiAlarmSummary(summaryHost, { action: async () => { throw new Error("Nessuna azione implicita prevista"); } }); summary.update(alarms.snapshot()); expect(summaryHost.textContent).toContain("1 · pendenti"); summaryHost.querySelector<HTMLButtonElement>("button")!.click(); expect(browser.window.document.querySelector('[data-hmi-alarm-popup]')?.textContent).toContain("Controlla"); summary.dispose(); expect(summaryHost.textContent).toBe("Bozza"); expect(browser.window.document.querySelector('[data-hmi-alarm-popup]')).toBeNull();
     const host = browser.window.document.createElement("div"); host.setAttribute("data-hmi-function-trend", JSON.stringify({ caption: "Produzione", trends: [{ x: { tag: "X" }, y: { tag: "Y" } }] }));
     const render = fx.renderHmiFunctionTrendControl as (host: HTMLElement, values: Record<string, string>, options: { now: number }) => boolean;
     expect(render(host, { X: "10", Y: "20" }, { now: 1_000 })).toBe(true); expect(host.textContent).toContain("1 punti");

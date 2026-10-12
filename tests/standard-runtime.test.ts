@@ -20,9 +20,10 @@ import { createHmiGatewayClient, HmiGatewayCommandError } from "../src/core/hmiG
 import { connectionDiagnostic } from "../runtime/connection-diagnostics.mjs";
 import * as alarmEngine from "../runtime/alarm-engine.mjs";
 import { createHmiAlarmControl } from "../src/core/hmiAlarmControl";
+import { createHmiAlarmSummary, defaultHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig } from "../src/core/hmiAlarmSummary";
 
 interface GeneratedRuntime {
-  installFramecraftHmiRuntime(options: { navigate: (target: string) => void; trace: (message: string) => void; error: (message: string) => void }): () => void;
+  installFramecraftHmiRuntime(options: { navigate: (target: string) => void; routes?: readonly string[]; trace: (message: string) => void; error: (message: string) => void }): () => void;
   runtimeTagValues(): Readonly<Record<string, string>>;
   setRuntimeTagValue(tag: string, value: string | number | boolean): void;
   runtimeTagStatus(): Readonly<Record<string, { qualityCode?: number; qualityKnown?: boolean; timeStamp?: number; lastError?: number }>>;
@@ -200,6 +201,7 @@ function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCa
     if (id === "./framecraftHmiTagBinding") return loadGeneratedTagBindings();
     if (id === "../runtime/alarm-engine.mjs") return alarmEngine;
     if (id === "./framecraftHmiAlarmControl") return { createHmiAlarmControl };
+    if (id === "./framecraftHmiAlarmSummary") return { createHmiAlarmSummary };
     throw new Error(`Dipendenza generata non prevista: ${id}`);
   });
   return module.exports as unknown as GeneratedRuntime;
@@ -247,6 +249,44 @@ afterEach(() => {
 });
 
 describe("Runtime del pannello standard generato", () => {
+  it("indicatore e riga locali condividono stati, dettaglio filtrato e navigazione senza click del contenitore", async () => {
+    const tags = [{ name: "Signal1", dataType: "Bool", access: "read" }, { name: "Signal2", dataType: "Bool", access: "read" }];
+    const catalog = { ...alarmEngine.emptyAlarmCatalog(), alarms: tags.map((tag, i) => ({ id: "a" + i, name: "Motor " + i, text: "Controlla motore " + i, area: "Zona " + i, tag: tag.name, className: "Alarm_CTH", enabled: true, priority: i, trigger: { kind: "bit" as const, bit: 0, activeWhen: "set" as const } })) };
+    const parent = document.createElement("div"), indicator = document.createElement("div"), line = document.createElement("div");
+    const config = { ...defaultHmiAlarmSummaryConfig(), areas: ["Zona 0"], pageRoute: "/alarms" };
+    indicator.dataset.hmiType = "HmiAlarmIndicator"; indicator.setAttribute("data-hmi-alarm-summary", serializeHmiAlarmSummaryConfig(config)); indicator.textContent = "Bozza indicatore";
+    line.dataset.hmiType = "HmiAlarmLine"; line.setAttribute("data-hmi-alarm-summary", serializeHmiAlarmSummaryConfig({ ...defaultHmiAlarmSummaryConfig("line"), rows: 3 })); line.textContent = "Bozza riga";
+    parent.setAttribute("data-hmi-events", serializeHmiEvents([{ event: "Tapped", script: 'HMIRuntime.Trace("unexpected-summary-parent");' }])); parent.append(indicator, line); document.body.append(parent);
+    const runtime = loadGeneratedRuntime(undefined, undefined, false, tags, catalog), trace = vi.fn(), error = vi.fn(), navigate = vi.fn(), stop = runtime.installFramecraftHmiRuntime({ navigate, routes: ["/alarms"], trace, error });
+    const button = (scope: ParentNode, label: string) => [...scope.querySelectorAll<HTMLButtonElement>("button")].find((node) => node.textContent === label)!;
+    try {
+      expect(indicator.textContent).toContain("sconosciuti"); runtime.setRuntimeTagValue("Signal1", 1); runtime.setRuntimeTagValue("Signal2", 1); expect(indicator.textContent).toContain("1 · pendenti"); expect(line.textContent).toContain("Controlla motore 1");
+      button(indicator, "Mostra allarmi").click(); const popup = document.querySelector<HTMLElement>('[data-hmi-alarm-popup]')!; expect(popup.textContent).toContain("Controlla motore 0"); expect(popup.textContent).not.toContain("Controlla motore 1");
+      button(popup, "Motor 0").click(); button(popup, "Prendi in visione").click(); await vi.waitFor(() => expect(indicator.textContent).toContain("0 da prendere in visione")); expect(runtime.runtimeTagValues().Signal1).toBe("1"); expect(indicator.textContent).toContain("1 attivi");
+      indicator.setAttribute("data-hmi-alarm-summary", serializeHmiAlarmSummaryConfig({ ...config, areas: ["Missing"] })); await vi.waitFor(() => expect(document.querySelector('[data-hmi-alarm-popup]')).toBeNull()); expect(indicator.textContent).toContain("Nessun allarme configurato per questi filtri");
+      indicator.setAttribute("data-hmi-alarm-summary", serializeHmiAlarmSummaryConfig(config)); await vi.waitFor(() => expect(indicator.textContent).toContain("1 · pendenti")); button(indicator, "Mostra allarmi").click(); button(document, "Apri pagina collegata").click(); expect(navigate).toHaveBeenCalledWith("/alarms");
+      button(indicator, "Mostra allarmi").click(); parent.style.visibility = "hidden"; await vi.waitFor(() => expect(document.querySelector('[data-hmi-alarm-popup]')).toBeNull()); expect(button(indicator, "Mostra allarmi").disabled).toBe(true);
+      parent.style.visibility = "visible"; await vi.waitFor(() => expect(button(indicator, "Mostra allarmi").disabled).toBe(false)); button(indicator, "Mostra allarmi").click(); indicator.remove(); await vi.waitFor(() => expect(document.querySelector('[data-hmi-alarm-popup]')).toBeNull()); expect(indicator.textContent).toBe("Bozza indicatore");
+      await settleEvents(); expect(trace.mock.calls.some(([message]) => message.includes("unexpected-summary-parent"))).toBe(false); expect(error).not.toHaveBeenCalled();
+    } finally { stop(); }
+    expect(line.textContent).toBe("Bozza riga"); expect(document.querySelector('[data-hmi-alarm-summary-root]')).toBeNull();
+  });
+  it("i riepiloghi usano soltanto gli allarmi del servizio e conservano il guasto alla perdita della rete", async () => {
+    const tags = [{ name: "Signal", dataType: "Bool", access: "read" }], catalog = { ...alarmEngine.emptyAlarmCatalog(), alarms: [{ id: "alarm", name: "Motor", text: "Controlla motore", tag: "Signal", className: "Alarm_CTH", enabled: true, priority: 1, trigger: { kind: "bit" as const, bit: 0, activeWhen: "set" as const } }] };
+    const engine = alarmEngine.createAlarmEngine(catalog, tags); engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); let available = true;
+    const request = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => { if (!available) throw new TypeError("NETWORK_PRIVATE_DETAILS"); return new Response(JSON.stringify({ version: 1, allowWrites: false, connections: [{ id: "mqtt", state: "connected" }], tags: tags.map((tag) => ({ ...tag, connectionId: "mqtt", writable: false })), samples: [], alarms: { ...engine.snapshot(), actionsEnabled: false } })); }); vi.stubGlobal("fetch", request);
+    const indicator = document.createElement("div"), line = document.createElement("div"); indicator.dataset.hmiType = "HmiAlarmIndicator"; line.dataset.hmiType = "HmiAlarmLine"; document.body.append(indicator, line);
+    const runtime = loadGeneratedRuntime(undefined, undefined, true, tags, catalog), stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error: vi.fn() });
+    const button = (scope: ParentNode, label: string) => [...scope.querySelectorAll<HTMLButtonElement>("button")].find((node) => node.textContent === label)!;
+    try {
+      await vi.waitFor(() => expect(indicator.textContent).toContain("1 · pendenti")); expect(line.textContent).toContain("Controlla motore"); runtime.setRuntimeTagValue("Signal", 0); expect(indicator.textContent).toContain("1 · pendenti");
+      button(indicator, "Mostra allarmi").click(); const popup = document.querySelector<HTMLElement>('[data-hmi-alarm-popup]')!; button(popup, "Motor").click(); expect(button(popup, "Prendi in visione").disabled).toBe(true);
+      engine.updateSample({ tag: "Signal", value: "0", qualityCode: 0 }); await vi.waitFor(() => expect(indicator.textContent).toContain("segnali non validi")); expect(line.textContent).toContain("Controlla motore");
+      available = false; await vi.waitFor(() => expect(indicator.textContent).toContain("Servizio non disponibile")); expect(indicator.textContent).toContain("— · pendenti"); expect(line.textContent).toContain("Controlla motore"); expect(popup.textContent).toContain("non sono aggiornati"); expect(button(popup, "Prendi in visione").disabled).toBe(true); expect(document.body.textContent).not.toContain("NETWORK_PRIVATE_DETAILS");
+      expect(request.mock.calls.every(([url, init]) => String(url).endsWith("/snapshot") && init?.method !== "POST")).toBe(true);
+    } finally { stop(); }
+    expect(document.querySelector('[data-hmi-alarm-popup]')).toBeNull();
+  });
   it("Scheduler allarmi del servizio non riproduce storico, polling vecchi o eventi dopo il riavvio", async () => {
     const tags = [{ name: "Signal", dataType: "Bool", access: "read" }];
     const catalog = { ...alarmEngine.emptyAlarmCatalog(), alarms: [{ id: "alarm", name: "Motor alarm", text: "Controlla motore", tag: "Signal", className: "Alarm_CTH", enabled: true, priority: 1, trigger: { kind: "bit" as const, bit: 0, activeWhen: "set" as const } }] };

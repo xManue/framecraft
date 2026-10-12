@@ -1,0 +1,3 @@
+.alarm-summary-fields { display: grid; gap: 10px; }
+.alarm-summary-fields input:not([type="checkbox"]), .alarm-summary-fields select, .alarm-summary-fields button { min-height: 44px; }
+.alarm-summary-fields .trend-option-grid label { min-height: 44px; display: flex; align-items: center; gap: 8px; }

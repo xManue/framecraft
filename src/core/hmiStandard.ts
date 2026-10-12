@@ -478,7 +478,7 @@ export const itemTypes = [
   "HmiRectangle", "HmiTextBox", "HmiButton", "HmiIOField", "HmiGraphicView", "HmiLine", "HmiPolygon",
   "HmiCircle", "HmiTouchArea", "HmiEllipse", "HmiFaceplateContainer", "HmiSymbolicIOField",
   "HmiScreenWindow", "HmiCustomWidgetContainer", "HmiWebControl", "HmiDataGridViewPart", "HmiBar",
-  "HmiGauge", "HmiRadioButtonGroup", "HmiAlarmControl",
+  "HmiGauge", "HmiRadioButtonGroup", "HmiAlarmControl", "HmiAlarmIndicator", "HmiAlarmLine",
 ] as const;
 
 export type ItemType = (typeof itemTypes)[number];

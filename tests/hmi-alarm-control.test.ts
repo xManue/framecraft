@@ -7,6 +7,20 @@ const variables = [{ name: "Signal", dataType: "Bool", access: "read" }];
 const button = (host: HTMLElement, name: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === name)!;
 afterEach(() => { document.body.replaceChildren(); });
 describe("vista allarmi operativi", () => {
+  it("la selezione nascosta da ricerca o filtro esterno non autorizza azioni", () => {
+    const host = document.createElement("div"); document.body.append(host); const engine = createAlarmEngine(catalog, variables), action = vi.fn(); let included = true;
+    const control = createHmiAlarmControl(host, action, () => included);
+    engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); control.update({ ...engine.snapshot(), actionsEnabled: true }); button(host, "Motor").click();
+    const search = host.querySelector<HTMLInputElement>('input[type="search"]')!; search.value = "missing"; search.dispatchEvent(new Event("input"));
+    expect(button(host, "Prendi in visione").disabled).toBe(true); button(host, "Prendi in visione").click(); expect(action).not.toHaveBeenCalled();
+    search.value = ""; search.dispatchEvent(new Event("input")); expect(button(host, "Prendi in visione").disabled).toBe(false);
+    included = false; control.update({ ...engine.snapshot(), actionsEnabled: true }); expect(button(host, "Prendi in visione").disabled).toBe(true); expect(host.querySelectorAll("select option")).toHaveLength(1); control.dispose();
+  });
+  it.each(["visibility", "display", "pointerEvents"])("il blocco CSS %s del contenitore impedisce anche azioni programmatiche", (property) => {
+    const parent = document.createElement("div"), host = document.createElement("div"); parent.append(host); document.body.append(parent); const engine = createAlarmEngine(catalog, variables), action = vi.fn(), control = createHmiAlarmControl(host, action);
+    engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); control.update({ ...engine.snapshot(), actionsEnabled: true }); button(host, "Motor").click();
+    Object.assign(parent.style, { [property]: property === "visibility" ? "hidden" : "none" }); button(host, "Prendi in visione").click(); expect(action).not.toHaveBeenCalled(); control.update({ ...engine.snapshot(), actionsEnabled: true }); expect(button(host, "Prendi in visione").disabled).toBe(true); control.dispose();
+  });
   it("i blocchi dell'elemento valgono anche per i comandi interni", () => {
     const parent = document.createElement("div"), host = document.createElement("div"); parent.append(host); document.body.append(parent); const engine = createAlarmEngine(catalog, variables), action = vi.fn(), control = createHmiAlarmControl(host, action);
     engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); control.update({ ...engine.snapshot(), actionsEnabled: true }); button(host, "Motor").click(); expect(button(host, "Prendi in visione").disabled).toBe(false);

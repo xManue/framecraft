@@ -4,6 +4,7 @@ import { hmiPopupJsx } from "../core/hmiPopups";
 import { hmiShellJsx } from "../core/hmiShells";
 import { hmiTrendJsx } from "../core/hmiTrend";
 import { hmiFunctionTrendJsx } from "../core/hmiFunctionTrend";
+import { hmiAlarmSummaryJsx } from "../core/hmiAlarmSummary";
 import {
   Activity, AlertTriangle, AlignLeft, BarChart3, Bell, Box, CheckSquare, CircleDot,
   CircleGauge, Clock3, Columns3, Database, FileText, Folder, Gauge, Grid3X3, Heading, Image,
@@ -119,6 +120,8 @@ const definitions: EditorComponentDefinition[] = [
   component("hmi-gauge", "Gauge", "Il gauge 130x184 della barra grande mobile.", "Standard HMI", Gauge, hmiObjectJsx("hmi-gauge"), "gauge analogico"),
   component("hmi-radio-group", "Scelta", "Il gruppo 154x69 della 2001: e' sempre di questa misura, tutte e tre le volte che compare.", "Standard HMI", CircleDot, hmiObjectJsx("hmi-radio-group"), "radio button group scelta"),
   component("hmi-alarm-control", "Lista allarmi", "Il controllo allarmi 1197x624, sempre a (16,55): sei colonne con le larghezze del JSON.", "Standard HMI", AlertTriangle, hmiObjectJsx("hmi-alarm-control"), "alarm control lista allarmi"),
+  component("hmi-alarm-indicator", "Indicatore allarmi", "Contatore pendenti/attivi/presa visione con filtri per classe, zona e priorità; dettaglio senza scritture PLC.", "HMI e PLC", Bell, hmiAlarmSummaryJsx("indicator"), "alarm indicator contatore guasti zona manutenzione"),
+  component("hmi-alarm-line", "Riga allarmi", "Da uno a tre messaggi per recenza o priorità, con qualità e dettaglio opzionale. Misure Framecraft, non copiate dall'export macchina.", "HMI e PLC", Rows3, hmiAlarmSummaryJsx("line"), "alarm line riepilogo messaggi guasti"),
   component("hmi-machine-callout", "Targhetta motore", "Mettila accanto allo screen della macchina, cambia M0000 col nome vero e collega azione e variabile PLC dall'Inspector.", "Standard HMI", Wrench, hmiObjectJsx("hmi-machine-callout"), "motore targhetta richiamo m2400 dispositivo organo"),
   component("hmi-callout-line", "Linea richiamo", "La linea tratteggiata 156x55 della 2081: collega la targhetta al punto giusto dello screen.", "Standard HMI", Minus, hmiObjectJsx("hmi-callout-line"), "linea tratteggiata targhetta motore richiamo"),
   component("hmi-layout-choice", "Scelta sessione", "La 0001_Choice: i due quadrati 170x170 che scelgono desktop o mobile, col logo e la riga di avviso. 1280x800.", "Standard HMI", Columns3, hmiShellJsx("hmi-layout-choice"), "guscio avvio scelta sessione"),

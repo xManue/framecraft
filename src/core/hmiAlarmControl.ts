@@ -1,6 +1,15 @@
 import { alarmStateLabel, type AlarmCommand, type AlarmRow, type AlarmSnapshot } from "../../runtime/alarm-engine.mjs";
 
-export function createHmiAlarmControl(host: HTMLElement, action: (command: AlarmCommand) => Promise<void>) {
+export function hmiAlarmElementBlocked(host: HTMLElement): boolean {
+  if (!host.isConnected || host.closest('[disabled], [hidden], [inert], [aria-disabled="true"]')) return true;
+  for (let node: HTMLElement | null = host; node; node = node.parentElement) {
+    const style = host.ownerDocument.defaultView?.getComputedStyle(node);
+    if (style?.display === "none" || style?.visibility === "hidden" || style?.visibility === "collapse" || style?.pointerEvents === "none") return true;
+  }
+  return false;
+}
+
+export function createHmiAlarmControl(host: HTMLElement, action: (command: AlarmCommand) => Promise<void>, rowFilter?: (row: AlarmRow) => boolean) {
   const original = [...host.childNodes], oldStyle = host.getAttribute("style"), oldRole = host.getAttribute("role"), oldLabel = host.getAttribute("aria-label");
   host.dataset.hmiAlarmRoot = ""; host.setAttribute("role", "region"); host.setAttribute("aria-label", "Allarmi operativi");
   Object.assign(host.style, { background: "#333333", color: "#ffffff", display: "flex", flexDirection: "column", overflow: "hidden", fontSize: "16px" });
@@ -28,16 +37,16 @@ export function createHmiAlarmControl(host: HTMLElement, action: (command: Alarm
   const matches = (className: string, zone: string, values: string[]) => (!match || className === match[1]) && (!area.value || zone === area.value) && values.join(" ").toLocaleLowerCase().includes(search.value.toLocaleLowerCase());
   const render = () => {
     if (disposed) return;
-    const zones = [...new Set((snapshot?.rows ?? []).map((row) => row.area ?? "").filter(Boolean))].sort();
+    const zones = [...new Set((snapshot?.rows ?? []).filter((row) => !rowFilter || rowFilter(row)).map((row) => row.area ?? "").filter(Boolean))].sort();
     const zoneSignature = JSON.stringify(zones);
     if (area.dataset.zones !== zoneSignature) { const value = area.value; area.replaceChildren(make("option", "Tutte"), ...zones.map((zone) => { const item = make("option", zone); item.value = zone; return item; })); area.options[0].value = ""; area.value = zones.includes(value) ? value : ""; area.dataset.zones = zoneSignature; }
     notice.textContent = !connected ? "Servizio non disponibile: gli stati mostrati non sono aggiornati. Controlla la diagnostica PLC." : !snapshot?.rows.length ? "Nessun allarme configurato. Nell'editor apri Pannello → Allarmi." : source === "history" ? "Storico della sessione del servizio, non archivio industriale. Eventi usciti dal limite: " + snapshot.historyDropped : "Presa visione ≠ guasto risolto. Il rientro dipende dal segnale PLC.";
     const rows = invalidFilter ? [] : source === "history"
       ? [...(snapshot?.history ?? [])].reverse().filter((row) => matches(row.alarmClass, row.area, [row.name, row.text, row.id]))
-      : [...(snapshot?.rows ?? [])].filter((row) => (row.pending || row.quality !== "good") && matches(row.className, row.area ?? "", [row.name, row.text, row.id])).sort((a, b) => b.priority - a.priority || (b.activatedAt ?? 0) - (a.activatedAt ?? 0));
+      : [...(snapshot?.rows ?? [])].filter((row) => (row.pending || row.quality !== "good") && (!rowFilter || rowFilter(row)) && matches(row.className, row.area ?? "", [row.name, row.text, row.id])).sort((a, b) => b.priority - a.priority || (b.activatedAt ?? 0) - (a.activatedAt ?? 0));
     page = Math.min(page, Math.max(0, Math.ceil(rows.length / 100) - 1)); previous.disabled = page === 0; next.disabled = (page + 1) * 100 >= rows.length;
     const current = snapshot?.rows.find((row) => row.id === selected?.id), unchanged = current && current.occurrence === selected?.occurrence && current.revision === selected?.revision;
-    const canAct = connected && snapshot?.actionsEnabled && source !== "history" && unchanged && current?.pending && !busy && !host.closest('[disabled], [hidden], [inert], [aria-disabled="true"]');
+    const canAct = connected && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && unchanged && current?.pending && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id]) && !busy && !hmiAlarmElementBlocked(host);
     ack.disabled = !canAct || current!.acknowledged || current!.acknowledgment === "none";
     confirm.disabled = !canAct || current!.active !== false || !current!.acknowledged || current!.acknowledgment !== "reset" || current!.quality !== "good";
     ack.hidden = source === "history"; confirm.hidden = source === "history";
@@ -62,7 +71,7 @@ export function createHmiAlarmControl(host: HTMLElement, action: (command: Alarm
     if (focusedLabel) ([...body.querySelectorAll<HTMLButtonElement>("button")].find((node) => node.getAttribute("aria-label") === focusedLabel) ?? search).focus();
   };
   const act = async (kind: AlarmCommand["action"]) => {
-    if (!selected?.occurrence || busy || !connected || !snapshot?.actionsEnabled || host.closest('[disabled], [hidden], [inert], [aria-disabled="true"]') || (kind === "acknowledge" ? ack.disabled : confirm.disabled)) return;
+    if (!selected?.occurrence || busy || !connected || !snapshot?.actionsEnabled || hmiAlarmElementBlocked(host) || (kind === "acknowledge" ? ack.disabled : confirm.disabled)) return;
     const command = { alarmId: selected.id, occurrence: selected.occurrence, revision: selected.revision, action: kind };
     busy = true; render(); status.textContent = "Operazione in corso…";
     try { await action(command); if (!disposed) { selected = undefined; status.textContent = kind === "acknowledge" ? "Presa visione registrata. Il segnale di guasto non è stato modificato." : "Rientro confermato."; } }

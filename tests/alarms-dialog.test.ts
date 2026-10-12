@@ -36,10 +36,15 @@ describe("Allarmi: configurazione e prova guidata", () => {
     for (const input of document.querySelectorAll<HTMLInputElement>('input:not([type="checkbox"]), select')) expect(input.closest("label")).toBeTruthy();
   });
   it("prova locale del motore senza rete, rientro distinto dalla presa visione", async () => {
-    await mount(); await createAlarm(); await change("Valore del segnale selezionato", "1"); await click(button("Applica segnale di prova"));
+    await mount(); await createAlarm();
+    const indicator = document.querySelector<HTMLElement>('[data-hmi-type="HmiAlarmIndicator"]')!, line = document.querySelector<HTMLElement>('[data-hmi-type="HmiAlarmLine"]')!;
+    expect(indicator.textContent).toContain("sconosciuti"); expect(indicator.querySelector('[data-hmi-alarm-summary-state="normal"]')).toBeNull();
+    await change("Valore del segnale selezionato", "1"); await click(button("Applica segnale di prova"));
+    expect(indicator.textContent).toContain("1 · pendenti"); expect(line.textContent).toContain("Controlla motore"); expect(document.querySelector('[data-hmi-alarm-popup]')).toBeNull();
     expect(document.body.textContent).toContain("Attivo"); await click(button("Motor")); await click(button("Prendi in visione")); expect(document.body.textContent).toContain("preso in visione");
-    await change("Valore del segnale selezionato", "0"); await change("Qualità del segnale", "0"); await click(button("Applica segnale di prova")); expect(document.body.textContent).toContain("segnale non valido"); expect(document.body.textContent).toContain("Attivo");
-    await change("Qualità del segnale", "192"); await click(button("Applica segnale di prova")); expect(document.body.textContent).toContain("Nessun allarme corrispondente"); expect(desktopBridge.saveAlarmConfiguration).not.toHaveBeenCalled();
+    expect(indicator.textContent).toContain("0 da prendere in visione");
+    await change("Valore del segnale selezionato", "0"); await change("Qualità del segnale", "0"); await click(button("Applica segnale di prova")); expect(document.body.textContent).toContain("segnale non valido"); expect(document.body.textContent).toContain("Attivo"); expect(line.textContent).toContain("Controlla motore");
+    await change("Qualità del segnale", "192"); await click(button("Applica segnale di prova")); expect(document.body.textContent).toContain("Nessun allarme corrispondente"); expect(indicator.textContent).toContain("segnali validi"); expect(indicator.textContent).toContain("0 · pendenti"); expect(line.textContent).not.toContain("Controlla motore"); expect(desktopBridge.saveAlarmConfiguration).not.toHaveBeenCalled();
   });
   it("JSON invalido non si mostra grezzo né si sovrascrive", async () => {
     vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue({ ...initial(), source: '{"secret":"NEVER_PRINT_ME' }); await mount();
