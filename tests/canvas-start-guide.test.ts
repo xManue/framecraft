@@ -50,6 +50,46 @@ beforeEach(async () => {
 afterEach(async () => { await unmountAll(); vi.unstubAllGlobals(); });
 
 describe("suggerimento iniziale della modifica visuale", () => {
+  it("rispetta la disattivazione persistente e si può rivedere esplicitamente", async () => {
+    const { useEditorGuidance, editorGuidanceStorageKey } = await import("../src/state/editorGuidance");
+    await act(async () => useEditorGuidance.getState().setEnabled(false));
+    const host = await mount(true);
+    expect(host.querySelector(".canvas-start-guide")).toBeNull();
+    expect(localStorage.getItem(storageKey)).toBeNull();
+    expect(localStorage.getItem(editorGuidanceStorageKey)).toBe("0");
+    await act(async () => useEditorGuidance.getState().replay());
+    expect(host.querySelector(".canvas-start-guide")).not.toBeNull();
+    await act(async () => store.setState({ previewPath: "/settings" }));
+    expect(host.querySelector(".canvas-start-guide")).toBeNull();
+    await act(async () => store.setState({ previewPath: "/main" }));
+    expect(host.querySelector(".canvas-start-guide")).toBeNull();
+    await act(async () => useEditorGuidance.getState().replay());
+    expect(host.querySelector(".canvas-start-guide")).not.toBeNull();
+  });
+  it("nasconde subito il suggerimento e riabilitarlo non azzera la prima apparizione", async () => {
+    const { useEditorGuidance } = await import("../src/state/editorGuidance");
+    const host = await mount();
+    expect(host.querySelector(".canvas-start-guide")).not.toBeNull();
+    await act(async () => useEditorGuidance.getState().setEnabled(false));
+    expect(host.querySelector(".canvas-start-guide")).toBeNull();
+    await act(async () => useEditorGuidance.getState().setEnabled(true));
+    expect(host.querySelector(".canvas-start-guide")).toBeNull();
+  });
+  it("la richiesta di rivederlo aspetta una pagina pronta e funziona anche senza memoria locale", async () => {
+    const { useEditorGuidance } = await import("../src/state/editorGuidance");
+    await mount();
+    await unmountAll();
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new DOMException("denied", "SecurityError"); });
+    store.setState({ interactionMode: "navigate" });
+    await act(async () => { expect(useEditorGuidance.getState().replay()).toContain("questa sessione"); });
+    const host = await mount();
+    expect(host.querySelector(".canvas-start-guide")).toBeNull();
+    await act(async () => store.setState({ interactionMode: "edit" }));
+    expect(host.querySelector(".canvas-start-guide")).not.toBeNull();
+    await unmountAll();
+    expect((await mount()).querySelector(".canvas-start-guide")).toBeNull();
+    vi.restoreAllMocks();
+  });
   it("appare al primo accesso e resta sulla prima pagina senza chiudersi per un normale render", async () => {
     const host = await mount(true);
     expect(host.querySelector(".canvas-start-guide")?.textContent).toContain("Clicca un elemento");

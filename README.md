@@ -76,8 +76,13 @@ click a combination and press replacement keys. Each command accepts up to three
 combinations. Remove all combinations to disable its shortcut; save to apply the draft.
 Resetting defaults changes the draft, not the saved preferences until you save.
 
-The editor keeps preferences locally across projects. Menus and **Comandi rapidi**
-display the saved keys. **Ctrl+K** opens command search; arrows select a command and
+The editor keeps preferences locally across projects. **Aiuto e suggerimenti** lets you disable the one-time
+visual editing hint or explicitly replay it once. **Apri guida rapida** opens the same
+guide as the Help menu, including MQTT/OPC UA setup, diagnostics and safety limits.
+Errors and safety notices cannot be hidden through this preference. Free snapping
+(grid step 0) is retained after reopening the app.
+
+Menus and **Comandi rapidi** display the saved keys. **Ctrl+K** opens command search; arrows select a command and
 Enter executes it. The same bindings work inside the preview canvas and after changing
 pages. Duplicate bindings and common system/text-editing shortcuts are rejected.
 Undo/delete/duplicate are restricted to Modifica, and text fields retain their native

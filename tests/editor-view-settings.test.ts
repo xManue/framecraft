@@ -21,6 +21,13 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("preferenze dell'editor unico", () => {
+  it("conserva la griglia libera a un nuovo avvio", async () => {
+    localStorage.setItem("framecraft.view", JSON.stringify({ snap: { enabled: true, grid: 0 } }));
+    const { useEditorStore } = await import("../src/state/editorStore");
+    expect(useEditorStore.getState().snap).toEqual({ enabled: true, grid: 0 });
+    useEditorStore.getState().setUiDensity("grande");
+    expect(JSON.parse(localStorage.getItem("framecraft.view")!).snap.grid).toBe(0);
+  });
   it.each(["simple", "advanced"])("ignora la vecchia modalità %s senza perdere le altre preferenze", async (inspectorMode) => {
     const settings = {
       uiDensity: "compatta", paneSizes: { left: 245, inspector: 365 }, workLayout: "plc",

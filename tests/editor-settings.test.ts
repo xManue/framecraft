@@ -7,19 +7,22 @@ import { installEditorKeyboardShortcuts } from "../src/core/editorCommands";
 import { EditorSettings } from "../src/editor/EditorSettings";
 import { TopBar } from "../src/editor/TopBar";
 import { CommandPalette } from "../src/editor/CommandPalette";
+import { EditorHelp } from "../src/editor/EditorHelp";
 import { useEditorStore } from "../src/state/editorStore";
 import { editorShortcutsStorageKey, useEditorShortcuts } from "../src/state/editorShortcuts";
+import { editorGuidanceStorageKey, useEditorGuidance } from "../src/state/editorGuidance";
 
 const initial = useEditorStore.getState();
 let root: Root, host: HTMLDivElement, dispose: (() => void) | undefined;
 const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find(node => node.getAttribute("aria-label") === label || node.textContent === label)!;
 const press = (key: string, init: KeyboardEventInit = {}) => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
-function Frame() { const open = useEditorShortcuts(state => state.open); return createElement("div", null, createElement(TopBar), open && createElement(EditorSettings)); }
+function Frame() { const open = useEditorShortcuts(state => state.open), helpOpen = useEditorGuidance(state => state.helpOpen); return createElement("div", null, createElement(TopBar), open && createElement(EditorSettings), helpOpen && createElement(EditorHelp)); }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); localStorage.clear();
   useEditorStore.setState({ ...initial, project: { root: "C:/panel", name: "Panel" } as never, loading: false, exporting: false, reloadRecovery: undefined, interactionMode: "edit", history: [], future: [], multiSelection: [], paletteOpen: false,
     document: { file: "C:/panel/Page.jsx", source: "draft", roots: [], nodes: {}, version: 1 }, uiDensity: "normale", snap: { enabled: true, grid: 8 } });
   useEditorShortcuts.setState({ bindings: defaultEditorShortcuts(), open: false, section: "workspace" });
+  useEditorGuidance.setState({ enabled: true, seen: false, replayVersion: 0, helpOpen: false });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { dispose?.(); dispose = undefined; await act(async () => root.unmount()); host.remove(); useEditorStore.setState(initial, true); useEditorShortcuts.setState({ bindings: defaultEditorShortcuts(), open: false }); vi.restoreAllMocks(); });
@@ -78,5 +81,46 @@ describe("pagina impostazioni e comandi rapidi", () => {
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "diagnostica"); input.dispatchEvent(new Event("input", { bubbles: true })); });
     expect(host.querySelector("kbd")?.textContent).toBe("Ctrl + Alt + L");
     await act(async () => press("Enter")); expect(useEditorStore.getState().consoleOpen).toBe(true);
+  });
+  it("raccoglie aiuti e suggerimenti senza modificare il pannello", async () => {
+    useEditorShortcuts.setState({ open: true }); await act(async () => root.render(createElement(Frame)));
+    await act(async () => button("Aiuto e suggerimenti").click());
+    const toggle = document.querySelector<HTMLInputElement>('.editor-settings-toggle input')!;
+    await act(async () => toggle.click());
+    expect(useEditorGuidance.getState().enabled).toBe(false);
+    expect(localStorage.getItem(editorGuidanceStorageKey)).toBe("0");
+    await act(async () => button("Rivedi il suggerimento").click());
+    expect(useEditorGuidance.getState()).toMatchObject({ enabled: true, seen: false, replayVersion: 1 });
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("Comparirà una sola volta");
+    expect(useEditorStore.getState().document?.source).toBe("draft");
+    await act(async () => button("Apri guida rapida").click());
+    expect(useEditorShortcuts.getState().open).toBe(false);
+    expect(useEditorGuidance.getState().helpOpen).toBe(true);
+    expect(document.querySelector("#quick-help-title")?.textContent).toBe("Come modificare un pannello");
+    expect(document.querySelector("#editor-help-plc-guide")).not.toBeNull();
+  });
+  it("mantiene la bozza delle scorciatoie e permette di salvarla anche nelle altre sezioni", async () => {
+    useEditorShortcuts.setState({ open: true, section: "shortcuts" }); await act(async () => root.render(createElement(Frame)));
+    await act(async () => button("Cambia Ctrl + S per Salva la modifica corrente").click());
+    await act(async () => press("s", { ctrlKey: true, altKey: true }));
+    await act(async () => button("Aiuto e suggerimenti").click());
+    expect(button("Apri guida rapida").disabled).toBe(true);
+    await act(async () => button("Salva scorciatoie").click());
+    expect(useEditorShortcuts.getState().bindings.save).toEqual(["Mod+Alt+S"]);
+    expect(button("Apri guida rapida").disabled).toBe(false);
+  });
+  it("mantiene Tab ed Esc nella guida, lasciando accessibili anche i dettagli PLC", async () => {
+    useEditorGuidance.setState({ helpOpen: true }); await act(async () => root.render(createElement(Frame)));
+    const guide = document.querySelector<HTMLDetailsElement>("#editor-help-plc-guide")!;
+    await act(async () => press("Tab", { shiftKey: true }));
+    expect(document.activeElement).toBe(guide.querySelector("summary"));
+    await act(async () => { guide.open = true; });
+    button("Chiudi guida").focus();
+    await act(async () => press("Tab", { shiftKey: true }));
+    expect(document.activeElement?.textContent).toBe("OPC UA e messa in produzione");
+    await act(async () => press("Escape"));
+    expect(useEditorGuidance.getState().helpOpen).toBe(false);
+    expect(document.querySelector("#quick-help-title")).toBeNull();
+    expect(document.activeElement?.textContent).toContain("Aiuto");
   });
 });

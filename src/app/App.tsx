@@ -15,6 +15,8 @@ import { describeEditorMessage } from "../core/editorMessages";
 import { installEditorKeyboardShortcuts } from "../core/editorCommands";
 import { useEditorShortcuts } from "../state/editorShortcuts";
 import { EditorSettings } from "../editor/EditorSettings";
+import { EditorHelp } from "../editor/EditorHelp";
+import { useEditorGuidance } from "../state/editorGuidance";
 
 export function App() {
   return <EditorErrorBoundary><EditorApp /></EditorErrorBoundary>;
@@ -113,6 +115,7 @@ function EditorApp() {
   const paletteOpen = useEditorStore((state) => state.paletteOpen);
   const userAccessOpen = useEditorStore((state) => state.userAccessOpen);
   const settingsOpen = useEditorShortcuts((state) => state.open);
+  const helpOpen = useEditorGuidance((state) => state.helpOpen);
 
   useEffect(() => {
     if (!desktopAvailable) return;
@@ -153,6 +156,7 @@ function EditorApp() {
       {paletteOpen && <CommandPalette />}
       {userAccessOpen && <UserAccessWindow />}
       {settingsOpen && <EditorSettings />}
+      {helpOpen && <EditorHelp />}
     </>
   );
 }

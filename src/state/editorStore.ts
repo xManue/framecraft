@@ -416,7 +416,7 @@ function readViewSettings(): ViewSettings {
       viewport: isPanelFormat(stored.viewport) ? stored.viewport : defaultView.viewport,
       snap: {
         enabled: stored.snap?.enabled !== false,
-        grid: snapGrids.includes(Number(stored.snap?.grid)) ? Number(stored.snap?.grid) : defaultView.snap.grid,
+        grid: stored.snap?.grid === 0 || snapGrids.includes(Number(stored.snap?.grid)) ? Number(stored.snap?.grid) : defaultView.snap.grid,
       },
       paneSizes: {
         left: Number.isFinite(left) ? clampPane(left) : defaultView.paneSizes.left,

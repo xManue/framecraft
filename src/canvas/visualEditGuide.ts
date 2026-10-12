@@ -1,24 +1,32 @@
 import { useEffect, useRef, useState } from "react";
-
-export const visualEditGuideStorageKey = "framecraft.visual-edit-guide.seen.v1";
-let seenThisSession = false;
+import { useEditorGuidance, visualEditGuideStorageKey } from "../state/editorGuidance";
+export { visualEditGuideStorageKey } from "../state/editorGuidance";
 
 function alreadySeen() {
-  try { return seenThisSession || localStorage.getItem(visualEditGuideStorageKey) === "1"; }
-  catch { return seenThisSession; }
+  if (useEditorGuidance.getState().replayVersion > 0) return useEditorGuidance.getState().seen;
+  try { return useEditorGuidance.getState().seen || localStorage.getItem(visualEditGuideStorageKey) === "1"; }
+  catch { return useEditorGuidance.getState().seen; }
 }
 
 export function useVisualEditGuide(eligible: boolean, pageKey: string) {
+  const enabled = useEditorGuidance(state => state.enabled);
+  const replayVersion = useEditorGuidance(state => state.replayVersion);
+  const replayed = useRef(replayVersion);
   const [dismissed, setDismissed] = useState(alreadySeen);
   const shownPage = useRef<string | undefined>(undefined);
-  const visible = !dismissed && eligible && (shownPage.current === undefined || shownPage.current === pageKey);
+  const visible = enabled && !dismissed && eligible && (shownPage.current === undefined || shownPage.current === pageKey);
+
+  useEffect(() => {
+    if (replayed.current === replayVersion) return;
+    replayed.current = replayVersion;
+    shownPage.current = undefined;
+    setDismissed(false);
+  }, [replayVersion]);
 
   useEffect(() => {
     if (visible && shownPage.current === undefined) {
       shownPage.current = pageKey;
-      seenThisSession = true;
-      try { localStorage.setItem(visualEditGuideStorageKey, "1"); }
-      catch { /* The session flag still prevents repeated hints if storage is unavailable. */ }
+      useEditorGuidance.getState().markSeen();
     } else if (!visible && shownPage.current !== undefined) {
       setDismissed(true);
     }

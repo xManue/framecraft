@@ -9,8 +9,8 @@ function load() {
 export const useEditorShortcuts = create<{
   bindings: EditorShortcutBindings;
   open: boolean;
-  section: "shortcuts" | "workspace";
-  setOpen(open: boolean, section?: "shortcuts" | "workspace"): void;
+  section: "shortcuts" | "workspace" | "assistance";
+  setOpen(open: boolean, section?: "shortcuts" | "workspace" | "assistance"): void;
   apply(bindings: EditorShortcutBindings): string | undefined;
 }>((set) => ({
   bindings: load(), open: false, section: "workspace",

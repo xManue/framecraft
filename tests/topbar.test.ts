@@ -10,6 +10,8 @@ vi.mock("../src/filesystem/desktopBridge", () => ({
 }));
 
 import { TopBar } from "../src/editor/TopBar";
+import { EditorHelp } from "../src/editor/EditorHelp";
+import { useEditorGuidance } from "../src/state/editorGuidance";
 import { desktopBridge } from "../src/filesystem/desktopBridge";
 import { useEditorStore } from "../src/state/editorStore";
 import { parseSource } from "../src/source-parser/parseSource";
@@ -30,6 +32,7 @@ const project = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useEditorGuidance.setState({ helpOpen: false });
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   useEditorStore.setState({
     project,
@@ -183,14 +186,15 @@ describe("barra comandi principale", () => {
   });
 
   it("spiega lo switch visibile nella guida senza rimandare alla vecchia tendina", async () => {
+    function Frame() { const helpOpen = useEditorGuidance(state => state.helpOpen); return createElement("div", null, createElement(TopBar), helpOpen && createElement(EditorHelp)); }
     const container = document.createElement("div"); const root = createRoot(container);
     try {
-      await act(async () => root.render(createElement(TopBar)));
+      await act(async () => root.render(createElement(Frame)));
       const help = [...container.querySelectorAll<HTMLButtonElement>(".topbar-menu > button")].find((button) => button.textContent?.includes("Aiuto"))!;
       await act(async () => help.click());
       const guide = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.querySelector("strong")?.textContent === "Guida rapida")!;
       await act(async () => guide.click());
-      const dialog = container.querySelector('[role="dialog"]')!;
+      const dialog = document.querySelector('[aria-labelledby="quick-help-title"]')!;
       expect(dialog.textContent).toContain("switch della barra superiore");
       expect(dialog.textContent).toContain("Usa il pannello");
       expect(dialog.textContent).not.toContain("Modifica → Modifica pagina");

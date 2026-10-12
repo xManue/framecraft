@@ -3965,6 +3965,31 @@ Verifiche del 5 ottobre 2026:
   collaudo reale restano. Poi restanti capacità WinCC, Optix e AI facoltativa; gate
   industriali/licenze aperti. Export reali, foto, segreti e output di build esclusi dal push.
 
+### 113. Aiuti e preferenze raccolti nelle Impostazioni (2026-10-12)
+
+- File → Impostazioni dell’editor raccoglie Area di lavoro, Scorciatoie e comandi,
+  e Aiuto e suggerimenti. Preferenze dell’app condivise tra progetti: non sono una
+  pagina HMI e non modificano i sorgenti o inviano comandi al PLC.
+- Controllo persistente del suggerimento iniziale: disattivazione immediata,
+  prima apparizione ancora unica, Rivedi il suggerimento esplicito una sola volta.
+  La richiesta aspetta una pagina pronta in Modifica. Memoria locale negata:
+  comportamento conservato nella sessione e avviso comprensibile nelle Impostazioni.
+  Avvisi di errore e sicurezza non disattivabili tramite questa preferenza.
+- Guida unica condivisa tra Aiuto e Impostazioni, ora con mini guida MQTT/OPC UA
+  esistente, diagnosi degli errori e limiti di sicurezza. Focus confinato, dettagli
+  accessibili da tastiera, Esc e ripristino focus; corpo scorribile e layout stretto.
+  Nessun tema, font, dipendenza o asset nuovo. La skill UI ha guidato accessibilità
+  e continuità dello stile; revisione e documentazione mantengono espliciti i limiti.
+- Bozza scorciatoie conservata passando tra sezioni, salvataggio disponibile anche
+  fuori dalla sezione Scorciatoie; apertura guida sospesa finché la bozza non è salvata.
+  Griglia Libero (0 px) correttamente conservata dopo la riapertura dell’editor.
+- Verifiche mirate: 58 casi tra impostazioni, guida, preferenze, prima apparizione e barra;
+  TypeScript e build editor separata superati. Avvisi di import statico/dinamico
+  preesistenti. Nessuna suite generale, agente o riavvio
+  manuale dell’app. Non costituiscono collaudo visivo/desktop o messa in produzione.
+  Roadmap WinCC/Optix/AI e gate industriali restano aperti; export reali, foto,
+  segreti e output di build esclusi dal commit.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

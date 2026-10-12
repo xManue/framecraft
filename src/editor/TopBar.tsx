@@ -4,7 +4,7 @@ import {
   AlignVerticalDistributeCenter, ArrowLeft, Blocks, Cable, Check, ChevronDown,
   Code2, Columns2, Compass, Database, Eye, FileCheck2, FolderOpen, Gauge, HardDriveDownload,
   HelpCircle, Languages, LayoutTemplate, Magnet, Maximize, Minus, MonitorCog,
-  MousePointer2, Pencil, Play, Plus, Redo2, RefreshCw, Save, Keyboard, Settings, Copy,
+  Pencil, Play, Plus, Redo2, RefreshCw, Save, Keyboard, Settings, Copy,
   TerminalSquare, Trash2, Undo2, X, ZoomIn,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -16,6 +16,7 @@ import { PlcConnectionsDialog } from "./PlcConnectionsDialog";
 import { AlarmsDialog } from "./AlarmsDialog";
 import { formatEditorShortcut, type EditorCommandId } from "../../scripts/editor-shortcuts.mjs";
 import { useEditorShortcuts } from "../state/editorShortcuts";
+import { useEditorGuidance } from "../state/editorGuidance";
 
 const viewModes: { id: ViewMode; label: string; description: string; icon: typeof Eye }[] = [
   { id: "visual", label: "Disegno", description: "Solo il pannello grafico", icon: Eye },
@@ -100,7 +101,7 @@ export function TopBar() {
   const setMultiSelection = useEditorStore((state) => state.setMultiSelection);
   const deleteSelection = useEditorStore((state) => state.deleteSelection);
   const errors = useEditorStore((state) => state.consoleEntries.filter((item) => item.level === "error").length);
-  const [helpOpen, setHelpOpen] = useState(false);
+  const setHelpOpen = useEditorGuidance(state => state.setHelpOpen);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [alarmsOpen, setAlarmsOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<TopMenu>();
@@ -233,17 +234,5 @@ export function TopBar() {
     </header>
     {connectionsOpen && <PlcConnectionsDialog key={project.root} onClose={() => setConnectionsOpen(false)} />}
     {alarmsOpen && <AlarmsDialog key={project.root} onClose={() => setAlarmsOpen(false)} />}
-    {helpOpen && <div className="help-backdrop" role="presentation" onMouseDown={() => setHelpOpen(false)}>
-      <section className="quick-help" role="dialog" aria-modal="true" aria-labelledby="quick-help-title" onMouseDown={(event) => event.stopPropagation()}>
-        <header><div><small>GUIDA RAPIDA</small><h2 id="quick-help-title">Come modificare un pannello</h2></div><button onClick={() => setHelpOpen(false)} aria-label="Chiudi guida"><X size={18} /></button></header>
-        <div className="quick-help-steps">
-          <article><span><b>1</b><MousePointer2 size={18} /></span><strong>Scegli e modifica</strong><p>Scegli <b>Modifica</b> nello switch della barra superiore e clicca l’oggetto. Con <b>Usa il pannello</b> puoi usare pulsanti, campi e navigazione. Tieni <b>Shift</b> mentre trascini per muoverlo perfettamente dritto.</p></article>
-          <article><span><b>2</b><Blocks size={18} /></span><strong>Aggiungi elementi</strong><p>Apri <b>Aggiungi</b> a sinistra e trascina pulsanti, spie o componenti del progetto nel punto desiderato.</p></article>
-          <article><span><b>3</b><Cable size={18} /></span><strong>Controlla il PLC</strong><p>Seleziona un oggetto e usa la sezione <b>Variabile PLC</b>. Il catalogo completo rimane nel pannello PLC.</p></article>
-          <article><span><b>4</b><Play size={18} /></span><strong>Prova e salva</strong><p><b>Pannello → Prova pannello</b> mostra il risultato senza editor. Quando è corretto usa <b>File → Esporta copia</b>.</p></article>
-        </div>
-        <footer><span><kbd>{shortcut("undo") || "Non assegnata"}</kbd> annulla</span><span><kbd>{shortcut("delete") || "Non assegnata"}</kbd> elimina</span><span><kbd>Shift</kbd> trascina dritto</span><span><kbd>Alt</kbd> ignora le guide</span></footer>
-      </section>
-    </div>}
   </>;
 }

@@ -1,8 +1,9 @@
-import { Keyboard, LayoutTemplate, RotateCcw, Search, X } from "lucide-react";
+import { HelpCircle, Keyboard, LayoutTemplate, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { defaultEditorShortcuts, editorCommands, editorShortcutFromEvent, editorShortcutIssue, editorShortcutsIssue, formatEditorShortcut, type EditorCommandId } from "../../scripts/editor-shortcuts.mjs";
 import { useEditorShortcuts } from "../state/editorShortcuts";
+import { useEditorGuidance } from "../state/editorGuidance";
 import { layoutPresets, snapGrids, useEditorStore, type UiDensity, type WorkLayout } from "../state/editorStore";
 
 const workLayouts: { id: WorkLayout; label: string; description: string }[] = [
@@ -34,6 +35,10 @@ export function EditorSettings() {
   const applyWorkLayout = useEditorStore(state => state.applyWorkLayout);
   const snap = useEditorStore(state => state.snap);
   const setSnap = useEditorStore(state => state.setSnap);
+  const guidanceEnabled = useEditorGuidance(state => state.enabled);
+  const setGuidanceEnabled = useEditorGuidance(state => state.setEnabled);
+  const replayGuidance = useEditorGuidance(state => state.replay);
+  const setHelpOpen = useEditorGuidance(state => state.setHelpOpen);
   const changed = JSON.stringify(draft) !== JSON.stringify(bindings);
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   const commands = editorCommands.filter(command => `${command.label} ${command.description} ${command.group}`.toLocaleLowerCase("it").includes(query.trim().toLocaleLowerCase("it")));
@@ -84,6 +89,14 @@ export function EditorSettings() {
     if (issue) { setError(issue); return; }
     setError(""); setMessage("Scorciatoie salvate: sono attive anche nel canvas e negli altri progetti.");
   }
+  function updateGuidance(enabled: boolean) {
+    setError(setGuidanceEnabled(enabled) ?? "");
+    setMessage(enabled ? "Suggerimento iniziale abilitato: non ricompare se lo hai già visto." : "Suggerimento iniziale disattivato. La guida rapida resta disponibile.");
+  }
+  function replay() {
+    setError(replayGuidance() ?? "");
+    setMessage("Suggerimento pronto: chiudi le impostazioni e apri una pagina in Modifica con l’anteprima disponibile. Comparirà una sola volta.");
+  }
 
   return createPortal(<div className="editor-settings-backdrop">
     <section className="editor-settings" role="dialog" aria-modal="true" aria-labelledby="editor-settings-title" ref={panel} tabIndex={-1}>
@@ -91,6 +104,7 @@ export function EditorSettings() {
       <nav aria-label="Sezioni delle impostazioni">
         <button type="button" aria-pressed={section === "workspace"} onClick={() => { setOpen(true, "workspace"); setRecording(undefined); }}><LayoutTemplate size={18} />Area di lavoro</button>
         <button type="button" aria-pressed={section === "shortcuts"} onClick={() => setOpen(true, "shortcuts")}><Keyboard size={18} />Scorciatoie e comandi</button>
+        <button type="button" aria-pressed={section === "assistance"} onClick={() => { setOpen(true, "assistance"); setRecording(undefined); }}><HelpCircle size={18} />Aiuto e suggerimenti</button>
       </nav>
       <div className="editor-settings-body">
         {section === "workspace" ? <div className="editor-settings-workspace">
@@ -98,6 +112,10 @@ export function EditorSettings() {
           <fieldset><legend>Disposizione dei pannelli</legend><p>{layoutCustomized ? "Disposizione personalizzata. Scegli una configurazione per riapplicarla." : "Scegli gli strumenti per il lavoro corrente."} Non cambia grafica o codice della pagina.</p><div className="editor-settings-layouts">{workLayouts.map(layout => <button type="button" key={layout.id} aria-pressed={!layoutCustomized && workLayout === layout.id} onClick={() => applyWorkLayout(layout.id)}><strong>{layout.label}</strong><small>{layout.description}</small></button>)}</div></fieldset>
           <fieldset><legend>Leggibilità</legend><label htmlFor="editor-density">Dimensione dell’interfaccia</label><select id="editor-density" value={uiDensity} onChange={event => setUiDensity(event.target.value as UiDensity)}><option value="compatta">Compatta</option><option value="normale">Normale</option><option value="grande">Grande</option></select><p>Ingrandisce gli strumenti dell’editor, non gli elementi dell’HMI.</p></fieldset>
           <fieldset><legend>Precisione del disegno</legend><label className="editor-settings-toggle"><input type="checkbox" checked={snap.enabled} onChange={event => setSnap({ enabled: event.target.checked })} />Guide intelligenti e aggancio alla griglia</label><label htmlFor="editor-grid">Passo della griglia</label><select id="editor-grid" value={snap.grid} disabled={!snap.enabled} onChange={event => setSnap({ grid: Number(event.target.value) })}><option value={0}>Libero: solo bordi e centri</option>{snapGrids.map(step => <option key={step} value={step}>{step} px</option>)}</select><p>Shift mantiene il trascinamento dritto. Alt ignora temporaneamente le guide. Questi gesti restano fissi.</p></fieldset>
+        </div> : section === "assistance" ? <div className="editor-settings-workspace">
+          <p className="editor-settings-hint">Controlla gli aiuti dell’editor. Gli avvisi di errore e di sicurezza restano sempre attivi.</p>
+          <fieldset><legend>Suggerimento iniziale</legend><label className="editor-settings-toggle"><input type="checkbox" checked={guidanceEnabled} onChange={event => updateGuidance(event.target.checked)} />Mostra il suggerimento iniziale di modifica</label><p>Spiega come selezionare un elemento e modificarlo. Compare solo al primo accesso, non a ogni cambio pagina o progetto.</p><button type="button" onClick={replay}><RotateCcw size={16} />Rivedi il suggerimento</button><p>Lo riabilita e lo mostra una sola volta alla prossima pagina pronta in Modifica.</p></fieldset>
+          <fieldset><legend>Guida rapida</legend><p>Come modificare elementi, provare il pannello e collegare MQTT o OPC UA, con indicazioni per risolvere gli errori più comuni.</p><button type="button" disabled={changed} onClick={() => { setOpen(false); setHelpOpen(true); }}><HelpCircle size={16} />Apri guida rapida</button>{changed && <p>Salva le scorciatoie qui sotto prima di aprire la guida, oppure chiudi senza salvarle.</p>}</fieldset>
         </div> : <>
           <p className="editor-settings-hint">Clicca una combinazione per cambiarla, poi premi i tasti. Puoi aggiungerne fino a tre per comando o rimuoverle tutte per disattivarlo. Esc annulla la registrazione.</p>
           <label className="editor-settings-search"><Search size={17} /><span className="sr-only">Cerca un comando nelle impostazioni</span><input value={query} onChange={event => { setQuery(event.target.value); setRecording(undefined); }} placeholder="Cerca: salva, duplica, zoom…" /></label>
@@ -112,7 +130,7 @@ export function EditorSettings() {
         </>}
       </div>
       <footer><div>{error ? <p role="alert">{error}</p> : <p role="status">{message || (changed ? "Hai modifiche alle scorciatoie non ancora salvate." : "Le scorciatoie sono preferenze locali dell’app: non inviano comandi al PLC.")}</p>}</div>
-        <div className="editor-settings-actions">{section === "shortcuts" && <><button type="button" onClick={() => { setDraft(defaultEditorShortcuts()); setRecording(undefined); setError(""); setMessage("Predefiniti ripristinati nella bozza. Salva per applicarli."); }}><RotateCcw size={16} />Ripristina predefiniti</button><button type="button" className="primary" disabled={!changed || !!recording} onClick={save}>Salva scorciatoie</button></>}<button type="button" onClick={() => setOpen(false)}>{changed ? "Chiudi senza salvare" : "Chiudi"}</button></div>
+        <div className="editor-settings-actions">{(section === "shortcuts" || changed) && <><button type="button" onClick={() => { setDraft(defaultEditorShortcuts()); setRecording(undefined); setError(""); setMessage("Predefiniti ripristinati nella bozza. Salva per applicarli."); }}><RotateCcw size={16} />Ripristina predefiniti</button><button type="button" className="primary" disabled={!changed || !!recording} onClick={save}>Salva scorciatoie</button></>}<button type="button" onClick={() => setOpen(false)}>{changed ? "Chiudi senza salvare" : "Chiudi"}</button></div>
       </footer>
     </section>
   </div>, document.body);
