@@ -4031,6 +4031,39 @@ Verifiche del 5 ottobre 2026:
   stampa, profili, object model e collaudo reale aperti; WinCC restante, poi Optix e AI
   facoltativa, con gate industriali/licenze, restano l’obiettivo completo.
 
+### 115. Prova pannello — schermo intero reale e ritorno sicuro (2026-10-13)
+
+- `Pannello → Prova pannello` attiva lo schermo intero della finestra desktop,
+  non soltanto un iframe esteso sull’editor. Nel browser la richiesta parte dal click;
+  nessun salvataggio, collegamento PLC o riavvio viene eseguito per aprire la prova.
+- Esc e il comando superiore `Torna all’editor` chiudono la prova e ripristinano
+  lo stato fullscreen precedente. Ingresso/uscita serializzati: chiusura durante
+  l’avvio e riapertura rapida non lasciano una richiesta vecchia attivare la finestra.
+  Uno schermo intero già attivo prima della prova non viene disattivato dal comando.
+- Esc funziona anche con focus nell’iframe grazie a un canale limitato alla chiusura,
+  con verifica origine, finestra e token. Il nome del frame mantiene la modalità
+  prova nei cambi pagina, senza riattivare selezione/trascinamento dell’editor.
+  Le scorciatoie di modifica restano sospese durante la prova; focus confinato
+  nella finestra di prova e restituito al comando originale quando disponibile.
+- Rifiuto/assenza fullscreen: pannello ancora disponibile, avviso leggibile,
+  dettagli in diagnostica e pulsante `Schermo intero` per riprovare senza ricaricare
+  il pannello. Comandi superiori leggibili e raggiungibili anche al tocco;
+  nessun cambio di tema/font né toolbar nuova in basso. Guida rapida aggiornata.
+- Permesso aggiunto: solo `core:window:allow-set-fullscreen` alla finestra locale
+  main. Nessun permesso remoto, dipendenza o codice vendor aggiunto.
+  [API finestra Tauri](https://v2.tauri.app/reference/javascript/api/namespacewindow/#setfullscreen)
+  verificata insieme al manifest locale: isFullscreen già incluso, setFullscreen
+  richiede il permesso esplicito. Nuovo permesso disponibile nella nuova build/avvio
+  desktop; non è stato riavviato manualmente il processo usato dall’utente.
+- Collaudo della finestra desktop reale/WebView, touch e installer ancora necessario.
+  I test sintetici verificano ciclo finestra, iframe e fallback, non attestano
+  un collaudo fisico. Profili trend in lavorazione esclusi da questo commit;
+  roadmap WinCC → Optix → AI facoltativa e gate industriali restano aperti.
+- Esiti sul codice esatto da pubblicare, in copia isolata senza i profili trend:
+  32 controlli mirati (30 ciclo/iframe/scorciatoie, 2 menu/guida), TypeScript e build
+  editor superati. Solo avvisi static/dynamic import già presenti. Nessuna suite
+  generale, nuovo agente, collegamento macchina o riavvio manuale dell’app.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

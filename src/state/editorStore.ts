@@ -35,6 +35,7 @@ import { insertElement, insertElementAtPosition } from "../source-parser/transfo
 import { parseSource } from "../source-parser/parseSource";
 import { matchLineEndings } from "../source-parser/lineEndings";
 import { categorySection, newPageCategory, readPageCategories, withCategoryPage, withPageCategories, type PageCategory } from "../core/pageNavigation";
+import { previewFullscreenController, type PreviewFullscreenSession } from "../preview/previewFullscreen";
 
 type LeftPanel = "project" | "components" | "pages" | "plc" | "resources" | "scripts" | "faceplates" | "logs" | "page";
 /** How large the whole editor is drawn. A panel is built standing at a machine as often as sitting
@@ -224,6 +225,8 @@ export interface EditorState {
   draggedComponent?: string;
   consoleOpen: boolean;
   standalonePreviewOpen: boolean;
+  standalonePreviewFullscreenReady?: boolean;
+  standalonePreviewFullscreenError?: string;
   loading: boolean;
   /** A "save as" copy is running; the command must not be started twice. */
   exporting: boolean;
@@ -456,6 +459,8 @@ function fileName(file: string) {
 }
 
 interface EditorTransientRuntime {
+  standaloneFullscreen?: PreviewFullscreenSession;
+  fullscreenController?: ReturnType<typeof previewFullscreenController>;
   projectOpening: boolean;
   previewRestartTask?: Promise<void>;
   previewRefreshSequence: number;
@@ -2639,7 +2644,22 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     async openStandalonePreview() {
       const { previewUrl } = get();
       if (!previewUrl) return;
-      set({ standalonePreviewOpen: true });
+      if (runtime.standaloneFullscreen && get().standalonePreviewOpen) return;
+      set({ standalonePreviewOpen: true, standalonePreviewFullscreenReady: false, standalonePreviewFullscreenError: undefined });
+      let session: PreviewFullscreenSession | undefined;
+      try {
+        runtime.fullscreenController ??= previewFullscreenController();
+        session = runtime.fullscreenController.begin();
+        runtime.standaloneFullscreen = session;
+        await session.ready;
+        if (runtime.standaloneFullscreen === session && get().standalonePreviewOpen) set({ standalonePreviewFullscreenReady: true });
+      } catch (error) {
+        if (runtime.standaloneFullscreen !== session || !get().standalonePreviewOpen) return;
+        runtime.standaloneFullscreen = undefined;
+        const message = "La prova è aperta nella finestra. Lo schermo intero non è stato attivato: premi «Schermo intero» per riprovare.";
+        set((state) => ({ standalonePreviewFullscreenError: message,
+          consoleEntries: [...state.consoleEntries, entry("warning", `${message} Dettagli: ${error instanceof Error ? error.message : String(error)}`, "preview")].slice(-300) }));
+      }
     },
     closeStandalonePreview: () => set({ standalonePreviewOpen: false }),
     async handleExternalFileChange(path) {
@@ -2664,6 +2684,14 @@ if (previousStore) {
   previousStore.setState({ ...refreshed, ...data } as EditorState, true);
 }
 if (hotData) hotData.store = useEditorStore;
+const stopFullscreenTracking = useEditorStore.subscribe((state) => {
+  if (state.standalonePreviewOpen || !runtime.standaloneFullscreen) return;
+  const session = runtime.standaloneFullscreen;
+  runtime.standaloneFullscreen = undefined;
+  void session.release().catch((error) => useEditorStore.getState().addPreviewOutput("stderr",
+    `Il pannello è chiuso, ma non è stato possibile uscire dallo schermo intero. Dettagli: ${error instanceof Error ? error.message : String(error)}`));
+});
+import.meta.hot?.dispose(stopFullscreenTracking);
 if (import.meta.hot && hotData) {
   installEditorReloadRecovery(useEditorStore, import.meta.hot);
   if (!previousStore) {

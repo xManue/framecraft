@@ -58,6 +58,7 @@ export function installEditorKeyboardShortcuts(view: Window = window) {
   const keydown = (event: KeyboardEvent) => {
     if (event.defaultPrevented || editorModalOpen()) return;
     const state = useEditorStore.getState();
+    if (state.standalonePreviewOpen) return;
     const target = event.target as HTMLElement | null;
     const editing = !!target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
     const shortcut = editorShortcutFromEvent(event);

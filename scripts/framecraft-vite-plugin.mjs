@@ -51,6 +51,25 @@ export function installPanelLayoutPreference(root, key, storage = () => root.def
   return () => { disposed = true; observer.disconnect(); root.removeEventListener("change", remember, true); view.removeEventListener("pageshow", resumed); };
 }
 
+export function installStandalonePreviewControls(view) {
+  const token = view.name?.match(/^framecraft:standalone:([a-zA-Z0-9-]{16,64})$/)?.[1];
+  if (!token || view.parent === view) return () => {};
+  let parentOrigin;
+  const connect = (event) => {
+    if (event.source !== view.parent || event.data?.type !== "framecraft:standalone-connect" || event.data.token !== token) return;
+    if (!event.origin || event.origin === "null" || (parentOrigin && parentOrigin !== event.origin)) return;
+    parentOrigin = event.origin;
+  };
+  const escape = (event) => {
+    if (event.key !== "Escape" || event.repeat || event.isComposing || !parentOrigin) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    view.parent.postMessage({ type: "framecraft:standalone-close", token }, parentOrigin);
+  };
+  view.addEventListener("message", connect);
+  view.addEventListener("keydown", escape, true);
+  return () => { view.removeEventListener("message", connect); view.removeEventListener("keydown", escape, true); };
+}
+
 // The bridge is shipped to the previewed project as source text, so the maths it needs is not
 // imported by it but written into it. Stringifying the real functions keeps one copy: what the
 // tests check is exactly what runs inside the page.
@@ -74,9 +93,13 @@ const editorShortcutFromEvent = (${String(editorShortcutFromEvent)});
 const editorCommandForShortcut = (${String(editorCommandForShortcut)});
 `;
 
-const bridgeScript = sharedHelpers + String.raw`
+const bridgeScript = String(installStandalonePreviewControls) + "\n" + sharedHelpers + String.raw`
 (() => {
-  if (new URLSearchParams(window.location.search).has("framecraftPreview")) return;
+  if (new URLSearchParams(window.location.search).has("framecraftPreview") || /^framecraft:standalone:[a-zA-Z0-9-]{16,64}$/.test(window.name)) {
+    const dispose = installStandalonePreviewControls(window);
+    window.addEventListener("pagehide", (event) => { if (!event.persisted) dispose(); });
+    return;
+  }
   // Il Runtime generato e il ponte dell'editor vivono nella stessa pagina durante l'anteprima.
   // Questo segnale fa eseguire eventi e dinamiche una volta sola, dal lato editor.
   window.__framecraftEditorPreview = true;

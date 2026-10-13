@@ -38,7 +38,7 @@ export function EditorHelp() {
           <article><span><b>1</b><MousePointer2 size={18} /></span><strong>Scegli e modifica</strong><p>Scegli <b>Modifica</b> nello switch della barra superiore e clicca l’oggetto. Con <b>Usa il pannello</b> puoi usare pulsanti, campi e navigazione. Tieni <b>Shift</b> mentre trascini per muoverlo perfettamente dritto.</p></article>
           <article><span><b>2</b><Blocks size={18} /></span><strong>Aggiungi elementi</strong><p>Apri <b>Aggiungi</b> a sinistra e trascina pulsanti, spie o componenti del progetto nel punto desiderato.</p></article>
           <article><span><b>3</b><Cable size={18} /></span><strong>Controlla il PLC</strong><p>Seleziona un oggetto e usa la sezione <b>PLC e dati</b>. Il catalogo completo rimane nel pannello PLC. La guida qui sotto distingue configurazione e collegamento reale.</p></article>
-          <article><span><b>4</b><Play size={18} /></span><strong>Prova e salva</strong><p><b>Pannello → Prova pannello</b> mostra il risultato senza editor. Usa <b>File → Salva</b> per la modifica corrente e <b>File → Esporta copia</b> per una copia del progetto.</p></article>
+          <article><span><b>4</b><Play size={18} /></span><strong>Prova e salva</strong><p><b>Pannello → Prova pannello</b> apre il risultato a schermo intero, senza editor. Premi <b>Esc</b> o <b>Torna all’editor</b> per uscire. Usa <b>File → Salva</b> per la modifica corrente e <b>File → Esporta copia</b> per una copia del progetto.</p></article>
         </div>
         <PlcConnectionGuide id="editor-help-plc-guide" />
       </div>
