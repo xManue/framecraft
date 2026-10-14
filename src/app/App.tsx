@@ -17,6 +17,8 @@ import { useEditorShortcuts } from "../state/editorShortcuts";
 import { EditorSettings } from "../editor/EditorSettings";
 import { EditorHelp } from "../editor/EditorHelp";
 import { useEditorGuidance } from "../state/editorGuidance";
+import { AiAssistant } from "../editor/AiAssistant";
+import { useEditorAi } from "../state/editorAi";
 
 export function App() {
   return <EditorErrorBoundary><EditorApp /></EditorErrorBoundary>;
@@ -106,6 +108,7 @@ function ReloadRecoveryScreen() {
 }
 
 function EditorApp() {
+  const aiOpen = useEditorAi(state => state.open);
   useEffect(() => installEditorDraftRecovery(useEditorStore), []);
   const project = useEditorStore((state) => state.project);
   const loading = useEditorStore((state) => state.loading);
@@ -157,6 +160,7 @@ function EditorApp() {
       {userAccessOpen && <UserAccessWindow />}
       {settingsOpen && <EditorSettings />}
       {helpOpen && <EditorHelp />}
+      {aiOpen && <AiAssistant />}
     </>
   );
 }

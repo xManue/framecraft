@@ -122,6 +122,48 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .standalone-preview-controls.has-error { opacity: 1; }
 .standalone-preview-message { flex-basis: 100%; max-width: 420px; padding: 5px 8px; color: #eef0f5; font-size: 12px; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) { .standalone-preview-controls { transition: none; } }
+.ai-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.65); }
+.ai-assistant { display: flex; flex-direction: column; width: min(1060px, 100%); max-height: calc(100dvh - 40px); border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text); box-shadow: 0 24px 80px rgba(0,0,0,.5); }
+.ai-assistant > header, .ai-assistant > footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; }
+.ai-assistant > header { border-bottom: 1px solid var(--border); }
+.ai-assistant > footer { border-top: 1px solid var(--border); }
+.ai-assistant h2, .ai-assistant h3 { margin: 0 0 8px; }
+.ai-assistant p { line-height: 1.5; }
+.ai-assistant small, .ai-hint, .ai-assistant footer span { color: var(--muted); font-size: 12px; }
+.ai-assistant-body { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; padding: 22px; overflow: auto; }
+.ai-assistant label:not(.ai-check):not(.ai-consent):not(.ai-operation) { display: grid; gap: 6px; margin: 12px 0; }
+.ai-assistant input:not([type=checkbox]), .ai-assistant select, .ai-assistant textarea { width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg, var(--bg)); color: var(--text); }
+.ai-assistant button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); cursor: pointer; }
+.ai-assistant button:disabled { opacity: .5; cursor: default; }
+.ai-assistant button:focus-visible, .ai-assistant summary:focus-visible { outline: 2px solid var(--accent, #39a1e6); outline-offset: 2px; }
+.ai-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-assistant .button.primary { background: var(--accent, #3098dc); color: #fff; }
+.ai-context { margin: 16px 0; }
+.ai-assistant summary { min-height: 44px; padding: 10px 0; cursor: pointer; }
+.ai-context pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.ai-consent, .ai-operation { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; line-height: 1.5; }
+.ai-operation { padding: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.ai-operation span { min-width: 0; display: grid; gap: 5px; }
+.ai-operation code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-proposal { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+.ai-check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding-right: 16px; }
+.ai-interview { min-width: 0; }
+.ai-interview-fields { min-width: 0; border: 0; padding: 0; margin: 0; }
+.ai-interview-fields > h4 { font-size: 16px; line-height: 1.5; }
+.ai-page-plan, .ai-import { min-width: 0; padding: 14px; margin: 14px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1, var(--bg)); overflow-wrap: anywhere; }
+.ai-page-plan { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 14px; }
+.ai-page-plan > strong, .ai-page-plan > label:first-of-type { grid-column: 1 / -1; }
+.ai-interview-navigation { display: flex; justify-content: space-between; gap: 12px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+.ai-interview button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.ai-interview input[type="checkbox"] { flex-shrink: 0; min-width: 18px; min-height: 18px; margin-top: 3px; }
+.ai-interview :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ai-project-methods { display: grid; gap: 16px; }
+.ai-project-methods > button { min-height: 100px; text-align: left; justify-content: flex-start; white-space: normal; }
+.ai-project-methods span { display: grid; gap: 8px; }
+.ai-project-methods small { color: inherit; font-weight: 400; line-height: 1.5; }
+@media (max-width: 700px) { .ai-page-plan { grid-template-columns: minmax(0, 1fr); }.ai-page-plan > * { grid-column: 1; } }
+.ai-error { color: var(--danger, #ff9292); }
+@media (max-width: 700px) { .ai-backdrop { padding: 8px; } .ai-assistant { max-height: calc(100dvh - 16px); } .ai-assistant-body { grid-template-columns: minmax(0, 1fr); padding: 16px; } .ai-assistant > footer { flex-wrap: wrap; } }
 button, input, textarea { font: inherit; }
 button { color: inherit; }
 button:not(:disabled) { cursor: pointer; }

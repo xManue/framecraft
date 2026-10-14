@@ -36,6 +36,7 @@ import { parseSource } from "../source-parser/parseSource";
 import { matchLineEndings } from "../source-parser/lineEndings";
 import { categorySection, newPageCategory, readPageCategories, withCategoryPage, withPageCategories, type PageCategory } from "../core/pageNavigation";
 import { previewFullscreenController, type PreviewFullscreenSession } from "../preview/previewFullscreen";
+import { prepareAiEdits, type AiEditSnapshot, type AiProposal } from "../ai/aiProposal";
 
 type LeftPanel = "project" | "components" | "pages" | "plc" | "resources" | "scripts" | "faceplates" | "logs" | "page";
 /** How large the whole editor is drawn. A panel is built standing at a machine as often as sitting
@@ -269,6 +270,7 @@ export interface EditorState {
   chooseAndOpenProject: () => Promise<void>;
   createProject: () => Promise<void>;
   createStandardProject: (config: StandardProjectConfig) => Promise<void>;
+  applyAiProposal: (snapshot: AiEditSnapshot, proposal: AiProposal, accepted: string[]) => Promise<boolean>;
   openProject: (root: string) => Promise<void>;
   removeRecentProject: (root: string) => void;
   closeProject: () => Promise<void>;
@@ -1416,6 +1418,26 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         finally { runtime.projectOpening = false; }
         await get().openProject(root);
       } catch (error) { set({ loading: false }); reportError(error); }
+    },
+    async applyAiProposal(snapshot, proposal, accepted) {
+      const state = get(), document = snapshot.document;
+      const current = () => get().project?.root === snapshot.root && get().document === document && get().selectedId === snapshot.selectedId && get().interactionMode === "edit" && !get().loading && !get().reloadRecovery;
+      if (!current()) throw new Error("Il progetto, la pagina o la selezione sono cambiati. Richiedi una nuova proposta sull’elemento corrente.");
+      if (state.dirty) throw new Error("Salva prima le modifiche della bozza. Poi richiedi una nuova proposta AI.");
+      if ((state.selectionInfo?.instanceCount ?? 1) > 1) throw new Error("Questo elemento è ripetuto o condiviso: modifica la voce dai campi dell’Inspector. L’AI non applica cambiamenti a copie non selezionate.");
+      const disk = await desktopBridge.readFile(document.file);
+      if (!current() || disk !== document.source) throw new Error("Il file è cambiato dopo la proposta. Ricarica la pagina e richiedi una nuova modifica.");
+      const next = prepareAiEdits(snapshot, proposal, accepted);
+      if (next === document.source) throw new Error("Le modifiche scelte non cambiano l’elemento.");
+      let result;
+      try { result = await applySource(next, true, document, current); }
+      catch (error) {
+        if (get().project?.root === snapshot.root && get().document?.source === next) set({ document, selectedId: snapshot.selectedId, dirty: state.dirty });
+        throw error;
+      }
+      if (!result) throw new Error("La proposta non è stata applicata perché la pagina è cambiata.");
+      reportSuccess(`Proposta AI applicata all’elemento selezionato: ${accepted.length} modifiche. Puoi annullarle insieme con Annulla.`);
+      return true;
     },
     async openProject(root) {
       if (runtime.projectOpening) return;

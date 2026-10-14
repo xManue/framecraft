@@ -1,4 +1,6 @@
 import { standardPageSource, planPageNumber, type StandardPagePlan, type StandardPageTemplateId } from "./hmiPages";
+import { guidedAlarmCatalog, guidedPageSource, guidedProjectIssues, guidedProjectPending, type GuidedPage, type GuidedProjectSpec } from "./guidedProject";
+import { serializePlcCatalog } from "./plcVariables";
 import { blueprintPages, folderGroupRoutes, menuPagePlan, sectionBlueprint, submenuPlacement, type MenuIconId, type SettingsProgram } from "./hmiSectionMenu";
 import { cssColor, desktopShell, lateralBar, mobileShell, pageCanvas, panelSize, sections, submenuPalette, submenuPanel } from "./hmiStandard";
 import { emptyHmiResourceCatalog } from "./hmiResources";
@@ -73,6 +75,8 @@ export interface StandardProjectConfig {
    * che mostrano la macchina intera (1001, 1081, 4001 e 5001). I pezzi — sinottico, encoder,
    * robot, stazioni — restano segnaposto, perche' una foto sola non li puo' coprire. */
   machineImage?: string;
+  /** Piano esplicito: genera soltanto le pagine approvate, usando lo stesso progetto standard. */
+  guided?: GuidedProjectSpec;
 }
 
 export interface GeneratedProjectFile {
@@ -107,6 +111,7 @@ export const standardProjectSectionChoices: readonly StandardProjectSectionChoic
 
 /** Una pagina del progetto generato, con tutto quello che serve a scriverla e a registrarla. */
 interface PlannedPage {
+  guided?: GuidedPage;
   number: number;
   title: string;
   templateId: StandardPageTemplateId;
@@ -157,6 +162,21 @@ function planSections(chosen: readonly StandardProjectSectionChoice[], settingsP
     const entries = blueprint.entries.map((entry) => ({ label: entry.label, icon: entry.icon, route: entry.pages[0]?.route ?? "" }));
     const slot = sections.find((item) => item.id === section.id)?.slot ?? 0;
     return { id: section.id, label: section.label, route: pages[0].route, pages, entries, menu: submenuPlacement(slot, entries.length) };
+  });
+}
+
+function planGuidedSections(spec: GuidedProjectSpec): PlannedSection[] {
+  const issues = guidedProjectIssues(spec); if (issues.length) throw new Error(issues[0]);
+  return [...new Set(spec.pages.map(page => page.section))].map(id => {
+    const section = standardProjectSectionChoices.find(section => section.id === id)!;
+    const taken: number[] = [];
+    const pages = spec.pages.filter(page => page.section === id).map(page => {
+      const plan = planPageNumber(id, taken); if (!plan) throw new Error(`La categoria ${section.label} è piena.`);
+      taken.push(plan.number);
+      return { guided: page, number: plan.number, title: page.title, templateId: "blank" as const, componentName: `GuidedPage${page.id.slice(5)}`, route: `/page-${plan.number}`, folderTab: 0, folderRoutes: [], plan };
+    });
+    const entries = pages.map(page => ({ label: page.title, icon: "screen" as const, route: page.route }));
+    return { id, label: section.label, route: pages[0].route, pages, entries, menu: submenuPlacement(sections.find(section => section.id === id)!.slot, entries.length) };
   });
 }
 
@@ -1700,12 +1720,17 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
   if (!chosen.length) chosen.push(standardProjectSectionChoices[0]);
   const mobile = config.layout === "desktop-mobile";
   const settingsProgram = config.settingsProgram ?? "robot";
-  const planned = planSections(chosen, settingsProgram);
+  const planned = config.guided ? planGuidedSections(config.guided) : planSections(chosen, settingsProgram);
   const pages = planned.flatMap((section) => section.pages.map((page) => ({ page, section })));
   const photo = config.machineImage ? machineImageAsset(config.machineImage) : undefined;
+  const pageImages = pages.flatMap(({ page }) => {
+    if (!page.guided?.image || page.guided.imageNeed === "none") return [];
+    const extension = machineImageAsset(page.guided.image).path.split(".").at(-1)!;
+    return [{ id: page.guided.id, path: `public/framecraft-assets/${page.guided.id}.${extension}`, url: `/framecraft-assets/${page.guided.id}.${extension}`, source: page.guided.image }];
+  });
   const pageFiles = pages.map(({ page }) => ({
     path: `src/pages/${page.componentName}.tsx`,
-    content: withMachineImage(standardPageSource({ componentName: page.componentName, title: page.title, plan: page.plan, templateId: page.templateId, folderTab: page.folderTab, folderRoutes: page.folderRoutes }), photo?.url),
+    content: page.guided ? guidedPageSource(page.guided, page.plan, page.componentName, pageImages.find(image => image.id === page.guided!.id)?.url) : withMachineImage(standardPageSource({ componentName: page.componentName, title: page.title, plan: page.plan, templateId: page.templateId, folderTab: page.folderTab, folderRoutes: page.folderRoutes }), photo?.url),
   }));
   const manifest = {
     id: slug(machineName), name: machineName, version: "1.0.0",
@@ -1740,7 +1765,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/framecraftHmiAlarmSummary.d.mts", content: alarmSummaryTypes.replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
     { path: "src/framecraftHmiAlarmControl.ts", content: alarmControlSource.replaceAll('"../../scripts/hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
     { path: "src/framecraftHmiAlarmSummary.ts", content: alarmSummarySource.replaceAll('"../../scripts/hmi-alarm-summary.mjs"', '"./framecraftHmiAlarmSummary.mjs"') },
-    { path: "framecraft.alarms.json", content: JSON.stringify(emptyAlarmCatalog(), null, 2) + "\n" },
+    { path: "framecraft.alarms.json", content: JSON.stringify(config.guided ? guidedAlarmCatalog(config.guided) : emptyAlarmCatalog(), null, 2) + "\n" },
     { path: "runtime/gateway.d.mts", content: gatewayTypes },
     { path: "runtime/start-gateway.mjs", content: gatewayStartSource },
     { path: "runtime/vite-gateway.mjs", content: gatewayProxySource },
@@ -1767,9 +1792,11 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/styles.css", content: stylesSource(mobile) },
     { path: "public/placeholder.svg", content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"><rect width="800" height="500" fill="#ececec"/><rect x="12" y="12" width="776" height="476" rx="10" fill="none" stroke="#8b8b8b" stroke-width="3" stroke-dasharray="12 10"/><path d="M280 318l78-88 62 62 46-48 76 74H280z" fill="#b9b9b9"/><circle cx="360" cy="180" r="30" fill="#b9b9b9"/><text x="400" y="390" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="28" fill="#555">Sostituisci immagine nell'Inspector</text></svg>\n` },
     ...(photo && config.machineImage ? [{ path: photo.path, content: "", source: config.machineImage }] : []),
+    ...pageImages.map(image => ({ path: image.path, content: "", source: image.source })),
+    ...(config.guided ? [{ path: "framecraft.requirements.json", content: JSON.stringify({ version: 1, purpose: config.guided.purpose, language: config.guided.language, protocol: config.guided.protocol, users: config.guided.users, pages: config.guided.pages.map(({ image, ...page }) => ({ ...page, ...(image ? { image: pageImages.find(asset => asset.id === page.id)?.url } : {}) })), pending: guidedProjectPending(config.guided) }, null, 2) + "\n" }] : []),
     ...pageFiles,
     { path: "panel.json", content: `${JSON.stringify(manifest, null, 2)}\n` },
-    { path: "framecraft.plc.json", content: `${JSON.stringify({ version: 1, variables: [] }, null, 2)}\n` },
+    { path: "framecraft.plc.json", content: config.guided ? serializePlcCatalog(config.guided.tagsMode === "import" ? config.guided.tags : []) : `${JSON.stringify({ version: 1, variables: [] }, null, 2)}\n` },
     { path: "framecraft.resources.json", content: `${JSON.stringify(emptyHmiResourceCatalog(), null, 2)}\n` },
     { path: "framecraft.scripts.json", content: `${JSON.stringify(emptyHmiScriptCatalog(), null, 2)}\n` },
     { path: "framecraft.faceplates.json", content: serializeHmiFaceplateCatalog(standardHmiFaceplateCatalog()) },

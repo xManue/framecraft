@@ -4064,6 +4064,38 @@ Verifiche del 5 ottobre 2026:
   editor superati. Solo avvisi static/dynamic import già presenti. Nessuna suite
   generale, nuovo agente, collegamento macchina o riavvio manuale dell’app.
 
+### 116. Pipeline AI facoltativa e creazione tramite domande mirate (2026-10-14)
+
+- Priorità dell’utente: AI + app prima delle funzionalità WinCC/Optix residue. Codex CLI con
+  account ChatGPT individuale per adesso, adapter separato per passare ad API in futuro.
+- Nuovo pannello ora chiede Con AI/Senza AI. Percorso AI a passi adattivi: macchina/processo,
+  desktop/mobile, numero e piano esatto delle pagine, tag, lista allarmi quando serve,
+  contenuti/immagini di ciascuna pagina, protocollo previsto, lingua e necessità dei ruoli.
+  Nessuna richiesta iniziale libera. Domande aggiuntive del modello hanno campi separati.
+- Immagini richieste/facoltative/non desiderate, screen specifico per il sinottico e targhette
+  separate editabili. Input mancanti si rimandano esplicitamente. Tag JSON/CSV (2 MB/5000 tag)
+  e allarmi Framecraft JSON validati contro tag leggibili/trigger. Nessun dato operativo inventato.
+- Piano esplicito nello stesso standardProjectFiles: numero esatto di pagine, categorie,
+  router e manifesto coerenti, asset distinti per pagina, cataloghi reali locali e requisiti
+  in framecraft.requirements.json. Valori/curve legati solo ai tag scelti; comandi disabilitati
+  da configurare e collaudare. Gateway spento; protocollo/ruoli/inglese sono requisiti residui.
+- Account e modello al momento dell’invio, consenso revocato quando cambiano le risposte;
+  nessun login/inferenza implicita. Profilo Codex locale separato, canale JSON App Server,
+  richieste correlate, output tipizzato/bounded, annullamento, timeout, errori con rimedio.
+  Shell, agenti, web search e approvazioni strumenti non concessi. Foto, file, tag, indirizzi,
+  token e percorsi non passano al provider: solo risposte e conteggi approvati.
+- AI in editor ancora limitata a testo/stile del selezionato: revisione parziale, guardie su
+  sorgente/selection/bozza/istanze condivise e un Annulla/Ripeti. Corretto il testo JSX
+  statico per non trasformare input come {alert(...)} in codice eseguibile.
+- Verifiche mirate: interviste e generatore, UI a passi/Indietro, provider sintetico,
+  guardie/applicazione/undo, test native Codex; tipi e build isolata del codice pubblicabile.
+  Protocollo confrontato con CLI locale 0.159.2, NON login o inferenza reali. Occorre nuova
+  build/avvio desktop per i comandi nativi e collaudo con account scelto dall’utente.
+- Restano: questionario persistente dopo riavvio, altri formati allarmi/PDF, comandi operativi
+  da mapping approvati, ricette, traduzioni, ruoli server, undo multi-file atomico, licensing,
+  privacy/eval e prove hardware/guasti. Profili trend avviati prima della nuova priorità restano
+  separati/incompleti, non pubblicati in questo commit. Nessuna dichiarazione di pipeline totale conclusa.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
@@ -4109,8 +4141,9 @@ Verifiche del 5 ottobre 2026:
   completare identita' HTTP dell'anteprima e rilevamento del server vivo ma bloccato.
 - **Dopo WinCC**: capacità funzionali di `FACTORYTALK-OPTIX-ROADMAP.md` a partire dall'information
   model Framecraft, non dal round-trip verso un formato proprietario.
-- **Dopo la parita' WinCC/Optix**: command layer completo, diff semantico e AI facoltativa secondo
-  `AI-FRAMECRAFT-ROADMAP.md`.
+- **Priorità attuale AI + app**: completare la pipeline facoltativa del punto 116 e di
+  `AI-FRAMECRAFT-ROADMAP.md`; riprendere poi le capacità WinCC/Optix residue. Restano command
+  layer completo, diff semantico e le verifiche operative senza dati inventati.
 - **Editor — inserimento componenti con dati locali**: props letterali e dati importati viaggiano
   già col componente; per props nate da stato/calcoli locali l'editor oggi rifiuta l'inserimento e
   spiega quali mancano. Serve una configurazione guidata se si vuole crearne valori iniziali sicuri.

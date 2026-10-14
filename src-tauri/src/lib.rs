@@ -16,6 +16,7 @@ use tempfile::NamedTempFile;
 use walkdir::WalkDir;
 mod editor_draft;
 mod connection_config;
+mod ai_codex;
 
 #[derive(Default)]
 struct RuntimeState {
@@ -1269,12 +1270,14 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(RuntimeState::default())
-        .invoke_handler(tauri::generate_handler![get_editor_session, editor_draft::read_editor_draft, editor_draft::write_editor_draft, editor_draft::clear_editor_draft, connection_config::read_connection_configuration, connection_config::save_connection_configuration, connection_config::read_alarm_configuration, connection_config::save_alarm_configuration, create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, list_project_source_files, import_project_asset, export_project, start_preview, stop_preview, close_project, create_vite_project])
+        .manage(ai_codex::AiCodexState::default())
+        .invoke_handler(tauri::generate_handler![get_editor_session, ai_codex::ai_codex_connect, ai_codex::ai_codex_login, ai_codex::ai_codex_logout, ai_codex::ai_codex_models, ai_codex::ai_codex_propose, ai_codex::ai_codex_cancel, editor_draft::read_editor_draft, editor_draft::write_editor_draft, editor_draft::clear_editor_draft, connection_config::read_connection_configuration, connection_config::save_connection_configuration, connection_config::read_alarm_configuration, connection_config::save_alarm_configuration, create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, list_project_source_files, import_project_asset, export_project, start_preview, stop_preview, close_project, create_vite_project])
         .build(tauri::generate_context!())
         .expect("error while building Framecraft");
     app.run(|app_handle, event| {
         if matches!(event, tauri::RunEvent::Exit) {
             let state = app_handle.state::<RuntimeState>();
+            ai_codex::shutdown(&app_handle.state::<ai_codex::AiCodexState>());
             state.preview_generation.fetch_add(1, Ordering::SeqCst);
             let _ = stop_managed_preview(&state.preview);
         }

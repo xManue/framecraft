@@ -1,11 +1,45 @@
 # AI facoltativa in Framecraft
 
-Aggiornato al 24 settembre 2026.
+Aggiornato al 14 ottobre 2026.
 
 L'obiettivo finale è accompagnare l'intero ciclo di costruzione dell'HMI senza rendere l'AI un
-requisito. Prima si completa il nucleo WinCC Unified e FactoryTalk Optix; poi l'AI usa esattamente
-le stesse funzioni pubbliche dell'editor che usa una persona. Non esiste un formato di progetto
+requisito. Priorità aggiornata dall’utente: completare adesso la pipeline AI + app,
+rinviando le capacità WinCC Unified/FactoryTalk Optix ancora mancanti. L’AI usa
+le stesse primitive pubbliche dell'editor che usa una persona. Non esiste un formato di progetto
 "AI" separato e un progetto generato resta sempre modificabile interamente a mano.
+
+## Prima pipeline guidata implementata (14 ottobre 2026)
+
+Nuovo pannello propone la scelta **Con AI / Senza AI**. Il percorso AI non inizia più da una
+richiesta libera: raccoglie nome e processo, desktop/mobile, numero esatto delle pagine e nome,
+funzione e categoria di ciascuna. I passi successivi dipendono dalle funzioni scelte: contenuti,
+immagini della macchina o delle singole parti (necessarie/facoltative/non desiderate), tag
+JSON/CSV e catalogo allarmi Framecraft JSON. Si possono rimandare esplicitamente gli input
+non disponibili: diventano segnaposto e attività residue, mai dati macchina inventati.
+
+L’AI riceve solo le risposte approvate e i conteggi dei dati: foto, file, nomi tag, indirizzi e
+percorsi locali non vengono trasmessi. Domande ulteriori hanno un campo per ogni risposta.
+Account, modello e consenso sono richiesti solo prima dell’invio; nessun login o inferenza
+parte aprendo la procedura. Codex CLI/App Server usa un profilo Framecraft separato e l’account
+ChatGPT individuale, senza API key condivisa; l’adapter è sostituibile. Protocollo verificato
+contro le definizioni della CLI locale 0.159.2; il login e l’inferenza reali richiedono ancora
+collaudo nella nuova build desktop, non provati dai test con provider sintetico.
+
+Il generatore standard accetta anche un piano esplicito: crea solo le pagine approvate,
+router/manifesto/menu coerenti, immagini per pagina e cataloghi locali validati. Salva requisiti
+e parti da completare in framecraft.requirements.json; la connessione PLC rimane disabilitata.
+Valori e curve leggono soltanto tag scelti dall’utente. I pulsanti macchina restano disabilitati
+finché azioni, interlock e permessi non vengono configurati e collaudati. Targhette e grafiche
+restano modificabili nel normale editor. Le risposte sopravvivono alla chiusura/riapertura della
+finestra durante la stessa sessione; recupero persistente del questionario ancora da aggiungere.
+
+L’assistenza durante le modifiche mantiene la richiesta libera, ma oggi applica solo testo e
+stile dell’elemento selezionato, con revisione parziale, controllo di sorgente/selezione e un
+unico Annulla/Ripeti. Il testo JSX è codificato per evitare che diventi codice eseguibile.
+Non equivale a completamento AI: restano generazione completa di funzioni operative, mapping
+approvati di scrittura, ricette, PDF, ruoli server, modifiche multi-file atomiche, licensing,
+privacy/eval e commissioning industriale. Lingua inglese e protocollo selezionato sono requisiti
+da completare, non traduzioni o connessioni automaticamente pronte.
 
 ## Le tre modalità devono essere equivalenti
 
@@ -139,12 +173,18 @@ e collaudo della connessione restano possibili senza AI.
 
 ## Sequenza
 
-1. Completare la parità e i miglioramenti WinCC Unified.
-2. Completare la parità e i miglioramenti FactoryTalk Optix.
-3. Consolidare command layer, modello tipizzato, validatore, diff semantico e undo atomico.
-4. Implementare l'AI di assistenza locale sulle funzioni già esistenti.
-5. Implementare pianificazione e generazione iniziale con gate sugli input reali.
-6. Aggiungere eval, sicurezza, privacy, provider multipli e automazioni avanzate.
+1. Collegare Codex CLI/App Server all’app desktop, con account ChatGPT individuale,
+   opt-in esplicito e adapter sostituibile in futuro con API; nessun token copiato
+   dall’app Codex esistente, account comune o richiesta AI implicita all’avvio.
+2. Chiudere il flusso iniziale: richiesta, piano revisionabile, creazione con la pipeline
+   standard dell’app e handoff a canvas/Inspector normali.
+3. Chiudere il flusso di modifica: contesto approvato, proposta verificata, accettazione
+   selettiva, rilevamento cambiamenti intervenuti e applicazione annullabile.
+4. Estendere le capacità di proposta alle primitive disponibili, consolidare transazioni,
+   eval, privacy, sicurezza, qualità e compatibilità del collegamento Codex.
+5. Riprendere le capacità WinCC Unified e FactoryTalk Optix rimaste incomplete.
+6. Ampliare provider, automazioni e funzionalità oltre la parità, mantenendo AI facoltativa.
 
-L'AI entra quindi per ultima come orchestratore delle capacità già affidabili. Questo evita due
-editor diversi e garantisce che il percorso manuale rimanga sempre completo.
+L’AI entra ora come orchestratore delle capacità già disponibili. Le funzioni mancanti
+rimangono dichiarate, senza progetti finti, mapping PLC inventati o bypass dei gate industriali.
+Il percorso manuale rimane indipendente e l’obiettivo completo WinCC/Optix non viene cancellato.

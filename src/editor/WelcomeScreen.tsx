@@ -5,8 +5,10 @@ import { standardProjectPageCount, standardProjectSectionChoices, type StandardP
 import { settingsProgramChoices, type SettingsProgram } from "../core/hmiSectionMenu";
 import { useEditorStore } from "../state/editorStore";
 import { MessageNotice } from "./MessageNotice";
+import { useEditorAi } from "../state/editorAi";
 
 function StandardProjectWizard({ loading, onClose }: { loading: boolean; onClose: () => void }) {
+  const [method, setMethod] = useState<"manual" | undefined>();
   const create = useEditorStore((state) => state.createStandardProject);
   const [machineName, setMachineName] = useState("Nuovo pannello operatore");
   const [layout, setLayout] = useState<StandardProjectConfig["layout"]>("desktop-mobile");
@@ -29,6 +31,15 @@ function StandardProjectWizard({ loading, onClose }: { loading: boolean; onClose
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [loading, onClose]);
 
+  if (!method) return <div className="standard-project-backdrop">
+    <section className="standard-project-wizard" role="dialog" aria-modal="true" aria-labelledby="new-project-method-title">
+      <header><div><span className="eyebrow">NUOVO PROGETTO</span><h2 id="new-project-method-title">Come vuoi costruire il pannello?</h2><p>In entrambi i casi il progetto rimane modificabile normalmente nell’editor.</p></div><button type="button" onClick={onClose} aria-label="Chiudi procedura"><X size={18} /></button></header>
+      <div className="standard-project-body ai-project-methods">
+        <button type="button" className="button primary" autoFocus onClick={() => { onClose(); useEditorAi.getState().show("create"); }}><Sparkles size={20} /><span><strong>Con AI, tramite domande guidate</strong><small>Scegli quante pagine, quali funzioni, immagini e liste tag/allarmi. Controlli il piano prima di creare.</small></span></button>
+        <button type="button" className="button secondary" onClick={() => setMethod("manual")}><Monitor size={20} /><span><strong>Senza AI, dallo standard</strong><small>Scegli le sezioni complete già disponibili e adattale a mano. Non serve un account ChatGPT.</small></span></button>
+      </div>
+    </section>
+  </div>;
   return <div className="standard-project-backdrop" role="presentation">
     <section className="standard-project-wizard" role="dialog" aria-modal="true" aria-labelledby="standard-project-title">
       <header><div><span className="eyebrow">NUOVO PROGETTO</span><h2 id="standard-project-title">Crea un pannello HMI standard</h2><p>Framecraft prepara struttura, navigazione e pagine. Tu dovrai soltanto adattare contenuti e variabili della macchina.</p></div><button type="button" onClick={onClose} disabled={loading} aria-label="Chiudi procedura"><X size={18} /></button></header>
@@ -81,7 +92,7 @@ export function WelcomeScreen() {
           <p>Apri un progetto, clicca ciò che vedi e correggi testi, dimensioni, colori, azioni e variabili PLC. L’originale rimane protetto.</p>
           <div className="welcome-actions">
             <button className="button primary" onClick={() => setWizardOpen(true)} disabled={!desktopAvailable || loading}>
-              <Sparkles size={17} /> Nuovo pannello standard
+              <Sparkles size={17} /> Nuovo pannello
             </button>
             <button className="button primary" onClick={() => void openProject()} disabled={!desktopAvailable || loading}>
               {loading ? <LoaderCircle className="spin" size={17} /> : <FolderOpen size={17} />} {loading ? "Preparazione copia sicura…" : "Apri un progetto"}

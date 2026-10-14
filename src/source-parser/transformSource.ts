@@ -233,7 +233,9 @@ export function updateStaticText(source: string, start: number, end: number, val
   const run = textRun(element);
   if (run) {
     const { leading, trailing } = padding(run.value);
-    return new MagicString(source).overwrite(run.start!, run.end!, `${leading}${value}${trailing}`).toString();
+    const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "{": "&#123;", "}": "&#125;" };
+    const escaped = value.replace(/[&<>{}]/g, character => entities[character]);
+    return new MagicString(source).overwrite(run.start!, run.end!, `${leading}${escaped}${trailing}`).toString();
   }
   // Without a run of its own, the whole content is replaced. Doing that to an element that holds
   // other elements would silently delete them, so that case is refused instead.

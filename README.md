@@ -278,6 +278,39 @@ Fit also reduces drawing controls: use natural size for larger operating targets
 This generator change does not overwrite or delete existing machine projects.
 Browser layout checks are not physical-device or live-PLC commissioning.
 
+## Guided AI project creation
+
+Choose **Nuovo pannello → Con AI**. Framecraft asks for the machine/process, desktop/mobile,
+the exact page count, each page’s name/function/category, and then only the relevant content
+questions. A synoptic asks for the real machine-part screen and separate motor labels; alarms
+ask for a real catalogue. Each image is required, optional or unwanted; missing assets/data can
+be explicitly deferred and are listed in `framecraft.requirements.json` in the generated project.
+
+Tag inputs: Framecraft JSON or CSV with Name/DataType (or Nome/Tipo) and optional Address/Description,
+up to 2 MB/5000 tags. Alarm inputs: `framecraft.alarms.json`, validated against imported readable
+tags and their trigger types. A list of messages alone does not establish activation conditions.
+Images are selected locally and copied into distinct assets for each page. No invented PLC data.
+
+Connect your own ChatGPT account, select a model and approve the displayed context before sending.
+Install [Codex CLI](https://developers.openai.com/codex/cli) separately; Framecraft does not install
+it or reuse the desktop Codex login. It launches the [App Server](https://learn.chatgpt.com/docs/app-server)
+in an isolated app-data profile, without shell, agents, file edits, tools or PLC execution.
+Only questionnaire answers and counts go to AI; images/catalogues/addresses/tag names stay local.
+Further AI questions get separate answer fields. You review and explicitly create the plan;
+the generator rejects AI changes to the chosen machine/layout/categories. Closing the wizard
+preserves answers in the running app, not across an app restart yet.
+
+Generated pages use the same standalone React project/editor as manual creation. Imported tags can
+be selected for read-only values and trend curves. Machine command buttons are initially disabled;
+actions, writes, interlocks and permissions must be configured and commissioned explicitly.
+MQTT/OPC UA choice, roles and English translation are recorded requirements, not automatic setup.
+Alarm history is session history, not a production retention guarantee. No deployment occurs.
+
+The optional editor assistant (Pannello → Assistente AI) can propose text/style on the selected
+element, with partial approval and a single undo/redo. Broader functions remain on the roadmap.
+The native adapter needs a new desktop build; local CLI protocol 0.159.2 and synthetic/targeted
+tests are not proof of a successful real-account login or inference on a production installation.
+
 ## Run
 
 ```bash
