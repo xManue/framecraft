@@ -17,6 +17,18 @@ immagini della macchina o delle singole parti (necessarie/facoltative/non deside
 JSON/CSV e catalogo allarmi Framecraft JSON. Si possono rimandare esplicitamente gli input
 non disponibili: diventano segnaposto e attività residue, mai dati macchina inventati.
 
+La raccolta ora include dodici aree e oltre sessanta domande mirate: dispositivo/grafica,
+navigazione/popup/oggetti riutilizzabili, PLC/qualità dei dati, comandi/sequenze, allarmi,
+trend/archivi, ricette, produzione/manutenzione, utenti/audit, lingue/accessibilità,
+report/documenti/integrazioni e pubblicazione/backup/collaudo. I dettagli facoltativi si aprono
+soltanto per funzioni richieste o pagine dedicate; ogni scelta può essere rimandata. Il riepilogo
+permette di correggere ogni area senza perdere risposte. Pagina iniziale e tempi dei trend sono
+applicati dal generatore; gli altri campi restano requisiti espliciti nel progetto, non
+configurazioni dichiarate pronte. Ricette, produzione, manutenzione e report hanno strutture
+di pagina chiaramente incomplete. PDF/documenti e file ricette non sono importati/interpretati
+dalle nuove domande; ne viene raccolta la disponibilità. Dettagli testuali tecnici soltanto
+locali, all’AI arrivano opzioni validate e presenza dei dettagli. Nessun segreto richiesto.
+
 L’AI riceve solo le risposte approvate e i conteggi dei dati: foto, file, nomi tag, indirizzi e
 percorsi locali non vengono trasmessi. Domande ulteriori hanno un campo per ogni risposta.
 Account, modello e consenso sono richiesti solo prima dell’invio; nessun login o inferenza
@@ -32,8 +44,15 @@ collaudo nella nuova build desktop, non provati dai test con provider sintetico.
 Il generatore standard accetta anche un piano esplicito: crea solo le pagine approvate,
 router/manifesto/menu coerenti, immagini per pagina e cataloghi locali validati. Salva requisiti
 e parti da completare in framecraft.requirements.json; la connessione PLC rimane disabilitata.
-Valori e curve leggono soltanto tag scelti dall’utente. I pulsanti macchina restano disabilitati
-finché azioni, interlock e permessi non vengono configurati e collaudati. Targhette e grafiche
+Valori e curve leggono soltanto tag scelti dall’utente. I pulsanti non configurati restano
+disabilitati; per scritture singole il questionario raccoglie evento operatore, tag scrivibile,
+valore compatibile, permesso e conferma esplicita del mapping. Usa la stessa IR/eventi
+dell’Inspector; tag e valori restano locali, il modello non li inventa o modifica. Cambi di
+valore/evento/permesso o reimport del catalogo revocano la conferma; rinominare/cancellare/riordinare
+righe non sposta il mapping sul comando sbagliato. I gate utente restano fail-closed senza
+permesso; gateway disabilitato, autorizzazioni server, interlock e collaudo sono passi separati.
+Non sono comandi a uomo presente o funzioni di sicurezza: pressione/rilascio e watchdog PLC
+richiedono un contratto operativo e prove di guasto. Targhette e grafiche
 restano modificabili nel normale editor. Le risposte sopravvivono alla chiusura/riapertura della
 finestra durante la stessa sessione; recupero persistente del questionario ancora da aggiungere.
 
@@ -100,22 +119,22 @@ e collaudo della connessione restano possibili senza AI.
 | AI-IN-01 | Standard HMI e target WinCC/Optix | PARZIALE | Versione e dispositivo devono essere espliciti |
 | AI-IN-02 | Catalogo PLC, tipi e programmi esportati | PARZIALE | I tag operativi provengono solo dall'input reale |
 | AI-IN-03 | PDF/schema elettrico e documenti macchina | DA FARE | Estrazione con riferimenti alla pagina e richiesta di conferma |
-| AI-IN-04 | Descrizione funzionale e sequenze | DA FARE | Separare requisiti certi, preferenze e ipotesi |
+| AI-IN-04 | Descrizione funzionale e sequenze | PARZIALE | Domande mirate su modalità, consensi, feedback e sequenze conservate localmente; interpretazione operativa e contratto PLC da completare |
 | AI-IN-05 | Immagini o layout della macchina | PARZIALE | Usare asset reali; targhette e hotspot restano configurabili |
 | AI-IN-06 | Lista allarmi, ricette, utenti e permessi | PARZIALE | Nessuna semantica viene dedotta soltanto dal nome di un tag |
 | AI-IN-07 | Progetto HMI precedente o di riferimento | DA FARE | Importare, confrontare e dichiarare ciò che viene riusato |
-| AI-IN-08 | Mapping macchina-PLC-HMI approvato | DA FARE | È il gate per generare comandi e binding operativi |
+| AI-IN-08 | Mapping macchina-PLC-HMI approvato | PARZIALE | Letture e scritture singole da tag importati con valore/evento/permesso e approvazione; sequenze, comandi a uomo presente, handshake PLC e mapping connessioni ancora da completare |
 
 ## 3. Pianificazione AI del pannello
 
 | ID | Capacità | Stato | Risultato richiesto |
 |---|---|---|---|
-| AI-PLAN-01 | Valutazione della completezza degli input | DA FARE | Elenco dati sufficienti, mancanti e contraddittori |
+| AI-PLAN-01 | Valutazione della completezza degli input | PARZIALE | Validazione del questionario, rinvii e conflitti monitoraggio/comandi e ruoli/accesso; completezza industriale da verificare |
 | AI-PLAN-02 | Scelta motivata di template e famiglie pagina | DA FARE | Nessuna pagina inventata per riempire il menu |
-| AI-PLAN-03 | Piano pagine, navigazione e popup | DA FARE | Route e destinazioni verificabili prima della generazione |
-| AI-PLAN-04 | Piano binding e interazioni | DA FARE | Tag, direzione, evento e permessi espliciti |
-| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | DA FARE | Solo funzioni sostenute dagli input disponibili |
-| AI-PLAN-06 | Piano utenti e sicurezza | DA FARE | Matrice ruoli/operazioni da approvare separatamente |
+| AI-PLAN-03 | Piano pagine, navigazione e popup | PARZIALE | Pagine/categorie esplicite e pagina iniziale applicata; popup e oggetti ripetuti raccolti come requisiti da configurare |
+| AI-PLAN-04 | Piano binding e interazioni | PARZIALE | Letture e comandi singoli con tag, valore, evento e permessi espliciti; matrice operativa completa ancora da fare |
+| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, tempi trend applicati e requisiti ricette/archivio; generazione operativa completa da implementare |
+| AI-PLAN-06 | Piano utenti e sicurezza | PARZIALE | Requisiti mirati su identità, ruoli, sessione e audit; implementazione server e matrice da approvare separatamente |
 | AI-PLAN-07 | Stima compatibilità target e licenze | DA FARE | Limiti funzionali Framecraft, licenze dipendenze/provider e diritti degli asset verificati prima di creare file; destinazione React autonoma OPC UA/MQTT, non licenze dei Runtime vendor |
 | AI-PLAN-08 | Revisione e approvazione del piano | DA FARE | L'utente può correggere singole decisioni o procedere manualmente |
 
@@ -127,8 +146,8 @@ e collaudo della connessione restano possibili senza AI.
 | AI-GEN-02 | Generazione di guscio, menu e pagine | PARZIALE | Solo template compatibili e copertura dichiarata |
 | AI-GEN-03 | Posizionamento di grafica macchina, hotspot e targhette | PARZIALE | Immagini e identificativi reali, niente macchina fittizia |
 | AI-GEN-04 | Binding tag e dinamizzazioni | PARZIALE | Mapping approvato, tipi compatibili e dipendenze verificabili |
-| AI-GEN-05 | Eventi, script e navigazione | DA FARE | Builder tipizzato, sandbox e test prima dell'applicazione |
-| AI-GEN-06 | Allarmi, trend, ricette e report | DA FARE | Configurazione reale, non widget decorativi |
+| AI-GEN-05 | Eventi, script e navigazione | PARZIALE | Scritture singole confermate compilate con la stessa IR dell’editor e gate di interazione; altri script/azioni/handshake ancora da fare |
+| AI-GEN-06 | Allarmi, trend, ricette e report | PARZIALE | Catalogo allarmi e letture/tempi trend da dati scelti; ricette/report solo strutture esplicitamente incomplete e requisiti, non funzioni operative |
 | AI-GEN-07 | Testi e traduzioni | PARZIALE | Dizionario, fallback e copertura lingua visibili |
 | AI-GEN-08 | Utenti, ruoli e autorizzazioni | PARZIALE | Proposta separata ad alta attenzione e matrice revisionabile |
 | AI-GEN-09 | Validazione e test del progetto generato | PARZIALE | Report completo prima di dichiarare pronta la prima versione |

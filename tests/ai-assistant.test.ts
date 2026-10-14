@@ -39,6 +39,75 @@ function field(label: string) { return [...container.querySelectorAll("label")].
 function change(label: string, value: string) { const element = field(label), prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? "change" : "input", { bubbles: true })); }
 
 describe("flusso AI nell’interfaccia", () => {
+  function requirementsInterview(step: string) {
+    const interview = newAiInterview(); interview.machineName = "Test"; interview.spec.purpose = "Verificare i requisiti"; interview.step = step;
+    interview.spec.pages = [{ ...newGuidedPage(0), title: "Home", imageNeed: "none", itemsDeferred: true }];
+    return interview;
+  }
+  it("le nuove funzioni aprono domande mirate e conservano i dettagli se vengono rimandate", async () => {
+    useEditorAi.setState({ interview: requirementsInterview("features") }); await mount();
+    await act(async () => change("Ricette e formati", "yes"));
+    await act(async () => useEditorAi.setState(state => ({ interview: { ...state.interview, step: "req-recipes" } })));
+    expect(container.textContent).toContain("non ricette operative generate");
+    await act(async () => { change("Da dove arrivano le ricette", "csv"); change("Quali parametri compongono", "PRIVATE_RECIPE_DETAILS"); });
+    await act(async () => useEditorAi.setState(state => ({ interview: { ...state.interview, step: "features" } })));
+    await act(async () => change("Ricette e formati", "no"));
+    expect(useEditorAi.getState().interview.spec.requirements!.answers["recipes.fields"]).toBe("PRIVATE_RECIPE_DETAILS");
+    expect(fake.propose).not.toHaveBeenCalled();
+  });
+  it("mostra i dettagli condizionali solo quando necessari senza perderli né inviarli", async () => {
+    useEditorAi.setState({ interview: requirementsInterview("req-operations") }); await mount();
+    expect(container.textContent).not.toContain("Quali movimenti e quale contratto");
+    await act(async () => change("Ci sono comandi attivi", "yes"));
+    await act(async () => change("Quali movimenti e quale contratto", "Contratto PLC locale"));
+    await act(async () => change("Ci sono comandi attivi", "no"));
+    expect(container.textContent).not.toContain("Quali movimenti e quale contratto");
+    expect(useEditorAi.getState().interview.spec.requirements!.answers["operations.holdDetails"]).toBe("Contratto PLC locale");
+    expect(fake.propose).not.toHaveBeenCalled();
+  });
+  it("sceglie la pagina iniziale e permette di correggere i requisiti dal riepilogo", async () => {
+    const interview = requirementsInterview("req-navigation"); interview.spec.pages.push({ ...newGuidedPage(1), title: "Allarmi", kind: "alarms", section: "alarms", imageNeed: "none", itemsDeferred: true });
+    useEditorAi.setState({ interview }); await mount();
+    await act(async () => change("Quale pagina si apre", "page-2"));
+    expect(useEditorAi.getState().interview.spec.requirements!.startPageId).toBe("page-2");
+    await act(async () => useEditorAi.setState(state => ({ interview: { ...state.interview, step: "review" } })));
+    expect(container.textContent).toContain("Pagina iniziale: Allarmi");
+    await act(async () => button("Modifica: Navigazione").click());
+    expect(useEditorAi.getState().interview.step).toBe("req-navigation");
+    expect((field("Quale pagina si apre") as HTMLSelectElement).value).toBe("page-2");
+    expect(fake.propose).not.toHaveBeenCalled();
+  });
+  function commandInterview(step = "page-1") {
+    const interview = newAiInterview(); interview.machineName = "Linea"; interview.spec.purpose = "Comando manuale stazione"; interview.step = step;
+    interview.spec.tagsMode = "import"; interview.spec.tags = [{ name: "Command.Start", dataType: "Bool", access: "write", address: "", description: "" }];
+    interview.spec.pages = [{ ...newGuidedPage(0), title: "Manuali", kind: "commands", section: "manuals", imageNeed: "none", items: [{ label: "Avvia", tag: "" }] }];
+    return interview;
+  }
+  it("raccoglie evento, tag scrivibile e valore del comando e richiede conferma prima di continuare", async () => {
+    useEditorAi.setState({ interview: commandInterview() }); await mount();
+    await act(async () => change("Cosa deve fare “Avvia”", "write")); expect(button("Avanti").disabled).toBe(true);
+    expect(container.querySelectorAll("datalist")).toHaveLength(1); expect((field("Tag da scrivere per “Avvia”") as HTMLInputElement).list?.id).toBe("ai-write-tags-page-1");
+    await act(async () => { change("Tag da scrivere per “Avvia”", "Command.Start"); change("Valore da scrivere per “Avvia”", "true"); change("Quando parte “Avvia”", "DoubleTapped"); change("Chi può usare “Avvia”", "comandi"); });
+    expect(button("Avanti").disabled).toBe(true); await act(async () => field("Confermo il mapping di “Avvia”").click());
+    expect(button("Avanti").disabled).toBe(false); expect(useEditorAi.getState().interview.spec.pages[0].items[0]).toMatchObject({ tag: "Command.Start", command: { event: "DoubleTapped", value: "true", permission: "comandi", reviewed: true } });
+    await act(async () => change("Valore da scrivere per “Avvia”", "false")); expect((field("Confermo il mapping di “Avvia”") as HTMLInputElement).checked).toBe(false); expect(button("Avanti").disabled).toBe(true);
+    await act(async () => change("Cosa deve fare “Avvia”", "later")); expect(useEditorAi.getState().interview.spec.pages[0].items[0].command).toBeUndefined(); expect(button("Avanti").disabled).toBe(false);
+    expect(fake.propose).not.toHaveBeenCalled();
+  });
+  it("rinominare il comando non trasferisce la vecchia azione al nuovo nome", async () => {
+    const interview = commandInterview(); interview.spec.pages[0].items[0] = { label: "Avvia", tag: "Command.Start", command: { event: "Tapped", value: "true", permission: "", reviewed: true } };
+    useEditorAi.setState({ interview }); await mount(); await act(async () => change("Comandi necessari", "Arresta"));
+    expect(useEditorAi.getState().interview.spec.pages[0].items[0]).toEqual({ label: "Arresta", tag: "" });
+    expect(container.textContent).toContain("Rinominare un comando richiede un nuovo controllo");
+  });
+  it("reimportare il catalogo revoca la conferma dei comandi, conservando i tag solo se ancora scrivibili", async () => {
+    const interview = commandInterview("data"); interview.spec.pages[0].items[0] = { label: "Avvia", tag: "Command.Start", command: { event: "Tapped", value: "true", permission: "", reviewed: true } };
+    useEditorAi.setState({ interview }); await mount();
+    const file = new File(["synthetic"], "tags.json", { type: "application/json" }); Object.defineProperty(file, "text", { value: async () => JSON.stringify({ version: 1, variables: interview.spec.tags }) });
+    const input = field("Inserisci la lista tag") as HTMLInputElement; Object.defineProperty(input, "files", { value: [file], configurable: true });
+    await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(useEditorAi.getState().interview.spec.pages[0].items[0]).toMatchObject({ tag: "Command.Start", command: { value: "true", reviewed: false } }); expect(fake.propose).not.toHaveBeenCalled();
+  });
   it("attraversa la procedura con due pagine precise, domande per il sinottico e approvazione finale", async () => {
     const create = vi.spyOn(useEditorStore.getState(), "createStandardProject").mockResolvedValue(undefined);
     await mount();
@@ -51,7 +120,8 @@ describe("flusso AI nell’interfaccia", () => {
     await act(async () => { field("Non l’ho ancora").click(); change("Targhette dei motori", "M2400\nM2401"); });
     await act(async () => button("Avanti").click()); expect(container.querySelector(".ai-interview")?.getAttribute("data-step")).toBe("use");
     await act(async () => button("Indietro").click()); expect((field("Targhette dei motori") as HTMLTextAreaElement).value).toBe("M2400\nM2401");
-    await act(async () => button("Avanti").click()); await act(async () => button("Avanti").click());
+    await act(async () => button("Avanti").click());
+    for (let n = 0; n < 20 && useEditorAi.getState().interview.step !== "review"; n++) await act(async () => button("Avanti").click());
     expect(container.textContent).toContain("2 pagine"); expect(fake.propose).not.toHaveBeenCalled();
     await connectInSettings(); await act(async () => container.querySelector<HTMLInputElement>(".ai-consent input")!.click());
     await act(async () => button("Prepara proposta").click()); expect(create).not.toHaveBeenCalled();

@@ -3,10 +3,11 @@ import { parsePlcCatalog, isPlcVariableName } from "../core/plcVariables";
 import { parseAlarmCatalog } from "../core/hmiAlarms";
 import { plcVariablesFromSheet } from "../core/tagImport";
 import type { StandardProjectConfig } from "../core/standardProject";
+import { newPanelRequirements, panelRequirementGroups, panelRequirementsContext, requirementGroupEnabled } from "../core/panelRequirements";
 
 export interface AiInterview { machineName: string; layout: StandardProjectConfig["layout"]; spec: GuidedProjectSpec; step: string; followups: { question: string; answer: string }[] }
 export function newAiInterview(): AiInterview {
-  return { machineName: "", layout: "desktop-mobile", step: "machine", followups: [], spec: { version: 1, purpose: "", pages: [], tagsMode: "later", tags: [], alarmsMode: "later", protocol: "later", language: "it", users: "everyone" } };
+  return { machineName: "", layout: "desktop-mobile", step: "machine", followups: [], spec: { version: 1, purpose: "", pages: [], tagsMode: "later", tags: [], alarmsMode: "later", protocol: "later", language: "it", users: "everyone", requirements: newPanelRequirements() } };
 }
 export function newGuidedPage(index: number): GuidedPage {
   return { id: `page-${index + 1}`, title: "", section: "main", kind: "overview", imageNeed: "required", imageDeferred: false, items: [], itemsDeferred: false };
@@ -16,7 +17,12 @@ export function interviewSteps(interview: AiInterview) {
     { id: "machine", label: "Macchina e dispositivo" }, { id: "pages", label: "Quante pagine e quali" },
     { id: "data", label: interview.spec.pages.some(page => ["alarms", "history"].includes(page.kind)) ? "Tag e lista allarmi" : "Dati e tag disponibili" },
     ...interview.spec.pages.filter(page => !["alarms", "history"].includes(page.kind)).map(page => ({ id: page.id, label: `Contenuti: ${page.title || page.id}` })),
-    { id: "use", label: "Uso del pannello" }, { id: "review", label: "Riepilogo e proposta" },
+    { id: "use", label: "Uso del pannello" },
+    ...(interview.spec.requirements ? [
+      { id: "features", label: "Quali altre funzioni servono?" },
+      ...panelRequirementGroups.filter(group => requirementGroupEnabled(group, interview.spec.requirements!, interview.spec.pages.map(page => page.kind))).map(group => ({ id: `req-${group.id}`, label: group.label })),
+    ] : []),
+    { id: "review", label: "Riepilogo e proposta" },
   ];
 }
 export function interviewStepIssues(interview: AiInterview, step: string): string[] {
@@ -25,7 +31,12 @@ export function interviewStepIssues(interview: AiInterview, step: string): strin
   if (step === "pages") return [...(!spec.pages.length ? ["Scegli quante pagine vuoi creare."] : []), ...spec.pages.filter(page => !page.title.trim()).map((_, index) => `Dai un nome alla pagina ${index + 1}.`), ...([...new Set(spec.pages.map(page => page.section))].some(section => spec.pages.filter(page => page.section === section).length > 14) ? ["Distribuisci le pagine: massimo 14 per categoria."] : [])];
   const issues = guidedProjectIssues(spec);
   if (step === "review") return [...interviewStepIssues(interview, "machine"), ...issues, ...interview.followups.filter(item => !item.answer.trim()).map(item => `Rispondi a: ${item.question}`)];
-  if (step === "data") return issues.filter(issue => !spec.pages.some(page => issue.startsWith(`${page.title}:`)) && !issue.startsWith("Completa nome") && !issue.startsWith("Spiega") && !issue.startsWith("Scegli da"));
+  if (step === "features") return issues.filter(issue => issue.startsWith("Funzioni:"));
+  if (step.startsWith("req-")) {
+    const label = panelRequirementGroups.find(group => `req-${group.id}` === step)?.label;
+    return issues.filter(issue => label && issue.startsWith(`${label}:`) || step === "req-navigation" && issue.startsWith("Navigazione:"));
+  }
+  if (step === "data") return issues.filter(issue => !spec.pages.some(page => issue.startsWith(`${page.title}:`)) && !issue.startsWith("Completa nome") && !issue.startsWith("Spiega") && !issue.startsWith("Scegli da") && !panelRequirementGroups.some(group => issue.startsWith(`${group.label}:`)) && !issue.startsWith("Funzioni:") && !issue.startsWith("Navigazione:"));
   const page = spec.pages.find(page => page.id === step);
   return page ? issues.filter(issue => issue.startsWith(`${page.title}:`)) : [];
 }
@@ -36,9 +47,10 @@ export function interviewConfig(interview: AiInterview): StandardProjectConfig {
 export function interviewContext(interview: AiInterview) {
   interviewConfig(interview);
   return { machineName: interview.machineName.trim(), layout: interview.layout, purpose: interview.spec.purpose,
-    pages: interview.spec.pages.map(page => ({ id: page.id, title: page.title, kind: page.kind, category: page.section, image: { need: page.imageNeed, available: !!page.image, deferred: page.imageDeferred }, elements: page.items.map(item => ({ label: item.label, tagLinked: !!item.tag })), itemsDeferred: page.itemsDeferred })),
+    pages: interview.spec.pages.map(page => ({ id: page.id, title: page.title, kind: page.kind, category: page.section, image: { need: page.imageNeed, available: !!page.image, deferred: page.imageDeferred }, elements: page.items.map(item => ({ label: item.label, tagLinked: !!item.tag, ...(page.kind === "commands" ? { command: item.command ? { configured: item.command.reviewed, event: item.command.event, permissionRequired: !!item.command.permission } : { configured: false } } : {}) })), itemsDeferred: page.itemsDeferred })),
     data: { tags: interview.spec.tagsMode, tagCount: interview.spec.tags.length, alarms: interview.spec.alarmsMode, alarmCount: interview.spec.alarms?.alarms.length ?? 0 },
     use: { protocol: interview.spec.protocol, language: interview.spec.language, users: interview.spec.users },
+    ...(interview.spec.requirements ? { requirements: panelRequirementsContext(interview.spec.requirements, interview.spec.pages.map(page => page.kind)) } : {}),
     pending: guidedProjectPending(interview.spec), followups: interview.followups,
   };
 }

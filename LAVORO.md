@@ -4115,6 +4115,55 @@ Verifiche del 5 ottobre 2026:
   Non ripetuti test native/PLC/standard non modificati. Login/inferenza reali restano da
   collaudare nella nuova build desktop, come al punto 116.
 
+### 118. Mapping operativo dei comandi nel questionario AI (2026-10-14)
+
+- Comandi manuali: per ogni pulsante si può rimandare (disabilitato) oppure configurare una
+  scrittura singola con evento operatore, tag importato/scrivibile, valore scalare compatibile,
+  permesso e conferma esplicita del mapping. Il modello non riceve nomi tag/indirizzi/valori
+  e non può sostituirli: la generazione usa il piano locale approvato.
+- Stessa SetTagValue/IR, serializzazione eventi e Runtime dell’Inspector, senza eval o un
+  secondo percorso PLC. Eventi del generatore: click, doppio click, click destro/tocco lungo;
+  nessuna scrittura su Loaded/Initialized. Gate utente bloccato senza grant; ruoli richiesti
+  non possono diventare implicitamente Tutti. La regola UI non sostituisce RBAC server/PLC.
+- Conferma revocata cambiando valore/evento/permesso/tag o reimportando il catalogo. Label
+  rinominate e righe cancellate/riordinate/duplicate non ereditano l’azione del nome sbagliato.
+  Riepilogo locale visibile prima di creare. Cataloghi duplicati/rilevati/sola lettura,
+  tipi/valori incompatibili, script aggiuntivi e permessi inventati vengono rifiutati.
+- Verifiche mirate su UI, generatore, escaping, privacy, IR asincrona e Runtime autonomo:
+  niente azioni al caricamento; permesso richiesto, doppio click, sospensione/cleanup, una
+  sola scrittura, ricevuta non PLC e nessun replay. Tipi/build isolati dal lavoro trend.
+- Confronto con documentazione Siemens V21 eventi e Rockwell Button (URL nel README).
+  Nessuna dipendenza aggiunta o asset vendor distribuito; gate licenze/notice e commissioning
+  restano quelli della roadmap production. Connessioni inizialmente spente e nessuna CPU reale
+  o account AI coinvolti nei test: trasporto mock e simulazione locale non provano la macchina.
+- Restano comandi a uomo presente con lease/watchdog/interlock PLC, altri script/azioni,
+  ruoli server, collaudo login/inferenza reale e recupero persistente del questionario.
+  Da rimuovere anche i valori macchina campione dal guscio dei progetti guidati: non vanno
+  presentati come dati reali quando tag e connessione sono mancanti. Obiettivo globale ancora aperto.
+
+### 119. Raccolta estesa dei requisiti nella pipeline AI
+
+- Dodici aree con oltre sessanta domande mirate: dispositivo/grafica, navigazione/oggetti
+  riutilizzabili, PLC/qualità/unità, comandi/sequenze, allarmi, trend/archivi, ricette,
+  produzione/manutenzione, utenti/audit, lingue/accessibilità, report/documenti/integrazioni
+  e pubblicazione/backup/collaudo. Forme condizionali; non serve / da completare espliciti.
+- Le funzioni richieste aprono i dettagli senza aggiungere pagine di nascosto. Le pagine
+  dedicate richiedono le proprie domande; ricette/produzione/manutenzione/report sono strutture
+  dichiaratamente incomplete, non controlli operativi finti. I dettagli condizionali nascosti
+  rimangono locali per riprendere il lavoro, ma non sono nel contesto AI attivo.
+- Nuovo catalogo requisiti tipizzato e validato. Riepilogo con modifica per area; conservazione
+  in framecraft.requirements.json tramite lo stesso generatore standard. Nessun segreto richiesto.
+  Dettagli tecnici testuali locali, modello limitato a scelte validate e disponibilità.
+- Applicazione reale della pagina iniziale e della finestra/campionamento dei trend online.
+  Risoluzione standard letta da hmiStandard (1280x800), non assunta dall’interfaccia dell’editor.
+  Rifiuto di piano solo monitoraggio con comandi di scrittura e ruoli senza accesso previsto.
+- Verifiche mirate su domande condizionali, privacy, conservazione/rinvii, riepilogo, vecchi
+  piani, route/layout, config trend, AST JSX e persistenza. Nessun login AI o PLC reale nei test.
+- Restano interpretazione/import di documenti e ricette, generazione operativa delle funzioni
+  non supportate, server auth/audit/storage, stile/risoluzioni automatiche, publish/exe/installer,
+  recupero del questionario dopo riavvio e commissioning. Raccolta non equivale a implementazione
+  né approvazione industriale. Modifiche trend/profile rinviate conservate e non pubblicate.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

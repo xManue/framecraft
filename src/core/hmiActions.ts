@@ -1,4 +1,5 @@
 import type { HmiEventBinding, HmiEventType } from "./hmiEvents";
+import { isPlcVariableName } from "./plcVariables";
 
 export type GuidedActionKind = "navigate" | "show" | "hide" | "enable" | "disable" | "trace";
 export const guidedActionLabels: Record<GuidedActionKind, string> = {
@@ -21,4 +22,9 @@ export function readGuidedAction(script: string): { kind: GuidedActionKind; targ
 }
 export function newGuidedAction(kind: GuidedActionKind, target: string, event: HmiEventType = "Tapped"): HmiEventBinding {
   return { event, script: guidedActionScript(kind, target) };
+}
+
+export function newGuidedWriteAction(tag: string, value: string | number | boolean, event: HmiEventType = "Tapped"): HmiEventBinding {
+  if (!isPlcVariableName(tag) || typeof value === "number" && !Number.isFinite(value) || !["string", "number", "boolean"].includes(typeof value)) throw new Error("Tag o valore della scrittura non valido.");
+  return { event, script: `HMIRuntime.Tags.SysFct.SetTagValue(${JSON.stringify(tag)}, ${JSON.stringify(value)});` };
 }

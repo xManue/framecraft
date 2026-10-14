@@ -1153,7 +1153,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
 `;
 }
 
-function appSource(machineName: string, planned: readonly PlannedSection[], mobile: boolean) {
+function appSource(machineName: string, planned: readonly PlannedSection[], mobile: boolean, startPageId?: string) {
   const pages = planned.flatMap((section) => section.pages);
   const screenRoutes = literal(Object.fromEntries(pages.map((page) => [String(page.number), page.route])));
   const imports = pages.map((page) => `import { ${page.componentName} } from "./pages/${page.componentName}";`).join("\n");
@@ -1169,7 +1169,7 @@ function appSource(machineName: string, planned: readonly PlannedSection[], mobi
   const icons = planned.map((section) => `  ${section.id}: (${svgIcon(sectionIcon[section.id])}),`).join("\n");
   const usedMenuIcons = [...new Set(planned.flatMap((section) => section.entries.map((entry) => entry.icon)))];
   const entryIcons = usedMenuIcons.map((id) => `  ${id}: (${svgIcon(menuIcon[id])}),`).join("\n");
-  const fallback = planned[0]?.route ?? "/";
+  const fallback = pages.find(page => page.guided?.id === startPageId)?.route ?? planned[0]?.route ?? "/";
   const drawingControls = mobile
     ? `\n        {mobileLayout && <div className="hmi-drawing-controls"><button type="button" className="hmi-fit-switch" aria-pressed={mobileFit} title="Adatta riduce anche i comandi del disegno. Usa Dimensioni reali per controlli più grandi." onClick={() => setMobileFit((value) => !value)}>{mobileFit ? "Dimensioni reali" : "Adatta disegno"}</button></div>}`
     : "";
@@ -1730,7 +1730,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
   });
   const pageFiles = pages.map(({ page }) => ({
     path: `src/pages/${page.componentName}.tsx`,
-    content: page.guided ? guidedPageSource(page.guided, page.plan, page.componentName, pageImages.find(image => image.id === page.guided!.id)?.url) : withMachineImage(standardPageSource({ componentName: page.componentName, title: page.title, plan: page.plan, templateId: page.templateId, folderTab: page.folderTab, folderRoutes: page.folderRoutes }), photo?.url),
+    content: page.guided ? guidedPageSource(page.guided, page.plan, page.componentName, pageImages.find(image => image.id === page.guided!.id)?.url, config.guided?.tagsMode === "import" ? config.guided.tags : [], config.guided?.requirements) : withMachineImage(standardPageSource({ componentName: page.componentName, title: page.title, plan: page.plan, templateId: page.templateId, folderTab: page.folderTab, folderRoutes: page.folderRoutes }), photo?.url),
   }));
   const manifest = {
     id: slug(machineName), name: machineName, version: "1.0.0",
@@ -1742,7 +1742,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
   };
   return [
     { path: ".gitignore", content: "node_modules/\ndist/\n.framecraft/\n.framecraft-runtime/\n.framecraft-workspace.json\n*.log\n*.tsbuildinfo\n.env\n.env.*\n!.env.example\n*.pem\n*.key\n*.pfx\n*.p12\n" },
-    { path: "src/App.tsx", content: appSource(machineName, planned, mobile) },
+    { path: "src/App.tsx", content: appSource(machineName, planned, mobile, config.guided?.requirements?.startPageId) },
     { path: "runtime/mqtt-driver.mjs", content: mqttDriverSource },
     { path: "runtime/opcua-driver.mjs", content: opcUaDriverSource },
     { path: "runtime/opcua-driver.d.mts", content: opcUaDriverTypes },
@@ -1793,7 +1793,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "public/placeholder.svg", content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"><rect width="800" height="500" fill="#ececec"/><rect x="12" y="12" width="776" height="476" rx="10" fill="none" stroke="#8b8b8b" stroke-width="3" stroke-dasharray="12 10"/><path d="M280 318l78-88 62 62 46-48 76 74H280z" fill="#b9b9b9"/><circle cx="360" cy="180" r="30" fill="#b9b9b9"/><text x="400" y="390" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="28" fill="#555">Sostituisci immagine nell'Inspector</text></svg>\n` },
     ...(photo && config.machineImage ? [{ path: photo.path, content: "", source: config.machineImage }] : []),
     ...pageImages.map(image => ({ path: image.path, content: "", source: image.source })),
-    ...(config.guided ? [{ path: "framecraft.requirements.json", content: JSON.stringify({ version: 1, purpose: config.guided.purpose, language: config.guided.language, protocol: config.guided.protocol, users: config.guided.users, pages: config.guided.pages.map(({ image, ...page }) => ({ ...page, ...(image ? { image: pageImages.find(asset => asset.id === page.id)?.url } : {}) })), pending: guidedProjectPending(config.guided) }, null, 2) + "\n" }] : []),
+    ...(config.guided ? [{ path: "framecraft.requirements.json", content: JSON.stringify({ version: 1, purpose: config.guided.purpose, language: config.guided.language, protocol: config.guided.protocol, users: config.guided.users, requirements: config.guided.requirements, pages: config.guided.pages.map(({ image, ...page }) => ({ ...page, ...(image ? { image: pageImages.find(asset => asset.id === page.id)?.url } : {}) })), pending: guidedProjectPending(config.guided) }, null, 2) + "\n" }] : []),
     ...pageFiles,
     { path: "panel.json", content: `${JSON.stringify(manifest, null, 2)}\n` },
     { path: "framecraft.plc.json", content: config.guided ? serializePlcCatalog(config.guided.tagsMode === "import" ? config.guided.tags : []) : `${JSON.stringify({ version: 1, variables: [] }, null, 2)}\n` },

@@ -6,6 +6,11 @@ import { standardProjectSectionChoices } from "../core/standardProject";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorAi } from "../state/editorAi";
 import { useEditorStore } from "../state/editorStore";
+import { GuidedCommandFields, GuidedCommandTagOptions } from "./GuidedCommandFields";
+import { withGuidedItemLabels } from "../core/guidedCommands";
+import { hmiEventLabels } from "../core/hmiEvents";
+import { PanelRequirementFields, PanelRequirementsReview } from "./PanelRequirementFields";
+import { panelRequirementGroups } from "../core/panelRequirements";
 
 export function AiProjectInterview() {
   const ai = useEditorAi(), interview = ai.interview, spec = interview.spec;
@@ -18,7 +23,11 @@ export function AiProjectInterview() {
   useEffect(() => { setConsent(false); }, [interview, ai.model, ai.account?.email]);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); setNotice(undefined); }, [step]);
   const update = (change: Partial<typeof interview>) => ai.updateInterview({ ...interview, followups: [], ...change });
-  const updateSpec = (change: Partial<typeof spec>) => update({ spec: { ...spec, ...change } });
+  const updateSpec = (change: Partial<typeof spec>) => {
+    const next = { ...spec, ...change };
+    if (change.pages && next.requirements) next.requirements = { ...next.requirements, enabled: { ...next.requirements.enabled, ...Object.fromEntries(panelRequirementGroups.filter(group => group.optional && next.pages.some(page => group.pageKinds?.includes(page.kind))).map(group => [group.id, "yes" as const])) } };
+    update({ spec: next });
+  };
   const updatePage = (id: string, change: Partial<GuidedPage>) => updateSpec({ pages: spec.pages.map(page => page.id === id ? { ...page, ...change } : page) });
   const go = (id: string) => useEditorAi.setState(state => ({ interview: { ...state.interview, step: id } }));
   const chooseImage = async (id: string) => {
@@ -34,7 +43,7 @@ export function AiProjectInterview() {
       const source = await file.text(); if (useEditorAi.getState().interview !== interview) return;
       if (type === "tags") {
         const { tags, warnings } = parseInterviewTags(file.name, source);
-        updateSpec({ tags, tagsFile: file.name, tagsMode: "import", alarms: undefined, alarmsFile: undefined, pages: spec.pages.map(page => ({ ...page, items: page.items.map(item => ({ ...item, tag: tags.some(tag => tag.name === item.tag && tag.access !== "write") ? item.tag : "" })) })) });
+        updateSpec({ tags, tagsFile: file.name, tagsMode: "import", alarms: undefined, alarmsFile: undefined, pages: spec.pages.map(page => ({ ...page, items: page.items.map(item => ({ ...item, tag: tags.some(tag => tag.name === item.tag && (page.kind === "commands" ? tag.access !== "read" : tag.access !== "write")) ? item.tag : "", ...(item.command ? { command: { ...item.command, reviewed: false } } : {}) })) })) });
         setNotice(`${tags.length} tag importati localmente.${warnings.length ? ` Attenzione: ${warnings.slice(0, 8).join(" · ")}` : " Nessun collegamento PLC avviato."}`);
       } else { const alarms = parseInterviewAlarms(source, interview); updateSpec({ alarms, alarmsFile: file.name, alarmsMode: "import" }); setNotice(`${alarms.alarms.length} allarmi importati e validati con il catalogo tag.`); }
     } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
@@ -64,7 +73,7 @@ export function AiProjectInterview() {
       </>}
       {step === "pages" && <>
         <label>Quante pagine vuoi nel pannello?<select value={spec.pages.length} onChange={event => { const count = Number(event.target.value); if (count < spec.pages.length && !window.confirm("Ridurre il numero elimina le risposte delle pagine finali. Continuare?")) return; updateSpec({ pages: Array.from({ length: count }, (_, index) => spec.pages[index] ?? newGuidedPage(index)) }); }}><option value={0}>Scegli il numero</option>{Array.from({ length: 28 }, (_, index) => <option key={index} value={index + 1}>{index + 1}</option>)}</select></label>
-        <p>Una riga per ogni pagina. Verranno create solo queste, nell’ordine scelto; le categorie le organizzeranno nel menu.</p>
+        <p>Una riga per ogni pagina. Verranno create solo queste; le categorie le organizzeranno nel menu. Ricette, produzione, manutenzione e report creano una struttura esplicitamente da completare, non una funzione già operativa.</p>
         {spec.pages.map((page, index) => <div className="ai-page-plan" key={page.id}>
           <strong>Pagina {index + 1}</strong><label>Nome pagina {index + 1}<input maxLength={80} value={page.title} onChange={event => updatePage(page.id, { title: event.target.value })} placeholder="Es. Sinottico trasportatori" /></label>
           <label>Funzione pagina {index + 1}<select value={page.kind} onChange={event => { const kind = guidedPageKinds.find(kind => kind.id === event.target.value)!; updatePage(page.id, { kind: kind.id, section: kind.section, imageNeed: ["overview", "synoptic", "commands"].includes(kind.id) ? "required" : kind.image ? "optional" : "none", items: [], itemsDeferred: false, image: undefined, imageDeferred: false }); }}>{guidedPageKinds.map(kind => <option value={kind.id} key={kind.id}>{kind.label}</option>)}</select></label>
@@ -72,7 +81,7 @@ export function AiProjectInterview() {
         </div>)}
       </>}
       {step === "data" && <>
-        <label>Hai già una lista dei tag PLC?<select value={spec.tagsMode} onChange={event => updateSpec({ tagsMode: event.target.value as typeof spec.tagsMode, ...(event.target.value !== "import" ? { tags: [], tagsFile: undefined, alarms: undefined, alarmsFile: undefined, alarmsMode: "later" as const, pages: spec.pages.map(page => ({ ...page, items: page.items.map(item => ({ ...item, tag: "" })) })) } : {}) })}><option value="later">Non ancora: li collegherò dopo</option><option value="import">Sì, voglio importarla adesso</option><option value="none">Non servono dati PLC in questa prima versione</option></select></label>
+        <label>Hai già una lista dei tag PLC?<select value={spec.tagsMode} onChange={event => updateSpec({ tagsMode: event.target.value as typeof spec.tagsMode, ...(event.target.value !== "import" ? { tags: [], tagsFile: undefined, alarms: undefined, alarmsFile: undefined, alarmsMode: "later" as const, pages: spec.pages.map(page => ({ ...page, items: page.items.map(item => ({ ...item, tag: "", ...(item.command ? { command: { ...item.command, reviewed: false } } : {}) })) })) } : {}) })}><option value="later">Non ancora: li collegherò dopo</option><option value="import">Sì, voglio importarla adesso</option><option value="none">Non servono dati PLC in questa prima versione</option></select></label>
         {spec.tagsMode === "import" && <div className="ai-import"><label>Inserisci la lista tag (JSON Framecraft oppure CSV)<input type="file" accept=".json,.csv" onChange={event => { void importFile(event.target.files?.[0], "tags"); event.target.value = ""; }} /></label><p>CSV: colonne Name, DataType (o Nome, Tipo), Address e Description facoltative. JSON: catalogo framecraft.plc.json. Fino a 2 MB; niente credenziali.</p>{spec.tagsFile && <details><summary>{spec.tagsFile}: {spec.tags.length} tag importati · controlla</summary><ul>{spec.tags.slice(0, 100).map(tag => <li key={tag.name}>{tag.name} · {tag.dataType} · {tag.address || "indirizzo non disponibile"}</li>)}</ul>{spec.tags.length > 100 && <p>Mostrati i primi 100; il progetto conserverà tutti i {spec.tags.length} tag.</p>}</details>}</div>}
         {spec.pages.some(page => ["alarms", "history"].includes(page.kind)) && <>
           <label>Hai già la lista allarmi con segnali e condizioni di attivazione?<select value={spec.alarmsMode} onChange={event => updateSpec({ alarmsMode: event.target.value as typeof spec.alarmsMode, ...(event.target.value === "later" ? { alarms: undefined, alarmsFile: undefined } : {}) })}><option value="later">La configurerò dopo: non inventare allarmi o soglie</option><option value="import">Sì, ho un catalogo Framecraft JSON</option></select></label>
@@ -91,10 +100,14 @@ export function AiProjectInterview() {
           </div>}
         </>}
         {kind.items && <>
-          <label>{kind.items} · un nome per riga, massimo {guidedItemLimit(page.kind)}<textarea rows={4} maxLength={1000} value={page.items.map(item => item.label).join("\n")} onChange={event => updatePage(page.id, { items: event.target.value.split("\n").map((label, index) => ({ label, tag: page.items[index]?.tag ?? "" })) })} placeholder={page.kind === "synoptic" ? "M2400\nM2401" : "Inserisci i nomi reali"} /></label>
+          <label>{kind.items} · un nome per riga, massimo {guidedItemLimit(page.kind)}<textarea rows={4} maxLength={1000} value={page.items.map(item => item.label).join("\n")} onChange={event => updatePage(page.id, { items: withGuidedItemLabels(page.items, event.target.value.split("\n")) })} placeholder={page.kind === "synoptic" ? "M2400\nM2401" : "Inserisci i nomi reali"} /></label>
           {!page.items.some(item => item.label.trim()) && <label className="ai-check"><input type="checkbox" checked={page.itemsDeferred} onChange={event => updatePage(page.id, { itemsDeferred: event.target.checked, items: [] })} />Non li conosco ancora: li aggiungerò nell’editor</label>}
           {page.kind !== "commands" && page.items.map((item, index) => item.label.trim() && <label key={index}>Quale tag mostra “{item.label}”?<select value={item.tag} onChange={event => updatePage(page.id, { items: page.items.map((item, at) => at === index ? { ...item, tag: event.target.value } : item) })}><option value="">Lo collegherò dopo</option>{spec.tagsMode === "import" && spec.tags.filter(tag => tag.access !== "write").map(tag => <option key={tag.name} value={tag.name}>{tag.name} · {tag.dataType}</option>)}</select></label>)}
-          {page.kind === "commands" && <p className="ai-hint">Vengono preparati pulsanti disabilitati. Valori da scrivere, eventi, interlock e autorizzazioni non si indovinano: andranno configurati e collaudati nell’editor.</p>}
+          {page.kind === "commands" && <><p className="ai-hint">Configura qui i comandi di cui conosci il mapping reale. Gli altri restano disabilitati. Rinominare un comando richiede un nuovo controllo del collegamento: le azioni non vengono trasferite a un nome diverso.</p>
+            {spec.tagsMode === "import" && page.items.some(item => item.command) && <GuidedCommandTagOptions id={`ai-write-tags-${page.id}`} tags={spec.tags} />}
+            {page.items.map((item, index) => item.label.trim() && <GuidedCommandFields key={index} item={item} tags={spec.tagsMode === "import" ? spec.tags : []} tagListId={`ai-write-tags-${page.id}`} onGoData={() => go("data")} onChange={next => updatePage(page.id, { items: page.items.map((item, at) => at === index ? next : item) })} />)}
+            <p className="ai-hint">Sono scritture singole, non comandi a uomo presente. Pressione/rilascio, arresto sicuro e watchdog richiedono un contratto PLC da progettare e collaudare: il browser non è un dispositivo di sicurezza. Generare il progetto non avvia connessioni o scritture.</p>
+          </>}
         </>}
         {page.kind === "empty" && <p>Verrà creata una pagina con titolo e cornice, pronta per aggiungere elementi nell’editor.</p>}
       </>}
@@ -103,10 +116,13 @@ export function AiProjectInterview() {
         <label>Qual è la lingua prevista per l’operatore?<select value={spec.language} onChange={event => updateSpec({ language: event.target.value as typeof spec.language })}><option value="it">Italiano</option><option value="en">Inglese (traduzioni da completare)</option></select></label>
         <label>Tutti possono usare gli stessi comandi?<select value={spec.users} onChange={event => updateSpec({ users: event.target.value as typeof spec.users })}><option value="everyone">Sì, per questa prima bozza</option><option value="roles-later">No: servono ruoli operatore / manutenzione da configurare</option></select></label><p>Le autorizzazioni della macchina vanno verificate sul server e nel PLC, non affidate alla sola grafica.</p>
       </>}
+      {spec.requirements && (step === "features" || step.startsWith("req-")) && <PanelRequirementFields step={step} requirements={spec.requirements} pages={spec.pages} onChange={requirements => updateSpec({ requirements })} />}
       {step === "review" && <>
         <h4>{interview.machineName} · {spec.pages.length} pagine · {interview.layout === "desktop-mobile" ? "Desktop e mobile" : "Desktop"}</h4>
         <ol>{spec.pages.map(page => <li key={page.id}><strong>{page.title}</strong> · {guidedPageKinds.find(kind => kind.id === page.kind)?.label} · {page.section}{page.image ? ` · immagine: ${page.image.split(/[\\/]/).at(-1)}` : ""}</li>)}</ol>
         <p>{spec.tags.length} tag importati localmente · {spec.alarms?.alarms.length ?? 0} allarmi. Nessun indirizzo o soglia inventato.</p>
+        {spec.requirements && <PanelRequirementsReview requirements={spec.requirements} pages={spec.pages} onEdit={go} />}
+        {spec.pages.some(page => page.items.some(item => item.command)) && <section className="ai-command-review" aria-label="Mapping comandi da approvare"><h4>Controlla anche i comandi configurati</h4><ul>{spec.pages.flatMap(page => page.items.filter(item => item.command).map((item, index) => <li key={`${page.id}-${index}`}><strong>{page.title} · {item.label}</strong>: {hmiEventLabels[item.command!.event]} → {item.tag || "tag da scegliere"} = <code>{JSON.stringify(item.command!.value)}</code>{item.command!.permission ? ` · permesso ${item.command!.permission}` : " · tutti per la bozza"}</li>))}</ul><p>I mapping restano locali: tag e valori non vengono inviati a Codex. La ricevuta del trasporto non conferma l’esecuzione del comando nel PLC.</p></section>}
         <details><summary>Cosa resterà da completare e collaudare</summary><ul>{guidedProjectPending(spec).map((item, index) => <li key={index}>{item}</li>)}</ul></details>
         {interview.followups.map((item, index) => <label key={index}>{item.question}<input maxLength={1000} value={item.answer} onChange={event => update({ followups: interview.followups.map((item, at) => at === index ? { ...item, answer: event.target.value } : item) })} /></label>)}
         <details className="ai-context"><summary>Contesto che verrà inviato a Codex</summary><p>Solo le risposte, nomi delle pagine ed elementi e conteggi dei dati. Immagini, file, indirizzi, nomi tag e percorsi locali restano sul computer.</p><pre>{issues.length ? "Completa prima le risposte mancanti." : JSON.stringify(interviewContext(interview), null, 2)}</pre></details>

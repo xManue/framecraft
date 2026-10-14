@@ -24,7 +24,8 @@ describe("intervista adattiva per creare il pannello", () => {
   });
   it("aggiunge domande sui contenuti solo dove servono e allarmi solo nelle pagine allarme", () => {
     const interview = filledInterview(), steps = interviewSteps(interview);
-    expect(steps.map(step => step.id)).toEqual(["machine", "pages", "data", "page-1", "use", "review"]);
+    expect(steps.map(step => step.id).slice(0, 6)).toEqual(["machine", "pages", "data", "page-1", "use", "features"]);
+    expect(steps.map(step => step.id)).toContain("req-alarms"); expect(steps.at(-1)?.id).toBe("review");
     expect(steps[2].label).toContain("allarmi"); interview.spec.pages.pop();
     expect(interviewSteps(interview)[2].label).not.toContain("allarmi");
   });
@@ -122,7 +123,7 @@ describe("stesso generatore, piano esplicito", () => {
   it("mantiene i comandi disabilitati e registra le parti rimandate", () => {
     const interview = filledInterview(); interview.spec.pages = [{ ...newGuidedPage(0), title: "Manuali", kind: "commands", section: "manuals", imageNeed: "none", items: [{ label: "Avanti", tag: "" }] }];
     const files = standardProjectFiles(interviewConfig(interview)); expect(files.find(file => file.path === "src/pages/GuidedPage1.tsx")!.content).toContain('type="button" disabled');
-    expect(files.find(file => file.path === "framecraft.requirements.json")!.content).toContain("comandi disabilitati");
+    expect(files.find(file => file.path === "framecraft.requirements.json")!.content).toContain("comando disabilitato");
     expect(guidedProjectIssues(interview.spec)).toEqual([]);
   });
   it("non permette a Codex di cambiare macchina o aggiungere sezioni non richieste", async () => {

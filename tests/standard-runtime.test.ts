@@ -4,6 +4,7 @@ import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { serializeHmiDynamizations } from "../src/core/hmiDynamizations";
 import { serializeHmiEvents } from "../src/core/hmiEvents";
+import { guidedCommandBinding, type GuidedCommandItem } from "../src/core/guidedCommands";
 import { serializeHmiFaceplateBinding } from "../src/core/hmiFaceplates";
 import { hmiFlashingCss, hmiFlashingInlineStyle, resolveHmiFlashing } from "../src/core/hmiFlashing";
 import { executeHmiScript, executeHmiScriptAsync, inspectHmiScript, inspectHmiScriptProgram } from "../src/core/hmiScript";
@@ -213,6 +214,51 @@ const touchPointer = (type: string, x: number, y: number) => {
   return event;
 };
 const settleEvents = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe("comandi guidati nel Runtime autonomo", () => {
+  const selected: GuidedCommandItem = { label: "Imposta velocità", tag: "Motor.Speed", command: { event: "Tapped", value: "25", permission: "", reviewed: true } };
+  const tags = [{ name: "Motor.Speed", dataType: "Real", access: "read-write" as const, address: "", description: "" }];
+  function commandButton(permission = "", event = "Tapped") {
+    const binding = guidedCommandBinding({ ...selected, command: { ...selected.command!, permission: permission as never, event: event as never } }, tags)!;
+    const button = document.createElement("button"); button.textContent = selected.label;
+    button.setAttribute("data-fc-reacts", "true"); button.setAttribute("data-hmi-events", serializeHmiEvents([binding]));
+    if (permission) button.setAttribute("data-fc-user-requires", permission);
+    document.body.append(button); return button;
+  }
+  it("non scrive al caricamento e reagisce al click solo dopo il permesso", async () => {
+    const button = commandButton("comandi"), runtime = loadGeneratedRuntime(undefined, undefined, false, tags), error = vi.fn();
+    const stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error });
+    try {
+      await settleEvents(); expect(runtime.runtimeTagValues()[selected.tag]).toBeUndefined();
+      button.click(); await settleEvents(); expect(runtime.runtimeTagValues()[selected.tag]).toBeUndefined();
+      button.setAttribute("data-fc-user-granted", "true"); button.click(); await vi.waitFor(() => expect(runtime.runtimeTagValues()[selected.tag]).toBe("25"));
+      runtime.setRuntimeTagValue(selected.tag, 0); button.removeAttribute("data-fc-user-granted"); button.click(); await settleEvents(); expect(runtime.runtimeTagValues()[selected.tag]).toBe("0");
+      expect(error).not.toHaveBeenCalled();
+    } finally { stop(); }
+  });
+  it("un click sul comando collegato invia una sola richiesta e non sostituisce il valore PLC letto", async () => {
+    let complete!: () => void;
+    const request = connectedGateway(init => new Promise(resolve => { complete = () => resolve(new Response(JSON.stringify({ ...JSON.parse(String(init.body)), outcome: "delivered", delivery: "broker-ack", plcConfirmed: false }))); }));
+    const button = commandButton(), runtime = loadGeneratedRuntime(undefined, undefined, true, tags), error = vi.fn();
+    const stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error });
+    const posts = () => request.mock.calls.filter(([, init]) => init?.method === "POST");
+    try {
+      await vi.waitFor(() => expect(runtime.runtimeTagValues()[selected.tag]).toBe("10")); expect(posts()).toHaveLength(0);
+      button.click(); await vi.waitFor(() => expect(posts()).toHaveLength(1));
+      expect(JSON.parse(String(posts()[0][1]!.body))).toMatchObject({ tag: selected.tag, value: 25 }); expect(runtime.runtimeTagValues()[selected.tag]).toBe("10");
+      complete(); await settleEvents(); expect(posts()).toHaveLength(1); expect(runtime.runtimeTagValues()[selected.tag]).toBe("10"); expect(error).not.toHaveBeenCalled();
+    } finally { stop(); }
+  });
+  it("doppio click non viene anticipato da click o da caricamento", async () => {
+    const button = commandButton("", "DoubleTapped"), runtime = loadGeneratedRuntime(undefined, undefined, false, tags);
+    const stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error: vi.fn() });
+    try {
+      await settleEvents(); button.click(); await settleEvents(); expect(runtime.runtimeTagValues()[selected.tag]).toBeUndefined();
+      button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); await vi.waitFor(() => expect(runtime.runtimeTagValues()[selected.tag]).toBe("25"));
+      runtime.setRuntimeTagValue(selected.tag, 0); stop(); button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); await settleEvents(); expect(runtime.runtimeTagValues()[selected.tag]).toBe("0");
+    } finally { stop(); }
+  });
+});
 
 function connectedGateway(write?: (init: RequestInit) => Promise<Response>) {
   const snapshot = { version: 1, allowWrites: true, connections: [{ id: "mqtt", state: "connected" }], tags: [{ name: "Motor.Speed", dataType: "Real", access: "read-write", writable: true, connectionId: "mqtt" }], samples: [{ tag: "Motor.Speed", connectionId: "mqtt", value: "10", qualityCode: 192, timestamp: Date.now(), receivedAt: Date.now() }] };

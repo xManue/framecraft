@@ -288,6 +288,27 @@ questions. A synoptic asks for the real machine-part screen and separate motor l
 ask for a real catalogue. Each image is required, optional or unwanted; missing assets/data can
 be explicitly deferred and are listed in `framecraft.requirements.json` in the generated project.
 
+The interview also covers twelve requirement areas with more than sixty targeted questions:
+device/resolution/graphics/touch/mobile use; navigation/start page/popups/reusable objects;
+PLC sources/quality/refresh/units/TLS; commands/modes/confirmations/interlocks/sequences;
+alarms/history/acknowledgement; trends/sampling/retention; recipes/formats; production/maintenance;
+users/roles/audit; languages/time/accessibility; reports/documents/integrations; and delivery,
+offline behaviour, backup and acceptance tests. Each choice can be deferred. Optional areas
+open only when requested or implied by a dedicated page; follow-up fields appear only for the
+selected options. Choosing a capability does not silently add pages.
+
+The start page and online trend time range/sample interval are applied to the generated project.
+Other answers are local requirements, not a claim that the implementation is ready: changing
+resolution/theme, server access controls, persistent retention, recipes, reports, external
+services, executables and installers still need implementation/configuration and commissioning.
+Recipe/production/maintenance/report page kinds create clearly labelled incomplete structures,
+not operational controls or fake data. Conflicting monitoring/write-command or role/login choices
+are rejected. The final review allows editing each requirement area without losing answers.
+Technical text answers stay in `framecraft.requirements.json`; Codex receives validated choices
+and whether details were supplied, not those details. Do not enter passwords, tokens or PINs.
+Document/recipe file availability is recorded; PDF/CSV/database contents are not imported by
+these new requirement fields. Real image, tag and alarm imports retain their existing flow.
+
 Tag inputs: Framecraft JSON or CSV with Name/DataType (or Nome/Tipo) and optional Address/Description,
 up to 2 MB/5000 tags. Alarm inputs: `framecraft.alarms.json`, validated against imported readable
 tags and their trigger types. A list of messages alone does not establish activation conditions.
@@ -301,16 +322,31 @@ context before sending.
 Install [Codex CLI](https://developers.openai.com/codex/cli) separately; Framecraft does not install
 it or reuse the desktop Codex login. It launches the [App Server](https://learn.chatgpt.com/docs/app-server)
 in an isolated app-data profile, without shell, agents, file edits, tools or PLC execution.
-Only questionnaire answers and counts go to AI; images/catalogues/addresses/tag names stay local.
+Only approved page/item labels, validated choices and counts go to AI; technical requirement
+details, images/catalogues/addresses/tag names stay local.
 Further AI questions get separate answer fields. You review and explicitly create the plan;
 the generator rejects AI changes to the chosen machine/layout/categories. Closing the wizard
 preserves answers in the running app, not across an app restart yet.
 
 Generated pages use the same standalone React project/editor as manual creation. Imported tags can
-be selected for read-only values and trend curves. Machine command buttons are initially disabled;
-actions, writes, interlocks and permissions must be configured and commissioned explicitly.
+be selected for read-only values and trend curves. For each manual command, choose **Scrivere un
+valore in un tag PLC**, an operator event (click/double-click/context click), a declared writable
+tag, a compatible scalar value and an optional user permission; explicitly confirm the mapping.
+The wizard compiles the same event IR as the Inspector. Deferred commands stay disabled; changing
+the value/event/permission or reimporting tags revokes approval. Renaming/reordering/deleting item
+rows cannot transfer an existing command to a different name. Tag names, addresses and write
+values stay local, outside the AI request. Permission gates block without a grant, but they are
+browser UI rules, not server/PLC authentication. Connections, interlocks and commissioning are
+separate. These are single writes, not hold-to-run or safety functions; a PLC watchdog/lease and
+fault tests are necessary before implementing momentary machine commands. Transport receipt
+does not confirm PLC execution and uncertain/rejected commands are not automatically retried.
 MQTT/OPC UA choice, roles and English translation are recorded requirements, not automatic setup.
 Alarm history is session history, not a production retention guarantee. No deployment occurs.
+
+The event model follows the [WinCC Unified event documentation](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/triggering-events-rt-unified/basics-on-the-events-rt-unified)
+and the [FactoryTalk Optix button documentation](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/graphic-objects/predefined-objects/basic-control-objects/button.html):
+operator events and press/release semantics are distinct. This does not imply full vendor parity
+or safety certification. No new dependencies or redistributed vendor assets were added for this flow.
 
 The optional editor assistant (Pannello → Assistente AI) can propose text/style on the selected
 element, with partial approval and a single undo/redo. Broader functions remain on the roadmap.
