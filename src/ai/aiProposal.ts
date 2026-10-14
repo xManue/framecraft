@@ -5,10 +5,11 @@ import { parseSource } from "../source-parser/parseSource";
 import { updateInlineStyles, updateStaticText } from "../source-parser/transformSource";
 import { standardPageTemplates } from "../core/hmiPageTemplates";
 import { guidedTemplateBehavior, type TemplateBehavior } from "../core/templateBehavior";
+import type { AiDecision } from "./aiDelegation";
 
 export type AiMode = "create" | "edit";
 export interface AiOperation { id: string; type: "text" | "style"; property: string | null; value: string }
-export interface AiProposal { version: 1; mode: AiMode; summary: string; questions: string[]; warnings: string[]; provenance: string[]; project: StandardProjectConfig | null; operations: AiOperation[] }
+export interface AiProposal { version: 1; mode: AiMode; summary: string; questions: string[]; warnings: string[]; provenance: string[]; project: StandardProjectConfig | null; operations: AiOperation[]; decisions?: AiDecision[] }
 export interface AiEditSnapshot { root: string; document: EditorDocument; selectedId: string }
 const styleNames = ["color", "backgroundColor", "borderColor", "borderRadius", "fontSize", "fontWeight", "width", "height", "left", "top", "zIndex", "opacity", "rotate"];
 const textSchema = { type: "string" };
@@ -22,6 +23,7 @@ const properties = {
     settingsProgram: { type: "string", enum: settingsProgramChoices.map(program => program.id) },
   }, required: ["machineName", "layout", "sections", "settingsProgram"], additionalProperties: false }] },
   operations: { type: "array", items: { type: "object", properties: { id: textSchema, type: { type: "string", enum: ["text", "style"] }, property: { anyOf: [{ type: "null" }, { type: "string", enum: styleNames }] }, value: textSchema }, required: ["id", "type", "property", "value"], additionalProperties: false } },
+  decisions: { type: "array", items: { type: "object", properties: { key: textSchema, value: textSchema }, required: ["key", "value"], additionalProperties: false } },
 };
 export const aiProposalSchema = { type: "object", properties, required: Object.keys(properties), additionalProperties: false };
 
@@ -70,9 +72,13 @@ export function parseAiProposal(input: unknown, mode: AiMode): AiProposal {
   }
   if (mode === "edit" && item.project !== null || mode === "create" && operations.length) throw new Error("La proposta mescola creazione e modifica del progetto.");
   const provenance = list(item.provenance);
+  const rawDecisions = item.decisions === undefined ? [] : item.decisions;
+  if (!Array.isArray(rawDecisions) || rawDecisions.length > 256 || mode === "edit" && rawDecisions.length) throw new Error("Scelte delegate non valide per questa operazione.");
+  const decisions = rawDecisions.map(raw => { const decision = object(raw, ["key", "value"]), key = text(decision.key, 128); if (!/^[a-zA-Z0-9.-]+$/.test(key)) throw new Error("Domanda delegata non valida."); return { key, value: text(decision.value, 10000) }; });
+  if (new Set(decisions.map(decision => decision.key)).size !== decisions.length) throw new Error("Scelte delegate duplicate.");
   const allowed = mode === "create" ? ["approved-request", "framecraft-standard"] : ["approved-request", "approved-selection"];
   if (!provenance.every(source => allowed.includes(source))) throw new Error("La proposta cita una fonte che non è stata fornita o approvata.");
-  return { version: 1, mode, summary: text(item.summary), questions: list(item.questions), warnings: list(item.warnings), provenance, project, operations };
+  return { version: 1, mode, summary: text(item.summary), questions: list(item.questions), warnings: list(item.warnings), provenance, project, operations, decisions };
 }
 export function aiEditContext(snapshot: AiEditSnapshot) {
   const node = snapshot.document.nodes[snapshot.selectedId]; if (!node) throw new Error("Seleziona un elemento prima di chiedere una modifica.");
@@ -88,7 +94,7 @@ export function aiEditContext(snapshot: AiEditSnapshot) {
 export function aiPrompt(mode: AiMode, request: string, context?: ReturnType<typeof aiEditContext>) {
   return JSON.stringify({ task: mode, request: text(request, 8000), approvedContext: context ?? null,
     standard: mode === "create" ? { sections: standardProjectSectionChoices.map(({ id, label, description }) => ({ id, label, description })), settingsPrograms: settingsProgramChoices.map(({ id, label }) => ({ id, label })) } : null,
-    rules: "Prepara una proposta, non eseguire nulla. Non inserire codice, tag PLC, soglie, indirizzi, credenziali, azioni o autorizzazioni. Per la creazione scegli soltanto sezioni e layout esistenti; spiega i dati macchina mancanti. Per la modifica proponi testo e le proprietà grafiche supportate, con colori esadecimali. Se la richiesta supera queste capacità spiega nelle questions cosa serve, senza fingere di averlo fatto. Il progetto rimane completamente modificabile a mano." });
+    rules: "Prepara una proposta, non eseguire nulla. decisions è [] per la modifica. Non inserire codice, tag PLC, soglie, indirizzi, credenziali, azioni o autorizzazioni. Per la creazione scegli soltanto sezioni e layout esistenti; spiega i dati macchina mancanti. Per la modifica proponi testo e le proprietà grafiche supportate, con colori esadecimali. Se la richiesta supera queste capacità spiega nelle questions cosa serve, senza fingere di averlo fatto. Il progetto rimane completamente modificabile a mano." });
 }
 export function prepareAiEdits(snapshot: AiEditSnapshot, proposal: AiProposal, accepted: readonly string[]): string {
   if (proposal.mode !== "edit" || proposal.questions.length) throw new Error("Rispondi alle domande della proposta prima di applicarla.");

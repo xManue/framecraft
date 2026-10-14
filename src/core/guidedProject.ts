@@ -33,7 +33,7 @@ export interface GuidedProjectSpec {
   tagsMode: "import" | "later" | "none"; tags: PlcVariableDefinition[]; tagsFile?: string;
   alarmsMode: "import" | "later"; alarms?: AlarmCatalog; alarmsFile?: string;
   protocol: "later" | "mqtt" | "opcua" | "simulation"; language: "it" | "en";
-  users: "everyone" | "roles-later";
+  users: "everyone" | "roles-later" | "later";
   requirements?: PanelRequirements;
 }
 const kindOf = (page: GuidedPage) => guidedPageKinds.find(kind => kind.id === page.kind)!;
@@ -42,7 +42,7 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
   const issues: string[] = [];
   if (spec.version !== 1 || !plain(spec.purpose, 500) || !spec.purpose.trim()) issues.push("Spiega quale macchina o processo deve gestire il pannello.");
   if (!Array.isArray(spec.pages) || !spec.pages.length || spec.pages.length > 28) return [...issues, "Scegli da 1 a 28 pagine."];
-  if (!["import", "later", "none"].includes(spec.tagsMode) || !["import", "later"].includes(spec.alarmsMode) || !["later", "mqtt", "opcua", "simulation"].includes(spec.protocol) || !["it", "en"].includes(spec.language) || !["everyone", "roles-later"].includes(spec.users)) issues.push("Completa le scelte sui dati e sull’uso del pannello.");
+  if (!["import", "later", "none"].includes(spec.tagsMode) || !["import", "later"].includes(spec.alarmsMode) || !["later", "mqtt", "opcua", "simulation"].includes(spec.protocol) || !["it", "en"].includes(spec.language) || !["everyone", "roles-later", "later"].includes(spec.users)) issues.push("Completa le scelte sui dati e sull’uso del pannello.");
   if (!Array.isArray(spec.tags) || spec.tags.length > 5000 || spec.tags.some(tag => !isPlcVariableName(tag.name) || !tag.dataType.trim() || !["read", "write", "read-write"].includes(tag.access)) || new Set(spec.tags.map(tag => tag.name)).size !== spec.tags.length) issues.push("Il catalogo tag contiene nomi duplicati, tipi mancanti o tag non validi.");
   if (spec.tagsMode === "import" && !spec.tags.length) issues.push("Inserisci la lista tag oppure scegli di collegarla più tardi.");
   if (new Set(spec.pages.map(page => page.id)).size !== spec.pages.length) issues.push("Le pagine hanno identificativi duplicati.");
@@ -61,6 +61,7 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
       for (const item of page.items) {
         issues.push(...guidedCommandIssues(item, spec.tagsMode === "import" ? spec.tags : []).map(issue => `${page.title}: ${item.label} · ${issue}`));
         if (spec.users === "roles-later" && item.command && !item.command.permission) issues.push(`${page.title}: ${item.label} · hai richiesto ruoli separati: scegli il permesso che abilita il comando.`);
+        if (spec.users === "later" && item.command && !item.command.permission) issues.push(`${page.title}: ${item.label} · accesso non ancora definito: scegli un permesso reale o lascia il comando disabilitato.`);
       }
     } else if (page.items.some(item => item.tag && (spec.tagsMode !== "import" || !spec.tags.some(tag => tag.name === item.tag && tag.access !== "write")))) issues.push(`${page.title}: un collegamento non identifica un tag leggibile del catalogo importato.`);
     if (kindOf(page).items && !page.items.length && !page.itemsDeferred) issues.push(`${page.title}: indica ${kindOf(page).items.toLowerCase()} oppure scegli di completarli dopo.`);
@@ -87,6 +88,7 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
   if (spec.pages.some(page => page.kind === "history")) pending.push("Lo storico allarmi è di sessione; archivio persistente da progettare prima del rilascio.");
   pending.push(`Connessione ${spec.protocol === "later" ? "PLC" : spec.protocol.toUpperCase()} da configurare: nessun collegamento avviato.`);
   if (spec.users === "roles-later") pending.push("Ruoli, permessi e autenticazione server da configurare.");
+  if (spec.users === "later") pending.push("Accesso e autorizzazioni da definire: nessun permesso scelto dall’AI; comandi senza permesso reale disabilitati.");
   if (spec.language === "en") pending.push("Traduzioni inglesi dell’interfaccia e dei messaggi da completare.");
   if (spec.requirements) pending.push(...panelRequirementsPending(spec.requirements, spec.pages.map(page => page.kind)));
   return pending;

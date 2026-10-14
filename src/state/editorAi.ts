@@ -2,9 +2,11 @@ import { create } from "zustand";
 import { codexProvider, type AiAccount, type AiModel, type AiProvider } from "../ai/aiProvider";
 import { aiEditContext, aiPrompt, aiProposalSchema, parseAiProposal, type AiEditSnapshot, type AiMode, type AiProposal } from "../ai/aiProposal";
 import { interviewConfig, interviewPrompt, newAiInterview, type AiInterview } from "../ai/aiInterview";
+import { delegationQuestions, resolveInterviewDelegation } from "../ai/aiDelegation";
 
 interface AiState {
   interview: AiInterview;
+  resolvedInterview?: AiInterview;
   updateInterview(interview: AiInterview): void;
   resetInterview(): void;
   open: boolean; mode: AiMode; provider: AiProvider; account?: AiAccount; models: AiModel[]; model: string;
@@ -16,8 +18,8 @@ const message = (error: unknown) => error instanceof Error ? error.message : Str
 let accountRefresh = 0;
 export const useEditorAi = create<AiState>((set, get) => ({
   interview: newAiInterview(),
-  updateInterview(interview) { if (get().busy) return; set({ interview, proposal: undefined, error: undefined }); },
-  resetInterview() { if (get().busy) return; set({ interview: newAiInterview(), proposal: undefined, error: undefined }); },
+  updateInterview(interview) { if (get().busy) return; const keys = new Set(delegationQuestions(interview).map(question => question.key)); set({ interview: { ...interview, delegated: interview.delegated?.filter(key => keys.has(key)) }, proposal: undefined, resolvedInterview: undefined, error: undefined }); },
+  resetInterview() { if (get().busy) return; set({ interview: newAiInterview(), proposal: undefined, resolvedInterview: undefined, error: undefined }); },
   open: false, mode: "create", provider: codexProvider, models: [], model: "", busy: false, connecting: false, checking: false,
   show(mode) { if (get().busy || get().mode === mode) { set({ open: true }); return; } set({ open: true, mode, proposal: undefined, snapshot: undefined, error: undefined }); },
   close() { set({ open: false }); },
@@ -56,15 +58,18 @@ export const useEditorAi = create<AiState>((set, get) => ({
       const context = snapshot ? aiEditContext(snapshot) : undefined;
       const interview = get().interview;
       const input = mode === "create" ? interviewPrompt(interview) : aiPrompt(mode, prompt, context);
-      set({ busy: true, requestId, snapshot, proposal: undefined, error: undefined });
+      set({ busy: true, requestId, snapshot, proposal: undefined, resolvedInterview: undefined, error: undefined });
       const result = await provider.propose({ requestId, model, prompt: input, schema: aiProposalSchema });
       if (get().requestId !== requestId || result.requestId !== requestId || get().provider !== provider) return;
       const proposal = parseAiProposal(result.text, mode);
       if (mode === "create") {
         if (get().interview !== interview) throw new Error("Le risposte sono cambiate: prepara una nuova proposta.");
-        const config = interviewConfig(interview), { guided: _guided, ...base } = config;
-        if (proposal.project && JSON.stringify({ ...proposal.project, sections: [...proposal.project.sections].sort() }) !== JSON.stringify({ ...base, sections: [...base.sections].sort() }) || !proposal.project && !proposal.questions.length) throw new Error("L’AI ha cambiato il piano scelto. Nessun progetto creato: riprova la proposta.");
-        if (proposal.project) proposal.project = config;
+        if (!proposal.project && !proposal.questions.length) throw new Error("L’AI ha cambiato il piano scelto. Nessun progetto creato: riprova la proposta.");
+        if (proposal.project) {
+          const resolvedInterview = resolveInterviewDelegation(interview, proposal.decisions ?? []), config = interviewConfig(resolvedInterview), { guided: _guided, ...base } = config;
+          if (JSON.stringify({ ...proposal.project, sections: [...proposal.project.sections].sort() }) !== JSON.stringify({ ...base, sections: [...base.sections].sort() })) throw new Error("L’AI ha cambiato il piano scelto. Nessun progetto creato: riprova la proposta.");
+          proposal.project = config; set({ resolvedInterview });
+        } else if (proposal.decisions?.length) throw new Error("La proposta non contiene un piano completo per le scelte delegate.");
       }
       set({ proposal });
     } catch (error) { if (get().requestId === requestId || !get().busy) set({ error: message(error) }); }

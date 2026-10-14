@@ -4186,6 +4186,27 @@ Verifiche del 5 ottobre 2026:
   account riuscito è stato riferito dall’utente; ciò non verifica la generazione di un pannello.
 - Nessun agente o riavvio manuale dell’app; lavoro trend/profile locale conservato e non pubblicato.
 
+### 121. Domande delegabili nella pipeline AI (2026-10-14)
+
+- “Lascia scegliere all’AI / Rispondo io” per le domande iniziali, piano pagine, contenuti,
+  uso, requisiti e domande aggiuntive. Stato esplicito distinto da campo vuoto/rinvio;
+  risposta precedente conservata ma esclusa dal contesto quando la domanda è delegata.
+- Decisioni del provider con sole chiavi riconosciute e valori validati. Scelte non delegate
+  vincolanti; numero/piano delegato può aggiungere pagine ma non sostituire quelle scelte.
+  Risposte mancanti/duplicate, opzioni sconosciute e dati operativi inventati rifiutati prima
+  di scrivere. Segnaposto di prevalidazione non possono diventare un progetto approvato.
+- Riepilogo delle scelte AI, piano effettivo e parti residue prima della scelta cartella;
+  nessuna inferenza implicita sul salto e nessuna creazione prima di approvazione. Correzioni
+  alle risposte invalidano proposta e piano risolto senza cancellare le risposte originali.
+- Input reali già forniti conservati localmente. Tag, endpoint/protocollo macchina, condizioni
+  allarmi, foto reali, interblocchi e permessi non dedotti. Etichette proposte scollegate;
+  comandi non configurati disabilitati. Accesso saltato resta “da definire”: nessun nuovo
+  permesso; mapping senza autorizzazione reale non inseriti nella proposta eseguibile.
+- Verifiche mirate con provider finto su delega/recupero, privacy, guardie, generazione,
+  riepilogo/approvazione, immagini/elementi incompatibili e ID pagina. Inferenza reale e
+  commissioning PLC restano da collaudare; i test non consumano richieste ChatGPT.
+- Nessun agente o riavvio manuale dell’app; modifiche trend/profile rinviate conservate.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

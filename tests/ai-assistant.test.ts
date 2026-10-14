@@ -14,6 +14,7 @@ import { useEditorShortcuts } from "../src/state/editorShortcuts";
 import { useAiAccountEvents } from "../src/ai/useAiAccountEvents";
 import { EditorHelp } from "../src/editor/EditorHelp";
 import { useEditorGuidance } from "../src/state/editorGuidance";
+import { resolveInterviewDelegation, toggleInterviewDelegation } from "../src/ai/aiDelegation";
 
 const initialAi = useEditorAi.getState(), initialEditor = useEditorStore.getState();
 const initialSettings = useEditorShortcuts.getState();
@@ -30,7 +31,7 @@ beforeEach(() => {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); useEditorAi.setState(initialAi, true); useEditorStore.setState(initialEditor, true); useEditorShortcuts.setState(initialSettings, true); useEditorGuidance.setState(initialGuidance, true); });
-const button = (text: string) => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes(text))!;
+const button = (text: string) => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes(text) || button.getAttribute("aria-label")?.includes(text))!;
 function Frame() { useAiAccountEvents(); const open = useEditorShortcuts(state => state.open), helpOpen = useEditorGuidance(state => state.helpOpen); return createElement(Fragment, null, open && createElement(EditorSettings), helpOpen && createElement(EditorHelp), createElement(AiAssistant)); }
 async function mount() { await act(async () => root.render(createElement(StrictMode, null, createElement(Frame)))); }
 const settingsButton = (text: string) => [...document.querySelectorAll<HTMLButtonElement>(".editor-settings button")].find(button => button.textContent?.includes(text))!;
@@ -39,6 +40,52 @@ function field(label: string) { return [...container.querySelectorAll("label")].
 function change(label: string, value: string) { const element = field(label), prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? "change" : "input", { bubbles: true })); }
 
 describe("flusso AI nell’interfaccia", () => {
+  it("salta una domanda, permette di avanzare e recupera la risposta precedente", async () => {
+    const interview = newAiInterview(); interview.machineName = "Nome precedente"; interview.spec.purpose = "Processo scelto";
+    useEditorAi.setState({ interview }); await mount();
+    await act(async () => button("Lascia scegliere all’AI: Nome della macchina").click());
+    expect(field("Come si chiama").closest("fieldset")!.disabled).toBe(true);
+    expect(button("Rispondo io: Nome della macchina").getAttribute("aria-pressed")).toBe("true"); expect(button("Avanti").disabled).toBe(false);
+    expect(container.textContent).toContain("senza usare la risposta precedente");
+    await act(async () => button("Rispondo io: Nome della macchina").click());
+    expect((field("Come si chiama") as HTMLInputElement).value).toBe("Nome precedente"); expect(field("Come si chiama").closest("fieldset")!.disabled).toBe(false);
+    expect(fake.propose).not.toHaveBeenCalled();
+  });
+  it("delega le personalizzazioni ma segnala i dati macchina da completare senza inventarli", async () => {
+    const interview = newAiInterview(); interview.machineName = "Linea"; interview.spec.purpose = "Monitoraggio"; interview.step = "req-device";
+    interview.spec.pages = [{ ...newGuidedPage(0), title: "Home", imageNeed: "none", itemsDeferred: true }]; interview.spec.requirements!.answers["device.theme"] = "dark";
+    useEditorAi.setState({ interview }); await mount();
+    await act(async () => button("Lascia scegliere all’AI: Quale stile grafico").click());
+    expect(useEditorAi.getState().interview.delegated).toContain("req.device.theme"); expect(useEditorAi.getState().interview.spec.requirements!.answers["device.theme"]).toBe("dark");
+    await act(async () => useEditorAi.setState(state => ({ interview: { ...state.interview, step: "req-operations" } })));
+    await act(async () => button("Lascia scegliere all’AI: Quali consensi").click());
+    expect(container.textContent).toContain("quelli mancanti restano da configurare"); expect(fake.propose).not.toHaveBeenCalled();
+  });
+  it("crea solo dopo approvazione le pagine scelte dal modello, senza usare risposte saltate", async () => {
+    let interview = newAiInterview(); interview.machineName = "OLD_MACHINE_NAME"; interview.spec.purpose = "Monitoraggio linea";
+    interview = toggleInterviewDelegation(interview, "machineName"); interview = toggleInterviewDelegation(interview, "pages"); interview.step = "review";
+    const decisions = [{ key: "machineName", value: "Bozza linea" }, { key: "pages", value: '[{"title":"Vista proposta","kind":"overview","section":"main"},{"title":"Allarmi proposti","kind":"alarms","section":"alarms"}]' }];
+    const { guided: _guided, ...project } = interviewConfig(resolveInterviewDelegation(interview, decisions));
+    fake.propose = vi.fn(async request => ({ requestId: request.requestId, text: JSON.stringify({ ...plan, project, decisions }) }));
+    useEditorAi.setState({ interview, account: { connected: true, email: null, plan: null }, model: "test-model" });
+    const create = vi.spyOn(useEditorStore.getState(), "createStandardProject").mockResolvedValue(undefined); await mount();
+    expect(container.textContent).toContain("Sceglierà l’AI nella proposta"); expect(button("Prepara proposta").disabled).toBe(true);
+    await act(async () => container.querySelector<HTMLInputElement>(".ai-consent input")!.click()); await act(async () => button("Prepara proposta").click());
+    expect(vi.mocked(fake.propose).mock.calls[0][0].prompt).not.toContain("OLD_MACHINE_NAME"); expect(create).not.toHaveBeenCalled();
+    expect(container.querySelector(".ai-proposal")!.textContent).toContain("Vista proposta"); expect(container.querySelector(".ai-proposal")!.textContent).toContain("2 pagine proposte");
+    await act(async () => button("Approva, scegli cartella e crea 2 pagine").click());
+    expect(create).toHaveBeenCalledTimes(1); expect(vi.mocked(create).mock.calls[0][0].machineName).toBe("Bozza linea");
+    expect(vi.mocked(create).mock.calls[0][0].guided!.pages.map(page => page.title)).toEqual(["Vista proposta", "Allarmi proposti"]);
+    expect(useEditorAi.getState().interview.machineName).toBe("OLD_MACHINE_NAME");
+  });
+  it("permette di saltare anche una domanda aggiuntiva e invalida la proposta precedente", async () => {
+    const interview = newAiInterview(); interview.machineName = "Linea"; interview.spec.purpose = "Monitoraggio"; interview.step = "review";
+    interview.spec.pages = [{ ...newGuidedPage(0), title: "Home", imageNeed: "none", itemsDeferred: true }]; interview.followups = [{ question: "Quale disposizione preferisci?", answer: "" }];
+    useEditorAi.setState({ interview }); await mount(); expect(button("Prepara proposta").disabled).toBe(true);
+    await act(async () => button("Lascia scegliere all’AI: Quale disposizione").click());
+    expect(useEditorAi.getState().interview.followups[0].skipped).toBe(true); expect(field("Quale disposizione preferisci?").closest("fieldset")!.disabled).toBe(true);
+    expect(container.textContent).not.toContain("Rispondi a: Quale disposizione"); expect(fake.propose).not.toHaveBeenCalled();
+  });
   it("eredita il funzionamento del trend e chiede solo personalizzazioni, senza perdere i rinvii", async () => {
     const interview = requirementsInterview("req-trends"); interview.spec.pages[0].kind = "trend";
     useEditorAi.setState({ interview }); await mount();

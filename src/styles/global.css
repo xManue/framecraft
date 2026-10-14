@@ -154,6 +154,15 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .ai-check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding-right: 16px; }
 .ai-interview { min-width: 0; }
 .ai-interview-fields { min-width: 0; border: 0; padding: 0; margin: 0; }
+.ai-question { min-width: 0; margin-bottom: 16px; }
+.ai-question-input { min-width: 0; border: 0; padding: 0; margin: 0; }
+.ai-question[data-delegated="true"] .ai-question-input { opacity: .6; }
+.ai-interview .ai-delegate-button { min-height: 44px; justify-content: flex-start; margin-top: 6px; max-width: 100%; white-space: normal; text-align: left; }
+.ai-delegate-button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.ai-delegation-review { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.ai-delegation-review dl { display: grid; gap: 10px; margin: 0; }
+.ai-delegation-review dt { font-weight: 600; }
+.ai-delegation-review dd { margin: 4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .ai-command-fields { min-width: 0; margin: 16px 0; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); }
 .ai-command-fields > legend { padding: 0 6px; font-weight: 600; }
 .ai-command-review { padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
@@ -177,7 +186,7 @@ html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .ai-interview-fields > h4 { font-size: 16px; line-height: 1.5; }
 .ai-page-plan, .ai-import { min-width: 0; padding: 14px; margin: 14px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1, var(--bg)); overflow-wrap: anywhere; }
 .ai-page-plan { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 14px; }
-.ai-page-plan > strong, .ai-page-plan > label:first-of-type { grid-column: 1 / -1; }
+.ai-page-plan > strong, .ai-page-plan > label:first-of-type, .ai-page-plan > .ai-question:nth-child(2) { grid-column: 1 / -1; }
 .ai-interview-navigation { display: flex; justify-content: space-between; gap: 12px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
 .ai-interview button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .ai-interview input[type="checkbox"] { flex-shrink: 0; min-width: 18px; min-height: 18px; margin-top: 3px; }

@@ -17,6 +17,21 @@ immagini della macchina o delle singole parti (necessarie/facoltative/non deside
 JSON/CSV e catalogo allarmi Framecraft JSON. Si possono rimandare esplicitamente gli input
 non disponibili: diventano segnaposto e attività residue, mai dati macchina inventati.
 
+Ogni domanda ora ha **Lascia scegliere all’AI / Rispondo io**, comprese le domande aggiuntive.
+La delega è distinta da “da completare”: il modello propone le scelte di struttura/grafica
+delegate nel riepilogo prima di creare. Risposte precedenti conservate per tornare indietro,
+ma non inviate come indicazioni alle domande delegate. Numero/piano pagine delegato può
+aggiungere pagine, non cancellare o sostituire quelle già scelte; nomi ancora vuoti possono
+essere proposti dal modello. Le decisioni hanno chiavi note e valori validati; risposte
+esplicite e collegamenti reali non possono essere modificati senza delega.
+Tag, protocollo reale, disponibilità documenti, immagini, interblocchi, autorizzazioni e
+altri fatti macchina sconosciuti non vengono dedotti: rimangono attività da configurare.
+L’AI può proporre la necessità di un’immagine o etichette scollegate, non un asset o un
+mapping PLC reale. Saltare l’accesso lascia le autorizzazioni da definire e disabilita i
+comandi senza un permesso reale già specificato. Nessun account o permesso è inventato.
+La proposta usa lo stesso generatore e resta soggetta ad approvazione, consenso e controlli
+di obsolescenza; non parte alcuna inferenza automatica quando si salta una domanda.
+
 La raccolta ora include dodici aree e oltre sessanta domande mirate: dispositivo/grafica,
 navigazione/popup/oggetti riutilizzabili, PLC/qualità dei dati, comandi/sequenze, allarmi,
 trend/archivi, ricette, produzione/manutenzione, utenti/audit, lingue/accessibilità,
