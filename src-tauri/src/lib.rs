@@ -1234,7 +1234,7 @@ fn create_vite_project(root: String, files: Option<Vec<NewProjectFile>>) -> Resu
   "dependencies": {{ "react": "^19.1.1", "react-dom": "^19.1.1", "react-router-dom": "^7.8.2" }},
   "devDependencies": {{ "@vitejs/plugin-react": "^5.0.2", "vite": "^7.1.3", "typescript": "~5.9.2", "@types/react": "^19.1.12", "@types/react-dom": "^19.1.9" }}
 }}"#)).map_err(|error| error.to_string())?;
-    fs::write(root_path.join("index.html"), "<div id=\"root\"></div><script type=\"module\" src=\"/src/main.tsx\"></script>").map_err(|error| error.to_string())?;
+    fs::write(root_path.join("index.html"), "<!doctype html>\n<html lang=\"it\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <link rel=\"icon\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='4' fill='%233498db'/%3E%3C/svg%3E\" />\n  <title>Pannello HMI · Framecraft</title>\n</head>\n<body>\n  <div id=\"root\"></div>\n  <script type=\"module\" src=\"/src/main.tsx\"></script>\n</body>\n</html>\n").map_err(|error| error.to_string())?;
     fs::write(root_path.join("tsconfig.json"), r#"{"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"Bundler","jsx":"react-jsx","strict":true,"noEmit":true},"include":["src"]}"#).map_err(|error| error.to_string())?;
     fs::write(root_path.join("vite.config.ts"), "import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\nexport default defineConfig({ plugins: [react()] });\n").map_err(|error| error.to_string())?;
     fs::write(root_path.join("src/main.tsx"), "import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport { BrowserRouter } from 'react-router-dom';\nimport { App } from './App';\nimport './styles.css';\ncreateRoot(document.getElementById('root')!).render(<React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>);\n").map_err(|error| error.to_string())?;
@@ -1655,6 +1655,12 @@ mod tests {
         assert!(root.join("src/styles.css").exists());
         assert!(root.join("src/pages/HomePage.tsx").exists());
         assert!(analysis.dependencies.iter().any(|item| item == "react-router-dom"));
+        let html = fs::read_to_string(root.join("index.html")).unwrap();
+        assert!(html.starts_with("<!doctype html>"));
+        assert!(html.contains("charset=\"UTF-8\""));
+        assert!(html.contains("content=\"width=device-width, initial-scale=1\""));
+        assert!(html.contains("rel=\"icon\" href=\"data:image/svg+xml,"));
+        assert!(!html.contains("user-scalable=no"));
     }
 
     #[test]
@@ -1670,6 +1676,7 @@ mod tests {
         assert!(root.join("panel.json").is_file());
         assert!(!root.join("src/pages/HomePage.tsx").exists());
         assert!(!root.join("src/pages/AboutPage.tsx").exists());
+        assert!(fs::read_to_string(root.join("index.html")).unwrap().contains("width=device-width"));
     }
 
     #[test]
@@ -1679,6 +1686,25 @@ mod tests {
         fs::write(&target, "old").unwrap();
         write_atomic(&target, "new source").unwrap();
         assert_eq!(fs::read_to_string(target).unwrap(), "new source");
+    }
+
+    #[test]
+    #[ignore = "scripts/check-generated-panel.mjs supplies the real frontend bundle"]
+    fn materialize_generated_panel_smoke_fixture() {
+        let input = PathBuf::from(std::env::var("FRAMECRAFT_GENERATED_FIXTURE").expect("Run scripts/check-generated-panel.mjs"));
+        assert_eq!(input.file_name().unwrap(), "generated-files.json");
+        let files: Vec<NewProjectFile> = serde_json::from_str(&fs::read_to_string(&input).unwrap()).unwrap();
+        assert!(files.iter().any(|file| file.path == "src/framecraftHmiRuntime.ts"));
+        let runtime: serde_json::Value = serde_json::from_str(&files.iter().find(|file| file.path == "framecraft.runtime.json").unwrap().content).unwrap();
+        assert_eq!(runtime["gateway"]["enabled"], false, "Smoke must not enable a PLC connection");
+        let root = input.parent().unwrap().join("generated-panel");
+        let analysis = create_vite_project(path_string(&root), Some(files)).unwrap();
+        assert_eq!(analysis.framework, "vite");
+        assert!(root.join("src/main.tsx").is_file());
+        assert!(root.join("framecraft.requirements.json").is_file());
+        assert!(!root.join("src/pages/HomePage.tsx").exists());
+        assert!(!root.join("src/pages/AboutPage.tsx").exists());
+        println!("Materialized real generated panel: {}", root.display());
     }
 
     #[test]

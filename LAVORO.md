@@ -4207,6 +4207,29 @@ Verifiche del 5 ottobre 2026:
   commissioning PLC restano da collaudare; i test non consumano richieste ChatGPT.
 - Nessun agente o riavvio manuale dell’app; modifiche trend/profile rinviate conservate.
 
+### 122. Collaudo della pipeline su disco e browser reale (2026-10-14)
+
+- Nuovo check mirato `scripts/check-generated-panel.mjs`: proposta AI sintetica validata con
+  deleghe, generatore effettivo, comando nativo `create_vite_project`, copia SVG di prova,
+  dipendenze del progetto generate/installate da cache e build TypeScript/Vite del pannello.
+  Router e browser reali, nessuno stub del router. Percorso dati senza account o PLC reale.
+- Trovati e corretti errori TypeScript nel Runtime esportato (callback, dipendenze dei tag,
+  valori di scrittura e contesti opzionali), senza disattivare la modalità strict del progetto.
+  Scritture controllate come lotto prima dell’applicazione; nessun valore o segreto nei messaggi.
+- HTML dei nuovi progetti completo di doctype, UTF-8, viewport mobile e favicon incorporata:
+  browser mobile prima misurava 981 px su dispositivo da 375; dopo misura 375. Non disabilitato
+  lo zoom. Corretta la favicon 404, senza nascondere gli errori della console nel check.
+- Ritorno alla scelta dispositivo accessibile anche scegliendo Desktop su schermo piccolo:
+  spazio separato dal pannello, nessun passaggio automatico a Mobile. Verificati click normali,
+  navigazione persistente, Desktop → scelta → Mobile e modifica sorgente/HMR senza perdere layout.
+- Check completo riuscito; 15 regressioni Runtime mirate, 2 nuovi test sui contratti scrittura,
+  due test nativi di creazione e tipi del codice pubblicabile. Nessuna suite generale, agente,
+  richiesta ChatGPT, connessione PLC o riavvio manuale della finestra utente.
+- Limiti: risposta AI simulata, funzione nativa chiamata dal test (non dialogo cartella/IPC/UI
+  desktop), browser touch emulato e trasformazione sorgente (non Inspector nella finestra reale).
+  Inferenza Codex reale, handoff completo nell’app, commissioning e gate di produzione ancora aperti.
+  Modifiche trend/profile rinviate conservate e non pubblicate.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

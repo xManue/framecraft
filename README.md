@@ -466,6 +466,27 @@ The gateway checks also use an isolated OPC UA server with temporary trust and c
 `src-tauri` checks native lifecycle/recovery/configuration persistence. These checks do not
 prove interoperability with a real machine or its broker/trust, or approval for industrial use.
 
+## Generated-panel smoke check
+
+`node scripts/check-generated-panel.mjs --offline --browser` validates a synthetic guided
+proposal, passes the actual generator output to the native `create_vite_project` function,
+copies a synthetic SVG, installs the generated package dependencies from cache and runs
+the generated project's strict TypeScript/production build. Its real-browser phase checks
+mobile viewport/navigation persistence, return to device choice (including narrow Desktop),
+and a source edit through the editor's parser/transformer followed by HMR. No ChatGPT request,
+PLC connection, user project or desktop window is used. This is not the real-account/native-UI
+end-to-end test or industrial commissioning.
+
+Prerequisites: Node 24, Cargo and cached Rust/npm dependencies. The optional `--browser` phase
+needs Playwright and an installed browser (Edge by default on Windows). Set
+`FRAMECRAFT_PLAYWRIGHT_MODULE` to its `index.mjs` if it is not locally installed, and
+`FRAMECRAFT_SMOKE_NPM_CLI` to `npm/bin/npm-cli.js` if using a Node runtime without npm.
+`FRAMECRAFT_SMOKE_BROWSER_CHANNEL` overrides the browser channel. Without `--offline`, npm
+can contact the official registry; dependency install scripts/audit/funding calls stay disabled.
+The companion native fixture test is explicitly ignored in ordinary Cargo runs and invoked
+only by this command. Artifacts/result/screenshots stay in a fresh ignored `.hmi-preview/`
+directory, retained for diagnosis; no existing directory is overwritten or removed.
+
 ## Production status
 
 This checkpoint is not an industrial release. Authentication/RBAC and durable server audit/storage,
