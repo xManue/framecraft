@@ -3,6 +3,8 @@ import { standardProjectSectionChoices, type StandardProjectConfig } from "../co
 import { settingsProgramChoices } from "../core/hmiSectionMenu";
 import { parseSource } from "../source-parser/parseSource";
 import { updateInlineStyles, updateStaticText } from "../source-parser/transformSource";
+import { standardPageTemplates } from "../core/hmiPageTemplates";
+import { guidedTemplateBehavior, type TemplateBehavior } from "../core/templateBehavior";
 
 export type AiMode = "create" | "edit";
 export interface AiOperation { id: string; type: "text" | "style"; property: string | null; value: string }
@@ -74,7 +76,14 @@ export function parseAiProposal(input: unknown, mode: AiMode): AiProposal {
 }
 export function aiEditContext(snapshot: AiEditSnapshot) {
   const node = snapshot.document.nodes[snapshot.selectedId]; if (!node) throw new Error("Seleziona un elemento prima di chiedere una modifica.");
-  return { file: snapshot.document.file.split(/[\\/]/).at(-1), element: { type: node.type, text: node.text, styles: Object.fromEntries(Object.entries(node.styles).filter(([key]) => styleNames.includes(key))) } };
+  let current: EditorNode | undefined = node, template: TemplateBehavior | undefined;
+  const seen = new Set<string>();
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id); const id = current.props["data-hmi-template-id"];
+    if (typeof id === "string" && current.props["data-hmi-template-version"] === 1) { template = id.startsWith("guided:") ? guidedTemplateBehavior(id.slice(7)) : standardPageTemplates.find(item => item.behavior.id === id)?.behavior; break; }
+    current = current.parentId ? snapshot.document.nodes[current.parentId] : undefined;
+  }
+  return { file: snapshot.document.file.split(/[\\/]/).at(-1), ...(template ? { template } : {}), element: { type: node.type, text: node.text, styles: Object.fromEntries(Object.entries(node.styles).filter(([key]) => styleNames.includes(key))) } };
 }
 export function aiPrompt(mode: AiMode, request: string, context?: ReturnType<typeof aiEditContext>) {
   return JSON.stringify({ task: mode, request: text(request, 8000), approvedContext: context ?? null,

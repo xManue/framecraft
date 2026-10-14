@@ -157,6 +157,8 @@ ${templateImports(template.id)}export function ${componentName}() {
 ${navigationHelper}${templatePreamble(template.id)}  return (
     <section
       className="hmi-page"
+      data-hmi-template-id="${template.behavior.id}"
+      data-hmi-template-version={${template.behavior.version}}
       ${pageNumberAttribute}={${plan.number}}
       data-hmi-tag="${shellTags.actualPageNumber}"
       style={{

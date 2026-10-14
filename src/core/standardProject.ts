@@ -1,5 +1,6 @@
-import { standardPageSource, planPageNumber, type StandardPagePlan, type StandardPageTemplateId } from "./hmiPages";
+import { standardPageSource, standardPageTemplates, planPageNumber, type StandardPagePlan, type StandardPageTemplateId } from "./hmiPages";
 import { guidedAlarmCatalog, guidedPageSource, guidedProjectIssues, guidedProjectPending, type GuidedPage, type GuidedProjectSpec } from "./guidedProject";
+import { guidedTemplateBehaviors } from "./templateBehavior";
 import { serializePlcCatalog } from "./plcVariables";
 import { blueprintPages, folderGroupRoutes, menuPagePlan, sectionBlueprint, submenuPlacement, type MenuIconId, type SettingsProgram } from "./hmiSectionMenu";
 import { cssColor, desktopShell, lateralBar, mobileShell, pageCanvas, panelSize, sections, submenuPalette, submenuPanel } from "./hmiStandard";
@@ -1773,6 +1774,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/README.md", content: mqttReadmeSource },
     { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs" }, dependencies: { mqtt: "5.16.0", "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } }, null, 2) + "\n" },
     { path: "framecraft.connections.json", content: JSON.stringify({ version: 1, connections: [] }, null, 2) + "\n" },
+    { path: "framecraft.templates.json", content: JSON.stringify({ version: 1, scope: "bundled-template-base-contracts", templates: [...standardPageTemplates.map(template => template.behavior), ...Object.values(guidedTemplateBehaviors())] }, null, 2) + "\n" },
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },
     { path: "src/framecraftGateway.ts", content: gatewayClientSource.replaceAll('"../../runtime/', '"../runtime/') },
     { path: "vite.config.ts", content: "import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\nimport { framecraftGatewayProxy } from './runtime/vite-gateway.mjs';\nconst proxy = framecraftGatewayProxy();\nexport default defineConfig({ plugins: [react()], server: { host: '127.0.0.1', proxy }, preview: { host: '127.0.0.1', proxy } });\n" },

@@ -39,6 +39,29 @@ function field(label: string) { return [...container.querySelectorAll("label")].
 function change(label: string, value: string) { const element = field(label), prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? "change" : "input", { bubbles: true })); }
 
 describe("flusso AI nell’interfaccia", () => {
+  it("eredita il funzionamento del trend e chiede solo personalizzazioni, senza perdere i rinvii", async () => {
+    const interview = requirementsInterview("req-trends"); interview.spec.pages[0].kind = "trend";
+    useEditorAi.setState({ interview }); await mount();
+    expect(container.querySelector('.ai-inherited-settings')?.textContent).toContain("Online");
+    expect([...container.querySelectorAll("label")].some(label => label.textContent?.startsWith("Quale intervallo mostra"))).toBe(false);
+    await act(async () => button("Personalizza: Quale intervallo").click());
+    await act(async () => change("Quale intervallo mostra", "3600000"));
+    expect(useEditorAi.getState().interview.spec.requirements!.answers["trends.range"]).toBe("3600000");
+    await act(async () => change("Quale intervallo mostra", "later"));
+    expect(useEditorAi.getState().interview.spec.requirements!.answers["trends.range"]).toBe("later");
+    await act(async () => button("Usa impostazione del template: Quale intervallo").click());
+    expect(useEditorAi.getState().interview.spec.requirements!.answers["trends.range"]).toBeUndefined();
+    expect(container.querySelector('.ai-inherited-settings')?.textContent).toContain("1 minuto");
+    expect(fake.propose).not.toHaveBeenCalled();
+  });
+  it("spiega la funzione della base senza chiedere tag o azioni dal nome del motore", async () => {
+    const interview = requirementsInterview("page-1"); interview.spec.pages[0] = { ...interview.spec.pages[0], kind: "synoptic", items: [{ label: "M2400", tag: "" }] };
+    useEditorAi.setState({ interview }); await mount();
+    expect(container.querySelector('.template-behavior-info')?.textContent).toContain("Le targhette non fanno parte della foto");
+    expect(container.querySelector('.template-behavior-info')?.textContent).toContain("Nessuna azione");
+    expect(useEditorAi.getState().interview.spec.pages[0].items[0].command).toBeUndefined();
+    expect(fake.propose).not.toHaveBeenCalled();
+  });
   function requirementsInterview(step: string) {
     const interview = newAiInterview(); interview.machineName = "Test"; interview.spec.purpose = "Verificare i requisiti"; interview.step = step;
     interview.spec.pages = [{ ...newGuidedPage(0), title: "Home", imageNeed: "none", itemsDeferred: true }];

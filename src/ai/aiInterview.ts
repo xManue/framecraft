@@ -4,6 +4,7 @@ import { parseAlarmCatalog } from "../core/hmiAlarms";
 import { plcVariablesFromSheet } from "../core/tagImport";
 import type { StandardProjectConfig } from "../core/standardProject";
 import { newPanelRequirements, panelRequirementGroups, panelRequirementsContext, requirementGroupEnabled } from "../core/panelRequirements";
+import { guidedTemplateBehavior, inheritedTemplateAnswers } from "../core/templateBehavior";
 
 export interface AiInterview { machineName: string; layout: StandardProjectConfig["layout"]; spec: GuidedProjectSpec; step: string; followups: { question: string; answer: string }[] }
 export function newAiInterview(): AiInterview {
@@ -42,12 +43,14 @@ export function interviewStepIssues(interview: AiInterview, step: string): strin
 }
 export function interviewConfig(interview: AiInterview): StandardProjectConfig {
   const issues = interviewStepIssues(interview, "review"); if (issues.length) throw new Error(issues[0]);
-  return { machineName: interview.machineName.trim(), layout: interview.layout, sections: [...new Set(interview.spec.pages.map(page => page.section))], settingsProgram: "robot", guided: interview.spec };
+  const spec = interview.spec;
+  return { machineName: interview.machineName.trim(), layout: interview.layout, sections: [...new Set(spec.pages.map(page => page.section))], settingsProgram: "robot", guided: spec.requirements ? { ...spec, requirements: { ...spec.requirements, answers: { ...inheritedTemplateAnswers(spec.pages.map(page => page.kind)), ...spec.requirements.answers } } } : spec };
 }
 export function interviewContext(interview: AiInterview) {
   interviewConfig(interview);
   return { machineName: interview.machineName.trim(), layout: interview.layout, purpose: interview.spec.purpose,
-    pages: interview.spec.pages.map(page => ({ id: page.id, title: page.title, kind: page.kind, category: page.section, image: { need: page.imageNeed, available: !!page.image, deferred: page.imageDeferred }, elements: page.items.map(item => ({ label: item.label, tagLinked: !!item.tag, ...(page.kind === "commands" ? { command: item.command ? { configured: item.command.reviewed, event: item.command.event, permissionRequired: !!item.command.permission } : { configured: false } } : {}) })), itemsDeferred: page.itemsDeferred })),
+    templates: [...new Set(interview.spec.pages.map(page => page.kind))].map(kind => guidedTemplateBehavior(kind)!),
+    pages: interview.spec.pages.map(page => ({ id: page.id, title: page.title, kind: page.kind, template: { id: `guided:${page.kind}`, version: 1 }, category: page.section, image: { need: page.imageNeed, available: !!page.image, deferred: page.imageDeferred }, elements: page.items.map(item => ({ label: item.label, tagLinked: !!item.tag, ...(page.kind === "commands" ? { command: item.command ? { configured: item.command.reviewed, event: item.command.event, permissionRequired: !!item.command.permission } : { configured: false } } : {}) })), itemsDeferred: page.itemsDeferred })),
     data: { tags: interview.spec.tagsMode, tagCount: interview.spec.tags.length, alarms: interview.spec.alarmsMode, alarmCount: interview.spec.alarms?.alarms.length ?? 0 },
     use: { protocol: interview.spec.protocol, language: interview.spec.language, users: interview.spec.users },
     ...(interview.spec.requirements ? { requirements: panelRequirementsContext(interview.spec.requirements, interview.spec.pages.map(page => page.kind)) } : {}),
@@ -56,7 +59,7 @@ export function interviewContext(interview: AiInterview) {
 }
 export function interviewPrompt(interview: AiInterview) {
   return JSON.stringify({ task: "create", approvedInterview: interviewContext(interview), exactProject: { ...interviewConfig(interview), guided: undefined },
-    rules: "Usa ESATTAMENTE queste pagine, titoli, categorie e layout; non aggiungere intere sezioni o pagine dello standard. Non generare codice né inventare tag, allarmi, indirizzi, soglie, immagini o autorizzazioni. La pipeline locale userà gli ingressi reali scelti dall’utente. project deve coincidere con exactProject. Le parti esplicitamente rimandate sono avvisi, non domande bloccanti ripetute. Se serve un’informazione veramente indispensabile non raccolta, scrivi una domanda breve e mirata in questions: l’app presenterà un campo per ogni risposta. Spiega cosa sarà già costruito e cosa resta da collaudare, senza dichiarare funzioni non supportate. provenance ammette solo approved-request e framecraft-standard." });
+    rules: "Usa ESATTAMENTE queste pagine, titoli, categorie e layout; non aggiungere intere sezioni o pagine dello standard. Ogni pagina include la scheda template: known e defaults descrivono il funzionamento già previsto. Non chiedere di rispiegarlo o confermarlo; chiedi solo input macchina indispensabili ancora mancanti. implementation e limits distinguono struttura e funzioni disponibili: non dichiarare operative le strutture. Le risposte dell’utente prevalgono sui defaults del template; non richiedere nuovamente dati già forniti. Non generare codice né inventare tag, allarmi, indirizzi, soglie, immagini o autorizzazioni. La pipeline locale userà gli ingressi reali scelti dall’utente. project deve coincidere con exactProject. Le parti esplicitamente rimandate sono avvisi, non domande bloccanti ripetute. Se serve un’informazione veramente indispensabile non raccolta, scrivi una domanda breve e mirata in questions: l’app presenterà un campo per ogni risposta. Spiega cosa sarà già costruito e cosa resta da collaudare, senza dichiarare funzioni non supportate. provenance ammette solo approved-request e framecraft-standard." });
 }
 export function parseInterviewTags(name: string, source: string) {
   if (source.length > 2_000_000) throw new Error("Lista troppo grande: massimo 2 MB di testo.");

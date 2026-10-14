@@ -5,6 +5,7 @@ import { standardPageTemplate, standardPageTemplates, type StandardPageTemplateI
 import { sections } from "../core/hmiStandard";
 import { useEditorStore } from "../state/editorStore";
 import { PageTemplateIcon, pageCatalogCount, pageTemplateGroups } from "./PageTemplateIcon";
+import { TemplateBehaviorInfo } from "./TemplateBehaviorInfo";
 
 function PageCreationDialog({ initialTab, onClose }: { initialTab: "page" | "category"; onClose(): void }) {
   const createPage = useEditorStore((state) => state.createPage);
@@ -39,7 +40,7 @@ function PageCreationDialog({ initialTab, onClose }: { initialTab: "page" | "cat
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); if (!busyRef.current) onClose(); }
       if (event.key !== "Tab") return;
-      const targets = Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]') ?? []);
+      const targets = Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), details > summary, [tabindex="0"]') ?? []).filter(node => !node.closest("fieldset:disabled"));
       const first = targets[0], last = targets.at(-1);
       if (event.shiftKey && (document.activeElement === first || !panel.current?.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -99,6 +100,7 @@ function PageCreationDialog({ initialTab, onClose }: { initialTab: "page" | "cat
             })}</div>{!groups.length && <p>Nessun modello corrisponde alla ricerca.</p>}
           </section>
           {selectedTemplate.setupHint && <aside className="new-page-setup-hint"><strong>Da configurare sulla tua macchina</strong><span>{selectedTemplate.setupHint}</span></aside>}
+          <TemplateBehaviorInfo behavior={selectedTemplate.behavior} />
         </>}
       </fieldset></div>
       <footer><div aria-live="polite">{error && <p role="alert">{error}</p>}{status && <p role="status">{status}</p>}</div><button type="button" className="button secondary" disabled={busy} onClick={onClose}>Annulla</button><button type="submit" className="button primary" disabled={busy || (tab === "category" && !categories.length)}>{busy && <LoaderCircle size={16} className="spin" />}{busy ? "Creazione…" : tab === "category" ? "Crea categoria" : "Crea e apri pagina"}</button></footer>

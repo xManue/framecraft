@@ -13,6 +13,7 @@ import { isMainEmptyTemplate, mainEmptyTemplateBody, mainEmptyTemplates, type Ma
 import { isProgramSettingsTemplate, programSettingsTemplateBody, programSettingsTemplates, type ProgramSettingsTemplateId } from "./hmiProgramSettings";
 import { lubricationTemplateBody, robotFunctionTemplateBody } from "./hmiRobotLubrication";
 import { systemFunctionTemplateBody, systemFunctionTemplateImports, systemFunctionTemplatePreamble } from "./hmiSystem";
+import { standardTemplateBehavior, type TemplateBehavior } from "./templateBehavior";
 
 /** Le famiglie di pagina che l'editor sa disegnare, ricavate dalle schermate vere.
  *
@@ -36,7 +37,7 @@ export type StandardPageTemplateId =
   | ProgramSettingsTemplateId
   | ClvSettingsTemplateId;
 
-export interface StandardPageTemplate {
+interface StandardPageTemplateDescription {
   id: StandardPageTemplateId;
   name: string;
   description: string;
@@ -52,10 +53,11 @@ export interface StandardPageTemplate {
   /** Cosa deve fare l'utente dopo aver creato una base che dipende dalla macchina reale. */
   setupHint?: string;
 }
+export interface StandardPageTemplate extends StandardPageTemplateDescription { behavior: TemplateBehavior }
 
 const photo = (path: string) => `FotoStandardManu/${path}`;
 
-export const standardPageTemplates: readonly StandardPageTemplate[] = [
+const standardPageTemplateDescriptions: readonly StandardPageTemplateDescription[] = [
   { id: "blank", name: "Pagina vuota", description: "Solo la cornice grigia, senza titolo o contenuto inventato: la base esatta della 1041.", sourceScreen: "1041_Counters", referenceImage: photo("Desktop/1000_Main/0004_Pagina_1041_Counters.png"), visualStatus: "verified" },
   { id: "data-board", name: "Lastra dati", description: "Titolo piu' una lastra bianca vuota da riempire manualmente; non viene usata al posto delle pagine vuote dello standard.", sourceScreen: "4041_Production", referenceImage: photo("Desktop/4000_Statistics/0092_Pagina_4041_Production.png"), visualStatus: "partial" },
   { id: "machine-render", name: "Vista macchina Upstair", description: "Il rendering della linea sulla pagina grigia, con funghi di emergenza, barriere e le zone che si toccano.", sourceScreen: "1001_Upstair", referenceImage: photo("Desktop/1000_Main/0002_Pagina_1001_Upstair.png"), visualStatus: "verified", recommendedSection: "main", frequency: "1001 Upstair; la 1002 Downstair esportata e' vuota e ha una base separata" },
@@ -104,9 +106,11 @@ export const standardPageTemplates: readonly StandardPageTemplate[] = [
   { id: "pallet-selection", name: "Selezione pallet", description: "Grafica del magazzino con il tipo e il posto scelti nelle due schede.", sourceScreen: "7081_Pallet_Store_Selection", visualStatus: "missing", recommendedSection: "formats", frequency: "7081: ricostruita dal JSON, la foto non c'e'" },
 ] as const;
 
+export const standardPageTemplates: readonly StandardPageTemplate[] = standardPageTemplateDescriptions.map(template => ({ ...template, behavior: standardTemplateBehavior(template) }));
+
 export function standardPageTemplate(id: string | undefined): StandardPageTemplate {
   // Compatibilita' con i progetti salvati prima che le sei stazioni fossero separate.
-  if (id === "manual-station") return manualTemplates[1];
+  if (id === "manual-station") id = manualTemplates[1].id;
   return standardPageTemplates.find((template) => template.id === id) ?? standardPageTemplates[0];
 }
 

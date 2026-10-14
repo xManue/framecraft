@@ -29,6 +29,17 @@ di pagina chiaramente incomplete. PDF/documenti e file ricette non sono importat
 dalle nuove domande; ne viene raccolta la disponibilità. Dettagli testuali tecnici soltanto
 locali, all’AI arrivano opzioni validate e presenza dei dettagli. Nessun segreto richiesto.
 
+Ogni template standard e ogni base guidata ora dichiara una scheda di funzionamento versionata:
+scopo, comportamenti noti, input macchina necessari, stato strutturale/funzionale, limiti e
+default effettivi. Catalogo, intervista e AI usano la stessa fonte. Le richieste AI includono
+solo schede selezionate, senza duplicazioni; non devono far rispiegare ciò che la base prevede già.
+Le impostazioni note vengono ereditate e mostrate separatamente, personalizzabili senza
+sovrascrivere risposte/rinvii espliciti. Restano da raccogliere solo i dati macchina non noti.
+Il progetto conserva framecraft.templates.json e marcatori ID/versione nelle pagine; l’assistente
+sugli elementi risolve la scheda dal genitore noto senza inviare sorgenti o percorsi. Vecchie
+pagine, ID e versioni sconosciuti non ricevono semantica inventata. Le schede descrivono la base,
+non il codice successivamente modificato né un collaudo industriale.
+
 L’AI riceve solo le risposte approvate e i conteggi dei dati: foto, file, nomi tag, indirizzi e
 percorsi locali non vengono trasmessi. Domande ulteriori hanno un campo per ogni risposta.
 Account, modello e consenso sono richiesti solo prima dell’invio; nessun login o inferenza
@@ -110,7 +121,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-BASE-05 | Transazioni multi-file e undo/redo | PARZIALE | Una proposta è applicata o annullata in modo atomico |
 | AI-BASE-06 | Indice del progetto e ricerca dipendenze | PARZIALE | Recupero mirato del contesto senza inviare l'intero progetto |
 | AI-BASE-07 | Test generabili dalle funzioni HMI | DA FARE | Ogni funzione critica proposta porta verifiche eseguibili |
-| AI-BASE-08 | Provenienza e assunzioni strutturate | DA FARE | Ogni proposta distingue fatti, mapping approvati e parti mancanti |
+| AI-BASE-08 | Provenienza e assunzioni strutturate | PARZIALE | Contratti base con ID/versione, comportamento/input/limiti e rinvii; provenienza operativa e analisi del codice modificato da completare |
 
 ## 2. Input per la generazione iniziale
 
@@ -130,7 +141,7 @@ e collaudo della connessione restano possibili senza AI.
 | ID | Capacità | Stato | Risultato richiesto |
 |---|---|---|---|
 | AI-PLAN-01 | Valutazione della completezza degli input | PARZIALE | Validazione del questionario, rinvii e conflitti monitoraggio/comandi e ruoli/accesso; completezza industriale da verificare |
-| AI-PLAN-02 | Scelta motivata di template e famiglie pagina | DA FARE | Nessuna pagina inventata per riempire il menu |
+| AI-PLAN-02 | Scelta motivata di template e famiglie pagina | PARZIALE | Famiglie scelte dall’utente con funzionamento noto nel contesto AI; scelta automatica motivata tra tutti i template da implementare |
 | AI-PLAN-03 | Piano pagine, navigazione e popup | PARZIALE | Pagine/categorie esplicite e pagina iniziale applicata; popup e oggetti ripetuti raccolti come requisiti da configurare |
 | AI-PLAN-04 | Piano binding e interazioni | PARZIALE | Letture e comandi singoli con tag, valore, evento e permessi espliciti; matrice operativa completa ancora da fare |
 | AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, tempi trend applicati e requisiti ricette/archivio; generazione operativa completa da implementare |

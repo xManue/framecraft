@@ -29,6 +29,15 @@ beforeEach(() => {
 });
 afterEach(async () => { if (root) await act(async () => root!.unmount()); host?.remove(); root = undefined; useEditorStore.setState(actions); vi.restoreAllMocks(); });
 describe("finestra pagine e categorie", () => {
+  it("mostra il funzionamento della base selezionata e distingue strutture e servizi esterni", async () => {
+    await mount(); await click(button("Nuova pagina"));
+    expect(document.querySelector('.template-behavior-info')?.textContent).toContain("Solo struttura");
+    const template = Array.from(document.querySelectorAll<HTMLButtonElement>(".page-template-choice > button")).find(item => item.querySelector("strong")?.textContent === "Statistiche produzione")!;
+    await click(template);
+    expect(document.querySelector('.template-behavior-info')?.textContent).toContain("servizio esterno");
+    expect(document.querySelector('.template-behavior-info')?.textContent).toContain("non un collaudo");
+    expect(desktopBridge.writeFile).not.toHaveBeenCalled();
+  });
   it("mantiene lo stile delle pagine dentro categorie e gruppi liberi", async () => {
     useEditorStore.setState({ activePageId: useEditorStore.getState().pages[0].id, pageCategories: [] });
     const style = document.createElement("style"); style.textContent = editorStyles; document.head.append(style);

@@ -4164,6 +4164,28 @@ Verifiche del 5 ottobre 2026:
   recupero del questionario dopo riavvio e commissioning. Raccolta non equivale a implementazione
   né approvazione industriale. Modifiche trend/profile rinviate conservate e non pubblicate.
 
+### 120. Funzionamento dichiarato dei template per l’AI
+
+- Tutti i template del catalogo standard e tutte le basi guidate hanno una scheda versionata:
+  scopo, comportamenti noti, input macchina, stato di implementazione, limiti e default. Le basi
+  vuote non diventano funzioni operative per una verifica visiva; le pagine web dipendono da
+  servizi esterni e non inventano KPI, diagnostica o ricette.
+- Catalogo pagine e intervista mostrano le stesse schede, con dettagli progressivi. La richiesta
+  AI include solo i contratti selezionati una volta e le pagine li referenziano per ID/versione.
+  Istruzioni contro domande ridondanti su comportamento già noto; tag, foto, consensi e permessi
+  reali sono ancora ingressi da fornire/rimandare, mai dedotti dal template o dal nome del motore.
+- Risoluzione/stile/menu e default trend online/storico sessione sono ereditati dai generatori
+  effettivi. Personalizza apre il controllo; Usa impostazione del template ripristina l’eredità.
+  Risposte e rinvii espliciti prevalgono; il questionario non viene mutato dal calcolo del piano.
+- Salvataggio dei contratti in framecraft.templates.json e marcatori sulle nuove pagine. Anche
+  l’assistente sugli elementi conosce la base dal genitore; non legge/invia il sorgente o percorsi.
+  ID/versioni sconosciuti e vecchie pagine rimangono senza scheda, senza inferenze inventate.
+- Verifiche mirate su catalogo, deduplicazione, eredità/rinvii, privacy, generazione, contesto edit
+  e UI. Nessun login/inferenza o PLC reale avviato dai test; scelta automatica tra tutto il catalogo,
+  analisi della semantica dopo modifiche e commissioning restano lavori separati. Il collegamento
+  account riuscito è stato riferito dall’utente; ciò non verifica la generazione di un pannello.
+- Nessun agente o riavvio manuale dell’app; lavoro trend/profile locale conservato e non pubblicato.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

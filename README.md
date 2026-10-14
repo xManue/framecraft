@@ -309,6 +309,27 @@ and whether details were supplied, not those details. Do not enter passwords, to
 Document/recipe file availability is recorded; PDF/CSV/database contents are not imported by
 these new requirement fields. Real image, tag and alarm imports retain their existing flow.
 
+Every standard page template and guided base carries a versioned behaviour contract: purpose,
+known behaviour, machine-specific inputs, implementation status, limitations and actual defaults.
+The catalogue and interview display the same contract; visual verification is not functional
+commissioning. Empty bases remain explicitly structure-only, and web statistics templates depend
+on external services rather than calculating KPI themselves.
+
+AI creation receives only the selected contracts, deduplicated and referenced by each page.
+Its instructions do not ask users to re-explain known template behaviour or confirm inherited
+defaults. Resolution/style/category navigation and, where relevant, online trend timing/source
+and session history are inherited from the implemented bases. Use **Personalizza** to change a
+known choice or **Usa impostazione del template** to restore inheritance; explicit answers and
+deferrals always win. Local technical details and real PLC mappings are never invented or replaced.
+Unknown machine inputs still need user answers/imports or explicit deferral.
+
+New projects save `framecraft.templates.json` with the bundled base contracts. Generated page
+roots declare `data-hmi-template-id` and `data-hmi-template-version`; edit assistance resolves
+the selected element's known ancestor contract without sending source or local paths. Unknown
+IDs/versions and older pages without markers do not get an invented contract. These contracts
+describe the original base, not a certification of later code changes. Version contracts when
+changing their functional meaning; no metadata enables PLC writes, safety, services or deployment.
+
 Tag inputs: Framecraft JSON or CSV with Name/DataType (or Nome/Tipo) and optional Address/Description,
 up to 2 MB/5000 tags. Alarm inputs: `framecraft.alarms.json`, validated against imported readable
 tags and their trigger types. A list of messages alone does not establish activation conditions.

@@ -1,4 +1,5 @@
 import { panelSize } from "./hmiStandard";
+import { inheritedTemplateAnswers } from "./templateBehavior";
 
 export interface PanelQuestion {
   id: string; label: string; hint?: string; options?: readonly (readonly [string, string])[];
@@ -132,9 +133,13 @@ export function panelRequirementsIssues(requirements: PanelRequirements, pages: 
   return issues;
 }
 export function panelRequirementsSummary(requirements: PanelRequirements, pageKinds: readonly string[]) {
+  const defaults = inheritedTemplateAnswers(pageKinds), answers = { ...defaults, ...requirements.answers };
   return panelRequirementGroups.filter(group => requirementGroupEnabled(group, requirements, pageKinds)).map(group => ({
     id: group.id, label: group.label, hint: group.hint,
-    answers: group.questions.filter(question => requirementQuestionActive(group, question, requirements)).map(question => ({ key: `${group.id}.${question.id}`, label: question.label, value: requirements.answers[`${group.id}.${question.id}`] || "later", local: !!question.local })),
+    answers: group.questions.filter(question => requirementQuestionActive(group, question, { ...requirements, answers })).map(question => {
+      const key = `${group.id}.${question.id}`;
+      return { key, label: question.label, value: answers[key] || "later", local: !!question.local, inherited: key in defaults && !(key in requirements.answers) };
+    }),
   }));
 }
 export function panelRequirementsContext(requirements: PanelRequirements, pageKinds: readonly string[]) {

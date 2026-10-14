@@ -11,6 +11,8 @@ import { withGuidedItemLabels } from "../core/guidedCommands";
 import { hmiEventLabels } from "../core/hmiEvents";
 import { PanelRequirementFields, PanelRequirementsReview } from "./PanelRequirementFields";
 import { panelRequirementGroups } from "../core/panelRequirements";
+import { guidedTemplateBehavior } from "../core/templateBehavior";
+import { TemplateBehaviorInfo } from "./TemplateBehaviorInfo";
 
 export function AiProjectInterview() {
   const ai = useEditorAi(), interview = ai.interview, spec = interview.spec;
@@ -78,6 +80,7 @@ export function AiProjectInterview() {
           <strong>Pagina {index + 1}</strong><label>Nome pagina {index + 1}<input maxLength={80} value={page.title} onChange={event => updatePage(page.id, { title: event.target.value })} placeholder="Es. Sinottico trasportatori" /></label>
           <label>Funzione pagina {index + 1}<select value={page.kind} onChange={event => { const kind = guidedPageKinds.find(kind => kind.id === event.target.value)!; updatePage(page.id, { kind: kind.id, section: kind.section, imageNeed: ["overview", "synoptic", "commands"].includes(kind.id) ? "required" : kind.image ? "optional" : "none", items: [], itemsDeferred: false, image: undefined, imageDeferred: false }); }}>{guidedPageKinds.map(kind => <option value={kind.id} key={kind.id}>{kind.label}</option>)}</select></label>
           <label>Categoria pagina {index + 1}<select value={page.section} onChange={event => updatePage(page.id, { section: event.target.value as typeof page.section })}>{standardProjectSectionChoices.map(section => <option value={section.id} key={section.id}>{section.label}</option>)}</select></label>
+          <details className="ai-page-behavior"><summary>Come funziona questa base</summary><TemplateBehaviorInfo behavior={guidedTemplateBehavior(page.kind)!} /></details>
         </div>)}
       </>}
       {step === "data" && <>
@@ -91,6 +94,7 @@ export function AiProjectInterview() {
       </>}
       {page && kind && <>
         <p>{kind.label} · {page.title}</p>
+        <TemplateBehaviorInfo behavior={guidedTemplateBehavior(page.kind)!} />
         {kind.image && <>
           <label>Vuoi un’immagine in questa pagina?<select value={page.imageNeed} onChange={event => updatePage(page.id, { imageNeed: event.target.value as typeof page.imageNeed })}><option value="required">Sì, è necessaria per capire la macchina</option><option value="optional">È utile ma facoltativa</option><option value="none">No, questa pagina non la deve avere</option></select></label>
           {page.imageNeed !== "none" && <div className="ai-import"><strong>{page.imageNeed === "required" ? "Immagine richiesta" : "Immagine facoltativa"}: {kind.image}</strong><p>{page.kind === "synoptic" ? "Usa lo screen della parte della tua macchina. Le targhette sono elementi separati, spostabili con il mouse nell’editor: non fanno parte della foto." : "Scegli la grafica reale della tua macchina. Non verrà sostituita con un’immagine inventata dall’AI."}</p>

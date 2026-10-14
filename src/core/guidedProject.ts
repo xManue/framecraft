@@ -118,7 +118,7 @@ export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, compo
     });
   }
   const source = standardPageSource({ componentName, title: "Pagina guidata", plan, templateId: "blank" });
-  return source.replace(/^.*data-plc-variable="Folder_Vis".*\r?\n/gm, "").replace("    </section>", `${body}    </section>`);
+  return source.replace('data-hmi-template-id="standard:blank"', `data-hmi-template-id="guided:${page.kind}"`).replace(/^.*data-plc-variable="Folder_Vis".*\r?\n/gm, "").replace("    </section>", `${body}    </section>`);
 }
 export function guidedAlarmCatalog(spec: GuidedProjectSpec): AlarmCatalog {
   return spec.alarmsMode === "import" && spec.alarms ? parseAlarmCatalog(spec.alarms, spec.tagsMode === "import" ? spec.tags : []) : emptyAlarmCatalog();
