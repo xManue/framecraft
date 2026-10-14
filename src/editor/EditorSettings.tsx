@@ -1,10 +1,12 @@
-import { HelpCircle, Keyboard, LayoutTemplate, RotateCcw, Search, X } from "lucide-react";
+import { HelpCircle, Keyboard, LayoutTemplate, RotateCcw, Search, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { defaultEditorShortcuts, editorCommands, editorShortcutFromEvent, editorShortcutIssue, editorShortcutsIssue, formatEditorShortcut, type EditorCommandId } from "../../scripts/editor-shortcuts.mjs";
 import { useEditorShortcuts } from "../state/editorShortcuts";
 import { useEditorGuidance } from "../state/editorGuidance";
 import { layoutPresets, snapGrids, useEditorStore, type UiDensity, type WorkLayout } from "../state/editorStore";
+import { AiAccountSettings } from "./AiAccountSettings";
+import { useEditorAi } from "../state/editorAi";
 
 const workLayouts: { id: WorkLayout; label: string; description: string }[] = [
   { id: "disegno", label: "Grafica e componenti", description: "Componenti e più spazio al disegno" },
@@ -40,6 +42,7 @@ export function EditorSettings() {
   const replayGuidance = useEditorGuidance(state => state.replay);
   const setHelpOpen = useEditorGuidance(state => state.setHelpOpen);
   const changed = JSON.stringify(draft) !== JSON.stringify(bindings);
+  const returnToAi = useEditorAi(state => state.open);
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   const commands = editorCommands.filter(command => `${command.label} ${command.description} ${command.group}`.toLocaleLowerCase("it").includes(query.trim().toLocaleLowerCase("it")));
 
@@ -105,9 +108,10 @@ export function EditorSettings() {
         <button type="button" aria-pressed={section === "workspace"} onClick={() => { setOpen(true, "workspace"); setRecording(undefined); }}><LayoutTemplate size={18} />Area di lavoro</button>
         <button type="button" aria-pressed={section === "shortcuts"} onClick={() => setOpen(true, "shortcuts")}><Keyboard size={18} />Scorciatoie e comandi</button>
         <button type="button" aria-pressed={section === "assistance"} onClick={() => { setOpen(true, "assistance"); setRecording(undefined); }}><HelpCircle size={18} />Aiuto e suggerimenti</button>
+        <button type="button" aria-pressed={section === "ai"} onClick={() => { setOpen(true, "ai"); setRecording(undefined); }}><Sparkles size={18} />AI e account</button>
       </nav>
       <div className="editor-settings-body">
-        {section === "workspace" ? <div className="editor-settings-workspace">
+        {section === "ai" ? <AiAccountSettings /> : section === "workspace" ? <div className="editor-settings-workspace">
           <p className="editor-settings-hint">Queste preferenze si applicano subito e sono condivise tra i progetti. Puoi cambiarle anche dai menu rapidi.</p>
           <fieldset><legend>Disposizione dei pannelli</legend><p>{layoutCustomized ? "Disposizione personalizzata. Scegli una configurazione per riapplicarla." : "Scegli gli strumenti per il lavoro corrente."} Non cambia grafica o codice della pagina.</p><div className="editor-settings-layouts">{workLayouts.map(layout => <button type="button" key={layout.id} aria-pressed={!layoutCustomized && workLayout === layout.id} onClick={() => applyWorkLayout(layout.id)}><strong>{layout.label}</strong><small>{layout.description}</small></button>)}</div></fieldset>
           <fieldset><legend>Leggibilità</legend><label htmlFor="editor-density">Dimensione dell’interfaccia</label><select id="editor-density" value={uiDensity} onChange={event => setUiDensity(event.target.value as UiDensity)}><option value="compatta">Compatta</option><option value="normale">Normale</option><option value="grande">Grande</option></select><p>Ingrandisce gli strumenti dell’editor, non gli elementi dell’HMI.</p></fieldset>
@@ -129,8 +133,8 @@ export function EditorSettings() {
           {!commands.length && <p>Nessun comando trovato. Prova un altro nome.</p>}
         </>}
       </div>
-      <footer><div>{error ? <p role="alert">{error}</p> : <p role="status">{message || (changed ? "Hai modifiche alle scorciatoie non ancora salvate." : "Le scorciatoie sono preferenze locali dell’app: non inviano comandi al PLC.")}</p>}</div>
-        <div className="editor-settings-actions">{(section === "shortcuts" || changed) && <><button type="button" onClick={() => { setDraft(defaultEditorShortcuts()); setRecording(undefined); setError(""); setMessage("Predefiniti ripristinati nella bozza. Salva per applicarli."); }}><RotateCcw size={16} />Ripristina predefiniti</button><button type="button" className="primary" disabled={!changed || !!recording} onClick={save}>Salva scorciatoie</button></>}<button type="button" onClick={() => setOpen(false)}>{changed ? "Chiudi senza salvare" : "Chiudi"}</button></div>
+      <footer><div>{error ? <p role="alert">{error}</p> : <p role="status">{message || (changed ? "Hai modifiche alle scorciatoie non ancora salvate." : section === "ai" ? "Account e modello sono gestiti qui. Nessuna richiesta AI parte senza il tuo consenso." : "Le scorciatoie sono preferenze locali dell’app: non inviano comandi al PLC.")}</p>}</div>
+        <div className="editor-settings-actions">{(section === "shortcuts" || changed) && <><button type="button" onClick={() => { setDraft(defaultEditorShortcuts()); setRecording(undefined); setError(""); setMessage("Predefiniti ripristinati nella bozza. Salva per applicarli."); }}><RotateCcw size={16} />Ripristina predefiniti</button><button type="button" className="primary" disabled={!changed || !!recording} onClick={save}>Salva scorciatoie</button></>}<button type="button" onClick={() => setOpen(false)}>{changed ? "Chiudi senza salvare" : returnToAi ? "Torna alla schermata AI" : "Chiudi"}</button></div>
       </footer>
     </section>
   </div>, document.body);

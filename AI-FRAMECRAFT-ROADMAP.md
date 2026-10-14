@@ -21,7 +21,11 @@ L’AI riceve solo le risposte approvate e i conteggi dei dati: foto, file, nomi
 percorsi locali non vengono trasmessi. Domande ulteriori hanno un campo per ogni risposta.
 Account, modello e consenso sono richiesti solo prima dell’invio; nessun login o inferenza
 parte aprendo la procedura. Codex CLI/App Server usa un profilo Framecraft separato e l’account
-ChatGPT individuale, senza API key condivisa; l’adapter è sostituibile. Protocollo verificato
+ChatGPT individuale, senza API key condivisa; l’adapter è sostituibile. Account, verifica
+accesso e modello si gestiscono soltanto in Impostazioni → AI e account. La schermata AI mostra
+lo stato e un pulsante per aprirle; il ritorno conserva risposte e richiesta di modifica. Le
+notifiche di fine accesso restano osservate anche a finestre chiuse, senza login o inferenza
+impliciti. Protocollo verificato
 contro le definizioni della CLI locale 0.159.2; il login e l’inferenza reali richiedono ancora
 collaudo nella nuova build desktop, non provati dai test con provider sintetico.
 

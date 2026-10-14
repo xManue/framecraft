@@ -4096,6 +4096,25 @@ Verifiche del 5 ottobre 2026:
   privacy/eval e prove hardware/guasti. Profili trend avviati prima della nuova priorità restano
   separati/incompleti, non pubblicati in questo commit. Nessuna dichiarazione di pipeline totale conclusa.
 
+### 117. Account ChatGPT e modello nelle Impostazioni (2026-10-14)
+
+- Tutti i controlli account/modello spostati in Impostazioni → AI e account: collegamento,
+  verifica dell’accesso completato/account salvato, scollegamento e modello. Impostazioni
+  accessibili anche dalla schermata iniziale, prima di aprire un progetto.
+- Nella schermata AI resta l’avviso di collegare ChatGPT nelle Impostazioni, con accesso
+  diretto alla sezione. Dopo il ritorno risposte, pagina del questionario e richiesta di
+  modifica restano conservate. Durante Impostazioni/guida l’AI è nascosta e il suo focus trap
+  sospeso: Esc chiude il dialogo visibile senza chiudere quello AI sottostante.
+- Osservazione notifiche account al livello app, non nel dialogo: fine login recepita anche
+  dopo aver chiuso le Impostazioni. Nessuna verifica account/login/inferenza all’apertura;
+  richieste solo da clic esplicito o notifiche del flusso già avviato dall’utente.
+- Errori account separati dagli errori delle proposte; stato di verifica, guardie sui pulsanti
+  e correlazione delle risposte per non ripristinare account vecchi dopo lo scollegamento.
+- Test mirati su impostazioni, UI AI, provider sintetico, notifiche tardive, ritorno/focus,
+  bozza preservata e nessuna inferenza implicita; tipi e build del solo codice pubblicabile.
+  Non ripetuti test native/PLC/standard non modificati. Login/inferenza reali restano da
+  collaudare nella nuova build desktop, come al punto 116.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

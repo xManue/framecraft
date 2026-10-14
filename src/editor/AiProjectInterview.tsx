@@ -14,7 +14,7 @@ export function AiProjectInterview() {
   const heading = useRef<HTMLHeadingElement>(null);
   const steps = interviewSteps(interview), index = Math.max(0, steps.findIndex(step => step.id === interview.step));
   const step = steps[index].id, page = spec.pages.find(page => page.id === step), kind = guidedPageKinds.find(kind => kind.id === page?.kind);
-  const issues = interviewStepIssues(interview, step), busy = ai.busy || fileBusy || applying || loading;
+  const issues = interviewStepIssues(interview, step), busy = ai.busy || ai.connecting || ai.checking || fileBusy || applying || loading;
   useEffect(() => { setConsent(false); }, [interview, ai.model, ai.account?.email]);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); setNotice(undefined); }, [step]);
   const update = (change: Partial<typeof interview>) => ai.updateInterview({ ...interview, followups: [], ...change });

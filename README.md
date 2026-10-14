@@ -69,7 +69,9 @@ the project are separate from publishing or commanding a PLC.
 
 ## Editor settings and keyboard shortcuts
 
-Open **File → Impostazioni dell’editor**. **Area di lavoro** contains panel layouts,
+Open **File → Impostazioni dell’editor**, or **Impostazioni** on the welcome screen.
+**AI e account** contains ChatGPT connection/logout, saved-account verification and model selection;
+opening it does not start login or inference. **Area di lavoro** contains panel layouts,
 interface size, smart guides and grid spacing; these preferences apply immediately
 without changing the HMI source. **Scorciatoie e comandi** lets you search 25 commands,
 click a combination and press replacement keys. Each command accepts up to three
@@ -291,7 +293,11 @@ up to 2 MB/5000 tags. Alarm inputs: `framecraft.alarms.json`, validated against 
 tags and their trigger types. A list of messages alone does not establish activation conditions.
 Images are selected locally and copied into distinct assets for each page. No invented PLC data.
 
-Connect your own ChatGPT account, select a model and approve the displayed context before sending.
+Connect your own ChatGPT account and select a model in **Impostazioni → AI e account**.
+The AI screen only shows connection status and **Apri impostazioni AI**; it does not contain
+account controls. Returning from settings preserves questionnaire answers and edit requests;
+the account login completion is observed even after closing settings. Approve the displayed
+context before sending.
 Install [Codex CLI](https://developers.openai.com/codex/cli) separately; Framecraft does not install
 it or reuse the desktop Codex login. It launches the [App Server](https://learn.chatgpt.com/docs/app-server)
 in an isolated app-data profile, without shell, agents, file edits, tools or PLC execution.

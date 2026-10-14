@@ -1,4 +1,4 @@
-import { AlertCircle, Check, FolderOpen, GitBranch, Image as ImageIcon, LoaderCircle, Monitor, Plus, ShieldCheck, Smartphone, Sparkles, X } from "lucide-react";
+import { AlertCircle, Check, FolderOpen, GitBranch, Image as ImageIcon, LoaderCircle, Monitor, Plus, Settings, ShieldCheck, Smartphone, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { desktopAvailable, desktopBridge } from "../filesystem/desktopBridge";
 import { standardProjectPageCount, standardProjectSectionChoices, type StandardProjectConfig, type StandardProjectSectionId } from "../core/standardProject";
@@ -6,6 +6,7 @@ import { settingsProgramChoices, type SettingsProgram } from "../core/hmiSection
 import { useEditorStore } from "../state/editorStore";
 import { MessageNotice } from "./MessageNotice";
 import { useEditorAi } from "../state/editorAi";
+import { useEditorShortcuts } from "../state/editorShortcuts";
 
 function StandardProjectWizard({ loading, onClose }: { loading: boolean; onClose: () => void }) {
   const [method, setMethod] = useState<"manual" | undefined>();
@@ -100,6 +101,7 @@ export function WelcomeScreen() {
             <button className="button secondary" onClick={() => void createProject()} disabled={!desktopAvailable || loading}>
               <Plus size={17} /> Progetto React vuoto
             </button>
+            <button className="button secondary" onClick={() => useEditorShortcuts.getState().setOpen(true)} disabled={loading}><Settings size={17} />Impostazioni</button>
           </div>
           {error && <div className="welcome-error" role="alert"><AlertCircle size={16} /><div><strong>Impossibile completare l’operazione</strong><MessageNotice raw={error} /></div></div>}
           {!desktopAvailable && (

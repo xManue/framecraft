@@ -147,7 +147,7 @@ export function TopBar() {
               <button role="menuitem" onClick={() => runAndClose(() => void save())}><Save size={15} /><span><strong>Salva</strong><small>Registra la modifica corrente</small></span><kbd>{shortcut("save")}</kbd></button>
               <button role="menuitem" disabled={exporting} onClick={() => runAndClose(() => void saveAs())}><HardDriveDownload size={15} /><span><strong>{exporting ? "Esportazione in corso…" : "Esporta copia"}</strong><small>Scegli la cartella della copia finale</small></span></button>
               <div className="topbar-menu-separator" />
-              <button role="menuitem" onClick={() => runAndClose(() => setSettingsOpen(true))}><Settings size={15} /><span><strong>Impostazioni dell’editor</strong><small>Area di lavoro, guide e scorciatoie personalizzabili</small></span></button>
+              <button role="menuitem" onClick={() => runAndClose(() => setSettingsOpen(true))}><Settings size={15} /><span><strong>Impostazioni dell’editor</strong><small>Area di lavoro, AI e account, guide e scorciatoie</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => void closeProject())}><ArrowLeft size={15} /><span><strong>Chiudi progetto</strong><small>Torna alla schermata iniziale</small></span></button>
             </div>}
           </div>
