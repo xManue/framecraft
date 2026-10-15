@@ -6,6 +6,7 @@ import type { StandardProjectConfig } from "../core/standardProject";
 import { newPanelRequirements, panelRequirementGroups, panelRequirementsContext, requirementGroupEnabled } from "../core/panelRequirements";
 import { guidedTemplateBehavior, inheritedTemplateAnswers } from "../core/templateBehavior";
 import { delegatedQuestions, delegationContext, resolveInterviewDelegation } from "./aiDelegation";
+import { panelHeaderFields } from "../core/panelHeader";
 
 export interface AiInterview { machineName: string; layout: StandardProjectConfig["layout"]; spec: GuidedProjectSpec; step: string; delegated?: string[]; followups: { question: string; answer: string; skipped?: boolean }[] }
 export function newAiInterview(): AiInterview {
@@ -18,6 +19,7 @@ export function interviewSteps(interview: AiInterview) {
   return [
     { id: "machine", label: "Macchina e dispositivo" }, { id: "pages", label: "Quante pagine e quali" },
     { id: "data", label: interview.spec.pages.some(page => ["alarms", "history"].includes(page.kind)) ? "Tag e lista allarmi" : "Dati e tag disponibili" },
+    ...(interview.spec.tagsMode === "import" && interview.spec.tags.length || interview.spec.header ? [{ id: "header", label: "Informazioni nella barra superiore" }] : []),
     ...interview.spec.pages.filter(page => !["alarms", "history"].includes(page.kind)).map(page => ({ id: page.id, label: `Contenuti: ${page.title || page.id}` })),
     { id: "use", label: "Uso del pannello" },
     ...(interview.spec.requirements ? [
@@ -32,6 +34,7 @@ export function interviewStepIssues(interview: AiInterview, step: string): strin
   if (step === "machine") return [...(!checked.machineName.trim() || checked.machineName.length > 80 ? ["Inserisci il nome della macchina (massimo 80 caratteri)."] : []), ...(!spec.purpose.trim() ? ["Indica che cosa deve gestire il pannello."] : [])];
   if (step === "pages") return [...(!spec.pages.length ? ["Scegli quante pagine vuoi creare."] : []), ...spec.pages.filter(page => !page.title.trim()).map((_, index) => `Dai un nome alla pagina ${index + 1}.`), ...([...new Set(spec.pages.map(page => page.section))].some(section => spec.pages.filter(page => page.section === section).length > 14) ? ["Distribuisci le pagine: massimo 14 per categoria."] : [])];
   const issues = guidedProjectIssues(spec);
+  if (step === "header") return issues.filter(issue => issue.startsWith("Barra del pannello:"));
   if (step === "review") return [...interviewStepIssues(interview, "machine"), ...issues, ...interview.followups.filter(item => !item.skipped && !item.answer.trim()).map(item => `Rispondi a: ${item.question}`)];
   if (step === "features") return issues.filter(issue => issue.startsWith("Funzioni:"));
   if (step.startsWith("req-")) {
@@ -59,6 +62,7 @@ export function interviewContext(interview: AiInterview) {
     templates: (skipped.has("pages") || [...skipped].some(key => key.endsWith(".kind")) ? guidedPageKinds.map(kind => kind.id) : [...new Set(interview.spec.pages.map(page => page.kind))]).map(kind => guidedTemplateBehavior(kind)!),
     pages: checked.spec.pages.filter(page => interview.spec.pages.some(raw => raw.id === page.id)).map(page => ({ id: page.id, title: skipped.has("pages") && !interview.spec.pages.find(raw => raw.id === page.id)!.title.trim() ? null : visible(`page.${page.id}.title`, page.title), kind: visible(`page.${page.id}.kind`, page.kind), template: { id: skipped.has(`page.${page.id}.kind`) ? null : `guided:${page.kind}`, version: 1 }, category: visible(`page.${page.id}.section`, page.section), image: { need: visible(`page.${page.id}.image`, page.imageNeed), available: !!page.image, deferred: page.imageDeferred }, elements: page.items.map(item => ({ label: item.label, tagLinked: !!item.tag, ...(page.kind === "commands" ? { command: item.command ? { configured: item.command.reviewed, event: item.command.event, permissionRequired: !!item.command.permission } : { configured: false } } : {}) })), itemsDeferred: page.itemsDeferred })),
     data: { tags: interview.spec.tagsMode, tagCount: interview.spec.tags.length, alarms: interview.spec.alarmsMode, alarmCount: interview.spec.alarms?.alarms.length ?? 0 },
+    header: { fields: Object.fromEntries(panelHeaderFields.map(field => [field.id, { linked: !!checked.spec.header?.tags[field.id] }])), speedScaleConfigured: !!checked.spec.header?.speedMin && !!checked.spec.header?.speedMax, values: "Only real samples with valid quality; no invented states, speed, formats or alarms. Device clock, not PLC time synchronization." },
     use: { protocol: visible("protocol", checked.spec.protocol), language: visible("language", checked.spec.language), users: visible("users", checked.spec.users) },
     ...(requirements ? { requirements } : {}), delegatedQuestions: delegationContext(interview),
     pending: guidedProjectPending(checked.spec), followups: interview.followups.map(item => item.skipped ? { question: item.question, delegated: true } : { question: item.question, answer: item.answer }),

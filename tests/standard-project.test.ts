@@ -178,7 +178,7 @@ describe("generatore nuovo pannello standard", () => {
     const styles = files.find((file) => file.path === "src/styles.css")!.content;
 
     // Le schede della barra alta: primo allarme, collegamento PLC, utente, linea, OMAC, velocita'.
-    for (const marker of ["First Fault", "PLC Connection", "User LogIn", "Format Running", "OMAC", "Speed"]) {
+    for (const marker of ["Allarmi reali", "PLC Connection", "User LogIn", "Formato attivo", "Macchina", "Velocità"]) {
       expect(app, marker).toContain(marker);
     }
     // Le sette voci laterali, con il nome dello standard.

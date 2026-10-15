@@ -1,6 +1,10 @@
 import { standardPageSource, standardPageTemplates, planPageNumber, type StandardPagePlan, type StandardPageTemplateId } from "./hmiPages";
 import { guidedAlarmCatalog, guidedPageSource, guidedProjectIssues, guidedProjectPending, type GuidedPage, type GuidedProjectSpec } from "./guidedProject";
 import { guidedTemplateBehaviors } from "./templateBehavior";
+import { newPanelHeader } from "./panelHeader";
+import panelHeaderSource from "./panelHeader.ts?raw";
+import panelHeaderUiSource from "../../templates/panel-header.tsx?raw";
+import { defaultHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig } from "./hmiAlarmSummary";
 import { serializePlcCatalog } from "./plcVariables";
 import { blueprintPages, folderGroupRoutes, menuPagePlan, sectionBlueprint, submenuPlacement, type MenuIconId, type SettingsProgram } from "./hmiSectionMenu";
 import { cssColor, desktopShell, lateralBar, mobileShell, pageCanvas, panelSize, sections, submenuPalette, submenuPanel } from "./hmiStandard";
@@ -341,7 +345,7 @@ const faceplateCatalog = faceplateCatalogJson as { types?: FaceplateType[] };
 const scheduledTasks = ((scriptCatalogJson as { scheduledTasks?: ScheduledTask[] }).scheduledTasks ?? []).filter((task) => task && task.enabled);
 
 const values: Record<string, string> = Object.create(null);
-const tagStatus: Record<string, { qualityCode?: number; qualityKnown?: boolean; timeStamp?: string | number; lastError?: number; errorDescription?: string }> = Object.create(null);
+const tagStatus: Record<string, { qualityCode?: number; qualityKnown?: boolean; timeStamp?: string | number; lastError?: number; errorDescription?: string; localValue?: boolean }> = Object.create(null);
 const tagListeners = new Set<(tag: string, previous?: string) => void>();
 const gatewayConfig = runtimeCatalogJson.gateway as { enabled: boolean; path: string; pollMs: number; timeoutMs?: number };
 let gatewayClient: ReturnType<typeof createHmiGatewayClient> | undefined;
@@ -352,7 +356,9 @@ const dataLogRuntime = createHmiDataLogRuntime(dataLogCatalogJson, { onError: (m
 
 export function runtimeTagValues(): Readonly<Record<string, string>> { return values; }
 export function runtimeTagStatus() { return tagStatus as Readonly<typeof tagStatus>; }
+export function subscribeRuntimeTags(listener: (tag: string, previous?: string) => void) { tagListeners.add(listener); return () => { tagListeners.delete(listener); }; }
 function updateRuntimeValue(tag: string, value: string | number | boolean, event: string) {
+  if (event === "framecraft:tag-write" && tagStatus[tag]) tagStatus[tag] = { ...tagStatus[tag], localValue: true };
   const previous = values[tag];
   values[tag] = String(value);
   dataLogRuntime.updateTag(tag, values[tag], tagStatus[tag]);
@@ -1236,6 +1242,12 @@ import type { CSSProperties, ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import resourceCatalogJson from "../framecraft.resources.json";
 import { installFramecraftHmiRuntime } from "./framecraftHmiRuntime";
+import { HeaderValue, HeaderGauge, HeaderUser } from "./framecraftPanelHeaderUi";
+import { newPanelHeader, panelHeaderIssues, panelClockText, type PanelHeaderConfig } from "./framecraftPanelHeader";
+import headerCatalogJson from "../framecraft.header.json";
+import plcCatalogJson from "../framecraft.plc.json";
+const headerProblems = panelHeaderIssues(headerCatalogJson, plcCatalogJson.variables);
+const headerConfig = headerProblems.length ? newPanelHeader() : headerCatalogJson as PanelHeaderConfig;
 ${imports}
 
 interface Box { left: number; top: number; width: number; height: number }
@@ -1312,6 +1324,9 @@ function Panel({ layoutMode, returnToDeviceChoice }: { layoutMode: PanelLayoutMo
   useEffect(() => { screen.current?.focus({ preventScroll: true }); }, []);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [runtimeLanguage, setRuntimeLanguage] = useState(resourceCatalog.activeLanguage || resourceCatalog.defaultLanguage || "it-IT");
+  const [clock, setClock] = useState(() => new Date());
+  const clockText = panelClockText(clock, runtimeLanguage);
+  useEffect(() => { const timer = window.setInterval(() => setClock(new Date()), 1000); return () => window.clearInterval(timer); }, []);
   const localizedTexts = useRef(new Map<Element, string | null>());
   const location = useLocation();
   const navigate = useNavigate();
@@ -1437,16 +1452,12 @@ function Panel({ layoutMode, returnToDeviceChoice }: { layoutMode: PanelLayoutMo
     <div className={\`hmi-shell \${mobileLayout ? "mobile" : "desktop"}\`} style={{ "--mobile-scale": mobileScale } as CSSProperties} data-hmi-type="HmiScreen" data-panel-layout={mobileLayout ? "mobile" : "desktop"} data-hmi-language={runtimeLanguage}>
       {/* Prima fila: orologio, primo allarme, collegamento PLC e logo. */}
       <header className="hmi-top-bar" data-hmi-type="HmiRectangle">
-        <div className="hmi-clock">
-          <strong data-hmi-type="HmiTextBox" data-plc-variable="">11:31</strong>
-          <span><b>Monday</b><br />31.08.2026</span>
+        <div className="hmi-clock" title="Ora locale del dispositivo, non sincronizzazione PLC" data-panel-clock="">
+          <strong data-hmi-type="HmiTextBox">{clockText.time}</strong>
+          <span><b>{clockText.weekday}</b><br />{clockText.date}</span>
         </div>
-        <section className="hmi-card hmi-fault" data-hmi-type="HmiRectangle" aria-label="Primo allarme">
-          <span className="hmi-glyph" aria-hidden="true">&#9888;</span>
-          <strong>First Fault</strong>
-          <output data-hmi-type="HmiIOField" data-plc-variable="">3</output>
-          <output data-hmi-type="HmiTextBox" data-plc-variable="">EMERGENCY BUTTON PRESSED E.C.2</output>
-          <span>Machine Control</span>
+        <section className="hmi-card hmi-fault" data-hmi-type="HmiAlarmLine" data-hmi-alarm-summary={${literal(serializeHmiAlarmSummaryConfig({ ...defaultHmiAlarmSummaryConfig("line"), caption: "Allarmi", mode: "pending", order: "priority", rows: 1, openDetails: false }))}} aria-label="Allarmi reali in evidenza">
+          Nessun dato allarmi disponibile: configura catalogo e segnali PLC.
         </section>
         <details className="hmi-plc"><summary title="PLC Connection: stato, diagnostica e guida" aria-label="Stato, diagnostica e guida PLC">
           <span data-framecraft-gateway-status="" role="status" aria-live="polite">PLC: da configurare</span>
@@ -1462,30 +1473,25 @@ function Panel({ layoutMode, returnToDeviceChoice }: { layoutMode: PanelLayoutMo
         <section className="hmi-card hmi-user" data-hmi-type="HmiRectangle">
           <span>User LogIn</span>
           <span className="hmi-avatar" aria-hidden="true" />
-          <strong data-hmi-type="HmiTextBox" data-plc-variable="">DefaultUser</strong>
+          <HeaderUser />
         </section>
-        <section className="hmi-card hmi-format" data-hmi-type="HmiRectangle">
+        <section className="hmi-card hmi-format" data-hmi-type="HmiRectangle" title={headerProblems.join(" ")}>
           <span className="hmi-glyph" aria-hidden="true">&#9776;</span>
           <div className="hmi-format-grid">
-            <b>Line</b><b>Nr.</b><b>Format Running</b>
-            <span>{${JSON.stringify(machineName)}}</span>
-            <output data-hmi-type="HmiIOField" data-plc-variable="">1</output>
-            <output data-hmi-type="HmiTextBox" data-plc-variable="">Formato 400x320 - Euro Pallet</output>
-            <span>Line 2</span><output data-plc-variable="">0</output><output data-plc-variable="">Vassoio 234x7634 - Half Pallet</output>
-            <span>Line 3</span><output data-plc-variable="">0</output><output data-plc-variable="">Open Case SCL 43x23 - Pallet 1000x1200</output>
+            <b>Linea</b><b>Nr.</b><b>Formato attivo</b>
+            <span>{headerProblems.length ? "Barra da configurare" : ${JSON.stringify(machineName)}}</span>
+            <HeaderValue field="lineNumber" config={headerConfig} />
+            <span><HeaderValue field="formatNumber" config={headerConfig} /> · <HeaderValue field="formatName" config={headerConfig} /></span>
           </div>
         </section>
         <section className="hmi-card hmi-omac" data-hmi-type="HmiRectangle">
-          <strong>OMAC</strong>
-          <div><span>Status</span><output data-hmi-type="HmiTextBox" data-plc-variable="">Production</output></div>
-          <div><span>Mode</span><output data-hmi-type="HmiTextBox" data-plc-variable="">Aborted</output></div>
+          <strong>Macchina</strong>
+          <div><span>Stato</span><HeaderValue field="state" config={headerConfig} /></div>
+          <div><span>Modalità</span><HeaderValue field="mode" config={headerConfig} /></div>
         </section>
         <section className="hmi-card hmi-speed" data-hmi-type="HmiRectangle">
-          <strong>Speed <output data-hmi-type="HmiIOField" data-plc-variable="">40</output> cpm</strong>
-          <div className="hmi-gauge">
-            <div className="hmi-gauge-bar" data-hmi-type="HmiBar" data-plc-variable=""><i style={{ width: "40%" }} /></div>
-            <div className="hmi-gauge-scale"><span>0</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100</span></div>
-          </div>
+          <strong>Velocità <HeaderValue field="speed" config={headerConfig} /> {headerConfig.speedUnit ?? ""}</strong>
+          <HeaderGauge config={headerConfig} />
         </section>${drawingControls}
       </header>${deviceReturn}
 
@@ -1649,7 +1655,10 @@ button, input, select, textarea { font: inherit; }
 .hmi-clock { position: absolute; left: 7px; top: 6px; width: 152px; height: 36px; display: flex; align-items: center; gap: 8px; }
 .hmi-clock strong { font-size: 26px; letter-spacing: -.5px; }
 .hmi-clock span { font-size: 11px; line-height: 1.2; }
-.hmi-fault { left: 177px; top: 10px; width: 747px; height: 32px; display: grid; grid-template-columns: 44px 110px 40px 1fr 160px; align-items: center; font-size: 15px; font-weight: 700; }
+.hmi-fault { left: 177px; top: 10px; width: 747px; height: 32px; font-size: 13px; }
+.hmi-fault [data-hmi-alarm-summary-content] { display: grid; grid-template-columns: 72px 190px 1fr; gap: 8px; align-items: center; padding: 0 8px; overflow: hidden; }
+.hmi-fault [data-hmi-alarm-summary-content] > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hmi-fault [role="status"] { font-size: 11px; }
 .hmi-fault output:nth-of-type(2) { font-weight: 400; text-align: center; }
 .hmi-fault span:last-child { text-align: right; padding-right: 14px; font-weight: 400; }
 .hmi-glyph { display: grid; place-items: center; font-size: 19px; }
@@ -1694,7 +1703,7 @@ button, input, select, textarea { font: inherit; }
 .hmi-gauge { width: 168px; display: grid; grid-template-rows: 12px 14px; gap: 2px; }
 .hmi-gauge-bar { height: 12px; background: #64646A; border-radius: 2px; overflow: hidden; }
 .hmi-gauge-bar i { display: block; height: 100%; background: #339966; }
-.hmi-gauge-scale { display: grid; grid-template-columns: repeat(6, 1fr); font-size: 11px; text-align: center; color: #E0E0E0; }
+.hmi-gauge-scale { display: flex; justify-content: space-between; font-size: 11px; color: #E0E0E0; }
 
 /* La barra laterale: tessera 60x60 a x=${lateralBar.iconLeft}, passo ${lateralBar.pitch}. */
 .hmi-lateral { position: absolute; left: 0; top: ${bar.top}px; width: ${bar.width}px; height: ${bar.height}px; display: flex; flex-direction: column; padding-top: ${lateralBar.firstIconTop}px; background: #000000; z-index: 35; overflow-y: auto; }
@@ -1762,6 +1771,9 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
   return [
     { path: ".gitignore", content: "node_modules/\ndist/\n.framecraft/\n.framecraft-runtime/\n.framecraft-workspace.json\n*.log\n*.tsbuildinfo\n.env\n.env.*\n!.env.example\n*.pem\n*.key\n*.pfx\n*.p12\n" },
     { path: "src/App.tsx", content: appSource(machineName, planned, mobile, config.guided?.requirements?.startPageId) },
+    { path: "framecraft.header.json", content: JSON.stringify(config.guided?.header ?? newPanelHeader(), null, 2) + "\n" },
+    { path: "src/framecraftPanelHeader.ts", content: panelHeaderSource.replace('"./hmiTagBinding"', '"./framecraftHmiTagBinding"') },
+    { path: "src/framecraftPanelHeaderUi.tsx", content: panelHeaderUiSource },
     { path: "runtime/mqtt-driver.mjs", content: mqttDriverSource },
     { path: "runtime/opcua-driver.mjs", content: opcUaDriverSource },
     { path: "runtime/opcua-driver.d.mts", content: opcUaDriverTypes },

@@ -2,6 +2,7 @@ import type { AiInterview } from "./aiInterview";
 import { guidedPageKinds, guidedItemLimit, type GuidedPage } from "../core/guidedProject";
 import { standardProjectSectionChoices } from "../core/standardProject";
 import { panelRequirementGroups, requirementGroupEnabled, requirementQuestionActive } from "../core/panelRequirements";
+import { panelHeaderFields } from "../core/panelHeader";
 
 export interface AiDecision { key: string; value: string }
 export interface DelegatedQuestion { key: string; label: string; type: "text" | "choice" | "pages" | "labels" | "pending"; options?: string[] }
@@ -20,6 +21,7 @@ export function delegationQuestions(interview: AiInterview): DelegatedQuestion[]
     { key: "language", label: "Lingua principale", type: "choice", options: ["it", "en"] },
     { key: "users", label: "Utenti e autorizzazioni", type: "pending" },
   ];
+  questions.push(...panelHeaderFields.map(field => ({ key: `header.${field.id}`, label: `Barra superiore: ${field.label}`, type: "pending" as const })), { key: "header.speedScale", label: "Unità e limiti reali della velocità", type: "pending" });
   for (const page of interview.spec.pages) {
     const kind = guidedPageKinds.find(kind => kind.id === page.kind)!;
     const name = interview.delegated?.includes(pageKey(page, "title")) ? page.id : page.title || page.id;

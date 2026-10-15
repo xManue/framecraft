@@ -38,7 +38,7 @@ struct Client {
     active: Mutex<Option<Active>>,
     next: AtomicU64,
     alive: AtomicBool,
-    app: AppHandle,
+    emit: Box<dyn Fn(Value) + Send + Sync>,
     scratch: PathBuf,
 }
 
@@ -208,7 +208,7 @@ impl Client {
         }
         let params = &packet["params"];
         if packet["method"] == "account/login/completed" || packet["method"] == "account/updated" {
-            let _ = self.app.emit("framecraft:ai-event", json!({"type": "account", "success": params.get("success").and_then(Value::as_bool)}));
+            (self.emit)(json!({"type": "account", "success": params.get("success").and_then(Value::as_bool)}));
             return;
         }
         let Ok(mut active) = self.active.lock() else {
@@ -235,10 +235,7 @@ impl Client {
                 job.turn = params["turn"]["id"].as_str().map(str::to_string);
             }
             "item/agentMessage/delta" => {
-                let _ = self.app.emit(
-                    "framecraft:ai-event",
-                    json!({"type": "progress", "requestId": job.id}),
-                );
+                (self.emit)(json!({"type": "progress", "requestId": job.id}));
             }
             "item/completed" if params["item"]["type"] == "agentMessage" => {
                 if params["item"]["phase"]
@@ -278,6 +275,9 @@ fn start(app: AppHandle) -> Result<Arc<Client>, String> {
         .app_local_data_dir()
         .map_err(|_| "Non posso individuare le impostazioni locali di Framecraft.")?
         .join("codex-profile");
+    start_profile(home, Box::new(move |event| { let _ = app.emit("framecraft:ai-event", event); }))
+}
+fn start_profile(home: PathBuf, emit: Box<dyn Fn(Value) + Send + Sync>) -> Result<Arc<Client>, String> {
     let scratch = home.join("proposal-workspace");
     fs::create_dir_all(&scratch).map_err(|_| "Non posso preparare il profilo Codex di Framecraft. Verifica i permessi delle impostazioni locali.")?;
     let mut command = super::background_command(codex_program()?);
@@ -319,7 +319,7 @@ fn start(app: AppHandle) -> Result<Arc<Client>, String> {
         active: Mutex::new(None),
         next: AtomicU64::new(1),
         alive: AtomicBool::new(true),
-        app,
+        emit,
         scratch,
     });
     let weak = Arc::downgrade(&client);
@@ -504,6 +504,11 @@ pub async fn ai_codex_propose(state: State<'_, AiCodexState>, request: ProposalR
     let slot = state.client.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let client = existing(&slot)?;
+        propose(&client, request)
+    }).await.map_err(|_| "Richiesta AI interrotta; nessuna proposta applicata.".to_string())?
+}
+fn propose(client: &Client, request: ProposalRequest) -> Reply {
+        validate_request(&request)?;
         let (send, receive) = mpsc::channel();
         { let mut active = client.active.lock().map_err(|_| "Codex occupato.")?; if active.is_some() { return Err("Una richiesta AI è già in corso. Attendi o annullala.".into()); } *active = Some(Active { id: request.request_id.clone(), thread: String::new(), turn: None, text: String::new(), cancelled: false, done: send }); }
         let result = (|| {
@@ -521,7 +526,6 @@ pub async fn ai_codex_propose(state: State<'_, AiCodexState>, request: ProposalR
         if result.is_err() { client.stop(); }
         if let Ok(mut active) = client.active.lock() { active.take(); }
         result
-    }).await.map_err(|_| "Richiesta AI interrotta; nessuna proposta applicata.".to_string())?
 }
 #[tauri::command]
 pub async fn ai_codex_cancel(
@@ -564,6 +568,38 @@ pub fn shutdown(state: &AiCodexState) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "one real account request; explicit developer opt-in only"]
+    fn real_codex_pipeline_fixture() {
+        assert_eq!(std::env::var("FRAMECRAFT_AI_SMOKE_ALLOW_REQUEST").as_deref(), Ok("1"));
+        let input = PathBuf::from(std::env::var("FRAMECRAFT_AI_SMOKE_REQUEST").expect("Supply synthetic ai-request.json"));
+        assert_eq!(input.file_name().unwrap(), "ai-request.json");
+        let output = input.with_file_name("ai-response.json");
+        let attempt = input.with_file_name("ai-attempt.json");
+        assert!(!attempt.exists(), "An AI request was already attempted; do not retry automatically");
+        let home = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("com.framecraft.editor/codex-profile");
+        assert!(home.is_dir(), "Connect ChatGPT in Framecraft Settings first");
+        let client = super::start_profile(home, Box::new(|_| {})).expect("Native Codex client did not connect");
+        let account = super::account_summary(&client.rpc("account/read", serde_json::json!({"refreshToken": false})).unwrap());
+        assert_eq!(account["connected"], true, "Connect ChatGPT in Framecraft Settings first");
+        let models = client.rpc("model/list", serde_json::json!({"limit": 100})).unwrap();
+        let models = models["data"].as_array().unwrap();
+        let model = models.iter().find(|model| model["isDefault"] == true).or_else(|| models.first()).expect("No account model available");
+        let model_id = model.get("model").unwrap_or(&model["id"]).as_str().unwrap();
+        let mut request: super::ProposalRequest = serde_json::from_str(&std::fs::read_to_string(&input).unwrap()).unwrap();
+        request.model = model_id.to_string();
+        super::validate_request(&request).unwrap();
+        let mut record = std::fs::OpenOptions::new().write(true).create_new(true).open(&attempt).unwrap();
+        use std::io::Write;
+        record.write_all(serde_json::json!({"stage": "inference requested", "model": model_id}).to_string().as_bytes()).unwrap();
+        println!("Native Codex smoke: one synthetic request, model {model_id}");
+        let result = super::propose(&client, request);
+        client.stop();
+        match result {
+            Ok(response) => { std::fs::write(output, response.to_string()).unwrap(); println!("Native Codex proposal completed; response saved locally"); }
+            Err(error) => { std::fs::write(input.with_file_name("ai-error.txt"), &error).unwrap(); panic!("Native Codex proposal failed: {error}"); }
+        }
+    }
     use super::*;
     #[test]
     fn login_only_accepts_official_https_hosts() {

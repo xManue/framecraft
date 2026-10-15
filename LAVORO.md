@@ -4230,6 +4230,66 @@ Verifiche del 5 ottobre 2026:
   Inferenza Codex reale, handoff completo nell’app, commissioning e gate di produzione ancora aperti.
   Modifiche trend/profile rinviate conservate e non pubblicate.
 
+### 123. Barra del pannello generato senza dati macchina inventati (2026-10-14)
+
+- Il generatore standard e la pipeline AI usano la stessa barra: orologio locale del
+  dispositivo, identità dal servizio accessi già configurato (nessun account creato),
+  riga allarmi dal motore/catalogo reale. Eliminati orario, emergenza, DefaultUser,
+  linee/formati aggiuntivi, Production/Aborted e velocità 40 fissi.
+- Con tag importati il questionario propone un passo facoltativo per linea, formato,
+  stato, modalità e velocità. Solo tag scalari leggibili dichiarati; unità e limiti
+  reali non vengono indovinati. Riepilogo locale prima dell’approvazione. Il contesto
+  AI contiene soltanto disponibilità dei collegamenti, non nomi tag, unità o limiti.
+- Configurazione locale versionata in `framecraft.header.json`, con validazione:
+  un contratto errato mostra “Barra da configurare” e dati assenti, non valori demo.
+  Lo stato numerico rimane un codice grezzo: nessuna semantica PackML dedotta.
+- Corretto il resolver diretto dei tag, che prima ignorava qualità/stato. Bad,
+  Uncertain, qualità ignota richiesta o errore non mantengono il vecchio valore;
+  la prova manuale offline senza stato resta disponibile. La barra richiede sempre
+  qualità valida, si aggiorna anche su campioni di sola qualità e azzera il meter
+  indisponibile. Scala non fornita esplicitamente resta “da configurare”.
+  Un valore di prova locale non eredita la qualità di una precedente lettura PLC;
+  un nuovo campione reale rimuove il marcatore locale. Prova manuale offline invariata.
+- Indicatori allarmi: totale sconosciuto non diventa zero; eventuali guasti conservati
+  restano visibili come stato parziale/ultimo noto, senza dichiarare la macchina sicura.
+- Riferimento primario: [Siemens, Quality codes of HMI tags V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-tags-rt-unified/reference-rt-unified/quality-codes-of-hmi-tags-rt-unified?contentId=aus7OTFCo~JQoXJTNeE~hA).
+  Framecraft usa qualità normalizzata 16 bit, non lo StatusCode OPC UA UInt32 grezzo.
+- Verificati 102 test mirati di barra/intervista/privacy/allarmi/tag, 4 regressioni del
+  Runtime generato, tipi e build del codice pubblicabile, strict build e browser reale
+  del nuovo pannello (viewport 375, navigazione, Good → Bad solo qualità → Good, meter,
+  modifica sorgente/HMR, nessun errore o traffico PLC). Le modifiche trend/profile
+  rinviate sono rimaste fuori dalla copia di verifica e dal commit.
+
+### 124. Prova autorizzata con Codex reale nella pipeline (2026-10-14)
+
+- Dopo il consenso esplicito dell’utente eseguita una sola richiesta reale tramite il
+  profilo ChatGPT già collegato di Framecraft. Modello predefinito del catalogo nativo:
+  `gpt-6.1-sol`; account/email/token non stampati e nessuna credenziale copiata.
+- Il test riusa `start_profile` e `propose`, gli stessi percorsi del comando Tauri:
+  callback eventi separata dal trasporto, non un provider AI imitato. Sei regressioni
+  native pertinenti passate. La richiesta reale è completata, non solo “avviata”.
+- Invio dell’intervista sintetica effettiva e dello schema della UI; nome macchina
+  delegato, tre pagine esplicite, immagine fittizia locale. Risposta accettata dal parser
+  strict, decisions risolte e progetto confrontato con tutte le risposte locali.
+  Nessun tag macchina, immagine reale o collegamento PLC inviato/eseguito.
+- `--real-ai` nel check è opt-in: test Rust normalmente ignorato, consenso dedicato,
+  registro locale `ai-attempt.json` creato atomicamente e nessun reinvio automatico.
+  Artefatti/risposta solo in `.hmi-preview`, esclusi dal repository pubblico.
+  Regressioni successive possono riusare soltanto la risposta completata e correlata,
+  con identità richiesta, prompt e schema invariati: nessuna nuova inferenza automatica.
+- Con la risposta reale: creazione nativa su disco, copia immagine, dipendenze cached,
+  build TypeScript strict/Vite, browser/router reali, persistenza mobile/desktop e
+  ritorno alla scelta, qualità della barra, trasformazione sorgente/HMR: tutto passato.
+- Limiti ancora aperti: non automatizzati i click del questionario, dialogo cartella,
+  Tauri IPC ed Inspector nella finestra reale; nessuna CPU/commissioning industriale.
+  Il risultato prova la catena motore/provider/generatore/pannello, non ogni gesto UI.
+- Gate commerciale: la [documentazione ufficiale App Server](https://learn.chatgpt.com/docs/app-server#authentication-endpoints)
+  permette di continuare l’integrazione locale/open-source, ma esclude l’autenticazione
+  App Server per servizi commerciali/hosted. Prima di una distribuzione commerciale
+  verificare l’idoneità del caso d’uso e migrare ad API o Sign in with ChatGPT autorizzato.
+  Per adesso rimane Codex CLI, come richiesto dall’utente; nessuna migrazione automatica.
+
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

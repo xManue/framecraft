@@ -14,6 +14,16 @@ const button = (host: ParentNode, text: string) => [...host.querySelectorAll<HTM
 const mount = (kind = "HmiAlarmIndicator", config = defaultHmiAlarmSummaryConfig()) => { const host = document.createElement("div"); host.dataset.hmiType = kind; host.setAttribute(hmiAlarmSummaryAttribute, serializeHmiAlarmSummaryConfig(config)); document.body.append(host); return host; };
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
 describe("riepiloghi allarmi: configurazione e stati", () => {
+  it("i totali sconosciuti non mostrano zero e gli stati conservati sono espliciti", () => {
+    const engine = create(), host = mount(), summary = createHmiAlarmSummary(host, { action: vi.fn() });
+    try {
+      summary.update(engine.snapshot()); expect(host.textContent).toContain("— · pendenti"); expect(host.textContent).not.toContain("0 attivi");
+      known(engine); summary.update(engine.snapshot()); expect(host.textContent).toContain("0 · pendenti");
+      sample(engine, 0); sample(engine, 1, "0", 0); summary.update(engine.snapshot());
+      expect(host.textContent).toContain("1 · pendenti"); expect(host.textContent).toContain("stato parziale");
+      summary.update(engine.snapshot(), false); expect(host.textContent).toContain("— · pendenti");
+    } finally { summary.dispose(); }
+  });
   it("i dettagli hanno etichette uniche anche senza randomUUID nel browser", () => {
     const engine = create(); known(engine); sample(engine, 0);
     vi.spyOn(crypto, "randomUUID").mockImplementation(() => { throw Error("Not available in this browser"); });

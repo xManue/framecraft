@@ -5,6 +5,7 @@ import { isPlcVariableName, type PlcVariableDefinition } from "./plcVariables";
 import { defaultHmiTrendConfig, serializeHmiTrendConfig } from "./hmiTrend";
 import { guidedCommandAttributes, guidedCommandIssues, type GuidedCommandItem } from "./guidedCommands";
 import { panelRequirementsIssues, panelRequirementsPending, type PanelRequirements } from "./panelRequirements";
+import { panelHeaderIssues, panelHeaderFields, type PanelHeaderConfig } from "./panelHeader";
 
 export const guidedPageKinds = [
   { id: "overview", label: "Vista macchina / pagina principale", section: "main", image: "Foto o rendering della macchina intera", items: "Stati o contatori da mostrare" },
@@ -35,6 +36,7 @@ export interface GuidedProjectSpec {
   protocol: "later" | "mqtt" | "opcua" | "simulation"; language: "it" | "en";
   users: "everyone" | "roles-later" | "later";
   requirements?: PanelRequirements;
+  header?: PanelHeaderConfig;
 }
 const kindOf = (page: GuidedPage) => guidedPageKinds.find(kind => kind.id === page.kind)!;
 const plain = (value: unknown, max: number) => typeof value === "string" && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);
@@ -47,6 +49,7 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
   if (spec.tagsMode === "import" && !spec.tags.length) issues.push("Inserisci la lista tag oppure scegli di collegarla più tardi.");
   if (new Set(spec.pages.map(page => page.id)).size !== spec.pages.length) issues.push("Le pagine hanno identificativi duplicati.");
   if (spec.requirements) issues.push(...panelRequirementsIssues(spec.requirements, spec.pages));
+  issues.push(...panelHeaderIssues(spec.header, spec.tagsMode === "import" ? spec.tags : []));
   if (spec.requirements?.answers["operations.mode"] === "monitor" && spec.pages.some(page => page.items.some(item => item.command))) issues.push("Comandi e sequenze: hai scelto solo monitoraggio, ma ci sono comandi di scrittura configurati. Rimuovili o cambia il requisito.");
   if (spec.users === "roles-later" && spec.requirements?.answers["users.identity"] === "none") issues.push("Utenti, ruoli e audit: i ruoli richiesti non sono compatibili con la scelta senza accesso. Scegli come identificare gli utenti o rimanda la scelta.");
   const counts = new Map<string, number>();
@@ -90,6 +93,9 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
   if (spec.users === "roles-later") pending.push("Ruoli, permessi e autenticazione server da configurare.");
   if (spec.users === "later") pending.push("Accesso e autorizzazioni da definire: nessun permesso scelto dall’AI; comandi senza permesso reale disabilitati.");
   if (spec.language === "en") pending.push("Traduzioni inglesi dell’interfaccia e dei messaggi da completare.");
+  const missingHeader = panelHeaderFields.filter(field => !spec.header?.tags[field.id]).map(field => field.label);
+  if (missingHeader.length) pending.push(`Barra superiore: ${missingHeader.join(", ")} da collegare; nessun valore macchina inventato.`);
+  if (spec.header?.tags.speed && (!spec.header.speedMin || !spec.header.speedMax)) pending.push("Barra superiore: limiti reali della velocità da configurare, nessuna scala presunta.");
   if (spec.requirements) pending.push(...panelRequirementsPending(spec.requirements, spec.pages.map(page => page.kind)));
   return pending;
 }

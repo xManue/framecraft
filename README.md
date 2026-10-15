@@ -468,6 +468,12 @@ prove interoperability with a real machine or its broker/trust, or approval for 
 
 ## Generated-panel smoke check
 
+New panels use the actual device clock and alarm catalogue, with no demo operator, fault,
+state, format or speed. The optional guided header step binds readable scalar tags and
+explicit speed units/range; local `framecraft.header.json` is validated on load. Unknown
+or invalid quality displays `—`; a quality-only Bad sample clears the meter until recovery.
+Numeric state codes are not guessed as PackML states. No operator accounts are generated.
+
 `node scripts/check-generated-panel.mjs --offline --browser` validates a synthetic guided
 proposal, passes the actual generator output to the native `create_vite_project` function,
 copies a synthetic SVG, installs the generated package dependencies from cache and runs
@@ -486,6 +492,25 @@ can contact the official registry; dependency install scripts/audit/funding call
 The companion native fixture test is explicitly ignored in ordinary Cargo runs and invoked
 only by this command. Artifacts/result/screenshots stay in a fresh ignored `.hmi-preview/`
 directory, retained for diagnosis; no existing directory is overwritten or removed.
+
+For an explicitly authorized real-account test, add `--real-ai`. It sends one synthetic
+interview through the same native Codex client/proposal implementation used by Tauri,
+using the ChatGPT account already connected in **Settings → AI and account**, then validates
+the real response with the frontend parser before creation/build/browser checks. The native
+fixture is ignored normally and additionally requires a dedicated opt-in environment flag.
+A local attempt marker prevents automatically repeating an ambiguous/failed inference.
+For later generator/browser regressions, `--reuse-ai-response <successful-ai-response.json>`
+reuses an existing completed reply only if the saved prompt/schema/request ID still match.
+It does not send another account request and cannot be combined with `--real-ai`.
+No real PLC, user machine file or credential is supplied to the test. `--offline` only
+applies to dependency installation; `--real-ai` necessarily contacts Codex online.
+This checks the engine/provider/generated panel, not all wizard clicks, folder-dialog/IPC
+handoff or Inspector gestures in the actual desktop window, and not commissioning.
+
+Commercial-release gate: [official App Server authentication guidance](https://learn.chatgpt.com/docs/app-server#authentication-endpoints)
+allows continuing local/open-source integrations but excludes App Server authentication for
+commercial/hosted services. Review applicability and switch to an authorized API or Sign in
+with ChatGPT integration before commercial distribution; CLI remains the current local option.
 
 ## Production status
 

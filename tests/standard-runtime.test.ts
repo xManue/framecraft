@@ -28,6 +28,7 @@ interface GeneratedRuntime {
   runtimeTagValues(): Readonly<Record<string, string>>;
   setRuntimeTagValue(tag: string, value: string | number | boolean): void;
   runtimeTagStatus(): Readonly<Record<string, { qualityCode?: number; qualityKnown?: boolean; timeStamp?: number; lastError?: number }>>;
+  subscribeRuntimeTags(listener: (tag: string, previous?: string) => void): () => void;
   applyRuntimeTagSample(sample: { tag: string; connectionId: string; value?: string; qualityCode?: number; timestamp?: number; receivedAt: number }): void;
   requestRuntimeTagWrite(tag: string, value: string | number | boolean): Promise<{ outcome: string; plcConfirmed: false }>;
   notifyRuntimeAlarm(alarm: { alarmClass: string; state: string; priority: number; name?: string; text?: string }): void;
@@ -459,6 +460,18 @@ describe("Runtime del pannello standard generato", () => {
     } finally { stop(); window.removeEventListener("framecraft:tag-write", writes); }
   });
 
+  it("non conserva una lettura diretta quando cambia solo la qualità e notifica i controlli della barra", () => {
+    const runtime = loadGeneratedRuntime(), output = document.createElement("output");
+    output.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ property: "Text", kind: "Tag", tag: "Motor.Speed" }])); document.body.append(output);
+    runtime.setRuntimeTagValue("Motor.Speed", 40);
+    const listener = vi.fn(), unsubscribe = runtime.subscribeRuntimeTags(listener), stop = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace: vi.fn(), error: vi.fn() });
+    const sample = (qualityCode: number, value?: string) => runtime.applyRuntimeTagSample({ tag: "Motor.Speed", qualityCode, value, connectionId: "synthetic", receivedAt: Date.now() });
+    try {
+      expect(output.textContent).toBe("40"); sample(0); expect(output.textContent).toBe("—"); expect(listener).toHaveBeenCalledTimes(1);
+      sample(192, "50"); expect(output.textContent).toBe("50"); expect(listener).toHaveBeenCalledTimes(2);
+      unsubscribe(); sample(64); expect(output.textContent).toBe("—"); expect(listener).toHaveBeenCalledTimes(2);
+    } finally { unsubscribe(); stop(); }
+  });
   it("non conserva una lettura indiretta quando cambia solo la qualità e recupera al campione Good", () => {
     const runtime = loadGeneratedRuntime(undefined, undefined, false, [{ name: "Selected", dataType: "WSTRING", access: "read" }, { name: "Motor1", dataType: "REAL", access: "read" }]);
     const label = document.createElement("output"); label.setAttribute("data-hmi-dynamizations", serializeHmiDynamizations([{ property: "ProcessValue", kind: "Tag", tag: "Selected", indirect: true, indirectDataType: "REAL" }])); document.body.append(label);

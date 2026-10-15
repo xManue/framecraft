@@ -12,7 +12,10 @@ const nativeRoot = resolve(option("--native-root") ?? resolve(sourceRoot, "src-t
 await mkdir(resolve(repository, ".hmi-preview"), { recursive: true });
 const artifacts = await mkdtemp(resolve(repository, ".hmi-preview/generated-smoke-"));
 const project = resolve(artifacts, "generated-panel");
-const result = { ai: "synthetic proposal; no account request", artifacts, checks: [] };
+const reuseResponse = option("--reuse-ai-response");
+assert(!(reuseResponse && process.argv.includes("--real-ai")), "Choose reuse or a new real request, not both");
+const realAi = process.argv.includes("--real-ai") || !!reuseResponse;
+const result = { ai: reuseResponse ? "reused successful real native Codex response; no new account request" : realAi ? "real native Codex request with synthetic data; explicit opt-in" : "synthetic proposal; no account request", artifacts, checks: [] };
 console.log(`Smoke artifacts: ${artifacts}`);
 async function run(command, args, cwd, environment = {}) {
   await new Promise((yes, no) => {
@@ -30,7 +33,7 @@ const bundled = await build({ root: sourceRoot, configLoader: "runner", logLevel
   return [
     ["newAiInterview, newGuidedPage, interviewConfig, interviewPrompt", "src/ai/aiInterview.ts"],
     ["resolveInterviewDelegation, toggleInterviewDelegation", "src/ai/aiDelegation.ts"],
-    ["parseAiProposal", "src/ai/aiProposal.ts"], ["standardProjectFiles", "src/core/standardProject.ts"],
+    ["parseAiProposal, aiProposalSchema", "src/ai/aiProposal.ts"], ["standardProjectFiles", "src/core/standardProject.ts"],
     ["parseSource", "src/source-parser/parseSource.ts"], ["updateStaticText", "src/source-parser/transformSource.ts"],
   ].map(([names, file]) => `export { ${names} } from ${JSON.stringify(resolve(sourceRoot, file).replaceAll("\\", "/"))};`).join("\n");
 } }], build: { write: false, minify: false, lib: { entry, formats: ["es"] }, rollupOptions: { output: { inlineDynamicImports: true } } } });
@@ -42,11 +45,39 @@ await writeFile(image, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800
 let interview = helpers.newAiInterview();
 interview.machineName = "Nome precedente non da inviare"; interview.spec.purpose = "Pannello sintetico per verificare generazione, navigazione e modifica";
 interview.spec.pages = [{ ...helpers.newGuidedPage(0), title: "Vista di prova", kind: "overview", section: "main", imageNeed: "required", image, items: [{ label: "Indicatore di prova", tag: "" }] }];
+interview.spec.tagsMode = "import"; interview.spec.tags = [{ name: "Synthetic.Speed", dataType: "REAL", access: "read", address: "", description: "Synthetic browser sample, not a PLC" }];
+interview.spec.header = { version: 1, tags: { speed: "Synthetic.Speed" }, speedMin: "0", speedMax: "120", speedUnit: "test/min" };
 interview = helpers.toggleInterviewDelegation(interview, "machineName"); interview = helpers.toggleInterviewDelegation(interview, "pages");
-const decisions = [{ key: "machineName", value: "HMI di prova" }, { key: "pages", value: JSON.stringify([{ title: "Vista di prova", kind: "overview", section: "main" }, { title: "Valori di prova", kind: "values", section: "settings" }, { title: "Allarmi di prova", kind: "alarms", section: "alarms" }]) }];
+let decisions = [{ key: "machineName", value: "HMI di prova" }, { key: "pages", value: JSON.stringify([{ title: "Vista di prova", kind: "overview", section: "main" }, { title: "Valori di prova", kind: "values", section: "settings" }, { title: "Allarmi di prova", kind: "alarms", section: "alarms" }]) }];
+let realProposal;
+if (realAi) {
+  interview = helpers.toggleInterviewDelegation(interview, "pages");
+  interview.spec.pages.push({ ...helpers.newGuidedPage(1), title: "Valori di prova", kind: "values", section: "settings", imageNeed: "none", itemsDeferred: true }, { ...helpers.newGuidedPage(2), title: "Allarmi di prova", kind: "alarms", section: "alarms", imageNeed: "none", itemsDeferred: true });
+  const prompt = helpers.interviewPrompt(interview);
+  assert(!prompt.includes("Synthetic.Speed"), "Tag identifiers stay local even in the real account smoke");
+  let response;
+  if (reuseResponse) {
+    const previous = JSON.parse(await readFile(resolve(dirname(resolve(reuseResponse)), "ai-request.json"), "utf8"));
+    assert.equal(previous.prompt, prompt, "Do not reuse an AI response for a changed interview");
+    assert.deepEqual(previous.schema, helpers.aiProposalSchema);
+    response = JSON.parse(await readFile(resolve(reuseResponse), "utf8"));
+    assert.equal(response.requestId, previous.requestId);
+  } else {
+    const request = resolve(artifacts, "ai-request.json");
+    await writeFile(request, JSON.stringify({ requestId: "framecraft-smoke-" + Date.now(), model: "native-account-default", prompt, schema: helpers.aiProposalSchema }));
+    console.log("Explicit real AI smoke: only synthetic interview data; one native account request");
+    await run(process.env.FRAMECRAFT_SMOKE_CARGO ?? "cargo", ["test", ...(process.argv.includes("--offline") ? ["--offline"] : []), "--lib", "ai_codex::tests::real_codex_pipeline_fixture", "--", "--ignored", "--exact", "--nocapture"], nativeRoot, { FRAMECRAFT_AI_SMOKE_ALLOW_REQUEST: "1", FRAMECRAFT_AI_SMOKE_REQUEST: request });
+    response = JSON.parse(await readFile(resolve(artifacts, "ai-response.json"), "utf8"));
+  }
+  realProposal = helpers.parseAiProposal(response.text, "create");
+  assert.deepEqual(realProposal.questions, [], "Explicitly deferred facts must not block this synthetic interview");
+  decisions = realProposal.decisions;
+  result.checks.push("real native account/model -> app-server -> proposal -> strict frontend parser; no mocked AI response");
+}
 assert(!helpers.interviewPrompt(interview).includes("Nome precedente non da inviare"));
 const config = helpers.interviewConfig(helpers.resolveInterviewDelegation(interview, decisions)), { guided: _guided, ...base } = config;
-const proposal = helpers.parseAiProposal({ version: 1, mode: "create", summary: "Proposta sintetica", project: base, decisions, questions: [], warnings: [], provenance: ["approved-request", "framecraft-standard"], operations: [] }, "create");
+const proposal = realProposal ?? helpers.parseAiProposal({ version: 1, mode: "create", summary: "Proposta sintetica", project: base, decisions, questions: [], warnings: [], provenance: ["approved-request", "framecraft-standard"], operations: [] }, "create");
+assert.deepEqual(proposal.project, base, "The real proposal must agree with approved local answers and resolved decisions");
 const approved = helpers.interviewConfig(helpers.resolveInterviewDelegation(interview, proposal.decisions));
 assert.deepEqual(approved, config);
 const files = helpers.standardProjectFiles(approved);
@@ -88,6 +119,25 @@ if (process.argv.includes("--browser")) {
     await page.waitForURL(/page-3001/); assert.equal(await page.locator('[data-panel-layout="mobile"]').count(), 1);
     await page.locator('[data-panel-return]').click(); await page.locator('[data-panel-start-mode="desktop"]').click();
     await page.locator('[data-panel-layout="desktop"]').waitFor();
+    const speed = page.locator('[data-panel-header-field="speed"]'), gauge = page.locator('[data-panel-header-gauge] .hmi-gauge-bar');
+    assert.equal(await speed.textContent(), "—"); assert.equal(await page.locator('[data-panel-header-user]').textContent(), "Nessun utente");
+    assert(!(await page.locator('.hmi-fault').textContent()).includes("EMERGENCY BUTTON"));
+    assert(!(await page.locator('.hmi-fault [data-hmi-alarm-summary-content]').getAttribute("aria-label")).includes("0 attivi"));
+    const clock = await page.locator('[data-panel-clock] strong').textContent();
+    assert(await page.evaluate(clock => [new Date(), new Date(Date.now() - 1000)].some(date => date.toLocaleTimeString(document.documentElement.lang, { hour: "2-digit", minute: "2-digit" }) === clock), clock));
+    const sample = async (qualityCode, value) => page.evaluate(async ({ qualityCode, value }) => {
+      const runtime = await import("/src/framecraftHmiRuntime.ts"); runtime.applyRuntimeTagSample({ tag: "Synthetic.Speed", connectionId: "synthetic-only", qualityCode, ...(value === undefined ? {} : { value }), receivedAt: Date.now() });
+    }, { qualityCode, value });
+    await sample(192, "40"); await page.waitForFunction(() => document.querySelector('[data-panel-header-field="speed"]')?.textContent === "40");
+    assert.equal(await gauge.getAttribute("aria-valuenow"), "40");
+    await page.evaluate(async () => { const runtime = await import("/src/framecraftHmiRuntime.ts"); await runtime.requestRuntimeTagWrite("Synthetic.Speed", "99"); });
+    await page.waitForFunction(() => document.querySelector('[data-panel-header-field="speed"]')?.textContent === "—");
+    assert.equal(await gauge.getAttribute("aria-valuenow"), null, "A local trial must not inherit the last PLC quality");
+    await sample(192, "40"); await page.waitForFunction(() => document.querySelector('[data-panel-header-field="speed"]')?.textContent === "40");
+    await sample(0); await page.waitForFunction(() => document.querySelector('[data-panel-header-field="speed"]')?.textContent === "—");
+    assert.equal(await gauge.getAttribute("aria-valuenow"), null); assert.equal(await gauge.locator("i").evaluate(node => node.style.width), "0%");
+    await sample(192, "50"); await page.waitForFunction(() => document.querySelector('[data-panel-header-field="speed"]')?.textContent === "50");
+    result.checks.push("real generated header: device clock, unconfigured user/alarms, synthetic Good -> quality-only Bad -> Good samples, meter quality and no fabricated machine values");
     await page.locator('[data-section="main"]').click(); await page.getByText("Vista di prova", { exact: true }).click(); await page.waitForURL(/page-1001/);
     await page.getByText("Indicatore di prova", { exact: true }).waitFor();
     const target = resolve(project, "src/pages/GuidedPage1.tsx"), source = await readFile(target, "utf8"), document = helpers.parseSource(target, source);

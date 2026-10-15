@@ -207,16 +207,17 @@ export function createHmiAlarmSummaryWith(host, options, runtime) {
                     svg.dataset.hmiAlarmFlash = "";
                 content.prepend(svg);
             }
-            const counts = view.active + " attivi · " + view.unacknowledged + " da prendere in visione · " + view.unconfirmed + " da confermare";
+            const countText = value => !available || !snapshot || !view.rows.length ? "—" : view.known || value > 0 ? String(value) : "—";
+            const counts = countText(view.active) + " attivi · " + countText(view.unacknowledged) + " da prendere in visione · " + countText(view.unconfirmed) + " da confermare" + (available && snapshot && !view.known ? " · stato parziale, totale non disponibile" : "");
             status.textContent = view.message;
             root.setAttribute("aria-label", config.caption + ": " + (available ? "" : "Ultimo stato: ") + counts + ". " + view.message);
             body.replaceChildren();
             if (!line && config.display !== "icon")
-                body.append(make("div", (available && snapshot ? String(view.count) : "—") + " · " + ({ pending: "pendenti", active: "attivi", unacknowledged: "da prendere in visione" }[config.mode])), make("small", counts));
+                body.append(make("div", countText(view.count) + " · " + ({ pending: "pendenti", active: "attivi", unacknowledged: "da prendere in visione" }[config.mode])), make("small", counts));
             if (line)
                 for (const row of view.selected) {
                     const time = row.activatedAt === undefined ? "—" : new Date(row.activatedAt).toLocaleString(undefined, { ...(config.timeZone === "UTC" ? { timeZone: "UTC", timeZoneName: "short" } : {}) });
-                    const entry = make("div", row.id + " · " + row.className + " · " + row.text + " · " + alarmStateLabel(row) + " · " + time);
+                    const entry = make("div", (!available || row.quality !== "good" ? "Ultimo stato noto: " : "") + row.id + " · " + row.className + " · " + row.text + " · " + alarmStateLabel(row) + " · " + time);
                     entry.style.overflowWrap = "anywhere";
                     body.append(entry);
                 }

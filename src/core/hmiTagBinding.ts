@@ -9,7 +9,7 @@ export interface HmiTagBinding {
   entries?: { from?: number; to?: number; condition?: string; value: string }[];
 }
 export interface HmiTagDefinition { name: string; dataType: string; access: string; detected?: boolean }
-export interface HmiTagStatus { qualityCode?: number; qualityKnown?: boolean; lastError?: number }
+export interface HmiTagStatus { qualityCode?: number; qualityKnown?: boolean; lastError?: number; localValue?: boolean }
 export type HmiTagResolution = { tag: string; value: string; dependencies: string[] } | { reason: string; dependencies: string[] };
 
 const typeOf = (type: unknown) => typeof type === "string" ? type.trim().toUpperCase() : "";
@@ -32,15 +32,18 @@ export function resolveHmiTagReference(binding: HmiTagBinding, values: Readonly<
   const fail = (reason: string): HmiTagResolution => ({ reason, dependencies });
   if (!selector) return fail("La dinamizzazione non dice quale tag legge.");
   const value = ownValue(values, selector);
-  if (!binding.indirect) return value === undefined || value.trim() === "" ? fail(`Il tag ${selector} non ha un valore di prova.`) : { tag: selector, value, dependencies };
-  const issue = hmiIndirectBindingIssue(binding, catalog);
-  if (issue) return fail(issue);
   const validSample = (name: string) => {
     const sample = ownValue(status, name);
     if (!sample) return !requireQuality;
-    if (sample.lastError || sample.qualityKnown === false) return false;
+    if (sample.lastError || sample.qualityKnown === false || requireQuality && sample.localValue) return false;
     return sample.qualityCode === undefined ? !requireQuality : Number.isInteger(sample.qualityCode) && sample.qualityCode >= 0 && sample.qualityCode <= 65_535 && [128, 192].includes(sample.qualityCode & 0xc0);
   };
+  if (!binding.indirect) {
+    if (!validSample(selector)) return fail("Il segnale non ha una lettura valida. Controlla collegamento PLC, qualità e stato del tag; il vecchio valore non viene riutilizzato.");
+    return value === undefined || value.trim() === "" ? fail("Il segnale non ha ancora un valore. Attendi una lettura PLC o inserisci un valore di prova in modalità offline.") : { tag: selector, value, dependencies };
+  }
+  const issue = hmiIndirectBindingIssue(binding, catalog);
+  if (issue) return fail(issue);
   if (!validSample(selector)) return fail("Il selettore non ha una lettura valida. Ripristina il collegamento PLC o controlla qualità e stato del tag.");
   if (typeof value !== "string" || !value.trim()) return fail("Il selettore è vuoto. Assegnagli il nome esatto di un tag del catalogo.");
   if (value.length > 200) return fail("Il nome nel selettore è troppo lungo: usa un nome del catalogo PLC.");
