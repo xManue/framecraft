@@ -1265,6 +1265,14 @@ const bridgeScript = String(installStandalonePreviewControls) + "\n" + sharedHel
   }, true);
   window.addEventListener("blur", cancelRegionPick);
   window.addEventListener("pagehide", cancelRegionPick);
+  document.addEventListener("contextmenu", (event) => {
+    if (mode !== "edit" || regionPick || inlineTarget) return;
+    const element = selectionTarget(event), source = readSource(element);
+    if (!source) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    cancelDrag(); sendSelection(element);
+    window.parent.postMessage({ type: "framecraft:ai-context-menu", source, x: event.clientX, y: event.clientY }, "*");
+  }, true);
   document.addEventListener("pointerdown", (event) => {
     if (mode !== "edit" || event.button !== 0 || inlineTarget) return;
     const element = selectionTarget(event);

@@ -10,6 +10,9 @@ import { Workspace } from "./Workspace";
 import { densityScale, useEditorStore, type PaneSizes } from "../state/editorStore";
 import { StandalonePreview } from "../preview/StandalonePreview";
 import { consoleMessageSource, describeEditorMessage } from "../core/editorMessages";
+import { useEditorAi } from "../state/editorAi";
+import { AiProjectChat } from "./AiProjectChat";
+import { AiContextMenu } from "./AiContextMenu";
 
 /** The bar between two panels. It is dragged in the editor's own pixels, which are not the screen's
  * once the interface is scaled up, so the pointer distance is divided back down before it is used. */
@@ -70,6 +73,7 @@ export function ActionToast() {
 }
 
 export function AppShell() {
+  const chatOpen = useEditorAi(state => state.open && state.mode === "edit");
   const consoleOpen = useEditorStore((state) => state.consoleOpen);
   const leftPanelCollapsed = useEditorStore((state) => state.leftPanelCollapsed);
   const standalonePreviewOpen = useEditorStore((state) => state.standalonePreviewOpen);
@@ -93,11 +97,14 @@ export function AppShell() {
             <Workspace />
             {consoleOpen && <ConsolePanel />}
           </section>
-          <Inspector />
+          <section className={`editor-right-pane ${chatOpen ? "chat-open" : ""}`}>
+            {chatOpen ? <AiProjectChat /> : <Inspector />}
+          </section>
           {!leftPanelCollapsed && <PaneResizer pane="left" edge="left" scale={scale} />}
           <PaneResizer pane="inspector" edge="right" scale={scale} />
         </div>
         <ActionToast />
+        <AiContextMenu />
       </main>
       {standalonePreviewOpen && <StandalonePreview />}
     </>

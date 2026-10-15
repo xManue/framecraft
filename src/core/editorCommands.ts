@@ -60,6 +60,7 @@ export function installEditorKeyboardShortcuts(view: Window = window) {
     const state = useEditorStore.getState();
     if (state.standalonePreviewOpen) return;
     const target = event.target as HTMLElement | null;
+    if (target?.closest?.('[data-editor-shortcuts="off"]')) return;
     const editing = !!target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
     const shortcut = editorShortcutFromEvent(event);
     const command = editorCommandForShortcut(useEditorShortcuts.getState().bindings, shortcut, { editing, mode: state.interactionMode });

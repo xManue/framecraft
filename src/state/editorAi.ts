@@ -3,6 +3,7 @@ import { codexProvider, type AiAccount, type AiModel, type AiProvider } from "..
 import { aiEditContext, aiPrompt, aiProposalSchema, parseAiProposal, type AiEditSnapshot, type AiMode, type AiProposal } from "../ai/aiProposal";
 import { interviewConfig, interviewPrompt, newAiInterview, sameInterviewAiContext, type AiInterview } from "../ai/aiInterview";
 import { delegationQuestions, resolveInterviewDelegation } from "../ai/aiDelegation";
+import { aiChatPrompt, type AiChatContext } from "../ai/aiChat";
 
 interface AiState {
   interview: AiInterview;
@@ -13,7 +14,7 @@ interface AiState {
   open: boolean; mode: AiMode; provider: AiProvider; account?: AiAccount; models: AiModel[]; model: string;
   busy: boolean; connecting: boolean; checking: boolean; accountError?: string; error?: string; proposal?: AiProposal; snapshot?: AiEditSnapshot; requestId?: string;
   show(mode: AiMode): void; close(): void; connect(): Promise<void>; refresh(): Promise<void>; logout(): Promise<void>;
-  propose(prompt: string, snapshot?: AiEditSnapshot): Promise<void>; cancel(): Promise<void>;
+  propose(prompt: string, snapshot?: AiEditSnapshot, chat?: AiChatContext): Promise<void>; cancel(): Promise<void>;
 }
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 let accountRefresh = 0;
@@ -61,19 +62,20 @@ export const useEditorAi = create<AiState>((set, get) => ({
     catch (error) { set({ accountError: message(error) }); }
     finally { set({ checking: false }); }
   },
-  async propose(prompt, snapshot) {
+  async propose(prompt, snapshot, chat) {
     const { provider, mode, model, account, busy, checking, connecting } = get(); if (busy || checking || connecting) return;
     if (!account?.connected || !model) { set({ error: "Collega il tuo account ChatGPT e scegli un modello in Impostazioni → AI e account prima di inviare la richiesta." }); return; }
     const requestId = crypto.randomUUID();
     try {
-      if (mode === "edit" && !snapshot) throw new Error("Seleziona l’elemento da modificare; l’AI non sceglie un altro oggetto al tuo posto.");
+      if (mode === "edit" && !snapshot && !chat) throw new Error("Seleziona l’elemento da modificare; l’AI non sceglie un altro oggetto al tuo posto.");
       const context = snapshot ? aiEditContext(snapshot) : undefined;
       const interview = get().interview;
-      const input = mode === "create" ? interviewPrompt(interview) : aiPrompt(mode, prompt, context);
+      const input = mode === "create" ? interviewPrompt(interview) : chat ? aiChatPrompt(prompt, snapshot, chat) : aiPrompt(mode, prompt, context);
       set({ busy: true, requestId, snapshot, proposal: undefined, resolvedInterview: undefined, proposalUpdatedLocally: false, error: undefined });
       const result = await provider.propose({ requestId, model, prompt: input, schema: aiProposalSchema });
       if (get().requestId !== requestId || result.requestId !== requestId || get().provider !== provider) return;
       const proposal = parseAiProposal(result.text, mode);
+      if (mode === "edit" && !snapshot && proposal.operations.length) throw new Error("La risposta propone modifiche senza un elemento allegato. Nessuna modifica applicata: allega la destinazione e riprova.");
       if (mode === "create") {
         if (get().interview !== interview) throw new Error("Le risposte sono cambiate: prepara una nuova proposta.");
         if (!proposal.project && !proposal.questions.length) throw new Error("L’AI ha cambiato il piano scelto. Nessun progetto creato: riprova la proposta.");

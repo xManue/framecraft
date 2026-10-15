@@ -21,6 +21,7 @@ import { AiAssistant } from "../editor/AiAssistant";
 import { useEditorAi } from "../state/editorAi";
 import { useAiAccountEvents } from "../ai/useAiAccountEvents";
 import { installAiInterviewDraftRecovery } from "../state/editorAiDraft";
+import { installAiChatProjectScope } from "../state/editorAiChat";
 
 export function App() {
   return <EditorErrorBoundary><EditorApp /></EditorErrorBoundary>;
@@ -112,8 +113,10 @@ function ReloadRecoveryScreen() {
 function EditorApp() {
   useAiAccountEvents();
   const aiOpen = useEditorAi(state => state.open);
+  const aiMode = useEditorAi(state => state.mode);
   useEffect(() => installEditorDraftRecovery(useEditorStore), []);
   useEffect(() => installAiInterviewDraftRecovery(), []);
+  useEffect(() => installAiChatProjectScope(), []);
   const project = useEditorStore((state) => state.project);
   const loading = useEditorStore((state) => state.loading);
   const reloadRecovery = useEditorStore((state) => state.reloadRecovery);
@@ -164,7 +167,7 @@ function EditorApp() {
       {userAccessOpen && <UserAccessWindow />}
       {settingsOpen && <EditorSettings />}
       {helpOpen && <EditorHelp />}
-      {aiOpen && <AiAssistant />}
+      {aiOpen && aiMode === "create" && <AiAssistant />}
     </>
   );
 }

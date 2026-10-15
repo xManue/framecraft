@@ -4383,6 +4383,38 @@ Verifiche del 5 ottobre 2026:
   Skill UI/UX usata per leggibilità e conferme, debug per riprodurre i difetti; revisione manuale
   e documentazione mantengono espliciti i limiti. Nessuna nuova dipendenza o chiamata AI.
 
+### 128. Chat AI laterale del progetto (2026-10-15)
+
+- Accesso unico nella barra attività e in Pannello → Chat AI: conversazione non modale nella
+  colonna destra ridimensionabile, invece della finestra di richiesta singola. Il canvas resta
+  utilizzabile, senza bloccare Tab/scorciatoie globali. Creazione iniziale ancora guidata.
+- Tasto destro su pagina o elemento → Aggiungi alla chat; pulsanti equivalenti nel compositore.
+  Il bridge seleziona la copia cliccata e non intercetta gli eventi ContextTapped del Runtime.
+  Menu accessibile con tastiera; messaggi accettati solo dall’iframe corrente e dalla sua origine.
+- Allegati espliciti rimovibili: fino a cinque riferimenti pagina (nome/percorso/file, non sorgente)
+  e un elemento destinazione. Il cambio selezione non sostituisce gli allegati di nascosto.
+  Senza destinazione, solo risposte/domande e nessuna operazione applicabile. Non sono ancora
+  disponibili lettura completa delle pagine, creazione libera di funzioni o piani multi-file.
+- Bozza e messaggi conservati alla chiusura/riapertura della chat nella sessione; isolamento per
+  progetto e account, annullamento con rifiuto delle risposte tardive. Nuova chat con conferma.
+  Non persistiti su disco; limite 40 messaggi, ultimi dodici completati nel contesto, testi storici
+  abbreviati a 4.000 caratteri e massimo 32 KiB UTF-8 di cronologia. Contesti eccessivi rifiutati.
+- Ogni invio richiede consenso anche per la cronologia; sorgenti completi, script, mapping tag e
+  credenziali non sono raccolti automaticamente. Quanto scritto esplicitamente e i testi letterali
+  allegati possono essere inviati: non inserire segreti. Account/modello restano nelle impostazioni.
+- Ultima proposta soltanto, confronto prima/dopo e accettazione per campo, unico Annulla/Ripeti.
+  Sorgente/selezione/istanza/ambito e lettura del file ricontrollati dalle stesse primitive esistenti.
+  Dopo l’applicazione si aggiorna soltanto il riferimento della stessa destinazione allegata.
+- Verificati 97 test mirati di chat, pipeline AI, wizard, selezione e scorciatoie; tipi e build
+  della copia contenente soltanto il codice pubblicabile passati. Browser reale a 375/768/1024/1440 px:
+  menu sul destinatario esatto, allegati pagina, conversazione a più messaggi, consenso, vera
+  applicazione store con Annulla/Ripeti e bozza alla riapertura; nessun overflow o errore JavaScript.
+  La tastiera nella chat/menu non lancia cancellazioni o comandi sul canvas; fuori resta operativa.
+- Artefatti locali: `.hmi-preview/ai-chat-public-1792058749367/.hmi-preview/ai-chat-ui/result.json`.
+  Bridge di anteprima reale, provider e letture file sintetici, applicazione in memoria: non è
+  collaudo IPC desktop/macchina né una nuova inferenza. Restano storico persistente, pagine complete,
+  transazioni multi-file e commissioning. Nessuna nuova dipendenza o dato macchina pubblicato.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

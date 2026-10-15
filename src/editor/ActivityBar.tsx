@@ -1,5 +1,6 @@
-import { Boxes, Braces, Cable, Files, Languages, Route, SquareMousePointer } from "lucide-react";
+import { Boxes, Braces, Cable, Files, Languages, MessageSquare, Route, SquareMousePointer } from "lucide-react";
 import { useEditorStore } from "../state/editorStore";
+import { useEditorAi } from "../state/editorAi";
 
 const items = [
   { id: "pages" as const, label: "Pagine", icon: Route },
@@ -12,6 +13,7 @@ const items = [
 ];
 
 export function ActivityBar() {
+  const chatOpen = useEditorAi(state => state.open && state.mode === "edit");
   const active = useEditorStore((state) => state.leftPanel);
   const setActive = useEditorStore((state) => state.setLeftPanel);
   // La scheda della pagina esiste solo dove il pannello dichiara cosa si può cambiare: altrove
@@ -24,5 +26,6 @@ export function ActivityBar() {
         <span>{label}</span>
       </button>
     ))}
+    <button type="button" className={chatOpen ? "active" : ""} aria-label="Chat AI" aria-pressed={chatOpen} title="Chat AI del progetto" onClick={() => chatOpen ? useEditorAi.getState().close() : useEditorAi.getState().show("edit")}><MessageSquare size={19} /><span>Chat AI</span></button>
   </nav>;
 }

@@ -392,8 +392,27 @@ and the [FactoryTalk Optix button documentation](https://www.rockwellautomation.
 operator events and press/release semantics are distinct. This does not imply full vendor parity
 or safety certification. No new dependencies or redistributed vendor assets were added for this flow.
 
-The optional editor assistant (Pannello → Assistente AI) can propose text/style on the selected
-element, including supported geometry, with partial approval and a single undo/redo. Its review
+Open **Chat AI** in the activity bar or **Pannello → Chat AI · Codex** for the project side chat.
+Right-click an element in **Modifica**, or a page in the page list, and choose **Aggiungi alla chat**.
+The composer also offers **Elemento selezionato** and **Pagina aperta**. References are explicit
+chips that can be removed: selecting another object does not silently replace the destination.
+Only one element can be the edit destination; up to five pages can be attached as name/route/file
+references, not full page contents. Without an element, the assistant can answer and ask questions,
+but cannot return applicable operations. Page-wide/multi-file edits remain unimplemented.
+
+Messages and the unsent draft survive closing/reopening the chat during the same project session.
+They are not saved to disk and are cleared on project close/change or account logout/change.
+**Nuova chat** requires confirmation and never edits the panel. Each send requires consent for the
+request, the attached context and up to the latest 12 completed messages; long historical messages
+are abbreviated to 4,000 characters and the history has a 32 KiB UTF-8 budget. A conversation stops
+at 40 messages with a clear new-chat instruction. Oversized context is rejected before inference.
+No full source, expression/handler bodies, real tag mappings or credentials are gathered for the
+request. Text explicitly typed into chat and literal element content can be sent: never enter secrets.
+Account/model settings and the initial guided creation wizard are unchanged.
+
+The assistant can propose text/style on the attached element, including supported geometry,
+with partial approval and a single undo/redo. Only the latest completed proposal can be applied;
+cancelled/late replies cannot become new proposals in another project. Its review
 shows Italian property names and before/after source values. Unset values are labelled as CSS/
 component-dependent, not guessed as live readings. Unchanged operations are excluded; duplicate
 operations on the same field are rejected rather than silently taking the last value.
@@ -407,8 +426,10 @@ Styles hidden or overridden by JSX attribute spreads remain Inspector-only.
 The two schematic drawings follow only the selected operations, using a common scale and bounded
 dimensions. They never mount the project's JSX, load its images, execute handlers or evaluate PLC
 data. This is not a live-panel preview: external CSS, images, placement, stacking and Runtime
-behaviour must be checked in the actual panel. Instance/scope changes revoke consent and stale
-proposals are blocked, including selection metadata that arrives during file reading.
+behaviour must be checked in the actual panel. Attachments remain pinned to their approved snapshot;
+selection/page/instance/scope changes block application until the original destination is selected
+again, or reattached and reproposed if the file changed. Selection metadata is checked again during
+file reading. After a successful edit only the same destination attachment is refreshed locally.
 Broader AI operations and whole-project semantic impact analysis remain on the roadmap.
 The native adapter needs a new desktop build; local CLI protocol 0.159.2 and synthetic/targeted
 tests are not proof of a successful real-account login or inference on a production installation.

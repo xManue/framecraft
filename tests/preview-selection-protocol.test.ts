@@ -91,6 +91,21 @@ function createPreview(sources = [sourceAt(10), sourceAt(40), sourceAt(70)]) {
 }
 
 describe("preview selection protocol", () => {
+  it("opens the AI context menu on the exact right-clicked instance in edit mode", () => {
+    const repeated = sourceAt(10), preview = createPreview([repeated, repeated]);
+    const event = new preview.current.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 180, clientY: 42 });
+    preview.elements[1].dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(preview.latest("framecraft:select")).toMatchObject({ source: repeated, info: { instanceIndex: 1, instanceCount: 2 } });
+    expect(preview.latest("framecraft:ai-context-menu")).toMatchObject({ source: repeated, x: 180, y: 42 });
+  });
+  it("does not intercept runtime context clicks or open AI while using the panel", () => {
+    const preview = createPreview(); preview.send({ type: "framecraft:set-mode", mode: "navigate" });
+    const event = new preview.current.MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    preview.elements[1].dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(preview.messages.some(item => item.type === "framecraft:ai-context-menu")).toBe(false);
+  });
   it("advertises protocol 2 and separates a real click from repeated selection acknowledgements", async () => {
     const preview = createPreview();
     expect(preview.latest("framecraft:ready")).toMatchObject({ selectionProtocol: 2, selectionVersion: 0 });

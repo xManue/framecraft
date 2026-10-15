@@ -199,7 +199,7 @@ export function TopBar() {
             <button className={activeMenu === "panel" ? "active" : ""} onClick={() => toggleMenu("panel")} aria-expanded={activeMenu === "panel"} aria-haspopup="menu">Pannello <ChevronDown size={12} /></button>
             {activeMenu === "panel" && <div className="topbar-dropdown" role="menu" aria-label="Pannello">
               <button role="menuitem" disabled={!previewUrl} onClick={() => runAndClose(() => void openPreview())}><Play size={15} /><span><strong>Prova pannello</strong><small>Apri il Runtime senza strumenti di modifica</small></span></button>
-              <button role="menuitem" onClick={() => runAndClose(() => useEditorAi.getState().show("edit"))}><HelpCircle size={15} /><span><strong>Assistente AI · Codex</strong><small>Proposte sull’elemento selezionato, con approvazione e Annulla</small></span></button>
+              <button role="menuitem" onClick={() => runAndClose(() => useEditorAi.getState().show("edit"))}><HelpCircle size={15} /><span><strong>Chat AI · Codex</strong><small>Conversazione del progetto, allegati e proposte da approvare</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => void checkProject())}><FileCheck2 size={15} /><span><strong>Controlla pannello</strong><small>Trova errori, tag mancanti e parti incomplete</small></span></button>
               <div className="topbar-menu-separator" />
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("plc"))}><Gauge size={15} /><span><strong>Variabili PLC e valori di prova</strong><small>Catalogo e prova locale dell’HMI, senza collegare un PLC</small></span></button>

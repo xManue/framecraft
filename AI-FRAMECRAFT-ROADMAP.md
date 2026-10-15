@@ -90,8 +90,15 @@ e al recupero. Conflitti fra istanze, file corrotti/bloccati e mancato salvatagg
 si può continuare senza recupero locale senza cancellare la copia. Il salvataggio è atomico e
 serializzato; la chiusura forzata può perdere le ultime modifiche non ancora confermate.
 
-L’assistenza durante le modifiche mantiene la richiesta libera, ma oggi applica solo testo e
-stile/geometria dell’elemento selezionato. Revisione con valori prima/dopo, nomi italiani, no-op
+L’assistenza durante le modifiche è una chat laterale continua: barra attività o Pannello → Chat AI.
+Tasto destro su elemento/pagina per allegare, oppure comandi nel compositore. Bozza e messaggi
+restano nella sessione del progetto; chiusura/cambio progetto e cambio account li svuotano.
+Fino a cinque pagine come riferimenti nome/percorso/file, senza sorgente né contenuto dedotto;
+un solo elemento destinazione, fissato esplicitamente e non sostituito da altre selezioni.
+Consenso a ogni invio per richiesta, allegati e fino agli ultimi dodici messaggi completati,
+con testi lunghi abbreviati e budget UTF-8. Nuova chat con conferma, annullamento e isolamento
+delle risposte tardive. Nessun salvataggio persistente delle conversazioni o invio automatico.
+Oggi applica solo testo e stile/geometria dell’elemento allegato. Revisione con valori prima/dopo, nomi italiani, no-op
 esclusi e schema indicativo aggiornato dalle sole modifiche accettate. Valori dinamici o basi
 ancora pilotate dal Runtime non sono preselezionati: la sostituzione o il cambio del fallback
 richiede una scelta esplicita. Lo schema non monta JSX, immagini o eventi del progetto.
@@ -204,7 +211,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-EDIT-06 | Suggerimenti non invasivi | DA FARE | Accessibilità, copertura lingue, performance e coerenza standard |
 | AI-EDIT-07 | Spiegazione del progetto | DA FARE | Risponde usando dipendenze reali e link all'oggetto interessato |
 | AI-EDIT-08 | Generazione e manutenzione test | DA FARE | Aggiorna i test insieme alla funzione proposta |
-| AI-EDIT-09 | Chat con anteprima del diff | PARZIALE | Richiesta singola, confronto locale e schema senza esecuzione, accettazione parziale e applicazione; restano conversazione, revisioni e piani multi-file |
+| AI-EDIT-09 | Chat con anteprima del diff | PARZIALE | Chat laterale di sessione, cronologia recente, allegati espliciti via tasto destro, revisione locale e accettazione parziale; restano storico persistente, revisioni ramificate, contesto completo pagine e piani multi-file |
 | AI-EDIT-10 | Cronologia delle proposte AI | DA FARE | Autore, input, diff, esito e rollback leggibili |
 
 ## 6. Esperienza utente
