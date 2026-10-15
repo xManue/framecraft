@@ -1,6 +1,8 @@
 import { LoaderCircle, Settings, Sparkles, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { aiEditContext, type AiEditSnapshot } from "../ai/aiProposal";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { aiEditContext, aiSelectionKey, type AiEditSnapshot, type AiProposal } from "../ai/aiProposal";
+import { reviewAiEdits } from "../ai/aiEditReview";
+import { AiEditReview } from "./AiEditReview";
 import { useEditorAi } from "../state/editorAi";
 import { useEditorStore } from "../state/editorStore";
 import { AiProjectInterview } from "./AiProjectInterview";
@@ -14,15 +16,25 @@ export function AiAssistant() {
   const helpOpen = useEditorGuidance(state => state.helpOpen), suspended = settingsOpen || helpOpen;
   const project = useEditorStore(state => state.project), document = useEditorStore(state => state.document), selectedId = useEditorStore(state => state.selectedId);
   const loading = useEditorStore(state => state.loading);
+  const selectionInfo = useEditorStore(state => state.selectionInfo), editScope = useEditorStore(state => state.editScope);
+  const selectionKey = aiSelectionKey(selectionInfo, editScope);
   const panel = useRef<HTMLElement>(null);
-  const [prompt, setPrompt] = useState(""), [consent, setConsent] = useState(false), [accepted, setAccepted] = useState<string[]>([]);
+  const [prompt, setPrompt] = useState(""), [consent, setConsent] = useState(false);
+  const [choice, setChoice] = useState<{ proposal: AiProposal; snapshot: AiEditSnapshot; ids: string[] }>();
   const [applying, setApplying] = useState(false), [notice, setNotice] = useState<string>();
-  const snapshot: AiEditSnapshot | undefined = project && document && selectedId && document.nodes[selectedId] ? { root: project.root, document, selectedId } : undefined;
-  const context = ai.mode === "edit" && snapshot ? aiEditContext(snapshot) : undefined;
-  const stale = ai.snapshot && (ai.snapshot.document !== document || ai.snapshot.selectedId !== selectedId || ai.snapshot.root !== project?.root);
+  const snapshot: AiEditSnapshot | undefined = useMemo(() => project && document && selectedId && document.nodes[selectedId] ? { root: project.root, document, selectedId, selectionKey } : undefined, [project, document, selectedId, selectionKey]);
+  const contextResult = useMemo(() => {
+    try { return { context: ai.mode === "edit" && snapshot ? aiEditContext(snapshot) : undefined }; }
+    catch { return { error: "Il sorgente della pagina non è valido per il confronto AI. Controlla gli errori della pagina prima di preparare una proposta; nessuna modifica applicata." }; }
+  }, [ai.mode, snapshot]);
+  const context = contextResult.context;
+  const review = useMemo(() => ai.mode === "edit" && ai.snapshot && ai.proposal ? reviewAiEdits(ai.snapshot, ai.proposal) : undefined, [ai.mode, ai.snapshot, ai.proposal]);
+  const accepted = choice && choice.proposal === ai.proposal && choice.snapshot === ai.snapshot ? choice.ids : review?.defaults ?? [];
+  const setAccepted = (ids: string[]) => { if (ai.proposal && ai.snapshot) setChoice({ proposal: ai.proposal, snapshot: ai.snapshot, ids }); };
+  const stale = ai.snapshot && (ai.snapshot.document !== document || ai.snapshot.selectedId !== selectedId || ai.snapshot.root !== project?.root || ai.snapshot.selectionKey !== undefined && ai.snapshot.selectionKey !== selectionKey);
+  const shared = (selectionInfo?.instanceCount ?? 1) > 1;
 
-  useEffect(() => { setConsent(false); }, [ai.mode, project?.root, document?.version, selectedId, ai.model, ai.account?.email]);
-  useEffect(() => { setAccepted(ai.proposal?.operations.map(operation => operation.id) ?? []); }, [ai.proposal]);
+  useEffect(() => { setConsent(false); }, [ai.mode, project?.root, document?.version, selectedId, selectionKey, ai.model, ai.account?.email]);
   useEffect(() => {
     if (suspended) return;
     const previous = globalThis.document.activeElement as HTMLElement | null;
@@ -62,7 +74,8 @@ export function AiAssistant() {
         <section className="ai-work" aria-label="Richiesta e proposta AI">{ai.mode === "create" ? <AiInterviewDraft><AiProjectInterview /></AiInterviewDraft> : <>
           <h3>Cosa vuoi cambiare nell’elemento selezionato?</h3>
           <label>La tua richiesta<textarea rows={4} maxLength={8000} value={prompt} disabled={ai.busy} onChange={event => { setPrompt(event.target.value); setConsent(false); }} placeholder="Per esempio: cambia il testo del pulsante e rendilo più grande…" /></label>
-          {!context && <p role="status">Seleziona prima un elemento nel canvas. Chiudi questa finestra per sceglierlo.</p>}
+          {!context && !contextResult.error && <p role="status">Seleziona prima un elemento nel canvas. Chiudi questa finestra per sceglierlo.</p>}
+          {contextResult.error && <p role="alert" className="ai-error">{contextResult.error}</p>}
           <details className="ai-context"><summary>Contesto che verrà inviato</summary><pre>{context ? JSON.stringify(context, null, 2) : "Seleziona prima un elemento. Nessun sorgente, export macchina, token o valore PLC inviato automaticamente."}</pre></details>
           <label className="ai-consent"><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} disabled={ai.busy} /><span>Invia la richiesta e questo contesto a Codex usando il mio account. Nessuna modifica viene applicata senza la mia conferma.</span></label>
           <div className="ai-buttons"><button type="button" className="button primary" disabled={!consent || !prompt.trim() || !ai.account?.connected || !ai.model || ai.busy || ai.connecting || ai.checking || !context} onClick={() => { setNotice(undefined); void ai.propose(prompt, snapshot); }}><Sparkles size={16} /> Prepara proposta</button>
@@ -73,9 +86,10 @@ export function AiAssistant() {
             {ai.proposal.questions.length > 0 && <div role="status"><strong>Informazioni da completare</strong><ul>{ai.proposal.questions.map((question, index) => <li key={index}>{question}</li>)}</ul><p>Aggiungi le risposte alla richiesta e prepara una nuova proposta.</p></div>}
             {ai.proposal.warnings.length > 0 && <ul>{ai.proposal.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
             <p>Destinazione: {ai.snapshot?.document.file.split(/[\\/]/).at(-1)} · {ai.snapshot?.document.nodes[ai.snapshot.selectedId]?.label}</p>
-            {ai.proposal.operations.map(operation => <label className="ai-operation" key={operation.id}><input type="checkbox" checked={accepted.includes(operation.id)} onChange={event => setAccepted(event.target.checked ? [...accepted, operation.id] : accepted.filter(id => id !== operation.id))} /><span><strong>{operation.type === "text" ? "Testo" : operation.property}</strong><code>{operation.value}</code></span></label>)}
+            {review && ai.snapshot && <AiEditReview snapshot={ai.snapshot} proposal={ai.proposal} review={review} accepted={accepted} onAccepted={setAccepted} disabled={applying || loading || ai.busy || !!stale || shared} />}
+            {shared && <p className="ai-error" role="alert">Questo elemento ha più copie: usa i campi dell’Inspector per scegliere quale modificare. La proposta AI non cambia copie non selezionate.</p>}
             {stale && <p className="ai-error" role="alert">La selezione o la pagina sono cambiate. Questa proposta non può essere applicata: richiedine una nuova.</p>}
-            <button type="button" className="button primary" disabled={applying || loading || ai.busy || !!stale || !!ai.proposal.questions.length || !accepted.length} onClick={() => void apply()}>{applying ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}Applica le modifiche selezionate</button>
+            <button type="button" className="button primary" disabled={applying || loading || ai.busy || !!stale || shared || !!ai.proposal.questions.length || !review || !!review.error || !accepted.length} onClick={() => void apply()}>{applying ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}Applica le modifiche selezionate</button>
           </section>}
           {notice && <p role="status">{notice}</p>}
         </>}</section>

@@ -4352,6 +4352,37 @@ Verifiche del 5 ottobre 2026:
   recovery dopo arresto di sistema, storage cifrato/retention multipla e commissioning macchina.
   Il deposito è locale in chiaro: non inserire segreti; nessun file macchina inviato o pubblicato.
 
+### 127. Revisione prima/dopo per le modifiche AI (2026-10-15)
+
+- Proprietà con nomi italiani, base precedente e valore proposto, valori ereditati da CSS
+  distinti da valori letterali e dinamici. Nessuna lettura PLC o stile calcolato inventato.
+  Modifiche senza variazione escluse, una sola operazione per campo; proposte ambigue rifiutate.
+- Sostituzioni di espressioni con valori fissi deselezionate all’inizio e spiegate; le basi
+  pilotate da dinamizzazioni HMI hanno un avviso specifico e restano deselezionate. Il binding
+  non viene rimosso. Espressioni, script e tag non entrano nel contesto approvato: solo flag e
+  nomi delle proprietà dinamiche/Runtime. Il testo fisso accanto a icone/espressioni le preserva.
+- Schema prima/dopo aggiornato dalle sole scelte accettate, scala comune e dimensioni limitate.
+  Non monta JSX, carica immagini, esegue eventi o legge valori PLC. Colori/dimensioni non noti
+  sono indicativi; CSS esterni, posizione, livello, immagini e Runtime richiedono prova nel
+  pannello reale. Non è una preview live o un diff semantico completo multi-pagina.
+- Trasformazione condivisa con l’editor: riprodotti e corretti gli override persi dopo spread,
+  chiavi calcolate o duplicate. Stili restanti e valutazione singola dell’espressione originale
+  preservati. Corrette anche aggiunte con commenti e virgole finali, prima invalide o ignorate.
+  Le proprietà accettate vengono applicate insieme, senza riparsare il file per ogni proprietà.
+- Identità di istanza/ambito nel riferimento locale della proposta; cambio copia o ambito
+  revoca il consenso e blocca l’applicazione, anche se il nodo JSX non cambia. Ricontrollo dopo
+  la lettura asincrona del file. Sorgente non valido mostra un avviso senza chiudere l’assistente.
+- Verificati 78 test mirati di revisione/UI/pipeline/stili. Tipi e build della copia pubblicabile
+  passati. Browser reale a 375/768/1024/1440 px: selezione parziale, scala comune, veri comandi
+  store Applica/Annulla/Ripeti, dinamici non preselezionati, nessun overflow, errore JS, esecuzione
+  del codice sorgente o richiesta AI/PLC/immagine del progetto.
+- Artefatti locali: `.hmi-preview/ai-review-public-1792056188654/.hmi-preview/ai-review-ui/result.json`.
+  La prova browser usa letture sintetiche e applicazione in memoria, non IPC nativo o macchina.
+  I test store coprono scrittura singola e rollback tramite bridge simulato. Restano collaudo
+  desktop completo, CSS/layout reali, transazioni multi-file/CAS nativo e commissioning industriale.
+  Skill UI/UX usata per leggibilità e conferme, debug per riprodurre i difetti; revisione manuale
+  e documentazione mantengono espliciti i limiti. Nessuna nuova dipendenza o chiamata AI.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

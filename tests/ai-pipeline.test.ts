@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { aiEditContext, aiPrompt, parseAiProposal, prepareAiEdits, type AiEditSnapshot, type AiProposal } from "../src/ai/aiProposal";
+import { aiEditContext, aiPrompt, aiSelectionKey, parseAiProposal, prepareAiEdits, type AiEditSnapshot, type AiProposal } from "../src/ai/aiProposal";
 import { parseSource } from "../src/source-parser/parseSource";
 import { standardProjectFiles } from "../src/core/standardProject";
 import { useEditorAi } from "../src/state/editorAi";
@@ -96,6 +96,19 @@ describe("applicazione della proposta nell’editor", () => {
     expect(after).toContain("Dopo"); expect(after).toContain("#ff0000");
     await useEditorStore.getState().undo(); expect(useEditorStore.getState().document!.source).toBe(source);
     await useEditorStore.getState().redo(); expect(useEditorStore.getState().document!.source).toBe(after);
+  });
+  it("non scrive se una copia condivisa viene riconosciuta durante la lettura del file", async () => {
+    const selected = opened(); bridge.readFile.mockImplementationOnce(async () => { useEditorStore.setState({ selectionInfo: { instanceIndex: 1, instanceCount: 2 } }); return source; });
+    await expect(useEditorStore.getState().applyAiProposal(selected, edit(), ["text"])).rejects.toThrow("cambiato");
+    expect(bridge.writeFile).not.toHaveBeenCalled();
+  });
+  it.each(["instance", "scope"])("rifiuta la proposta se cambia %s pur mantenendo lo stesso nodo JSX", async change => {
+    const selected = opened(); useEditorStore.setState({ editScope: "instance", selectionInfo: { instanceIndex: 0, instanceCount: 1, listIndex: 0 } });
+    selected.selectionKey = aiSelectionKey(useEditorStore.getState().selectionInfo, "instance");
+    if (change === "instance") useEditorStore.setState({ selectionInfo: { instanceIndex: 0, instanceCount: 1, listIndex: 1 } });
+    else useEditorStore.setState({ editScope: "all" });
+    await expect(useEditorStore.getState().applyAiProposal(selected, edit(), ["text"])).rejects.toThrow("selezione");
+    expect(bridge.writeFile).not.toHaveBeenCalled();
   });
   it.each(["selection", "document", "project", "mode", "dirty", "external"])("non scrive se è cambiato %s", async change => {
     const selected = opened();

@@ -482,6 +482,18 @@ function applyInlineStyles(magic: MagicString, source: string, element: JSXEleme
     return;
   }
   const object = expression as ObjectExpression;
+  const unknownAt = object.properties.reduce((last, item, index) => item.type !== "ObjectProperty" || item.computed ? index : last, -1);
+  const nameOf = (item: typeof object.properties[number]) => item.type !== "SpreadElement" && !item.computed ? item.key.type === "Identifier" ? item.key.name : item.key.type === "StringLiteral" ? item.key.value : undefined : undefined;
+  const merge = Object.keys(values).some(key => {
+    const matches = object.properties.flatMap((item, index) => nameOf(item) === key ? [index] : []);
+    return matches.length > 1 || matches.some(index => index < unknownAt || object.properties[index].type !== "ObjectProperty")
+      || !matches.length && object.properties.some(item => item.type !== "SpreadElement" && (item.type !== "ObjectProperty" || item.computed));
+  });
+  if (merge) {
+    const properties = Object.entries(values).map(([property, value]) => `${styleKey(property)}: ${literal(value)}`).join(", ");
+    magic.overwrite(expression.start!, expression.end!, `{ ...(${source.slice(expression.start!, expression.end!)}), ${properties} }`);
+    return;
+  }
   const remaining = new Map(Object.entries(values));
   for (const item of object.properties) {
     if (item.type !== "ObjectProperty" || item.computed) continue;
@@ -494,10 +506,18 @@ function applyInlineStyles(magic: MagicString, source: string, element: JSXEleme
     }
   }
   if (!remaining.size) return;
+  const last = object.properties.at(-1), tail = source.slice(last?.end ?? object.start! + 1, object.end! - 1);
+  const hasComment = /\/[/\*]/.test(tail);
+  const trailingComma = tail.replace(/\/\*[\s\S]*?\*\/|\/\/[^\r\n\u2028\u2029]*/g, "").trim() === ",";
+  const properties = [...remaining].map(([property, value]) => `${styleKey(property)}: ${literal(value)}`).join(", ");
+  if (hasComment) {
+    if (last && !trailingComma) magic.appendLeft(last.end!, ",");
+    magic.appendLeft(object.end! - 1, ` ${properties}`);
+    return;
+  }
   let insertAt = object.end! - 1;
   while (insertAt > object.start! && /\s/.test(source[insertAt - 1])) insertAt -= 1;
-  const properties = [...remaining].map(([property, value]) => `${styleKey(property)}: ${literal(value)}`).join(", ");
-  magic.appendLeft(insertAt, `${object.properties.length ? ", " : ""}${properties}`);
+  magic.appendLeft(insertAt, `${object.properties.length ? trailingComma ? " " : ", " : ""}${properties}`);
 }
 
 export function updateInlineStyle(source: string, start: number, end: number, property: string, value: string | number): string {

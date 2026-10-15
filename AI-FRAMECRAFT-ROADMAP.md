@@ -91,8 +91,13 @@ si può continuare senza recupero locale senza cancellare la copia. Il salvatagg
 serializzato; la chiusura forzata può perdere le ultime modifiche non ancora confermate.
 
 L’assistenza durante le modifiche mantiene la richiesta libera, ma oggi applica solo testo e
-stile dell’elemento selezionato, con revisione parziale, controllo di sorgente/selezione e un
-unico Annulla/Ripeti. Il testo JSX è codificato per evitare che diventi codice eseguibile.
+stile/geometria dell’elemento selezionato. Revisione con valori prima/dopo, nomi italiani, no-op
+esclusi e schema indicativo aggiornato dalle sole modifiche accettate. Valori dinamici o basi
+ancora pilotate dal Runtime non sono preselezionati: la sostituzione o il cambio del fallback
+richiede una scelta esplicita. Lo schema non monta JSX, immagini o eventi del progetto.
+Controllo di sorgente/selezione/istanza/ambito e un unico Annulla/Ripeti; il testo JSX è codificato
+per evitare che diventi codice eseguibile. Non è una preview completa della pagina né un’analisi
+delle dipendenze e dei comportamenti di tutto il progetto.
 Non equivale a completamento AI: restano generazione completa di funzioni operative, mapping
 approvati di scrittura, ricette, PDF, ruoli server, modifiche multi-file atomiche, licensing,
 privacy/eval e commissioning industriale. Lingua inglese e protocollo selezionato sono requisiti
@@ -140,7 +145,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-BASE-01 | Command layer unico per ogni modifica editor | PARZIALE | Ogni comando manuale è invocabile e descrivibile senza automazione UI |
 | AI-BASE-02 | Modello progetto tipizzato WinCC/Optix | PARZIALE | L'AI non deve modificare stringhe o JSX senza comprenderne il contratto |
 | AI-BASE-03 | Validatore completo di progetto | PARZIALE | Errori, warning e blocchi sono identici per persona e AI |
-| AI-BASE-04 | Diff semantico e impact analysis | DA FARE | La proposta mostra effetti su pagine, tag, eventi, allarmi e sicurezza |
+| AI-BASE-04 | Diff semantico e impact analysis | PARZIALE | Prima/dopo sul singolo elemento, valori dinamici e basi Runtime espliciti; restano impatto trasversale su pagine, tag, eventi, allarmi e sicurezza |
 | AI-BASE-05 | Transazioni multi-file e undo/redo | PARZIALE | Una proposta è applicata o annullata in modo atomico |
 | AI-BASE-06 | Indice del progetto e ricerca dipendenze | PARZIALE | Recupero mirato del contesto senza inviare l'intero progetto |
 | AI-BASE-07 | Test generabili dalle funzioni HMI | DA FARE | Ogni funzione critica proposta porta verifiche eseguibili |
@@ -191,7 +196,7 @@ e collaudo della connessione restano possibili senza AI.
 
 | ID | Capacità | Stato | Esempio |
 |---|---|---|---|
-| AI-EDIT-01 | Comando naturale su selezione corrente | DA FARE | "Rendi questo indicatore rosso quando il tag è in allarme" |
+| AI-EDIT-01 | Comando naturale su selezione corrente | PARZIALE | Testo/stile/geometria con revisione sul selezionato; condizioni operative tipo "rosso quando il tag è in allarme" e mapping approvati ancora da implementare |
 | AI-EDIT-02 | Comando su pagina o gruppo di pagine | DA FARE | "Aggiungi la stessa diagnostica a tutti i motori" |
 | AI-EDIT-03 | Refactoring trasversale sicuro | DA FARE | Rinomina tag o aggiorna un faceplate mostrando l'impatto |
 | AI-EDIT-04 | Generazione da screenshot/documento | DA FARE | Propone struttura e geometrie senza inventare comportamenti |
@@ -199,7 +204,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-EDIT-06 | Suggerimenti non invasivi | DA FARE | Accessibilità, copertura lingue, performance e coerenza standard |
 | AI-EDIT-07 | Spiegazione del progetto | DA FARE | Risponde usando dipendenze reali e link all'oggetto interessato |
 | AI-EDIT-08 | Generazione e manutenzione test | DA FARE | Aggiorna i test insieme alla funzione proposta |
-| AI-EDIT-09 | Chat con anteprima del diff | DA FARE | Conversazione, piano, preview, accettazione parziale, applicazione |
+| AI-EDIT-09 | Chat con anteprima del diff | PARZIALE | Richiesta singola, confronto locale e schema senza esecuzione, accettazione parziale e applicazione; restano conversazione, revisioni e piani multi-file |
 | AI-EDIT-10 | Cronologia delle proposte AI | DA FARE | Autore, input, diff, esito e rollback leggibili |
 
 ## 6. Esperienza utente
@@ -209,8 +214,8 @@ e collaudo della connessione restano possibili senza AI.
 | AI-UX-01 | Scelta iniziale Manuale / Con AI | DA FARE | Default chiaro e modificabile, senza pressione sull'utente |
 | AI-UX-02 | Pannello AI richiudibile | DA FARE | Il canvas non dipende dalla sua presenza |
 | AI-UX-03 | Contesto esplicito | DA FARE | Mostrare selezione, pagina, file e documenti inviati |
-| AI-UX-04 | Preview visuale e diff semantico | DA FARE | Evidenziare cosa cambia prima di accettare |
-| AI-UX-05 | Accettazione parziale | DA FARE | Selezione per gruppo logico, non solo per file |
+| AI-UX-04 | Preview visuale e diff semantico | PARZIALE | Schema indicativo del singolo elemento e confronto base prima/dopo; preview reale di pagina/progetto e contesto Runtime ancora da implementare |
+| AI-UX-05 | Accettazione parziale | PARZIALE | Scelta per proprietà sul selezionato, con dinamici non preselezionati; restano gruppi logici trasversali e dipendenze tra operazioni |
 | AI-UX-06 | Domande quando manca un dato critico | DA FARE | Chiedere invece di indovinare tag, soglie o permessi |
 | AI-UX-07 | Stato di esecuzione e annullamento | PARZIALE | Richiesta annullabile e stato esplicito; questionario desktop recuperabile localmente, senza consensi né mapping approvati; restano avanzamento dettagliato, transazioni AI multi-file e collaudo IPC nativo completo |
 | AI-UX-08 | Funzionamento offline manuale | PARZIALE | L'assenza AI non degrada le capacità dell'editor |

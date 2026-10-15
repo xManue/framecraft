@@ -393,7 +393,23 @@ operator events and press/release semantics are distinct. This does not imply fu
 or safety certification. No new dependencies or redistributed vendor assets were added for this flow.
 
 The optional editor assistant (Pannello → Assistente AI) can propose text/style on the selected
-element, with partial approval and a single undo/redo. Broader functions remain on the roadmap.
+element, including supported geometry, with partial approval and a single undo/redo. Its review
+shows Italian property names and before/after source values. Unset values are labelled as CSS/
+component-dependent, not guessed as live readings. Unchanged operations are excluded; duplicate
+operations on the same field are rejected rather than silently taking the last value.
+
+Changes that replace a computed value, or alter a base value still controlled by HMI dynamization,
+start unchecked and explain the impact. Selecting them is an explicit decision. Other fields,
+bindings and events are preserved. Runtime property names and dynamic flags can enter the
+approved context, but expression/script bodies and actual tag names are not sent automatically.
+Styles hidden or overridden by JSX attribute spreads remain Inspector-only.
+
+The two schematic drawings follow only the selected operations, using a common scale and bounded
+dimensions. They never mount the project's JSX, load its images, execute handlers or evaluate PLC
+data. This is not a live-panel preview: external CSS, images, placement, stacking and Runtime
+behaviour must be checked in the actual panel. Instance/scope changes revoke consent and stale
+proposals are blocked, including selection metadata that arrives during file reading.
+Broader AI operations and whole-project semantic impact analysis remain on the roadmap.
 The native adapter needs a new desktop build; local CLI protocol 0.159.2 and synthetic/targeted
 tests are not proof of a successful real-account login or inference on a production installation.
 

@@ -17,6 +17,7 @@ import { useEditorGuidance } from "../src/state/editorGuidance";
 import { resolveInterviewDelegation, toggleInterviewDelegation } from "../src/ai/aiDelegation";
 import { installAiInterviewDraftRecovery, useEditorAiDraft } from "../src/state/editorAiDraft";
 import { serializeAiInterviewDraft } from "../src/ai/aiInterviewDraft";
+import { aiSelectionKey, type AiProposal } from "../src/ai/aiProposal";
 
 const initialAi = useEditorAi.getState(), initialEditor = useEditorStore.getState();
 const initialSettings = useEditorShortcuts.getState();
@@ -25,6 +26,13 @@ const initialDraft = useEditorAiDraft.getState();
 let draftCleanup: (() => void) | undefined;
 let container: HTMLDivElement, root: Root, fake: AiProvider;
 const plan = { version: 1, mode: "create", summary: "Pannello di test", project: { machineName: "Linea test", layout: "desktop-mobile", sections: ["main"], settingsProgram: "robot" }, operations: [], questions: [], warnings: [], provenance: ["approved-request", "framecraft-standard"] };
+function editReview(jsx: string, operations: AiProposal["operations"]) {
+  const document = parseSource("C:/synthetic/Page.tsx", `export const Page=()=>${jsx}`), selectedId = Object.values(document.nodes).find(node => node.type === "button")!.id;
+  useEditorStore.setState({ project: { root: "C:/synthetic" } as never, document, selectedId, editScope: "instance", selectionInfo: undefined, interactionMode: "edit" });
+  const snapshot = { root: "C:/synthetic", document, selectedId, selectionKey: aiSelectionKey(undefined, "instance") };
+  const proposal: AiProposal = { version: 1, mode: "edit", summary: "Modifica dell’elemento scelto", questions: [], warnings: [], provenance: ["approved-selection"], project: null, operations };
+  useEditorAi.setState({ mode: "edit", snapshot, proposal }); return snapshot;
+}
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   fake = { id: "test", connect: vi.fn().mockResolvedValue({ connected: true, email: "test@example.invalid", plan: "test" }), login: vi.fn(), logout: vi.fn(), models: vi.fn().mockResolvedValue([{ id: "test-model", name: "Modello di test", default: true }]), propose: vi.fn(async request => ({ requestId: request.requestId, text: JSON.stringify({ ...plan, project: JSON.parse(request.prompt).exactProject ?? plan.project }) })), cancel: vi.fn(), subscribe: vi.fn().mockResolvedValue(() => {}) };
@@ -65,6 +73,46 @@ function field(label: string) { return [...container.querySelectorAll("label")].
 function change(label: string, value: string) { const element = field(label), prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? "change" : "input", { bubbles: true })); }
 
 describe("flusso AI nell’interfaccia", () => {
+  it("mostra prima/dopo, aggiorna lo schema con le sole modifiche selezionate e le applica insieme", async () => {
+    const snapshot = editReview('<button style={{width:100,height:40,color:"#000000"}}>Prima</button>', [{ id: "text", type: "text", property: null, value: "Dopo" }, { id: "color", type: "style", property: "color", value: "#ff0000" }, { id: "width", type: "style", property: "width", value: "200" }]);
+    const apply = vi.spyOn(useEditorStore.getState(), "applyAiProposal").mockResolvedValue(true);
+    await mount(); expect(container.textContent).toContain("Prima · base nel file"); expect(container.textContent).toContain("100 px"); expect(container.textContent).toContain("200 px");
+    expect(container.querySelectorAll(".ai-element-sketch")[1].querySelector("text")?.textContent).toBe("Dopo");
+    const checks = [...container.querySelectorAll<HTMLInputElement>(".ai-operation input")];
+    await act(async () => checks[0].click()); await act(async () => checks[1].click());
+    const sketch = container.querySelectorAll(".ai-element-sketch")[1]; expect(sketch.querySelector("text")?.textContent).toBe("Prima"); expect(sketch.querySelector("text")?.getAttribute("fill")).toBe("#000000");
+    await act(async () => button("Applica le modifiche selezionate").click());
+    expect(apply).toHaveBeenCalledExactlyOnceWith(snapshot, expect.anything(), ["width"]); expect(fake.propose).not.toHaveBeenCalled();
+  });
+  it("richiede una selezione esplicita per sostituire valori dinamici e non riusa la selezione di una proposta precedente", async () => {
+    editReview('<button style={{color:"#000000"}}>Prima</button>', [{ id: "color", type: "style", property: "color", value: "#ff0000" }]);
+    await mount(); const checkbox = () => container.querySelector<HTMLInputElement>(".ai-operation input")!;
+    await act(async () => checkbox().click()); await act(async () => checkbox().click()); expect(checkbox().checked).toBe(true);
+    await act(async () => { editReview('<button style={{color:privateValue}}>Prima</button>', [{ id: "color", type: "style", property: "color", value: "#ff0000" }]); });
+    expect(checkbox().checked).toBe(false); expect(button("Applica le modifiche selezionate").disabled).toBe(true); expect(container.textContent).toContain("rinunciare al comportamento dinamico");
+    expect(document.getElementById(checkbox().getAttribute("aria-describedby")!)?.textContent).toContain("rinunciare al comportamento dinamico");
+    await act(async () => checkbox().click()); expect(button("Applica le modifiche selezionate").disabled).toBe(false);
+  });
+  it("il confronto non monta il JSX del progetto e il testo proposto non diventa codice o immagine", async () => {
+    const dangerous = '<img src="https://not-requested.invalid/a" onerror="bad()">';
+    editReview('<button onClick={()=>dangerousPlcCall()}>Prima<img src="https://not-requested.invalid/original" /></button>', [{ id: "text", type: "text", property: null, value: dangerous }]);
+    await mount(); expect(container.querySelector(".ai-element-sketch img")).toBeNull(); expect(container.querySelector(".ai-element-sketch script")).toBeNull();
+    expect(container.querySelectorAll(".ai-element-sketch")[1].querySelector("text")?.textContent).toContain("<img");
+    expect(fake.propose).not.toHaveBeenCalled();
+  });
+  it("revoca il consenso e blocca la proposta se cambia la copia anche senza cambiare il nodo JSX", async () => {
+    editReview('<button>Prima</button>', [{ id: "text", type: "text", property: null, value: "Dopo" }]);
+    await mount(); await act(async () => container.querySelector<HTMLInputElement>(".ai-consent input")!.click());
+    await act(async () => useEditorStore.setState({ selectionInfo: { instanceIndex: 0, instanceCount: 1, listIndex: 3 } }));
+    expect(container.querySelector<HTMLInputElement>(".ai-consent input")!.checked).toBe(false); expect(button("Applica le modifiche selezionate").disabled).toBe(true);
+  });
+  it("un modulo non valido lascia l’assistente aperto con errore leggibile, senza errore React", async () => {
+    const source = 'const repeated=1;const another_=2;export const Page=()=> <button>Prima</button>', document = parseSource("C:/synthetic/invalid.tsx", source);
+    document.source = source.replace("another_", "repeated");
+    useEditorStore.setState({ project: { root: "C:/synthetic" } as never, document, selectedId: Object.values(document.nodes).find(node => node.type === "button")!.id });
+    useEditorAi.setState({ mode: "edit" }); await mount();
+    expect(container.textContent).toContain("sorgente della pagina non è valido"); expect(button("Prepara proposta").disabled).toBe(true); expect(container.querySelector(".ai-assistant")).not.toBeNull();
+  });
   it("offre Riprendi al riavvio senza caricare risposte o inviare richieste prima del click", async () => {
     const interview = newAiInterview(); interview.machineName = "Linea conservata";
     const source = serializeAiInterviewDraft(interview), write = vi.fn(async (_revision: string, source: string | null) => ({ revision: "next", source }));
