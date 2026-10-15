@@ -1,4 +1,5 @@
-import { create } from "zustand";
+import { create, type StateCreator, type StoreApi, type UseBoundStore } from "zustand";
+import { installAiChatRecovery } from "./editorAiChatRecovery";
 import { aiChatContext, aiElementAttachment, aiPageAttachment, prepareAiChat, type AiChatAttachment, type AiChatMessage, type AiChatPrepared, type AiChatQuestionAnswer } from "../ai/aiChat";
 import { aiSelectionKey } from "../ai/aiProposal";
 import type { PageDefinition } from "../core/types";
@@ -12,7 +13,7 @@ import { desktopBridge } from "../filesystem/desktopBridge";
 import { pendingAiQuestions, prepareAiQuestionReply } from "../ai/aiChatQuestions";
 import { aiReadableData, assertAiDataCurrent, sameAiDataReferences, type AiDataReference } from "../ai/aiBindings";
 
-interface ChatState {
+export interface ChatState {
   root?: string;
   generation: number;
   draft: string;
@@ -27,6 +28,10 @@ interface ChatState {
   removeData(id: string): void;
   messages: AiChatMessage[];
   error?: string;
+  recovered?: boolean;
+  recoveredReferences?: string[];
+  recoveryError?: string;
+  recovering?: boolean;
   sending: boolean;
   applying: boolean;
   setDraft(value: string): void;
@@ -46,30 +51,30 @@ function sessionKey() {
   const root = useEditorStore.getState().project?.root, ai = useEditorAi.getState();
   return root && ai.account?.connected ? JSON.stringify([root, ai.provider.id, ai.account.email]) : undefined;
 }
-export const useEditorAiChat = create<ChatState>((set, get) => ({
+const createChatState: StateCreator<ChatState> = (set, get) => ({
   generation: 0, draft: "", contextNotes: "", attachments: [], dataReferences: [], messages: [], sending: false, applying: false,
   allowed() { return !!get().authorizedFor && get().authorizedFor === sessionKey(); },
   setAllowed(allowed) {
     set({ authorizedFor: allowed ? sessionKey() : undefined });
     if (!allowed && get().sending) void get().cancel();
   },
-  setDraft(draft) { if (!get().sending && !get().applying) set({ draft: draft.slice(0, 8000) }); },
-  setContextNotes(contextNotes) { if (!get().sending && !get().applying) set({ contextNotes: contextNotes.slice(0, 2000) }); },
+  setDraft(draft) { if (!get().sending && !get().applying && !get().recovering) set({ draft: draft.slice(0, 8000) }); },
+  setContextNotes(contextNotes) { if (!get().sending && !get().applying && !get().recovering) set({ contextNotes: contextNotes.slice(0, 2000) }); },
   syncRoot(root) {
     if (get().root === root) return;
     const ai = useEditorAi.getState();
     if (get().sending && ai.mode === "edit") {
       void ai.cancel(); useEditorAi.setState({ requestId: undefined, busy: false, proposal: undefined, snapshot: undefined });
     }
-    set({ root, generation: get().generation + 1, draft: "", contextNotes: "", prepared: undefined, authorizedFor: undefined, attachments: [], dataReferences: [], messages: [], sending: false, applying: false, error: undefined });
+    set({ root, generation: get().generation + 1, draft: "", contextNotes: "", prepared: undefined, authorizedFor: undefined, attachments: [], dataReferences: [], messages: [], sending: false, applying: false, error: undefined, recovered: false, recoveredReferences: [] });
   },
   clear() {
     if (get().sending || get().applying) return;
-    set({ generation: get().generation + 1, draft: "", prepared: undefined, attachments: [], dataReferences: [], messages: [], error: undefined });
+    set({ generation: get().generation + 1, draft: "", prepared: undefined, attachments: [], dataReferences: [], messages: [], error: undefined, recovered: false, recoveredReferences: [] });
     if (useEditorAi.getState().mode === "edit") useEditorAi.setState({ proposal: undefined, snapshot: undefined, error: undefined });
   },
   attachSelection() {
-    if (get().sending || get().applying) return;
+    if (get().sending || get().applying || get().recovering) return;
     const state = useEditorStore.getState(); get().syncRoot(state.project?.root);
     try {
       if (!state.project || !state.document || !state.selectedId || state.interactionMode !== "edit") throw new Error("Seleziona un elemento in Modifica, poi aggiungilo alla chat.");
@@ -80,7 +85,7 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
     useEditorAi.getState().show("edit");
   },
   async attachPage(page) {
-    if (get().sending || get().applying) return;
+    if (get().sending || get().applying || get().recovering) return;
     const state = useEditorStore.getState(); get().syncRoot(state.project?.root);
     if (!state.project || !state.pages.some(item => item === page)) return;
     if (!insideProject(state.project.root, page.file) || page.file.replaceAll("\\", "/").split("/").includes("..")) { set({ error: "La pagina è fuori dal progetto: non viene allegata automaticamente." }); return; }
@@ -96,9 +101,9 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
     else set({ attachments: [...others, attachment], error: undefined });
     useEditorAi.getState().show("edit");
   },
-  removeAttachment(id) { if (!get().sending && !get().applying) set({ attachments: get().attachments.filter(item => item.id !== id), error: undefined }); },
+  removeAttachment(id) { if (!get().sending && !get().applying && !get().recovering) set({ attachments: get().attachments.filter(item => item.id !== id), error: undefined }); },
   addData(name, label) {
-    if (get().sending || get().applying) return;
+    if (get().sending || get().applying || get().recovering) return;
     const state = useEditorStore.getState(); get().syncRoot(state.project?.root);
     const matches = state.plcVariables.filter(tag => tag.name === name.trim());
     if (!state.project || matches.length !== 1 || !aiReadableData(matches[0])) { set({ error: "Scegli un tag scalare dichiarato e leggibile dal catalogo PLC. I tag rilevati soltanto nel sorgente non bastano." }); return; }
@@ -108,9 +113,9 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
     if (get().dataReferences.some(ref => ref.label.toLocaleLowerCase("it") === clean.toLocaleLowerCase("it"))) { set({ error: "Usa nomi distinti per i dati, così l’AI non confonde i segnali." }); return; }
     set({ dataReferences: [...get().dataReferences, { id: `data_${crypto.randomUUID().replaceAll("-", "")}`, label: clean, tag: { ...matches[0] } }], error: undefined });
   },
-  removeData(id) { if (!get().sending && !get().applying) set({ dataReferences: get().dataReferences.filter(item => item.id !== id), error: undefined }); },
+  removeData(id) { if (!get().sending && !get().applying && !get().recovering) set({ dataReferences: get().dataReferences.filter(item => item.id !== id), error: undefined }); },
   setAnswer(id, index, update) {
-    if (get().sending || get().applying) return;
+    if (get().sending || get().applying || get().recovering) return;
     const target = pendingAiQuestions(get().messages);
     if (target?.id !== id || !Number.isInteger(index) || index < 0 || index >= target.proposal!.questions.length) return;
     const answers = target.proposal!.questions.map((_, at) => target.answers?.[at] ?? { text: "", deferred: false });
@@ -119,7 +124,7 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
   },
   async send(replyTo) {
     const ai = useEditorAi.getState(), state = get(), root = useEditorStore.getState().project?.root;
-    if (state.sending || state.applying || ai.busy || ai.checking || ai.connecting) return;
+    if (state.sending || state.applying || state.recovering || ai.busy || ai.checking || ai.connecting) return;
     if (!root || state.root !== root) { get().syncRoot(root); set({ error: "Apri un progetto prima di usare la chat." }); return; }
     if (!replyTo && !state.draft.trim()) return;
     if (!ai.account?.connected || !ai.model) { set({ error: "Collega l’account ChatGPT e scegli il modello in Impostazioni → AI e account." }); return; }
@@ -206,18 +211,18 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
     } catch (error) { if (get().generation === generation) set({ error: message(error) }); }
     finally { if (get().generation === generation) set({ applying: false }); }
   },
-}));
+});
+
+const hotData = import.meta.hot?.data;
+const previousChat = hotData?.chat as UseBoundStore<StoreApi<ChatState>> | undefined;
+export const useEditorAiChat = previousChat ?? create<ChatState>(createChatState);
+if (previousChat) {
+  const methods = createChatState(previousChat.setState, previousChat.getState, previousChat);
+  const data = Object.fromEntries(Object.entries(previousChat.getState()).filter(([, value]) => typeof value !== "function"));
+  previousChat.setState({ ...methods, ...data } as ChatState, true);
+}
+if (hotData) hotData.chat = useEditorAiChat;
 
 export function installAiChatProjectScope() {
-  useEditorAiChat.getState().syncRoot(useEditorStore.getState().project?.root);
-  const stopProject = useEditorStore.subscribe((state, previous) => {
-    if (state.project?.root !== previous.project?.root) useEditorAiChat.getState().syncRoot(state.project?.root);
-  });
-  const stopAccount = useEditorAi.subscribe((state, previous) => {
-    if (previous.account?.connected && (!state.account?.connected || state.account.email !== previous.account.email)) {
-      const root = useEditorStore.getState().project?.root;
-      useEditorAiChat.getState().syncRoot(undefined); useEditorAiChat.getState().syncRoot(root);
-    }
-  });
-  return () => { stopProject(); stopAccount(); };
+  return installAiChatRecovery(useEditorAiChat);
 }

@@ -32,6 +32,7 @@ export interface AiChatMessage {
   answers?: AiChatQuestionAnswer[];
   clarification?: AiChatClarification;
   replyTo?: string;
+  recovered?: boolean;
 }
 export interface AiChatHistoryItem {
   role: "user" | "assistant";

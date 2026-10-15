@@ -58,7 +58,8 @@ export function AiProjectChat() {
   const pendingWork = pendingQuestion ?? pendingProposal, showComposer = !pendingWork || writingNew === pendingWork;
   const consent = chat.allowed();
   const textarea = useRef<HTMLTextAreaElement>(null), log = useRef<HTMLDivElement>(null);
-  const busy = chat.sending || chat.applying || ai.busy;
+  const resetBusy = chat.sending || chat.applying || ai.busy;
+  const busy = resetBusy || chat.recovering;
   useEffect(() => { (log.current?.querySelector<HTMLTextAreaElement>(".ai-chat-questions textarea:not(:disabled)") ?? textarea.current)?.focus({ preventScroll: true }); }, []);
   useEffect(() => {
     const node = log.current; if (!node) return;
@@ -78,15 +79,19 @@ export function AiProjectChat() {
     if (event.key === "Escape" && !busy) { event.stopPropagation(); ai.close(); }
   }}>
     <header><div><small>CODEX CLI · {project?.name ?? "PROGETTO"}</small><h2><MessageSquare size={18} />Chat AI</h2></div>
-      <div className="ai-chat-tools"><button type="button" title="Nuova chat" aria-label="Nuova chat" disabled={busy} onClick={() => setReset(true)}><Plus size={18} /></button><button type="button" aria-label="Impostazioni AI" onClick={() => useEditorShortcuts.getState().setOpen(true, "ai")}><Settings size={18} /></button><button type="button" aria-label="Chiudi chat AI" disabled={chat.applying} onClick={ai.close}><X size={18} /></button></div>
+      <div className="ai-chat-tools"><button type="button" title="Nuova chat" aria-label="Nuova chat" disabled={resetBusy} onClick={() => setReset(true)}><Plus size={18} /></button><button type="button" aria-label="Impostazioni AI" onClick={() => useEditorShortcuts.getState().setOpen(true, "ai")}><Settings size={18} /></button><button type="button" aria-label="Chiudi chat AI" disabled={chat.applying} onClick={ai.close}><X size={18} /></button></div>
     </header>
     <AiModelControls />
-    {!ai.account?.connected || !ai.model ? <div className="ai-chat-account"><p>Collega l’account ChatGPT e scegli il modello in Impostazioni → AI e account.</p><button type="button" onClick={() => useEditorShortcuts.getState().setOpen(true, "ai")}>Apri impostazioni AI</button></div> : <p className="ai-chat-model">{ai.model} · conversazione solo per questa sessione del progetto</p>}
-    {reset && <div className="ai-chat-reset" role="alert"><p>Vuoi svuotare messaggi, allegati e richiesta? Il pannello non viene modificato; le indicazioni fissate restano.</p><button type="button" disabled={busy} onClick={() => { chat.clear(); setReset(false); }}>Svuota e ricomincia</button><button type="button" onClick={() => setReset(false)}>Conserva chat</button></div>}
+    {!ai.account?.connected || !ai.model ? <div className="ai-chat-account"><p>Collega l’account ChatGPT e scegli il modello in Impostazioni → AI e account.</p><button type="button" onClick={() => useEditorShortcuts.getState().setOpen(true, "ai")}>Apri impostazioni AI</button></div> : <p className="ai-chat-model">{ai.model} · testi conservati ai refresh di questa finestra</p>}
+    {chat.recovering && <p className="ai-chat-model" role="status">Chat conservata: verifico l’account prima di mostrarla. Se la verifica non riesce, apri Impostazioni AI.</p>}
+    {chat.recoveryError && <p className="ai-error" role="alert">{chat.recoveryError}</p>}
+    {reset && <div className="ai-chat-reset" role="alert"><p>Vuoi svuotare messaggi, allegati e richiesta? Il pannello non viene modificato; le indicazioni fissate restano.</p><button type="button" disabled={resetBusy} onClick={() => { chat.clear(); setReset(false); }}>Svuota e ricomincia</button><button type="button" onClick={() => setReset(false)}>Conserva chat</button></div>}
     <div className="ai-chat-log" role="log" aria-label="Messaggi della chat" ref={log} aria-busy={chat.sending}>
+      {chat.recovered && <div className="ai-chat-empty"><p>Chat recuperata dopo il refresh: messaggi, bozza e risposte sono conservati. Le vecchie proposte sono solo consultabili. Per nuove modifiche, riallega le pagine o gli elementi e riconferma i dati PLC.</p>{!!chat.recoveredReferences?.length && <p>Riferimenti precedenti: {chat.recoveredReferences.join(" · ")}</p>}</div>}
       {!chat.messages.length && <div className="ai-chat-empty"><MessageSquare size={28} /><h3>Parliamo del tuo pannello</h3><p>Allega una pagina o un elemento, poi scrivi cosa vuoi cambiare. Puoi anche usare il tasto destro nell’editor.</p><p>La pagina allegata include struttura, testi e stili modificabili: l’AI può proporre un restyling senza chiederti di selezionare ogni oggetto. Controlli tu cosa applicare.</p></div>}
       {chat.messages.map((message, index) => <article className={`ai-chat-message ${message.role}`} key={message.id} aria-label={message.role === "user" ? "Tu" : "Assistente"}>
         <strong>{message.role === "user" ? "Tu" : "Assistente"}</strong>
+        {message.recovered && <small className="ai-chat-recovered-label">Testo recuperato · nessuna operazione ripresa automaticamente</small>}
         {!!message.attachments?.length && <p className="ai-chat-references">{message.attachments.join(" · ")}</p>}
         <p className="ai-chat-text">{message.role === "assistant" && message.proposal?.questions.length ? [message.proposal.summary, ...message.proposal.warnings].join("\n\n") : message.text}</p>
         {(message.status === "error" || message.status === "cancelled") && <small>{message.replyTo ? "Invio non completato · risposte conservate nei chiarimenti" : "Richiesta non completata · testo conservato qui sotto"}</small>}
@@ -104,7 +109,7 @@ export function AiProjectChat() {
       <details className="ai-context"><summary>Cosa invierai a Codex</summary>
         <p>Richiesta corrente e destinazione una sola volta, indicazioni fissate, scambi recenti e richiami pertinenti. Nessun sorgente completo, valore PLC o credenziale raccolto automaticamente. Non inserire segreti.</p>
         <label>Indicazioni da ricordare<textarea rows={2} maxLength={2000} value={chat.contextNotes} disabled={busy} onChange={event => chat.setContextNotes(event.target.value)} placeholder="Es. testi in italiano, conserva i colori degli allarmi…" /></label>
-        <p className="ai-hint">Restano nella sessione del progetto anche con Nuova chat. Vengono inviate integralmente; non vengono riscritte dall’AI.</p>
+        <p className="ai-hint">Testi e risposte sono conservati localmente, in chiaro, ai refresh di questa finestra; non è un archivio dopo la chiusura dell’app. Nuova chat mantiene le indicazioni, cambio progetto o account le elimina. Non inserire segreti. Le indicazioni vengono inviate integralmente, senza riscrittura AI.</p>
         {prepared && <><p>{prepared.recentTurns} scambi recenti · {prepared.recalledTurns} richiami da messaggi precedenti · {prepared.omittedTurns} scambi esclusi · {prepared.abbreviatedMessages} messaggi abbreviati. La chat originale resta visibile.</p>
           <p>Scheda template: {prepared.template === "full" ? "contratto completo" : prepared.template === "reference" ? "riferimento compatto per questa modifica grafica" : "nessuna"}. La stima include prompt e schema, non token interni o risposta di Codex; non è un conteggio esatto né la quota dell’account.</p>
           <details><summary>Richiesta tecnica completa</summary><pre>{JSON.stringify(prepared.payload, null, 2)}</pre></details></>}

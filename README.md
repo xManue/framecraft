@@ -404,7 +404,16 @@ component internals, stylesheet values and live Runtime visuals are not inferred
 runs are explicitly abbreviated in page rows; a single-element attachment retains its full text.
 
 Messages and the unsent draft survive closing/reopening the chat during the same project session.
-They are not saved to disk and are cleared on project close/change or account logout/change.
+They also survive editor reloads in the same window: visible text, pinned notes and clarification
+answers are checkpointed in local, plaintext **sessionStorage**, not in the project/Git or an AI
+service. This is refresh recovery, not an archive after the window/app closes. A project close/change
+or account logout/change clears the checkpoint. Restoring an account-bound chat first checks the
+local CLI account status; it never logs in or sends an AI request automatically.
+Recovered proposals are read-only history. Sources, ASTs, PLC catalogues/addresses, prepared prompts,
+running requests and approval/consent are never restored. Previous reference labels remain visible;
+reattach current pages/elements and reselect PLC data for a new proposal. Unsent clarification answers,
+including text in a deferred field, remain readable in their original message. A storage error warns
+you to copy the text before refreshing, without silently truncating or replacing a broken checkpoint.
 **Nuova chat** requires confirmation and never edits the panel. It keeps **Indicazioni da ricordare**
 (up to 2,000 characters, session-only); project/account changes clear these too. Use them for important
 constraints that must be sent every time, instead of relying on automatic recall of an old message.

@@ -4528,6 +4528,30 @@ Verifiche del 5 ottobre 2026:
   `.hmi-preview/ai-bindings-public-1792074551961/.hmi-preview/ai-bindings-ui/result.json`.
   Pipeline completa, restanti funzioni WinCC/Optix e gate di produzione ancora aperti.
 
+### 133. Chat conservata ai refresh dell’editor (2026-10-15)
+
+- Causa: store chat ricreato ai reload, mentre il recupero editor conservava solo pagina/bozza.
+  Store mantenuto in HMR con metodi aggiornati e checkpoint dei soli testi in sessionStorage.
+- Conservati richiesta non inviata, note, messaggi, risposte ai chiarimenti (anche testo rinviato)
+  e nomi dei riferimenti. Flush su prima del reload, uscita pagina e cleanup; scrittura ordinaria
+  accorpata a 150 ms. Il solo refresh dell’iframe HMI non tocca la chat del genitore.
+- Ripresa dopo verifica locale dell’account CLI e progetto corretto, anche se il recupero editor
+  è ancora in corso. Errori temporanei di verifica account non cancellano una chat viva.
+  Logout/cambio account e chiusura/cambio progetto eliminano la copia; Nuova chat con conferma.
+- Copia locale in chiaro della sola finestra, non archivio dopo chiusura app. Nessun sorgente/AST,
+  catalogo o indirizzo PLC, prompt preparato, consenso, richiesta attiva o proposta applicabile
+  ripristinato. Vecchie proposte consultabili, risposte recuperate leggibili, allegati/dati da
+  riconfermare. Nessuna inference, login, applicazione o reinvio automatici.
+- Storage pieno/corrotto: testo vivo conservato e avviso di copiare prima del refresh; nessuna
+  troncatura silenziosa o sovrascrittura della copia corrotta. Guard prima del reload quando
+  possibile; chiusure forzate del processo restano fuori garanzia del browser.
+- Verificati 66 test mirati su recupero/chat/chiarimenti nella copia del solo indice Git,
+  senza JSON macchina o modifiche trend preesistenti. Browser Edge a 375/768/1024/1440 px:
+  refresh iframe, reload completo e aggiornamento modulo Vite, bozza/note/risposte non inviate
+  conservate, nessun reinvio/approvazione ripresa, nessun errore o overflow. Provider/account
+  sintetici: nessuna inference reale o richiesta PLC. Tipi e build Vite della copia isolata
+  verificati. Artefatti locali: `.hmi-preview/ai-chat-recovery-public-1792076362654/.hmi-preview/ai-chat-recovery-ui/`.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

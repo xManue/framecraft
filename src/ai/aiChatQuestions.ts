@@ -4,7 +4,7 @@ import { extendsAiDataReferences, type AiDataReference } from "./aiBindings";
 
 export function pendingAiQuestions(messages: AiChatMessage[]) {
   const latest = [...messages].reverse().find(message => message.role === "assistant");
-  return latest?.proposal?.questions.length && !latest.status ? latest : undefined;
+  return latest?.proposal?.questions.length && !latest.status && !latest.recovered ? latest : undefined;
 }
 export function prepareAiQuestionReply(id: string, attachments: AiChatAttachment[], messages: AiChatMessage[], notes: string, dataReferences: readonly AiDataReference[] = []) {
   const target = pendingAiQuestions(messages);

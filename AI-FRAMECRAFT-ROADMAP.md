@@ -104,7 +104,10 @@ stima locale token non equivalente al consumo Codex. Indicazioni fissate sempre 
 conservate con Nuova chat ma non dopo cambio progetto/account. Esclusioni e abbreviazioni
 visibili, richiesta tecnica ispezionabile; nessuna garanzia di memoria perfetta dei messaggi vecchi.
 Nuova chat con conferma, annullamento e isolamento
-delle risposte tardive. Nessun salvataggio persistente delle conversazioni o invio automatico.
+delle risposte tardive. Recupero locale dei testi ai refresh della finestra tramite sessionStorage:
+bozza, note, messaggi e risposte, senza sorgenti, tag PLC, richieste attive, consenso o operazioni
+applicabili. Verifica account prima del recupero; proposte recuperate in sola lettura e riferimenti
+da riconfermare. Non è uno storico persistente dopo la chiusura dell’app; nessun invio automatico.
 Modello e ragionamento selezionabili nella chat dal catalogo Codex; predefinito senza override,
 livelli validati anche dal backend. Collegamento account solo nelle impostazioni.
 Chiarimenti con campi nella chat e rinvio esplicito della parte non definita: ripresa dell’obiettivo,
