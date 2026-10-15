@@ -31,10 +31,14 @@ function styleValue(expression: unknown, key: string, depth = 0): ElementValue {
 }
 export function createElementValueInspector(source: string) {
   const elements = new Map<string, JSXElement>();
+  const repeated = new Set<string>();
   traverse(parse(source, { sourceType: "module", plugins: ["jsx", "typescript", "decorators-legacy", "classProperties"] }), {
-    JSXElement(path) { elements.set(`${path.node.start}:${path.node.end}`, path.node); },
+    JSXElement(path) {
+      const key = `${path.node.start}:${path.node.end}`; elements.set(key, path.node);
+      if (path.findParent(parent => parent.isLoop() || parent.isFunction() && !!parent.parentPath?.isCallExpression())) repeated.add(key);
+    },
   });
-  return (ref: Pick<SourceRef, "start" | "end">, properties: readonly string[]) => inspectNodeValues(elements.get(`${ref.start}:${ref.end}`), properties);
+  return (ref: Pick<SourceRef, "start" | "end">, properties: readonly string[]) => { const key = `${ref.start}:${ref.end}`, result = inspectNodeValues(elements.get(key), properties); return { ...result, canEditDynamizations: result.canEditDynamizations && !repeated.has(key) }; };
 }
 export function inspectElementValues(source: string, ref: Pick<SourceRef, "start" | "end">, properties: readonly string[]) {
   return createElementValueInspector(source)(ref, properties);
@@ -53,5 +57,6 @@ function inspectNodeValues(element: JSXElement | undefined, properties: readonly
   const only = content.length === 1 ? content[0] : undefined;
   const text: ElementValue = runs.length === 1 && runs[0].type === "JSXText" ? { kind: "literal", value: runs[0].value.trim() }
     : !content.length ? { kind: "literal", value: "" } : only?.type === "JSXExpressionContainer" ? constant(only.expression) : dynamic();
-  return { text, styles: values, canEditStyle, mixedText: runs.length === 1 && content.length > 1 };
+  const dynamics = attributes.filter(item => item.type === "JSXAttribute" && item.name.type === "JSXIdentifier" && item.name.name === "data-hmi-dynamizations");
+  return { text, styles: values, canEditStyle, canEditDynamizations: !attributes.some(item => item.type === "JSXSpreadAttribute") && dynamics.length <= 1, mixedText: runs.length === 1 && content.length > 1 };
 }

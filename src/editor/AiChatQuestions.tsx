@@ -12,9 +12,9 @@ export function AiChatQuestions({ message }: { message: AiChatMessage }) {
   const complete = questions.every((_, index) => message.answers?.[index]?.deferred || message.answers?.[index]?.text.trim());
   const preview = useMemo(() => {
     if (!active || !complete) return {};
-    try { return { reply: prepareAiQuestionReply(message.id, chat.attachments, chat.messages, chat.contextNotes) }; }
+    try { return { reply: prepareAiQuestionReply(message.id, chat.attachments, chat.messages, chat.contextNotes, chat.dataReferences) }; }
     catch (error) { return { error: error instanceof Error ? error.message : String(error) }; }
-  }, [active, complete, message.id, chat.attachments, chat.messages, chat.contextNotes]);
+  }, [active, complete, message.id, chat.attachments, chat.messages, chat.contextNotes, chat.dataReferences]);
   if (!questions.length) return null;
   if (!active) return <details className="ai-chat-questions-previous"><summary>Chiarimenti di questa proposta</summary><ul>{questions.map((question, index) => <li key={index}>{question}{message.answers?.[index]?.deferred ? " — Rinviato, parte invariata" : message.answers?.[index]?.text ? ` — ${message.answers[index].text}` : ""}</li>)}</ul></details>;
   const busy = chat.sending || chat.applying || ai.busy || ai.checking || ai.connecting;

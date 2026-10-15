@@ -5,6 +5,7 @@ import type { EditorDocument, PageDefinition } from "../core/types";
 import { createElementValueInspector } from "../source-parser/inspectElementValues";
 import { aiEditContext, type AiEditSnapshot } from "./aiProposal";
 import type { AiChatAttachment } from "./aiChat";
+import type { AiDataReference } from "./aiBindings";
 
 const traverse = (traverseModule as unknown as { default?: typeof traverseModule }).default ?? traverseModule;
 function owner(path: NodePath): string {
@@ -61,7 +62,8 @@ export function pageAiAttachment(root: string, page: PageDefinition, document: E
     if (context.element.editable.style || context.element.editable.text) targets[ids.get(node.id)!] = snapshot;
     if (context.template) templates.set(context.template.id, context.template);
     const text = context.element.text, shortened = typeof text === "string" && text.length > 512;
-    const row: unknown[] = [ids.get(node.id), ids.get(node.parentId ?? "") ?? null, node.type, shortened ? text.slice(0, 256) + "…" + text.slice(-128) : text ?? null, context.element.styles, (context.element.editable.text ? 1 : 0) + (context.element.editable.style ? 2 : 0)];
+    const bindings = context.element.editable.bindings;
+    const row: unknown[] = [ids.get(node.id), ids.get(node.parentId ?? "") ?? null, node.type, shortened ? text.slice(0, 256) + "…" + text.slice(-128) : text ?? null, context.element.styles, (context.element.editable.text ? 1 : 0) + (context.element.editable.style ? 2 : 0) + (bindings.includes("ForeColor") ? 4 : 0) + (bindings.includes("Text") ? 8 : 0) + (bindings.includes("Visible") ? 16 : 0)];
     if (context.element.dynamicProperties.length || context.element.runtimeProperties.properties.length || shortened) row.push(context.element.dynamicProperties, context.element.runtimeProperties.unknown ? "unknown" : context.element.runtimeProperties.properties);
     if (shortened) row.push(true);
     return row;
@@ -69,20 +71,20 @@ export function pageAiAttachment(root: string, page: PageDefinition, document: E
   const first = Object.values(targets)[0]; if (!first) throw new Error("Questa pagina non contiene elementi grafici modificabili nel sorgente allegato.");
   const snapshot = { ...first, targets, pageId: page.id, label: page.name };
   return { id: subtree ? `element:${document.file}:${subtree}` : `page:${page.id}`, root, kind: subtree ? "element" : "page", label: subtree ? document.nodes[subtree].label : page.name, snapshot,
-    context: { name: page.name, route: page.route, file: document.file.split(/[\\/]/).at(-1), columns: ["id", "parent", "type", "text", "style", "editableBits", "dynamic", "runtime", "textShortened"], editableBits: "1=text,2=style,3=both; absent dynamic/runtime=[]", rows, ...(templates.size ? { templates: [...templates.values()] } : {}), scope: page.stateValue ?? page.componentName ?? "local-page-module", ...(names.size > 1 && !page.componentName ? { sharedComponents: true } : {}) } };
+    context: { name: page.name, route: page.route, file: document.file.split(/[\\/]/).at(-1), columns: ["id", "parent", "type", "text", "style", "editableBits", "dynamic", "runtime", "textShortened"], editableBits: "bit1=text,bit2=style,bit4=colorBinding,bit8=textBinding,bit16=visibilityBinding; absent dynamic/runtime=[]", rows, ...(templates.size ? { templates: [...templates.values()] } : {}), scope: page.stateValue ?? page.componentName ?? "local-page-module", ...(names.size > 1 && !page.componentName ? { sharedComponents: true } : {}) } };
 }
 export function aiContextAttachments(attachments: AiChatAttachment[]) {
   const same = (a: AiEditSnapshot, b: AiEditSnapshot) => a.document.file === b.document.file && a.document.source === b.document.source && a.document.nodes[a.selectedId]?.source.start === b.document.nodes[b.selectedId]?.source.start;
   return attachments.map((item, index) => ({ item, index })).filter(({ item }) => item.kind !== "element" || !item.snapshot || !attachments.some(page => page.kind === "page" && page.snapshot?.targets && Object.values(item.snapshot!.targets ?? { selection: item.snapshot! }).every(target => Object.values(page.snapshot!.targets!).some(other => same(target, other)))));
 }
-export function aiChatScope(attachments: AiChatAttachment[]): AiEditSnapshot | undefined {
-  if (!attachments.some(item => item.snapshot?.targets)) return attachments.find(item => item.kind === "element")?.snapshot;
+export function aiChatScope(attachments: AiChatAttachment[], dataReferences: readonly AiDataReference[] = []): AiEditSnapshot | undefined {
+  if (!attachments.some(item => item.snapshot?.targets)) { const selected = attachments.find(item => item.kind === "element")?.snapshot; return selected && dataReferences.length ? { ...selected, dataReferences } : selected; }
   const targets: Record<string, AiEditSnapshot> = {};
   aiContextAttachments(attachments).forEach(({ item, index }) => {
     if (item.snapshot?.targets) for (const [id, target] of Object.entries(item.snapshot.targets)) targets[`a${index}_${id}`] = target;
     else if (item.snapshot) targets[`a${index}_selection`] = item.snapshot;
   });
-  const first = Object.values(targets)[0]; return first && { ...first, targets, label: "Pagine ed elementi allegati" };
+  const first = Object.values(targets)[0]; return first && { ...first, targets, ...(dataReferences.length ? { dataReferences } : {}), label: "Pagine ed elementi allegati" };
 }
 export function aiAttachmentWireContext(item: AiChatAttachment, index: number): unknown {
   if (!item.snapshot?.targets) return item.context;

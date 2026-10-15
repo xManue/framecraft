@@ -427,12 +427,43 @@ session consent. Answers alone never apply changes: review and approve the new p
 During clarification the main composer is compacted; **Scrivi una nuova richiesta** reopens it
 without losing its draft or the answers. New questions open at their first field; typing does not
 reset the conversation scroll position.
+Pending proposals use the same compact composer and open at the start of the review, so the
+approval controls are not hidden below a long schematic. **Scrivi una nuova richiesta** keeps
+the separate draft available; it never applies the proposal.
 
 Choose **Modello** and **Ragionamento** directly above the chat (also available in AI settings).
 Options come from the Codex model catalog, including its supported/default reasoning efforts;
 changing model restores its default. The native adapter sends an optional `effort` on `turn/start`,
 and rejects an unsupported override. The catalog is not a guarantee of account entitlement.
 Protocol reference: [Codex App Server](https://learn.chatgpt.com/docs/app-server).
+
+For data-driven changes, expand **Dati da usare**, choose a scalar readable tag from the local
+catalog and give it a distinct AI-facing label such as **Allarme motore**. Up to eight references
+are allowed. Only the anonymous ID, this explicit label and type go into the context; tag names,
+addresses, descriptions, connections and sample values are not gathered for the provider.
+The assistant can propose read-only **Text**, **ForeColor**, **BackColor**, **BorderColor** and
+**Visible** bindings: scalar text display, direct BOOL visibility or explicit false/true mappings
+from a declared BOOL. There are no inferred thresholds, scripts, tag creation, writable IO values,
+automatic MQTT/OPC UA connections or changes to user permissions.
+
+Every proposed binding starts unchecked. The local review shows the actual tag, type, old rule
+and false/true outputs before approval; applying uses the same HMI attribute format as the
+Inspector and one Undo per file. Other rules, handlers and the PLC catalog are preserved.
+Stale catalog definitions, unknown aliases, incompatible types, attribute spreads, computed
+configurations, text containers and known repeated callback/loop markup are blocked. General
+cross-file instance impact analysis is still incomplete; verify shared components and commissioning.
+Runtime sample quality and unavailable values use the existing diagnostics, not an AI assertion
+that the machine signal is valid. The schematic shows base values, not live PLC readings.
+Visibility is graphical, not authentication, authorization or machine safety.
+Existing events/scripts may react to property changes: read-only data rules do not certify their
+effects. Review and commission that existing logic before using the panel on a machine.
+
+Removing a reference or starting a new chat only removes it from AI context, not from rules
+already saved. Project/account changes clear the references. During clarification you may append
+the missing data without retyping the original goal; removing/reassigning prior references requires
+a new request. The same per-session consent, context budget and explicit proposal approval apply.
+Functional references: [Unified tag dynamization](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/configuring-dynamization-rt-unified/dynamizing-object-properties-rt-unified/dynamizing-an-object-property-via-a-tag-rt-unified/dynamizing-object-property-via-tag-rt-unified)
+and [Optix conditional converter](https://www.rockwellautomation.com/en-tr/docs/factorytalk-optix/1-03/contents-ditamap/using-the-software/converters/conditional-converter.html).
 
 The context compiler sends compact JSON with a stable rules prefix. The element is included once,
 an element already included in an attached page is not sent twice. Single-element graphical requests
@@ -472,7 +503,8 @@ operations on the same field are rejected rather than silently taking the last v
 
 Changes that replace a computed value, or alter a base value still controlled by HMI dynamization,
 start unchecked and explain the impact. Selecting them is an explicit decision. Other fields,
-bindings and events are preserved. Runtime property names and dynamic flags can enter the
+unselected bindings and all events are preserved. Explicitly approved read bindings only replace
+their own property. Runtime property names and dynamic flags can enter the
 approved context, but expression/script bodies and actual tag names are not sent automatically.
 Styles hidden or overridden by JSX attribute spreads remain Inspector-only.
 

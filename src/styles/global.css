@@ -390,6 +390,15 @@ code, kbd { font-family: "JetBrains Mono", Consolas, monospace; }
 .ai-chat-compose-mode { display: grid; gap: 8px; margin-bottom: 10px; }
 .ai-chat-compose-mode button { text-align: left; }
 .ai-chat-compose-mode small { color: var(--muted); }
+.ai-chat-data { min-width: 0; border-top: 1px solid var(--border); }
+.ai-chat-data > summary { color: var(--accent-strong); }
+.ai-chat-data p { font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-chat-data fieldset { min-width: 0; margin: 10px 0; padding: 10px; border: 1px solid var(--border); border-radius: 5px; }
+.ai-chat-data-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; }
+.ai-chat-data-item > span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.ai-chat-data-item small { color: var(--muted); }
+.ai-chat-data-item button { flex-shrink: 0; display: grid; place-items: center; }
+.ai-chat-data fieldset > button { display: flex; gap: 6px; align-items: center; min-height: 44px; }
 .ai-context-stats { margin: 8px 0 0; color: var(--accent-strong); font-size: 11px; overflow-wrap: anywhere; }
 .ai-model-controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
 .ai-model-controls > label { flex: 1 1 120px; min-width: 0; margin: 0 !important; display: grid; gap: 5px; }

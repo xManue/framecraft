@@ -2,16 +2,18 @@ import type { EditorDocument, EditorNode, RenderedInfo } from "../core/types";
 import { standardProjectSectionChoices, type StandardProjectConfig } from "../core/standardProject";
 import { settingsProgramChoices } from "../core/hmiSectionMenu";
 import { parseSource } from "../source-parser/parseSource";
-import { updateInlineStyles, updateStaticText } from "../source-parser/transformSource";
+import { updateInlineStyles, updateStaticAttributes, updateStaticText } from "../source-parser/transformSource";
 import { standardPageTemplates } from "../core/hmiPageTemplates";
 import { guidedTemplateBehavior, type TemplateBehavior } from "../core/templateBehavior";
 import type { AiDecision } from "./aiDelegation";
 import { inspectElementValues, type createElementValueInspector } from "../source-parser/inspectElementValues";
+import { aiBindingCapabilities, aiBindingProperties, parseAiBinding, resolveAiBinding, type AiDataReference } from "./aiBindings";
+import { hmiDynamizationAttribute } from "../core/hmiDynamizations";
 
 export type AiMode = "create" | "edit";
-export interface AiOperation { id: string; type: "text" | "style"; property: string | null; value: string; target?: string | null }
+export interface AiOperation { id: string; type: "text" | "style" | "binding"; property: string | null; value: string; target?: string | null }
 export interface AiProposal { version: 1; mode: AiMode; summary: string; questions: string[]; warnings: string[]; provenance: string[]; project: StandardProjectConfig | null; operations: AiOperation[]; decisions?: AiDecision[] }
-export interface AiEditSnapshot { root: string; document: EditorDocument; selectedId: string; selectionKey?: string; targets?: Record<string, AiEditSnapshot>; label?: string; pageId?: string }
+export interface AiEditSnapshot { root: string; document: EditorDocument; selectedId: string; selectionKey?: string; targets?: Record<string, AiEditSnapshot>; label?: string; pageId?: string; dataReferences?: readonly AiDataReference[] }
 export function aiSelectionKey(info: RenderedInfo | undefined, scope: string) {
   return JSON.stringify({ scope, index: info?.instanceIndex ?? 0, count: info?.instanceCount ?? 1, list: info?.listIndex ?? null, locked: info?.locked ?? false });
 }
@@ -38,7 +40,7 @@ const properties = {
     sections: { type: "array", items: { type: "string", enum: standardProjectSectionChoices.map(section => section.id) } },
     settingsProgram: { type: "string", enum: settingsProgramChoices.map(program => program.id) },
   }, required: ["machineName", "layout", "sections", "settingsProgram"], additionalProperties: false }] },
-  operations: { type: "array", items: { type: "object", properties: { id: textSchema, type: { type: "string", enum: ["text", "style"] }, property: { anyOf: [{ type: "null" }, { type: "string", enum: styleNames }] }, value: textSchema }, required: ["id", "type", "property", "value"], additionalProperties: false } },
+  operations: { type: "array", items: { type: "object", properties: { id: textSchema, type: { type: "string", enum: ["text", "style", "binding"] }, property: { anyOf: [{ type: "null" }, { type: "string", enum: [...styleNames, ...aiBindingProperties] }] }, value: textSchema }, required: ["id", "type", "property", "value"], additionalProperties: false } },
   decisions: { type: "array", items: { type: "object", properties: { key: textSchema, value: textSchema }, required: ["key", "value"], additionalProperties: false } },
 };
 export const aiProposalSchema = { type: "object", properties, required: Object.keys(properties), additionalProperties: false };
@@ -84,13 +86,14 @@ export function parseAiProposal(input: unknown, mode: AiMode): AiProposal {
   const operations = item.operations.map(raw => {
     const operation = object(raw, ["id", "type", "property", "value", "target"]), id = text(operation.id, 64), value = text(operation.value, 512);
     if (operation.target !== undefined && operation.target !== null && !/^[a-zA-Z0-9_-]{1,64}$/.test(text(operation.target, 64))) throw new Error("Destinazione della modifica non valida.");
-    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id) || !["text", "style"].includes(String(operation.type))) throw new Error("Operazione della proposta non valida.");
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id) || !["text", "style", "binding"].includes(String(operation.type))) throw new Error("Operazione della proposta non valida.");
     if (operation.type === "text") { if (operation.property !== null) throw new Error("Il testo non può modificare proprietà o comportamenti."); }
+    else if (operation.type === "binding") parseAiBinding(text(operation.property, 64), value);
     else aiStyleValue(text(operation.property, 64), value);
     return { id, type: operation.type, property: operation.property, value, ...(operation.target != null ? { target: operation.target } : {}) } as AiOperation;
   });
   if (new Set(operations.map(operation => operation.id)).size !== operations.length) throw new Error("Operazioni duplicate nella proposta.");
-  if (new Set(operations.map(operation => `${operation.target ?? "selection"}:${operation.type === "text" ? "text" : `style:${operation.property}`}`)).size !== operations.length) throw new Error("La proposta modifica più volte la stessa proprietà. Richiedi una proposta con una sola modifica per campo.");
+  if (new Set(operations.map(operation => `${operation.target ?? "selection"}:${operation.type === "text" ? "text" : `${operation.type}:${operation.property}`}`)).size !== operations.length) throw new Error("La proposta modifica più volte la stessa proprietà. Richiedi una proposta con una sola modifica per campo.");
   let project: StandardProjectConfig | null = null;
   if (mode === "create" && item.project !== null) {
     const config = object(item.project, ["machineName", "layout", "sections", "settingsProgram"]), machineName = text(config.machineName, 120).trim();
@@ -120,7 +123,7 @@ export function aiEditContext(snapshot: AiEditSnapshot, inspector?: ReturnType<t
   return { file: snapshot.document.file.split(/[\\/]/).at(-1), ...(template ? { template } : {}), element: { type: node.type, text: inspected.text.kind === "literal" ? inspected.text.value : undefined,
     styles: Object.fromEntries(Object.entries(inspected.styles).filter(([, value]) => value.kind === "literal").map(([key, value]) => [key, value.value])),
     dynamicProperties: [...(inspected.text.kind === "dynamic" ? ["text"] : []), ...Object.entries(inspected.styles).filter(([, value]) => value.kind === "dynamic").map(([key]) => key)],
-    runtimeProperties: aiRuntimeProperties(node), editable: { text: node.capabilities.text, style: node.capabilities.style && inspected.canEditStyle } } };
+    runtimeProperties: aiRuntimeProperties(node), editable: { text: node.capabilities.text, style: node.capabilities.style && inspected.canEditStyle, bindings: aiBindingCapabilities(node, inspected) } } };
 }
 export function aiPrompt(mode: AiMode, request: string, context?: ReturnType<typeof aiEditContext>) {
   return JSON.stringify({ task: mode, request: text(request, 8000), approvedContext: context ?? null,
@@ -149,6 +152,14 @@ export function prepareAiEdits(snapshot: AiEditSnapshot, proposal: AiProposal, a
     const node = Object.values(parsed.nodes).find(node => node.source.start === original.source.start && node.type === original.type);
     if (!node) throw new Error("Il sorgente dell’elemento è cambiato. Richiedi una nuova proposta.");
     source = updateInlineStyles(source, node.source.start, node.source.end, styles);
+  }
+  const bindings = operations.filter(operation => operation.type === "binding");
+  if (bindings.length) {
+    const resolved = bindings.map(operation => resolveAiBinding(snapshot, operation)), items = resolved[0].previous.map(item => ({ ...item }));
+    for (const { binding } of resolved) { const at = items.findIndex(item => item.property === binding.property); if (at < 0) items.push(binding); else items[at] = binding; }
+    const parsed = parseSource(snapshot.document.file, source), node = Object.values(parsed.nodes).find(node => node.source.start === original.source.start && node.type === original.type);
+    if (!node) throw new Error("L’elemento è cambiato: richiedi una nuova proposta.");
+    source = updateStaticAttributes(source, node.source.start, node.source.end, { [hmiDynamizationAttribute]: JSON.stringify(items) });
   }
   parseSource(snapshot.document.file, source);
   return source;

@@ -4494,6 +4494,40 @@ Verifiche del 5 ottobre 2026:
   Nessuna chiamata AI reale, nuova dipendenza o dato macchina pubblicato. Pipeline completa e
   commissioning restano aperti.
 
+### 132. Prime dinamiche di lettura proposte dalla chat AI (2026-10-15)
+
+- Dati da usare facoltativi: selezione dal catalogo locale di massimo otto tag scalari dichiarati,
+  univoci e leggibili, con nomi AI distinti. Inviati solo ID anonimo, nome scelto esplicitamente e
+  tipo; nomi tag, indirizzi, descrizioni, connessioni e valori non raccolti per il provider.
+  Riferimenti eliminati con Nuova chat/cambio progetto/account, senza scollegare regole salvate.
+- Operazioni binding tipizzate, mai codice: Text, ForeColor, BackColor, BorderColor, Visible;
+  lettura scalare per testo, visibilità BOOL e mapping BOOL falso/vero. Niente ProcessValue
+  scrivibile, Enabled, script, soglie inventate, nuovi tag, configurazione trasporti o permessi.
+  Formato HMI e risolutori già usati dall’Inspector, quindi utilizzabili anche senza AI.
+- Confronto locale con tag reale, tipo e stato prima/dopo; ogni regola dati non preselezionata.
+  Conservati altri binding ed eventi; una scrittura e un Annulla per file. Catalogo rivalidato
+  anche dopo lettura del sorgente; modifica/rimozione dei riferimenti invalida le proposte binding.
+  Spread, configurazioni dinamiche/ambigue, contenitori di testo e markup in callback/cicli
+  ripetuti bloccati per evitare di collegare tutte le copie a un solo segnale. I dati del pannello
+  non vengono inseriti in definizioni esterne al progetto. Analisi interfile
+  delle istanze e CAS nativo restano da completare, nessuna garanzia di commissioning da questi check.
+- Un dato mancante può essere aggiunto durante i chiarimenti senza perdere obiettivo/risposte;
+  non si possono riassegnare i riferimenti precedenti. La scelta dati non fa richieste AI, non
+  avvia il PLC e non sostituisce l’approvazione della proposta. Visibilità solo grafica, non sicurezza.
+- Verificate le fonti ufficiali Unified V21 (dinamizzazione tag/read-only) e Optix (link direzionali
+  e convertitore condizionale), link nel README. Nessuna nuova dipendenza o asset vendor distribuito.
+- Revisione aperta dall’inizio e compositore compattato anche per proposte in attesa: subito
+  visibili destinazione e regola da selezionare, senza saltare in fondo ai disegni. Eventi/script
+  esistenti possono reagire ai cambiamenti: avviso esplicito, impatto da collaudare sulla macchina.
+- Copia isolata di solo codice: 167 test mirati in 7 file AI riusciti; dopo le ultime guardie/UI
+  ricontrollati 3 file chat/binding, 88 test passati (42 dedicati ai binding). Tipi e build Vite
+  riusciti. Browser 375/768/1024/1440 px: scelta locale senza inferenza, contesto anonimo, regola
+  non preselezionata, approvazione, stato falso/vero col vero risolutore offline, un Annulla/Ripeti,
+  bozza conservata; nessun overflow o errore console. Provider/letture sintetici, nessun IPC/PLC
+  fisico o nuova inferenza reale dichiarati. Artefatti locali:
+  `.hmi-preview/ai-bindings-public-1792074551961/.hmi-preview/ai-bindings-ui/result.json`.
+  Pipeline completa, restanti funzioni WinCC/Optix e gate di produzione ancora aperti.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

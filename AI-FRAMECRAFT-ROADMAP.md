@@ -110,6 +110,10 @@ livelli validati anche dal backend. Collegamento account solo nelle impostazioni
 Chiarimenti con campi nella chat e rinvio esplicito della parte non definita: ripresa dell’obiettivo,
 allegati vincolati e risposte precedenti nella stessa catena, senza cancellare la bozza separata.
 Contesto del seguito ispezionabile e stesso budget; niente invio o applicazione automatici.
+Selezione locale di fino a otto dati: nome scelto, tipo e ID anonimo all’AI, nomi tag/indirizzi/valori
+non raccolti per il provider. Prime dinamiche read-only di testo, colore e visibilità BOOL, sempre
+non preselezionate e con confronto del tag reale locale. Tag cambiati o tipi incompatibili bloccano
+il salvataggio; eventi e altre dinamiche sono preservati. Nessuna connessione o scrittura PLC creata.
 Oggi applica testo e stile/geometria/layout dei nodi allegati. Revisione con valori prima/dopo, nomi italiani, no-op
 esclusi e schema indicativo aggiornato dalle sole modifiche accettate. Valori dinamici o basi
 ancora pilotate dal Runtime non sono preselezionati: la sostituzione o il cambio del fallback
@@ -216,7 +220,7 @@ e collaudo della connessione restano possibili senza AI.
 
 | ID | Capacità | Stato | Esempio |
 |---|---|---|---|
-| AI-EDIT-01 | Comando naturale su selezione corrente | PARZIALE | Testo/stile/geometria con revisione sul selezionato; condizioni operative tipo "rosso quando il tag è in allarme" e mapping approvati ancora da implementare |
+| AI-EDIT-01 | Comando naturale su selezione corrente | PARZIALE | Testo/stile e prime dinamiche read-only BOOL/testo scalare con dato locale esplicito, alias anonimo, revisione e Undo; soglie numeriche, logica avanzata, azioni operative e impact analysis generale restano da implementare |
 | AI-EDIT-02 | Comando su pagina o gruppo di pagine | PARZIALE | Testi e restyling di nodi/pagine allegate con target validati e approvazione per file; nuove funzioni operative trasversali come la diagnostica motori restano da implementare |
 | AI-EDIT-03 | Refactoring trasversale sicuro | DA FARE | Rinomina tag o aggiorna un faceplate mostrando l'impatto |
 | AI-EDIT-04 | Generazione da screenshot/documento | DA FARE | Propone struttura e geometrie senza inventare comportamenti |

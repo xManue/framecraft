@@ -10,6 +10,7 @@ import { insideProject } from "../core/paths";
 import { parseSource } from "../source-parser/parseSource";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { pendingAiQuestions, prepareAiQuestionReply } from "../ai/aiChatQuestions";
+import { aiReadableData, assertAiDataCurrent, sameAiDataReferences, type AiDataReference } from "../ai/aiBindings";
 
 interface ChatState {
   root?: string;
@@ -21,6 +22,9 @@ interface ChatState {
   allowed(): boolean;
   setAllowed(allowed: boolean): void;
   attachments: AiChatAttachment[];
+  dataReferences: AiDataReference[];
+  addData(name: string, label: string): void;
+  removeData(id: string): void;
   messages: AiChatMessage[];
   error?: string;
   sending: boolean;
@@ -43,7 +47,7 @@ function sessionKey() {
   return root && ai.account?.connected ? JSON.stringify([root, ai.provider.id, ai.account.email]) : undefined;
 }
 export const useEditorAiChat = create<ChatState>((set, get) => ({
-  generation: 0, draft: "", contextNotes: "", attachments: [], messages: [], sending: false, applying: false,
+  generation: 0, draft: "", contextNotes: "", attachments: [], dataReferences: [], messages: [], sending: false, applying: false,
   allowed() { return !!get().authorizedFor && get().authorizedFor === sessionKey(); },
   setAllowed(allowed) {
     set({ authorizedFor: allowed ? sessionKey() : undefined });
@@ -57,11 +61,11 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
     if (get().sending && ai.mode === "edit") {
       void ai.cancel(); useEditorAi.setState({ requestId: undefined, busy: false, proposal: undefined, snapshot: undefined });
     }
-    set({ root, generation: get().generation + 1, draft: "", contextNotes: "", prepared: undefined, authorizedFor: undefined, attachments: [], messages: [], sending: false, applying: false, error: undefined });
+    set({ root, generation: get().generation + 1, draft: "", contextNotes: "", prepared: undefined, authorizedFor: undefined, attachments: [], dataReferences: [], messages: [], sending: false, applying: false, error: undefined });
   },
   clear() {
     if (get().sending || get().applying) return;
-    set({ generation: get().generation + 1, draft: "", prepared: undefined, attachments: [], messages: [], error: undefined });
+    set({ generation: get().generation + 1, draft: "", prepared: undefined, attachments: [], dataReferences: [], messages: [], error: undefined });
     if (useEditorAi.getState().mode === "edit") useEditorAi.setState({ proposal: undefined, snapshot: undefined, error: undefined });
   },
   attachSelection() {
@@ -93,6 +97,18 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
     useEditorAi.getState().show("edit");
   },
   removeAttachment(id) { if (!get().sending && !get().applying) set({ attachments: get().attachments.filter(item => item.id !== id), error: undefined }); },
+  addData(name, label) {
+    if (get().sending || get().applying) return;
+    const state = useEditorStore.getState(); get().syncRoot(state.project?.root);
+    const matches = state.plcVariables.filter(tag => tag.name === name.trim());
+    if (!state.project || matches.length !== 1 || !aiReadableData(matches[0])) { set({ error: "Scegli un tag scalare dichiarato e leggibile dal catalogo PLC. I tag rilevati soltanto nel sorgente non bastano." }); return; }
+    if (get().dataReferences.length >= 8) { set({ error: "Puoi scegliere fino a 8 dati per richiesta. Rimuovi dal contesto quelli non necessari." }); return; }
+    if (get().dataReferences.some(ref => ref.tag.name === matches[0].name)) { set({ error: "Questo dato è già nel contesto." }); return; }
+    const clean = label.trim(); if (!clean || clean.length > 80 || /[\u0000-\u001f]/.test(clean)) { set({ error: "Dai al dato un nome da usare nella richiesta, fino a 80 caratteri: ad esempio Allarme motore." }); return; }
+    if (get().dataReferences.some(ref => ref.label.toLocaleLowerCase("it") === clean.toLocaleLowerCase("it"))) { set({ error: "Usa nomi distinti per i dati, così l’AI non confonde i segnali." }); return; }
+    set({ dataReferences: [...get().dataReferences, { id: `data_${crypto.randomUUID().replaceAll("-", "")}`, label: clean, tag: { ...matches[0] } }], error: undefined });
+  },
+  removeData(id) { if (!get().sending && !get().applying) set({ dataReferences: get().dataReferences.filter(item => item.id !== id), error: undefined }); },
   setAnswer(id, index, update) {
     if (get().sending || get().applying) return;
     const target = pendingAiQuestions(get().messages);
@@ -109,12 +125,12 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
     if (!ai.account?.connected || !ai.model) { set({ error: "Collega l’account ChatGPT e scegli il modello in Impostazioni → AI e account." }); return; }
     if (!get().allowed()) { set({ error: "Autorizza l’invio per questa sessione del progetto. Non dovrai confermarlo a ogni messaggio e puoi revocarlo quando vuoi." }); return; }
     let reply: ReturnType<typeof prepareAiQuestionReply> | undefined;
-    try { if (replyTo) reply = prepareAiQuestionReply(replyTo, state.attachments, state.messages, state.contextNotes); }
+    try { assertAiDataCurrent(state.dataReferences, useEditorStore.getState().plcVariables); if (replyTo) reply = prepareAiQuestionReply(replyTo, state.attachments, state.messages, state.contextNotes, state.dataReferences); }
     catch (error) { set({ error: message(error) }); return; }
     const prompt = reply?.prompt ?? state.draft.trim(), attachments = state.attachments, generation = state.generation;
     if (state.messages.length + 2 > 40) { set({ error: "Questa conversazione ha raggiunto il limite di messaggi. Avvia una nuova chat per continuare." }); return; }
-    const snapshot = reply?.snapshot ?? aiChatScope(attachments);
-    const context = reply?.context ?? aiChatContext(attachments, state.messages, state.contextNotes);
+    const snapshot = reply?.snapshot ?? aiChatScope(attachments, state.dataReferences);
+    const context = reply?.context ?? aiChatContext(attachments, state.messages, state.contextNotes, state.dataReferences);
     let prepared: AiChatPrepared;
     try { prepared = prepareAiChat(prompt, snapshot, context); }
     catch (error) { set({ error: message(error) }); return; }
@@ -130,7 +146,7 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
         try { aiProposalGroups(snapshot, proposal); }
         catch (error) { set({ sending: false, error: message(error), messages: get().messages.map(item => item.id === user.id ? { ...item, status: "error" } : item) }); return; }
       }
-      set({ sending: false, ...(replyTo ? {} : { draft: "" }), messages: [...get().messages, { id: crypto.randomUUID(), role: "assistant", text: [proposal.summary, ...proposal.questions, ...proposal.warnings].join("\n\n"), proposal, snapshot, originalRequest: reply?.clarification.request ?? prompt, questionAttachments: proposal.questions.length ? attachments : undefined, clarification: reply?.clarification }] });
+      set({ sending: false, ...(replyTo ? {} : { draft: "" }), messages: [...get().messages, { id: crypto.randomUUID(), role: "assistant", text: [proposal.summary, ...proposal.questions, ...proposal.warnings].join("\n\n"), proposal, snapshot, originalRequest: reply?.clarification.request ?? prompt, questionAttachments: proposal.questions.length ? attachments : undefined, questionData: proposal.questions.length ? state.dataReferences : undefined, clarification: reply?.clarification }] });
     } else set({ sending: false, error: result.error ?? "Richiesta interrotta. Il testo è conservato: puoi riprovare.", messages: get().messages.map(item => item.id === user.id ? { ...item, status: "error" } : item) });
   },
   async cancel() {
@@ -152,6 +168,7 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
     const generation = state.generation;
     set({ applying: true, error: undefined });
     try {
+      if (target.proposal.operations.some(operation => operation.type === "binding") && !sameAiDataReferences(target.snapshot.dataReferences, state.dataReferences)) throw new Error("I dati nel contesto sono cambiati. Richiedi una nuova proposta prima di applicare collegamenti.");
       const files = target.snapshot.targets ? prepareAiPageFiles(target.snapshot, target.proposal, accepted) : [];
       if (files.length > 1) throw new Error("Approva un file alla volta: ogni pagina ha confronto e Annulla separati.");
       if (files.some(file => target.reviewedFiles?.includes(file.file))) throw new Error("Questo file della proposta è già stato applicato.");
@@ -177,10 +194,11 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
             return updated ? [aiElementAttachment({ ...item.snapshot, targets: undefined, document: fresh, selectedId: updated.id })] : [];
           }) });
         }
-        if (current.project?.root === target.snapshot.root && current.document && current.selectedId && node?.source.start === target.snapshot.document.nodes[target.snapshot.selectedId]?.source.start && get().attachments.some(item => item.snapshot === target.snapshot)) {
+        const sameElement = (item: AiChatAttachment) => item.kind === "element" && item.snapshot?.document === target.snapshot!.document && item.snapshot.selectedId === target.snapshot!.selectedId;
+        if (current.project?.root === target.snapshot.root && current.document && current.selectedId && node?.source.start === target.snapshot.document.nodes[target.snapshot.selectedId]?.source.start && get().attachments.some(sameElement)) {
           try {
             const fresh = aiElementAttachment({ root: current.project.root, document: current.document, selectedId: current.selectedId, selectionKey: aiSelectionKey(current.selectionInfo, current.editScope) });
-            set({ attachments: get().attachments.map(item => item.snapshot === target.snapshot ? fresh : item) });
+            set({ attachments: get().attachments.map(item => sameElement(item) ? fresh : item) });
           } catch { /* Keep the explicitly attached snapshot if the updated element cannot be inspected. */ }
         }
         useEditorAi.setState({ proposal: undefined, snapshot: undefined });

@@ -18,7 +18,7 @@ export function AiPageReview({ message, latest }: { message: AiChatMessage; late
   if (!latest) return <p className="ai-hint">Proposta precedente, non più applicabile.</p>;
   const values = groups.groups ?? [], accepted = choice ?? values.flatMap(group => group.review.defaults);
   const files = [...new Set(values.map(group => group.snapshot.document.file))];
-  return <section className="ai-proposal" aria-label="Revisione pagine"><h3>Modifiche alle pagine allegate</h3><p>Testi, stili e layout reali. Eventi, binding e tag vengono preservati. Una conferma e un Annulla per file; non è un salvataggio atomico multi-file.</p>
+  return <section className="ai-proposal" aria-label="Revisione pagine"><h3>Modifiche alle pagine allegate</h3><p>Testi, stili, layout e regole di lettura. Ogni regola dati va selezionata esplicitamente; eventi e altre dinamiche restano invariati. Una conferma e un Annulla per file; non è un salvataggio atomico multi-file.</p>
     {files.map(file => {
       const items = values.filter(group => group.snapshot.document.file === file), applied = message.reviewedFiles?.includes(file), ids = items.flatMap(group => group.proposal.operations.map(operation => operation.id));
       const picked = accepted.filter(id => ids.includes(id));

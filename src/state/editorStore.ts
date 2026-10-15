@@ -38,6 +38,7 @@ import { categorySection, newPageCategory, readPageCategories, withCategoryPage,
 import { previewFullscreenController, type PreviewFullscreenSession } from "../preview/previewFullscreen";
 import { aiSelectionKey, prepareAiEdits, type AiEditSnapshot, type AiProposal } from "../ai/aiProposal";
 import { prepareAiPageFiles } from "../ai/aiPageEdits";
+import { assertAiDataCurrent } from "../ai/aiBindings";
 
 type LeftPanel = "project" | "components" | "pages" | "plc" | "resources" | "scripts" | "faceplates" | "logs" | "page";
 /** How large the whole editor is drawn. A panel is built standing at a machine as often as sitting
@@ -1428,12 +1429,15 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       const state = get(), project = state.project, open = state.document;
       if (!project || project.root !== snapshot.root || !snapshot.targets) throw new Error("Il progetto della proposta non è più aperto.");
       if (state.dirty) throw new Error("Salva prima la bozza: le modifiche AI non la sovrascrivono.");
+      const readsData = proposal.operations.some(operation => operation.type === "binding" && accepted.includes(operation.id));
+      const dataCurrent = () => { if (readsData) assertAiDataCurrent(snapshot.dataReferences, get().plcVariables); return true; };
+      dataCurrent();
       const files = prepareAiPageFiles(snapshot, proposal, accepted);
       if (files.length !== 1) throw new Error("Approva un file alla volta, con confronto e Annulla separati.");
       const file = files[0];
       if (!insideProject(project.root, file.file) || file.file.replaceAll("\\", "/").split("/").includes("..")) throw new Error("La proposta non può modificare file fuori dal progetto.");
       if (file.source === file.previous) throw new Error("Le modifiche scelte non cambiano la pagina.");
-      const current = () => get().project === project && get().document === open && !get().dirty && !get().loading && !get().reloadRecovery && get().interactionMode === "edit";
+      const current = () => get().project === project && get().document === open && !get().dirty && !get().loading && !get().reloadRecovery && get().interactionMode === "edit" && dataCurrent();
       if (!current()) throw new Error("L’editor è cambiato: riprova la revisione della pagina.");
       const disk = await desktopBridge.readFile(file.file);
       if (!current() || disk !== file.previous || open?.file === file.file && open.source !== file.previous) throw new Error("Il file è cambiato dopo l’allegato: allega di nuovo la pagina senza sovrascrivere modifiche recenti.");
@@ -1451,9 +1455,11 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     },
     async applyAiProposal(snapshot, proposal, accepted) {
       const state = get(), document = snapshot.document;
+      const readsData = proposal.operations.some(operation => operation.type === "binding" && accepted.includes(operation.id));
+      const dataCurrent = () => { if (readsData) assertAiDataCurrent(snapshot.dataReferences, get().plcVariables); return true; };
       const selectionKey = aiSelectionKey(state.selectionInfo, state.editScope);
       const current = () => get().project?.root === snapshot.root && get().document === document && get().selectedId === snapshot.selectedId && get().interactionMode === "edit" && !get().loading && !get().reloadRecovery
-        && aiSelectionKey(get().selectionInfo, get().editScope) === selectionKey && (snapshot.selectionKey === undefined || snapshot.selectionKey === selectionKey);
+        && aiSelectionKey(get().selectionInfo, get().editScope) === selectionKey && (snapshot.selectionKey === undefined || snapshot.selectionKey === selectionKey) && dataCurrent();
       if (!current()) throw new Error("Il progetto, la pagina o la selezione sono cambiati. Richiedi una nuova proposta sull’elemento corrente.");
       if (state.dirty) throw new Error("Salva prima le modifiche della bozza. Poi richiedi una nuova proposta AI.");
       if ((state.selectionInfo?.instanceCount ?? 1) > 1) throw new Error("Questo elemento è ripetuto o condiviso: modifica la voce dai campi dell’Inspector. L’AI non applica cambiamenti a copie non selezionate.");

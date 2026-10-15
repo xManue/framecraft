@@ -10,7 +10,7 @@ export function aiProposalGroups(snapshot: AiEditSnapshot, input: AiProposal) {
     const node = target.document.nodes[target.selectedId]; if (!node) throw new Error("L’elemento allegato non esiste più.");
     const canonical = `${target.document.file}:${node.source.start}:${operation.type}:${operation.property}`;
     if (fields.has(canonical)) throw new Error("La proposta cambia due volte lo stesso campo, anche attraverso allegati diversi."); fields.add(canonical);
-    if (!groups.has(key)) groups.set(key, { key, snapshot: target, proposal: { ...proposal, operations: [] } });
+    if (!groups.has(key)) groups.set(key, { key, snapshot: snapshot.dataReferences ? { ...target, dataReferences: snapshot.dataReferences } : target, proposal: { ...proposal, operations: [] } });
     groups.get(key)!.proposal.operations.push({ ...operation, target: null });
   }
   return [...groups.values()];

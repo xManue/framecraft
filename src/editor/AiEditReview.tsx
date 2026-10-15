@@ -48,6 +48,7 @@ export function AiEditReview({ snapshot, proposal, review, accepted, onAccepted,
   }, [snapshot, proposal, accepted]);
   return <section aria-label="Confronto delle modifiche AI">
     <p>Confronto dei valori scritti nel file. Seleziona solo ciò che vuoi applicare; le sostituzioni di valori dinamici richiedono una scelta esplicita.</p>
+    {proposal.operations.some(operation => operation.type === "binding") && <p className="ai-hint">Per le regole dati controlla nome del tag, tipo e stati falso/vero nel confronto. Il disegno sotto mostra soltanto i valori base: non è una lettura PLC.</p>}
     {review.error && <p role="alert" className="ai-error">{review.error}</p>}
     {review.changes.map(change => <label className="ai-operation" key={change.operation.id}>
       <input type="checkbox" aria-label={`Applica: ${change.label}`} aria-describedby={`${descriptionId}-${change.operation.id}`} checked={accepted.includes(change.operation.id)} disabled={disabled || !!change.blocked || change.unchanged} onChange={event => onAccepted(event.target.checked ? [...accepted, change.operation.id] : accepted.filter(id => id !== change.operation.id))} />
