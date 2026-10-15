@@ -107,6 +107,9 @@ Nuova chat con conferma, annullamento e isolamento
 delle risposte tardive. Nessun salvataggio persistente delle conversazioni o invio automatico.
 Modello e ragionamento selezionabili nella chat dal catalogo Codex; predefinito senza override,
 livelli validati anche dal backend. Collegamento account solo nelle impostazioni.
+Chiarimenti con campi nella chat e rinvio esplicito della parte non definita: ripresa dell’obiettivo,
+allegati vincolati e risposte precedenti nella stessa catena, senza cancellare la bozza separata.
+Contesto del seguito ispezionabile e stesso budget; niente invio o applicazione automatici.
 Oggi applica testo e stile/geometria/layout dei nodi allegati. Revisione con valori prima/dopo, nomi italiani, no-op
 esclusi e schema indicativo aggiornato dalle sole modifiche accettate. Valori dinamici o basi
 ancora pilotate dal Runtime non sono preselezionati: la sostituzione o il cambio del fallback
@@ -214,7 +217,7 @@ e collaudo della connessione restano possibili senza AI.
 | ID | Capacità | Stato | Esempio |
 |---|---|---|---|
 | AI-EDIT-01 | Comando naturale su selezione corrente | PARZIALE | Testo/stile/geometria con revisione sul selezionato; condizioni operative tipo "rosso quando il tag è in allarme" e mapping approvati ancora da implementare |
-| AI-EDIT-02 | Comando su pagina o gruppo di pagine | DA FARE | "Aggiungi la stessa diagnostica a tutti i motori" |
+| AI-EDIT-02 | Comando su pagina o gruppo di pagine | PARZIALE | Testi e restyling di nodi/pagine allegate con target validati e approvazione per file; nuove funzioni operative trasversali come la diagnostica motori restano da implementare |
 | AI-EDIT-03 | Refactoring trasversale sicuro | DA FARE | Rinomina tag o aggiorna un faceplate mostrando l'impatto |
 | AI-EDIT-04 | Generazione da screenshot/documento | DA FARE | Propone struttura e geometrie senza inventare comportamenti |
 | AI-EDIT-05 | Diagnosi di errori e binding rotti | DA FARE | Spiega la causa e prepara una correzione selezionabile |
@@ -233,7 +236,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-UX-03 | Contesto esplicito | PARZIALE | Allegati espliciti, payload ispezionabile, note fissate e budget locale prompt/schema; esclusioni e stima token visibili. Restano documenti/immagini completi e conteggio esatto provider |
 | AI-UX-04 | Preview visuale e diff semantico | PARZIALE | Schema indicativo del singolo elemento e confronto base prima/dopo; preview reale di pagina/progetto e contesto Runtime ancora da implementare |
 | AI-UX-05 | Accettazione parziale | PARZIALE | Scelta per proprietà sul selezionato, con dinamici non preselezionati; restano gruppi logici trasversali e dipendenze tra operazioni |
-| AI-UX-06 | Domande quando manca un dato critico | DA FARE | Chiedere invece di indovinare tag, soglie o permessi |
+| AI-UX-06 | Domande quando manca un dato critico | PARZIALE | Campi di chiarimento, rinvio senza invenzioni, ripresa su obiettivo/allegati originali e nuova approvazione; validazione operativa dei dati e scelta tag locale nella chat restano da implementare |
 | AI-UX-07 | Stato di esecuzione e annullamento | PARZIALE | Richiesta annullabile e stato esplicito; questionario desktop recuperabile localmente, senza consensi né mapping approvati; restano avanzamento dettagliato, transazioni AI multi-file e collaudo IPC nativo completo |
 | AI-UX-08 | Funzionamento offline manuale | PARZIALE | L'assenza AI non degrada le capacità dell'editor |
 

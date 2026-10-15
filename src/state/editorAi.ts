@@ -71,12 +71,14 @@ export const useEditorAi = create<AiState>((set, get) => ({
     const { provider, mode, model, account, busy, checking, connecting } = get(); if (busy || checking || connecting) return;
     if (!account?.connected || !model) { set({ error: "Collega il tuo account ChatGPT e scegli un modello in Impostazioni → AI e account prima di inviare la richiesta." }); return; }
     const requestId = crypto.randomUUID();
+    let published = false;
     try {
       if (mode === "edit" && !snapshot && !chat) throw new Error("Seleziona l’elemento da modificare; l’AI non sceglie un altro oggetto al tuo posto.");
       const context = snapshot && !chat ? aiEditContext(snapshot) : undefined;
       const interview = get().interview;
       const input = mode === "create" ? interviewPrompt(interview) : chat ? aiChatPrompt(prompt, snapshot, chat) : aiPrompt(mode, prompt, context);
       set({ busy: true, requestId, snapshot, proposal: undefined, resolvedInterview: undefined, proposalUpdatedLocally: false, error: undefined });
+      published = true;
       const reasoningEffort = get().reasoningEffort;
       if (reasoningEffort && !get().models.find(item => item.id === model)?.supportedReasoningEfforts?.some(item => item.reasoningEffort === reasoningEffort)) throw new Error("Il ragionamento scelto non è disponibile per questo modello. Scegli il predefinito o aggiorna il catalogo.");
       const result = await provider.propose({ requestId, model, ...(reasoningEffort ? { reasoningEffort } : {}), prompt: input, schema: snapshot?.targets ? aiPageProposalSchema : aiProposalSchema });
@@ -93,7 +95,7 @@ export const useEditorAi = create<AiState>((set, get) => ({
         } else if (proposal.decisions?.length) throw new Error("La proposta non contiene un piano completo per le scelte delegate.");
       }
       set({ proposal });
-    } catch (error) { if (get().requestId === requestId || !get().busy) set({ error: message(error) }); }
+    } catch (error) { if (!published || get().requestId === requestId) set({ error: message(error) }); }
     finally { if (get().requestId === requestId) set({ busy: false, requestId: undefined }); }
   },
   async cancel() {

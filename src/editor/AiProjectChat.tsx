@@ -12,6 +12,8 @@ import { AiEditReview } from "./AiEditReview";
 import { AiModelControls } from "./AiModelControls";
 import { AiPageReview } from "./AiPageReview";
 import { aiChatScope } from "../ai/aiPageContext";
+import { AiChatQuestions } from "./AiChatQuestions";
+import { pendingAiQuestions } from "../ai/aiChatQuestions";
 
 function ChatProposal({ message, latest }: { message: AiChatMessage; latest: boolean }) {
   return message.snapshot?.targets ? <AiPageReview message={message} latest={latest} /> : <ElementChatProposal message={message} latest={latest} />;
@@ -46,11 +48,17 @@ export function AiProjectChat() {
   const project = useEditorStore(state => state.project), pages = useEditorStore(state => state.pages), activePage = useEditorStore(state => state.activePageId);
   const selectedId = useEditorStore(state => state.selectedId), mode = useEditorStore(state => state.interactionMode);
   const [reset, setReset] = useState(false);
+  const [writingNew, setWritingNew] = useState<string>();
+  const pendingQuestion = pendingAiQuestions(chat.messages)?.id, showComposer = !pendingQuestion || writingNew === pendingQuestion;
   const consent = chat.allowed();
   const textarea = useRef<HTMLTextAreaElement>(null), log = useRef<HTMLDivElement>(null);
   const busy = chat.sending || chat.applying || ai.busy;
-  useEffect(() => { textarea.current?.focus({ preventScroll: true }); }, []);
-  useEffect(() => { const node = log.current; if (node) node.scrollTop = node.scrollHeight; }, [chat.messages.length, chat.sending]);
+  useEffect(() => { (log.current?.querySelector<HTMLTextAreaElement>(".ai-chat-questions textarea:not(:disabled)") ?? textarea.current)?.focus({ preventScroll: true }); }, []);
+  useEffect(() => {
+    const node = log.current; if (!node) return;
+    const questions = !chat.sending && node.querySelector(".ai-chat-questions");
+    node.scrollTop = questions ? Math.max(0, node.scrollTop + questions.getBoundingClientRect().top - node.getBoundingClientRect().top - 8) : node.scrollHeight;
+  }, [chat.messages.length, chat.sending]);
   const page = pages.find(item => item.id === activePage);
   const preview = useMemo(() => {
     try {
@@ -74,13 +82,15 @@ export function AiProjectChat() {
       {chat.messages.map((message, index) => <article className={`ai-chat-message ${message.role}`} key={message.id} aria-label={message.role === "user" ? "Tu" : "Assistente"}>
         <strong>{message.role === "user" ? "Tu" : "Assistente"}</strong>
         {!!message.attachments?.length && <p className="ai-chat-references">{message.attachments.join(" · ")}</p>}
-        <p className="ai-chat-text">{message.text}</p>
-        {(message.status === "error" || message.status === "cancelled") && <small>Richiesta non completata · testo conservato qui sotto</small>}
-        {message.role === "assistant" && <ChatProposal message={message} latest={index === chat.messages.length - 1} />}
+        <p className="ai-chat-text">{message.role === "assistant" && message.proposal?.questions.length ? [message.proposal.summary, ...message.proposal.warnings].join("\n\n") : message.text}</p>
+        {(message.status === "error" || message.status === "cancelled") && <small>{message.replyTo ? "Invio non completato · risposte conservate nei chiarimenti" : "Richiesta non completata · testo conservato qui sotto"}</small>}
+        {message.role === "assistant" && <><AiChatQuestions message={message} /><ChatProposal message={message} latest={index === chat.messages.length - 1} /></>}
       </article>)}
       {chat.sending && <p role="status"><LoaderCircle size={16} className="spin" /> Codex sta rispondendo. Nessun file viene modificato.</p>}
     </div>
-    <form className="ai-chat-composer" onSubmit={event => { event.preventDefault(); send(); }}>
+    <form className="ai-chat-composer" onSubmit={event => { event.preventDefault(); if (showComposer) send(); }}>
+      {pendingQuestion && <div className="ai-chat-compose-mode"><button type="button" disabled={busy} aria-expanded={showComposer} onClick={() => setWritingNew(showComposer ? undefined : pendingQuestion)}>{showComposer ? "Torna ai chiarimenti" : "Scrivi una nuova richiesta"}</button>{!showComposer && <small>{chat.draft ? "Bozza conservata. Completa i dettagli sopra per continuare." : "Completa i dettagli sopra per continuare la richiesta."}</small>}</div>}
+      <div hidden={!showComposer} className="ai-chat-compose-fields">
       <div className="ai-chat-attach"><button type="button" disabled={busy || !selectedId || mode !== "edit"} onClick={chat.attachSelection}><Paperclip size={15} />Elemento selezionato</button><button type="button" disabled={busy || !page} onClick={() => page && chat.attachPage(page)}><FileText size={15} />Pagina aperta</button></div>
       <div className="ai-chat-attachments" aria-label="Allegati della richiesta">{chat.attachments.map(item => <span key={item.id}><span>{item.kind === "element" ? "Elemento" : "Pagina"}: {item.label}{item.snapshot?.targets && ` · ${Object.keys(item.snapshot.targets).length} oggetti modificabili`}</span><button type="button" aria-label={`Rimuovi allegato ${item.label}`} disabled={busy} onClick={() => chat.removeAttachment(item.id)}><X size={14} /></button></span>)}</div>
       <label>La tua richiesta<textarea ref={textarea} rows={3} maxLength={8000} value={chat.draft} disabled={busy} onChange={event => chat.setDraft(event.target.value)} placeholder="Chiedi qualcosa sul pannello…" onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }} /></label>
@@ -94,9 +104,10 @@ export function AiProjectChat() {
           <details><summary>Richiesta tecnica completa</summary><pre>{JSON.stringify(prepared.payload, null, 2)}</pre></details></>}
       </details>
       {preview.error && <p className="ai-error" role="alert">{preview.error}</p>}
-      <label className="ai-consent"><input type="checkbox" checked={consent} disabled={!ai.account?.connected} onChange={event => chat.setAllowed(event.target.checked)} /><span>Consenti l’invio di richieste e contesto scelto per questa sessione del progetto. Non serve confermare ogni messaggio; togli la spunta per revocare. Le modifiche richiedono comunque approvazione.</span></label>
+      </div>
+      <label className="ai-consent"><input type="checkbox" checked={consent} disabled={!ai.account?.connected} onChange={event => chat.setAllowed(event.target.checked)} /><span>{consent && !showComposer ? "Invio autorizzato per questa sessione. Togli la spunta per revocare." : "Consenti l’invio di richieste e contesto scelto per questa sessione del progetto. Non serve confermare ogni messaggio; togli la spunta per revocare. Le modifiche richiedono comunque approvazione."}</span></label>
       {chat.error && <p className="ai-error" role="alert">{chat.error}</p>}
-      <div className="ai-chat-send"><small>Invio: invia · Maiusc+Invio: a capo</small>{chat.sending ? <button type="button" onClick={() => void chat.cancel()}>Annulla richiesta</button> : <button type="submit" className="button primary" disabled={!!preview.error || !consent || !chat.draft.trim() || !project || !ai.account?.connected || !ai.model || busy || ai.checking || ai.connecting}><Send size={16} />Invia</button>}</div>
+      <div className="ai-chat-send">{showComposer && <small>Invio: invia · Maiusc+Invio: a capo</small>}{chat.sending ? <button type="button" onClick={() => void chat.cancel()}>Annulla richiesta</button> : showComposer && <button type="submit" className="button primary" disabled={!!preview.error || !consent || !chat.draft.trim() || !project || !ai.account?.connected || !ai.model || busy || ai.checking || ai.connecting}><Send size={16} />Invia</button>}</div>
     </form>
   </aside>;
 }

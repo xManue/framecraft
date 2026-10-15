@@ -414,6 +414,20 @@ revoke authorization and cancel an in-flight request; switching project/account 
 is restored from disk. Applying a proposal always needs separate approval.
 A conversation stops at 40 messages with a clear new-chat instruction.
 
+When the assistant needs clarification, answer in **Completa questi dettagli** inside its message,
+then choose **Invia risposte e continua**. Each question has its own field (up to 1,000 characters)
+and **Non ho questo dato: lascia invariata questa parte**. Deferral is not permission to invent
+machine data or activate a function. A disabled answer stays local and is not sent.
+The follow-up retains the original objective, pinned attachments and explicit earlier answers in
+the same clarification chain; it never replaces a separate composer draft. Changed attachments
+require a new request to avoid applying old answers to another object. Responses survive closing
+the chat and failed/cancelled sends, but not **Nuova chat**, project/account changes or app exit.
+The exact follow-up context is inspectable before sending and uses the same 24 kB budget and
+session consent. Answers alone never apply changes: review and approve the new proposal separately.
+During clarification the main composer is compacted; **Scrivi una nuova richiesta** reopens it
+without losing its draft or the answers. New questions open at their first field; typing does not
+reset the conversation scroll position.
+
 Choose **Modello** and **Ragionamento** directly above the chat (also available in AI settings).
 Options come from the Codex model catalog, including its supported/default reasoning efforts;
 changing model restores its default. The native adapter sends an optional `effort` on `turn/start`,

@@ -4467,6 +4467,33 @@ Verifiche del 5 ottobre 2026:
   Artefatti locali: `.hmi-preview/ai-pages-public-1792070209582/.hmi-preview/ai-context-ui/result.json`.
   Nessuna nuova dipendenza, chiamata AI reale o dato macchina pubblicato; roadmap ancora aperta.
 
+### 131. Ripresa guidata dei chiarimenti nella chat AI (2026-10-15)
+
+- Domande dell’assistente con campi distinti, etichette accessibili e invio delle risposte senza
+  ricopiare richiesta o domande nel compositore. Rinvio esplicito: il dato non disponibile non
+  autorizza a inventare tag, soglie o permessi; quella parte va conservata e il limite dichiarato.
+  Il testo locale di una risposta rinviata non entra nel payload, ma si recupera togliendo il rinvio.
+- Obiettivo originale e risposte esplicite precedenti nella stessa catena conservati nel contesto
+  obbligatorio; una nuova risposta alla stessa domanda sostituisce quella precedente. Stesso
+  compilatore/budget locale, richiesta tecnica ispezionabile. Allegati diversi bloccano la ripresa
+  per non trasferire i chiarimenti su altri oggetti. Nessun cambio del provider o del protocollo.
+- La bozza separata non viene sovrascritta; risposte recuperabili dopo chiusura, errore o annullamento.
+  Nuova chat e cambio progetto/account le eliminano. Il consenso resta di sessione; non partono
+  richieste mentre si compilano i campi. Rispondere non applica né salva: nuova revisione esplicita.
+  Compositore principale compattato durante i chiarimenti e riapribile con un comando esplicito;
+  nessun invio implicito della bozza nascosta. Nuove domande aperte dall’inizio, niente scroll
+  della conversazione durante la digitazione; checkbox sullo stesso rigo della spiegazione.
+- Corretto un errore tardivo del provider che dopo annullamento poteva riapparire nello stato AI:
+  solo la richiesta ancora pubblicata può aggiornare l’errore; fallimenti di preflight restano visibili.
+- Verifiche sulla copia di solo codice: 148 test mirati in 7 file AI riusciti; dopo i soli ritocchi
+  UI ricontrollati i 2 file chat, 46 test passati incluse le nuove regressioni di scroll/compositore.
+  Tipi e build Vite riusciti. Browser separato a 375/768/1024/1440 px: domanda, risposta, rinvio,
+  contesto/bozza conservati, tre invii con un consenso, nuova proposta, approvazione e Annulla/Ripeti;
+  nessun overflow o errore console. Provider e letture sintetici, nessun collaudo IPC/PLC dichiarato.
+  Artefatti: `.hmi-preview/ai-questions-public-1792071117342/.hmi-preview/ai-questions-ui/result.json`.
+  Nessuna chiamata AI reale, nuova dipendenza o dato macchina pubblicato. Pipeline completa e
+  commissioning restano aperti.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

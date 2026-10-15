@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { aiChatContext, aiElementAttachment, aiPageAttachment, prepareAiChat, type AiChatAttachment, type AiChatMessage, type AiChatPrepared } from "../ai/aiChat";
+import { aiChatContext, aiElementAttachment, aiPageAttachment, prepareAiChat, type AiChatAttachment, type AiChatMessage, type AiChatPrepared, type AiChatQuestionAnswer } from "../ai/aiChat";
 import { aiSelectionKey } from "../ai/aiProposal";
 import type { PageDefinition } from "../core/types";
 import { useEditorAi } from "./editorAi";
@@ -9,6 +9,7 @@ import { aiProposalGroups, prepareAiPageFiles } from "../ai/aiPageEdits";
 import { insideProject } from "../core/paths";
 import { parseSource } from "../source-parser/parseSource";
 import { desktopBridge } from "../filesystem/desktopBridge";
+import { pendingAiQuestions, prepareAiQuestionReply } from "../ai/aiChatQuestions";
 
 interface ChatState {
   root?: string;
@@ -31,7 +32,8 @@ interface ChatState {
   attachSelection(): void;
   attachPage(page: PageDefinition): Promise<void>;
   removeAttachment(id: string): void;
-  send(): Promise<void>;
+  setAnswer(id: string, index: number, update: Partial<AiChatQuestionAnswer>): void;
+  send(replyTo?: string): Promise<void>;
   cancel(): Promise<void>;
   apply(id: string, accepted: string[]): Promise<void>;
 }
@@ -91,21 +93,32 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
     useEditorAi.getState().show("edit");
   },
   removeAttachment(id) { if (!get().sending && !get().applying) set({ attachments: get().attachments.filter(item => item.id !== id), error: undefined }); },
-  async send() {
+  setAnswer(id, index, update) {
+    if (get().sending || get().applying) return;
+    const target = pendingAiQuestions(get().messages);
+    if (target?.id !== id || !Number.isInteger(index) || index < 0 || index >= target.proposal!.questions.length) return;
+    const answers = target.proposal!.questions.map((_, at) => target.answers?.[at] ?? { text: "", deferred: false });
+    answers[index] = { text: typeof update.text === "string" ? update.text.slice(0, 1000) : answers[index].text, deferred: typeof update.deferred === "boolean" ? update.deferred : answers[index].deferred };
+    set({ messages: get().messages.map(item => item.id === id ? { ...item, answers } : item), error: undefined });
+  },
+  async send(replyTo) {
     const ai = useEditorAi.getState(), state = get(), root = useEditorStore.getState().project?.root;
     if (state.sending || state.applying || ai.busy || ai.checking || ai.connecting) return;
     if (!root || state.root !== root) { get().syncRoot(root); set({ error: "Apri un progetto prima di usare la chat." }); return; }
-    if (!state.draft.trim()) return;
+    if (!replyTo && !state.draft.trim()) return;
     if (!ai.account?.connected || !ai.model) { set({ error: "Collega l’account ChatGPT e scegli il modello in Impostazioni → AI e account." }); return; }
     if (!get().allowed()) { set({ error: "Autorizza l’invio per questa sessione del progetto. Non dovrai confermarlo a ogni messaggio e puoi revocarlo quando vuoi." }); return; }
-    const prompt = state.draft.trim(), attachments = state.attachments, generation = state.generation;
+    let reply: ReturnType<typeof prepareAiQuestionReply> | undefined;
+    try { if (replyTo) reply = prepareAiQuestionReply(replyTo, state.attachments, state.messages, state.contextNotes); }
+    catch (error) { set({ error: message(error) }); return; }
+    const prompt = reply?.prompt ?? state.draft.trim(), attachments = state.attachments, generation = state.generation;
     if (state.messages.length + 2 > 40) { set({ error: "Questa conversazione ha raggiunto il limite di messaggi. Avvia una nuova chat per continuare." }); return; }
-    const snapshot = aiChatScope(attachments);
-    const context = aiChatContext(attachments, state.messages, state.contextNotes);
+    const snapshot = reply?.snapshot ?? aiChatScope(attachments);
+    const context = reply?.context ?? aiChatContext(attachments, state.messages, state.contextNotes);
     let prepared: AiChatPrepared;
     try { prepared = prepareAiChat(prompt, snapshot, context); }
     catch (error) { set({ error: message(error) }); return; }
-    const user: AiChatMessage = { id: crypto.randomUUID(), role: "user", text: prompt, attachments: attachments.map(item => item.label) };
+    const user: AiChatMessage = { id: crypto.randomUUID(), role: "user", text: reply?.displayText ?? prompt, attachments: attachments.map(item => item.label), ...(replyTo ? { replyTo } : {}) };
     set({ sending: true, prepared, error: undefined, messages: [...state.messages, user] });
     ai.show("edit");
     await useEditorAi.getState().propose(prompt, snapshot, context);
@@ -117,7 +130,7 @@ export const useEditorAiChat = create<ChatState>((set, get) => ({
         try { aiProposalGroups(snapshot, proposal); }
         catch (error) { set({ sending: false, error: message(error), messages: get().messages.map(item => item.id === user.id ? { ...item, status: "error" } : item) }); return; }
       }
-      set({ sending: false, draft: "", messages: [...get().messages, { id: crypto.randomUUID(), role: "assistant", text: [proposal.summary, ...proposal.questions, ...proposal.warnings].join("\n\n"), proposal, snapshot }] });
+      set({ sending: false, ...(replyTo ? {} : { draft: "" }), messages: [...get().messages, { id: crypto.randomUUID(), role: "assistant", text: [proposal.summary, ...proposal.questions, ...proposal.warnings].join("\n\n"), proposal, snapshot, originalRequest: reply?.clarification.request ?? prompt, questionAttachments: proposal.questions.length ? attachments : undefined, clarification: reply?.clarification }] });
     } else set({ sending: false, error: result.error ?? "Richiesta interrotta. Il testo è conservato: puoi riprovare.", messages: get().messages.map(item => item.id === user.id ? { ...item, status: "error" } : item) });
   },
   async cancel() {

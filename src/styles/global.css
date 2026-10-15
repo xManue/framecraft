@@ -372,11 +372,24 @@ code, kbd { font-family: "JetBrains Mono", Consolas, monospace; }
 .ai-chat-message { margin-bottom: 16px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
 .ai-chat-message.user { background: var(--accent-soft); }
 .ai-chat-text { white-space: pre-wrap; }
+.ai-chat-questions { display: grid; gap: 10px; min-width: 0; margin-top: 12px; }
+.ai-chat-questions h3, .ai-chat-questions p { margin: 0; }
+.ai-chat-questions fieldset { display: grid; gap: 7px; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
+.ai-chat-questions label { overflow-wrap: anywhere; }
+.ai-chat-questions textarea { width: 100%; min-height: 64px; max-height: 180px; resize: vertical; }
+.ai-chat-questions .ai-question-defer { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
+.ai-question-defer input { width: 16px; height: 16px; flex-shrink: 0; }
+.ai-chat-questions > button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.ai-chat-questions pre { max-width: 100%; max-height: 240px; overflow: auto; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ai-chat-references, .ai-chat-empty, .ai-chat-applied { color: var(--muted); }
 .ai-chat-empty h3 { margin-top: 12px; color: var(--text); }
 .ai-chat-composer { flex-shrink: 0; max-height: 58%; overflow: auto; overscroll-behavior: contain; padding: 10px; border-top: 1px solid var(--border); background: var(--surface-1); }
 .ai-chat-composer label:not(.ai-consent) { margin: 8px 0; }
 .ai-chat-composer .ai-context { margin: 0; }
+.ai-chat-compose-fields[hidden] { display: none; }
+.ai-chat-compose-mode { display: grid; gap: 8px; margin-bottom: 10px; }
+.ai-chat-compose-mode button { text-align: left; }
+.ai-chat-compose-mode small { color: var(--muted); }
 .ai-context-stats { margin: 8px 0 0; color: var(--accent-strong); font-size: 11px; overflow-wrap: anywhere; }
 .ai-model-controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
 .ai-model-controls > label { flex: 1 1 120px; min-width: 0; margin: 0 !important; display: grid; gap: 5px; }
