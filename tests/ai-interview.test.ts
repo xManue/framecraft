@@ -8,6 +8,8 @@ import { parseSource } from "../src/source-parser/parseSource";
 import { emptyAlarmCatalog } from "../src/core/hmiAlarms";
 import { useEditorAi } from "../src/state/editorAi";
 import type { AiProvider } from "../src/ai/aiProvider";
+import { sameInterviewAiContext } from "../src/ai/aiInterview";
+import { resolveInterviewDelegation } from "../src/ai/aiDelegation";
 
 export function filledInterview() {
   const interview = newAiInterview(); interview.machineName = "Linea test"; interview.spec.purpose = "Mostrare i trasportatori della linea";
@@ -17,6 +19,21 @@ export function filledInterview() {
 const initial = useEditorAi.getState();
 afterEach(() => { useEditorAi.setState(initial, true); vi.restoreAllMocks(); });
 describe("intervista adattiva per creare il pannello", () => {
+  it("sostituire un’immagine già disponibile aggiorna il progetto senza richiedere ancora l’AI", () => {
+    const interview = filledInterview(); interview.spec.pages[0].image = "C:/synthetic/old.svg"; interview.spec.pages[0].imageDeferred = false;
+    interview.followups = [{ question: "Disposizione preferita?", answer: "Compatta" }];
+    const config = interviewConfig(interview), send = vi.fn();
+    useEditorAi.setState({ mode: "create", interview, provider: { ...useEditorAi.getState().provider, propose: send }, proposal: { version: 1, mode: "create", project: config, decisions: [], summary: "Piano approvato", questions: [], warnings: [], provenance: ["approved-request"], operations: [] }, resolvedInterview: resolveInterviewDelegation(interview) });
+    const next = { ...interview, spec: { ...interview.spec, pages: interview.spec.pages.map((page, index) => index ? page : { ...page, image: "C:/synthetic/new.svg" }) } };
+    expect(sameInterviewAiContext(interview, next)).toBe(true);
+    useEditorAi.getState().updateInterview(next);
+    expect(useEditorAi.getState().proposal?.project?.guided?.pages[0].image).toBe("C:/synthetic/new.svg");
+    expect(config.guided?.pages[0].image).toBe("C:/synthetic/old.svg");
+    expect(useEditorAi.getState().interview.followups).toEqual(interview.followups);
+    expect(useEditorAi.getState().proposalUpdatedLocally).toBe(true); expect(send).not.toHaveBeenCalled();
+    useEditorAi.getState().updateInterview({ ...next, machineName: "Nuova macchina" });
+    expect(useEditorAi.getState().proposal).toBeUndefined(); expect(useEditorAi.getState().proposalUpdatedLocally).toBe(false);
+  });
   it("inizia dalle domande mirate, non da una descrizione libera", () => {
     expect(newAiInterview().spec.pages).toEqual([]); expect(interviewSteps(newAiInterview())[0].id).toBe("machine");
     expect(interviewStepIssues(newAiInterview(), "machine")).toHaveLength(2);

@@ -4290,6 +4290,37 @@ Verifiche del 5 ottobre 2026:
   Per adesso rimane Codex CLI, come richiesto dall’utente; nessuna migrazione automatica.
 
 
+### 125. Correzioni emerse dalla pipeline AI reale (2026-10-15)
+
+- Creazione transazionale: controlli preliminari su percorsi e immagini, preparazione in
+  directory temporanea sorella e validazione prima della rinomina finale. Immagini assenti,
+  bloccate da Windows, file generati in conflitto o entrypoint mancante non lasciano progetti
+  parziali nella destinazione; la stessa cartella vuota può essere riutilizzata. File esistenti
+  e collegamenti non vengono sovrascritti. Serve accesso alla cartella superiore e supporto
+  del filesystem alla rinomina; gli errori indicano anche di provare un disco locale.
+- Nome package npm normalizzato separatamente dal nome umano della cartella: accenti,
+  parentesi e altri caratteri non producono un package.json invalido.
+- Dopo un errore è possibile sostituire un’immagine già disponibile o un mapping locale
+  valido mantenendo il piano: confronto dell’intero prompt validato, nuova risoluzione delle
+  deleghe e nuova validazione locale. Nessun invio aggiuntivo se il contesto è identico;
+  modifiche a pagine/scopo/risposte pubbliche invalidano la proposta. La UI segnala i dati
+  aggiornati e mantiene le risposte aggiuntive pertinenti. Approvazione finale sempre esplicita.
+- Annullare il dialogo cartella non ripresenta un errore vecchio e non cambia il progetto aperto.
+- Template Vite condiviso per nuovi pannelli: chunk applicazione/Runtime/vendor separati,
+  senza alzare o nascondere la soglia; notice delle dipendenze client in
+  `dist/THIRD_PARTY_NOTICES.md`. Non equivale all’approvazione licenze dell’intero prodotto.
+- Verificati 66 test mirati intervista/UI/store/build e 9 test nativi della creazione,
+  compresi retry, immagine bloccata e protezione dei file già presenti. Nessuna suite generale.
+- Riusata la risposta reale già completata, con identità/prompt/schema confrontati: nessuna
+  nuova inferenza. Sulla copia del codice pubblicabile: tipi e build editor, creazione nativa,
+  dipendenze offline, strict build del pannello, browser dev/HMR e browser produzione passati.
+  Tre chunk da 19 246, 239 457 e 260 354 byte; nessun errore browser o traffico PLC.
+  Artefatti locali: `.hmi-preview/pipeline-fixes-public-1792051435848/.hmi-preview/generated-smoke-vobyKf/result.json`.
+- Le regressioni UI usano bridge simulati; la prova browser usa il pannello reale generato.
+  Restano da collaudare dialoghi/IPC/Inspector nella finestra desktop, persistenza dell’intervista
+  dopo riavvio, dispositivi fisici e commissioning. Nessun riavvio della sessione utente,
+  nessun dato macchina reale pubblicato, modifiche trend/profile rinviate non incluse.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

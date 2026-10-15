@@ -18,6 +18,7 @@ import { delegatedQuestions, delegationQuestions, resolveInterviewDelegation, to
 import { AiQuestion, AiDelegationReview } from "./AiQuestion";
 import { PanelHeaderFields, PanelHeaderReview } from "./PanelHeaderFields";
 import { panelHeaderFields, panelHeaderTags } from "../core/panelHeader";
+import { sameInterviewAiContext } from "../ai/aiInterview";
 
 export function AiProjectInterview() {
   const ai = useEditorAi(), interview = ai.interview, spec = interview.spec;
@@ -29,7 +30,11 @@ export function AiProjectInterview() {
   const issues = interviewStepIssues(interview, step), busy = ai.busy || ai.connecting || ai.checking || fileBusy || applying || loading;
   useEffect(() => { setConsent(false); }, [interview, ai.model, ai.account?.email]);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); setNotice(undefined); }, [step]);
-  const update = (change: Partial<typeof interview>) => ai.updateInterview({ ...interview, followups: [], ...change });
+  const update = (change: Partial<typeof interview>) => {
+    const next = { ...interview, ...change };
+    if (!change.followups && interview.followups.length && !sameInterviewAiContext(interview, next)) next.followups = [];
+    ai.updateInterview(next);
+  };
   const updateSpec = (change: Partial<typeof spec>) => {
     const next = { ...spec, ...change };
     if (change.tags && next.header) next.header = { ...next.header, tags: Object.fromEntries(panelHeaderFields.map(field => [field.id, panelHeaderTags(next.tags, field.numeric).some(tag => tag.name === next.header!.tags[field.id]) ? next.header!.tags[field.id] : ""])) };
@@ -151,6 +156,7 @@ export function AiProjectInterview() {
     {step === "review" && ai.proposal && <section className="ai-proposal" aria-label="Revisione proposta"><h3>Controlla il piano prima di creare</h3><p>{ai.proposal.summary}</p>
       <AiDelegationReview interview={interview} decisions={ai.proposal.decisions} />
       <PanelHeaderReview config={ai.resolvedInterview?.spec.header ?? spec.header} />
+      {ai.proposalUpdatedLocally && <p className="ai-hint" role="status">Aggiornati solo i dati locali: il contesto e il piano AI non sono cambiati. Non è stata inviata un’altra richiesta. Controlla i nuovi collegamenti e immagini prima di approvare.</p>}
       {ai.resolvedInterview && delegatedQuestions(interview).length > 0 && <><h4>{ai.resolvedInterview.machineName} · {ai.resolvedInterview.spec.pages.length} pagine · {ai.resolvedInterview.layout === "desktop-mobile" ? "Desktop e mobile" : "Desktop"}</h4><p>{ai.resolvedInterview.spec.purpose}</p><ol>{ai.resolvedInterview.spec.pages.map(page => <li key={page.id}><strong>{page.title}</strong> · {guidedPageKinds.find(kind => kind.id === page.kind)?.label} · {standardProjectSectionChoices.find(section => section.id === page.section)?.label}</li>)}</ol>{ai.resolvedInterview.spec.requirements && <PanelRequirementsReview requirements={ai.resolvedInterview.spec.requirements} pages={ai.resolvedInterview.spec.pages} onEdit={go} />}<details><summary>Parti da completare dopo le scelte AI</summary><ul>{guidedProjectPending(ai.resolvedInterview.spec).map((pending, index) => <li key={index}>{pending}</li>)}</ul></details></>}
       {ai.proposal.warnings.length > 0 && <ul>{ai.proposal.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
       {ai.proposal.questions.length > 0 ? <><p>Servono ancora queste informazioni. Puoi rispondere oppure lasciare la scelta all’AI.</p><button type="button" disabled={busy} onClick={() => update({ followups: [...interview.followups, ...ai.proposal!.questions.map(question => ({ question, answer: "" }))] })}>Rispondi alle domande aggiuntive</button></> : <button type="button" className="button primary" disabled={busy || !!issues.length} onClick={() => void approve()}><Sparkles size={16} />Approva, scegli cartella e crea {ai.resolvedInterview?.spec.pages.length ?? spec.pages.length} pagine</button>}

@@ -335,6 +335,16 @@ up to 2 MB/5000 tags. Alarm inputs: `framecraft.alarms.json`, validated against 
 tags and their trigger types. A list of messages alone does not establish activation conditions.
 Images are selected locally and copied into distinct assets for each page. No invented PLC data.
 
+Creation prepares and validates the files in a temporary sibling directory before publishing
+the complete project. Missing/locked images or invalid generated files leave the selected
+destination unchanged; correct the problem and retry the same empty folder. Existing files
+are never overwritten. Publishing requires directory rename support and write access to the
+parent folder; if unavailable, choose a writable local disk.
+Replacing an available image or another valid local mapping preserves the AI proposal only
+when the entire approved AI context is unchanged. Review the updated local configuration
+before creating; no extra account request is sent. Changes to public answers invalidate the
+proposal. Cancelling the folder dialog clears the previous creation error and keeps answers.
+
 Connect your own ChatGPT account and select a model in **Impostazioni → AI e account**.
 The AI screen only shows connection status and **Apri impostazioni AI**; it does not contain
 account controls. Returning from settings preserves questionnaire answers and edit requests;
@@ -482,6 +492,13 @@ mobile viewport/navigation persistence, return to device choice (including narro
 and a source edit through the editor's parser/transformer followed by HMR. No ChatGPT request,
 PLC connection, user project or desktop window is used. This is not the real-account/native-UI
 end-to-end test or industrial commissioning.
+
+The generated build separates application, HMI Runtime and third-party vendor chunks without
+raising or suppressing Vite's size warning. Client dependency notices are emitted in
+`dist/THIRD_PARTY_NOTICES.md`; this does not clear other runtime/asset/licensing release gates.
+The browser phase also opens the compiled production output, checks chunk loading, navigation
+and device selection, and records JavaScript bundle sizes. These size assertions concern the
+small synthetic fixture, not a maximum size guarantee for every future panel.
 
 Prerequisites: Node 24, Cargo and cached Rust/npm dependencies. The optional `--browser` phase
 needs Playwright and an installed browser (Edge by default on Windows). Set

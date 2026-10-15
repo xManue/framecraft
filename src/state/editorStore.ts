@@ -1407,6 +1407,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     },
     async createStandardProject(config) {
       if (runtime.projectOpening) return;
+      set({ lastError: undefined });
       try {
         const root = await desktopBridge.chooseDirectory();
         if (!root) return;

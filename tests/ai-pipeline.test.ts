@@ -7,7 +7,7 @@ import { useEditorAi } from "../src/state/editorAi";
 import type { AiProvider } from "../src/ai/aiProvider";
 import { newAiInterview, newGuidedPage } from "../src/ai/aiInterview";
 
-const bridge = vi.hoisted(() => ({ readFile: vi.fn(), writeFile: vi.fn() }));
+const bridge = vi.hoisted(() => ({ readFile: vi.fn(), writeFile: vi.fn(), chooseDirectory: vi.fn(), createProject: vi.fn() }));
 vi.mock("../src/filesystem/desktopBridge", () => ({ desktopAvailable: true, desktopBridge: bridge }));
 import { useEditorStore } from "../src/state/editorStore";
 
@@ -75,6 +75,15 @@ describe("proposte AI tipizzate e stesso progetto manuale", () => {
 });
 
 describe("applicazione della proposta nell’editor", () => {
+  it("annullare la cartella non ripropone un errore della creazione precedente", async () => {
+    const selected = snapshot(); useEditorStore.setState({ project: { root: selected.root } as never, document: selected.document, loading: false, lastError: "Immagine precedente non trovata" });
+    bridge.chooseDirectory.mockResolvedValue(null);
+    await useEditorStore.getState().createStandardProject(create().project!);
+    expect(useEditorStore.getState().lastError).toBeUndefined();
+    expect(useEditorStore.getState().project?.root).toBe(selected.root);
+    expect(useEditorStore.getState().document).toBe(selected.document);
+    expect(bridge.createProject).not.toHaveBeenCalled();
+  });
   function opened(selected = snapshot()) {
     useEditorStore.setState({ project: { root: selected.root } as never, document: selected.document, selectedId: selected.selectedId,
       loading: false, reloadRecovery: undefined, interactionMode: "edit", selectionInfo: undefined, dirty: false, panelManifest: undefined, unlockedPages: [], history: [], future: [], consoleEntries: [] });

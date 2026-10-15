@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { build, createServer } from "vite";
+import { build, createServer, preview } from "vite";
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const option = name => { const index = process.argv.indexOf(name); return index >= 0 ? process.argv[index + 1] : undefined; };
@@ -94,6 +94,13 @@ await run(process.execPath, [npmCli, "install", "--ignore-scripts", "--no-audit"
 const packageManifest = JSON.parse(await readFile(resolve(project, "package.json"), "utf8"));
 for (const name of [...Object.keys(packageManifest.dependencies), ...Object.keys(packageManifest.devDependencies)]) await access(resolve(project, "node_modules", name, "package.json"));
 await run(process.execPath, [npmCli, "run", "build"], project);
+const bundleFiles = (await readdir(resolve(project, "dist/assets"))).filter(name => name.endsWith(".js"));
+const bundleSizes = await Promise.all(bundleFiles.map(async name => ({ name, bytes: (await stat(resolve(project, "dist/assets", name))).size })));
+assert(bundleSizes.some(file => file.name.startsWith("vendor-"))); assert(bundleSizes.some(file => file.name.startsWith("hmi-runtime-")));
+assert(bundleSizes.every(file => file.bytes < 500_000), "Split the smoke bundle instead of hiding the chunk warning");
+const notices = await readFile(resolve(project, "dist/THIRD_PARTY_NOTICES.md"), "utf8");
+assert(notices.includes("react") && notices.includes("MIT"), "Include client dependency notices in the generated build");
+result.bundles = bundleSizes;
 result.checks.push("generated package dependencies installed; generated project TypeScript and production build");
 if (process.argv.includes("--browser")) {
   const { chromium } = await import(process.env.FRAMECRAFT_PLAYWRIGHT_MODULE ? pathToFileURL(process.env.FRAMECRAFT_PLAYWRIGHT_MODULE).href : "playwright");
@@ -152,6 +159,26 @@ if (process.argv.includes("--browser")) {
     assert.deepEqual(errors, []); assert.deepEqual(consoleErrors, []); assert(!requests.some(url => url.includes("/_framecraft/plc/")), "No PLC traffic allowed in this smoke");
     await context.close();
     result.checks.push("real browser and router; mobile viewport; route persistence; return to device selection; actual generated source edit and HMR; no page errors or PLC traffic");
+    const production = await preview({ root: project, configLoader: "runner", logLevel: "error", preview: { host: "127.0.0.1", port: 0, strictPort: false } });
+    try {
+      const builtContext = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
+      try {
+        const builtPage = await builtContext.newPage();
+        builtPage.on("pageerror", error => errors.push(error.message));
+        builtPage.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
+        builtPage.on("request", request => requests.push(request.url()));
+        await builtPage.goto(production.resolvedUrls.local[0]); await builtPage.locator('[data-panel-start-mode="mobile"]').click();
+        await builtPage.locator('[data-panel-layout="mobile"]').waitFor();
+        await builtPage.locator('[data-section="settings"]').click(); await builtPage.getByText("Valori di prova", { exact: true }).click();
+        await builtPage.waitForURL(/page-2001/); assert.equal(await builtPage.locator('[data-panel-layout="mobile"]').count(), 1);
+        await builtPage.locator('[data-panel-return]').click(); await builtPage.locator('[data-panel-start-mode="desktop"]').click();
+        await builtPage.locator('[data-panel-layout="desktop"]').waitFor();
+        assert.equal(await builtPage.locator('[data-panel-header-field="speed"]').textContent(), "—");
+        assert.deepEqual(errors, []); assert.deepEqual(consoleErrors, []); assert(!requests.some(url => url.includes("/_framecraft/plc/")));
+        await builtPage.screenshot({ path: resolve(artifacts, "generated-production.png"), fullPage: true });
+        result.checks.push("production build opened in real browser: vendor/runtime chunks load without errors; routes and device return work; no PLC traffic");
+      } finally { await builtContext.close(); }
+    } finally { await new Promise((yes, no) => production.httpServer.close(error => error ? no(error) : yes())); }
   } finally { await browser?.close(); await vite.close(); }
 } else result.checks.push("browser not requested; run with --browser and Playwright available");
 await writeFile(resolve(artifacts, "result.json"), JSON.stringify(result, null, 2));

@@ -4,6 +4,7 @@ import { guidedTemplateBehaviors } from "./templateBehavior";
 import { newPanelHeader } from "./panelHeader";
 import panelHeaderSource from "./panelHeader.ts?raw";
 import panelHeaderUiSource from "../../templates/panel-header.tsx?raw";
+import panelViteConfigSource from "../../templates/panel-vite.config.ts?raw";
 import { defaultHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig } from "./hmiAlarmSummary";
 import { serializePlcCatalog } from "./plcVariables";
 import { blueprintPages, folderGroupRoutes, menuPagePlan, sectionBlueprint, submenuPlacement, type MenuIconId, type SettingsProgram } from "./hmiSectionMenu";
@@ -1807,7 +1808,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "framecraft.templates.json", content: JSON.stringify({ version: 1, scope: "bundled-template-base-contracts", templates: [...standardPageTemplates.map(template => template.behavior), ...Object.values(guidedTemplateBehaviors())] }, null, 2) + "\n" },
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },
     { path: "src/framecraftGateway.ts", content: gatewayClientSource.replaceAll('"../../runtime/', '"../runtime/') },
-    { path: "vite.config.ts", content: "import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\nimport { framecraftGatewayProxy } from './runtime/vite-gateway.mjs';\nconst proxy = framecraftGatewayProxy();\nexport default defineConfig({ plugins: [react()], server: { host: '127.0.0.1', proxy }, preview: { host: '127.0.0.1', proxy } });\n" },
+    { path: "vite.config.ts", content: panelViteConfigSource },
     { path: "src/framecraftScriptRuntime.ts", content: hmiScriptRuntimeModuleSource() },
     { path: "src/framecraftHmiFlashing.ts", content: hmiFlashingRuntimeSource() },
     { path: "src/framecraftScriptModules.ts", content: hmiScriptModulesRuntimeSource() },

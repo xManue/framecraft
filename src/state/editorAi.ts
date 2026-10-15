@@ -1,12 +1,13 @@
 import { create } from "zustand";
 import { codexProvider, type AiAccount, type AiModel, type AiProvider } from "../ai/aiProvider";
 import { aiEditContext, aiPrompt, aiProposalSchema, parseAiProposal, type AiEditSnapshot, type AiMode, type AiProposal } from "../ai/aiProposal";
-import { interviewConfig, interviewPrompt, newAiInterview, type AiInterview } from "../ai/aiInterview";
+import { interviewConfig, interviewPrompt, newAiInterview, sameInterviewAiContext, type AiInterview } from "../ai/aiInterview";
 import { delegationQuestions, resolveInterviewDelegation } from "../ai/aiDelegation";
 
 interface AiState {
   interview: AiInterview;
   resolvedInterview?: AiInterview;
+  proposalUpdatedLocally: boolean;
   updateInterview(interview: AiInterview): void;
   resetInterview(): void;
   open: boolean; mode: AiMode; provider: AiProvider; account?: AiAccount; models: AiModel[]; model: string;
@@ -17,9 +18,20 @@ interface AiState {
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 let accountRefresh = 0;
 export const useEditorAi = create<AiState>((set, get) => ({
-  interview: newAiInterview(),
-  updateInterview(interview) { if (get().busy) return; const keys = new Set(delegationQuestions(interview).map(question => question.key)); set({ interview: { ...interview, delegated: interview.delegated?.filter(key => keys.has(key)) }, proposal: undefined, resolvedInterview: undefined, error: undefined }); },
-  resetInterview() { if (get().busy) return; set({ interview: newAiInterview(), proposal: undefined, resolvedInterview: undefined, error: undefined }); },
+  interview: newAiInterview(), proposalUpdatedLocally: false,
+  updateInterview(interview) {
+    const current = get(); if (current.busy) return;
+    const keys = new Set(delegationQuestions(interview).map(question => question.key));
+    const next = { ...interview, delegated: interview.delegated?.filter(key => keys.has(key)) };
+    if (current.mode === "create" && current.proposal?.mode === "create" && current.proposal.project && !current.proposal.questions.length && sameInterviewAiContext(current.interview, next)) {
+      try {
+        const resolvedInterview = resolveInterviewDelegation(next, current.proposal.decisions ?? []), config = interviewConfig(resolvedInterview);
+        set({ interview: next, proposal: { ...current.proposal, project: config }, resolvedInterview, proposalUpdatedLocally: true, error: undefined }); return;
+      } catch { /* Invalid local mappings must not keep an approvable proposal. */ }
+    }
+    set({ interview: next, proposal: undefined, resolvedInterview: undefined, proposalUpdatedLocally: false, error: undefined });
+  },
+  resetInterview() { if (get().busy) return; set({ interview: newAiInterview(), proposal: undefined, resolvedInterview: undefined, proposalUpdatedLocally: false, error: undefined }); },
   open: false, mode: "create", provider: codexProvider, models: [], model: "", busy: false, connecting: false, checking: false,
   show(mode) { if (get().busy || get().mode === mode) { set({ open: true }); return; } set({ open: true, mode, proposal: undefined, snapshot: undefined, error: undefined }); },
   close() { set({ open: false }); },
@@ -58,7 +70,7 @@ export const useEditorAi = create<AiState>((set, get) => ({
       const context = snapshot ? aiEditContext(snapshot) : undefined;
       const interview = get().interview;
       const input = mode === "create" ? interviewPrompt(interview) : aiPrompt(mode, prompt, context);
-      set({ busy: true, requestId, snapshot, proposal: undefined, resolvedInterview: undefined, error: undefined });
+      set({ busy: true, requestId, snapshot, proposal: undefined, resolvedInterview: undefined, proposalUpdatedLocally: false, error: undefined });
       const result = await provider.propose({ requestId, model, prompt: input, schema: aiProposalSchema });
       if (get().requestId !== requestId || result.requestId !== requestId || get().provider !== provider) return;
       const proposal = parseAiProposal(result.text, mode);

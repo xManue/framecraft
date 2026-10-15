@@ -30,6 +30,27 @@ beforeEach(() => {
   useEditorGuidance.setState({ ...initialGuidance, helpOpen: false }, true);
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
+
+it("riprende la creazione dopo un’immagine non disponibile senza perdere il piano né richiedere ancora l’AI", async () => {
+  const interview = newAiInterview(); interview.machineName = "Linea test"; interview.spec.purpose = "Monitoraggio"; interview.step = "review";
+  interview.spec.pages = [{ ...newGuidedPage(0), title: "Vista", image: "C:/synthetic/old.svg", imageDeferred: false, itemsDeferred: true }];
+  interview.followups = [{ question: "Disposizione?", answer: "Compatta" }];
+  const config = interviewConfig(interview);
+  useEditorAi.setState({ interview, account: { connected: true, email: null, plan: null }, model: "test-model", proposal: { ...plan, version: 1, mode: "create", project: config, decisions: [] }, resolvedInterview: resolveInterviewDelegation(interview) });
+  const create = vi.spyOn(useEditorStore.getState(), "createStandardProject").mockImplementation(async () => { useEditorStore.setState({ lastError: "Immagine non disponibile: sceglila di nuovo. Destinazione invariata." }); });
+  vi.spyOn(desktopBridge, "chooseImage").mockResolvedValue("C:/synthetic/new.svg");
+  await mount(); await act(async () => button("Approva, scegli cartella e crea 1 pagine").click());
+  expect(container.textContent).toContain("Destinazione invariata"); expect(useEditorAi.getState().proposal).toBeDefined();
+  await act(async () => useEditorAi.setState(state => ({ interview: { ...state.interview, step: "page-1" } })));
+  await act(async () => button("Sostituisci immagine").click());
+  expect(useEditorAi.getState().interview.followups).toEqual(interview.followups);
+  expect(useEditorAi.getState().proposal?.project?.guided?.pages[0].image).toBe("C:/synthetic/new.svg");
+  await act(async () => useEditorAi.setState(state => ({ interview: { ...state.interview, step: "review" } })));
+  expect(container.textContent).toContain("Non è stata inviata un’altra richiesta");
+  await act(async () => button("Approva, scegli cartella e crea 1 pagine").click());
+  expect(create).toHaveBeenCalledTimes(2); expect(create.mock.calls[1][0].guided?.pages[0].image).toBe("C:/synthetic/new.svg");
+  expect(fake.propose).not.toHaveBeenCalled();
+});
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); useEditorAi.setState(initialAi, true); useEditorStore.setState(initialEditor, true); useEditorShortcuts.setState(initialSettings, true); useEditorGuidance.setState(initialGuidance, true); });
 const button = (text: string) => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes(text) || button.getAttribute("aria-label")?.includes(text))!;
 function Frame() { useAiAccountEvents(); const open = useEditorShortcuts(state => state.open), helpOpen = useEditorGuidance(state => state.helpOpen); return createElement(Fragment, null, open && createElement(EditorSettings), helpOpen && createElement(EditorHelp), createElement(AiAssistant)); }

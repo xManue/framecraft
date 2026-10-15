@@ -1223,11 +1223,53 @@ fn close_project(state: State<RuntimeState>) -> Result<(), String> {
 fn create_vite_project(root: String, files: Option<Vec<NewProjectFile>>) -> Result<ProjectAnalysis, String> {
     let root_path = PathBuf::from(root);
     let generated_files = files.unwrap_or_default();
+    if !root_path.is_absolute() || root_path.file_name().is_none() {
+        return Err("Scegli una cartella di progetto con un percorso completo.".into());
+    }
+    let parent = root_path.parent().ok_or("Scegli una cartella di progetto valida.")?;
+    if !parent.is_dir() { return Err("La cartella superiore non esiste. Scegli una posizione disponibile.".into()); }
+    ensure_empty_project_target(&root_path)?;
+    for file in &generated_files {
+        let relative = Path::new(&file.path);
+        if file.path.trim().is_empty() || relative.is_absolute() || relative.components().any(|part| matches!(part, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_))) {
+            return Err(format!("File del nuovo progetto fuori dalla cartella consentita: {}. Nessun file creato.", file.path));
+        }
+        if let Some(source) = &file.source {
+            if !Path::new(source).is_file() { return Err(format!("Una delle immagini scelte non è più disponibile: {source}. Sceglila di nuovo e riprova; la cartella di destinazione è invariata.")); }
+        }
+    }
+    let staging = tempfile::Builder::new().prefix(".framecraft-create-").tempdir_in(parent)
+        .map_err(|error| format!("Non posso preparare il progetto nella posizione scelta. Controlla i permessi di scrittura della cartella superiore. Dettagli: {error}"))?;
+    let name: String = root_path.file_name().unwrap_or_default().to_string_lossy().chars()
+        .map(|character| if character.is_ascii_alphanumeric() { character.to_ascii_lowercase() } else { '-' }).take(80).collect();
+    let name = name.split('-').filter(|part| !part.is_empty()).collect::<Vec<_>>().join("-");
+    let name = if name.is_empty() { "hmi-panel" } else { &name };
+    populate_vite_project(staging.path(), generated_files, name)
+        .and_then(|_| analyze(staging.path()).map(|_| ()))
+        .map_err(|error| format!("Il progetto non è stato creato: {error}. Chiudi eventuali programmi che bloccano le immagini, controlla spazio e permessi, poi riprova. La destinazione è invariata, senza file parziali."))?;
+    ensure_empty_project_target(&root_path)?;
+    fs::rename(staging.path(), &root_path).map_err(|error| format!("Non posso completare il progetto nella cartella scelta. La destinazione è invariata: verifica permessi e supporto alla rinomina delle cartelle, oppure scegli un disco locale. Dettagli: {error}"))?;
+    let _published = staging.keep();
+    analyze(&root_path)
+}
+
+fn ensure_empty_project_target(root: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(root) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Non posso controllare la cartella scelta. Verifica accesso e permessi. Dettagli: {error}")),
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() { return Err("Scegli una cartella normale, non un file o un collegamento.".into()); }
+            if fs::read_dir(root).map_err(|error| error.to_string())?.next().is_some() {
+                return Err("Per creare un progetto scegli una cartella vuota. I file già presenti non sono stati modificati.".into());
+            }
+            Ok(())
+        }
+    }
+}
+
+fn populate_vite_project(root_path: &Path, generated_files: Vec<NewProjectFile>, name: &str) -> Result<(), String> {
     let is_generated_project = !generated_files.is_empty();
-    fs::create_dir_all(&root_path).map_err(|error| error.to_string())?;
-    if fs::read_dir(&root_path).map_err(|error| error.to_string())?.next().is_some() { return Err("Per creare un progetto scegli una cartella vuota.".into()); }
     fs::create_dir_all(root_path.join("src/pages")).map_err(|error| error.to_string())?;
-    let name = root_path.file_name().unwrap_or_default().to_string_lossy().to_lowercase().replace(' ', "-");
     fs::write(root_path.join("package.json"), format!(r#"{{
   "name": "{name}", "private": true, "version": "0.0.0", "type": "module",
   "scripts": {{ "dev": "vite", "build": "tsc -b && vite build" }},
@@ -1261,8 +1303,11 @@ fn create_vite_project(root: String, files: Option<Vec<NewProjectFile>>) -> Resu
         }
     }
     let marker = WorkingCopyMarker { original_workspace: None, created_at: SystemTime::now().duration_since(UNIX_EPOCH).map_err(|error| error.to_string())?.as_secs() };
+    if !["tsx", "jsx", "ts", "js"].iter().any(|extension| root_path.join(format!("src/App.{extension}")).is_file()) {
+        return Err("La generazione non contiene la pagina iniziale src/App. Prepara una nuova proposta o usa un template completo".into());
+    }
     fs::write(root_path.join(".framecraft-workspace.json"), serde_json::to_string_pretty(&marker).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
-    analyze(&root_path)
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1677,6 +1722,77 @@ mod tests {
         assert!(!root.join("src/pages/HomePage.tsx").exists());
         assert!(!root.join("src/pages/AboutPage.tsx").exists());
         assert!(fs::read_to_string(root.join("index.html")).unwrap().contains("width=device-width"));
+    }
+
+    #[test]
+    fn created_project_failure_does_not_publish_partial_folder() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("retry-panel");
+        let files = vec![NewProjectFile { path: "public/machine.svg".into(), content: String::new(), source: Some(path_string(&directory.path().join("missing.svg"))) }];
+        assert!(create_vite_project(path_string(&root), Some(files)).is_err());
+        assert!(!root.exists(), "A missing asset must not leave a half-created project");
+        let image = directory.path().join("missing.svg"); fs::write(&image, "synthetic image").unwrap();
+        let retry = vec![NewProjectFile { path: "src/App.tsx".into(), content: "export const App = () => <main />;".into(), source: None }, NewProjectFile { path: "public/machine.svg".into(), content: String::new(), source: Some(path_string(&image)) }];
+        create_vite_project(path_string(&root), Some(retry)).unwrap();
+        assert_eq!(fs::read_to_string(root.join("public/machine.svg")).unwrap(), "synthetic image");
+    }
+
+    #[test]
+    fn created_project_failure_keeps_chosen_empty_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("empty-panel"); fs::create_dir(&root).unwrap();
+        let files = vec![NewProjectFile { path: "src".into(), content: "conflicts with a directory".into(), source: None }];
+        assert!(create_vite_project(path_string(&root), Some(files)).is_err());
+        assert!(root.is_dir()); assert!(fs::read_dir(&root).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn created_project_invalid_path_does_not_touch_destination() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("new-panel"); let outside = directory.path().join("outside.ts");
+        fs::write(&outside, "user data").unwrap();
+        let files = vec![NewProjectFile { path: "../outside.ts".into(), content: "must not overwrite".into(), source: None }];
+        assert!(create_vite_project(path_string(&root), Some(files)).is_err());
+        assert!(!root.exists()); assert_eq!(fs::read_to_string(outside).unwrap(), "user data");
+    }
+
+    #[test]
+    fn created_project_accepts_empty_directory_and_protects_existing_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("existing-empty"); fs::create_dir(&root).unwrap();
+        create_vite_project(path_string(&root), None).unwrap();
+        let package = fs::read(root.join("package.json")).unwrap();
+        assert!(create_vite_project(path_string(&root), None).is_err());
+        assert_eq!(fs::read(root.join("package.json")).unwrap(), package);
+    }
+
+    #[test]
+    fn created_project_incomplete_entrypoint_is_not_published() {
+        let directory = tempfile::tempdir().unwrap(); let root = directory.path().join("incomplete");
+        let files = vec![NewProjectFile { path: "panel.json".into(), content: "{}".into(), source: None }];
+        assert!(create_vite_project(path_string(&root), Some(files)).unwrap_err().contains("src/App"));
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn created_project_package_name_accepts_human_folder_names() {
+        let directory = tempfile::tempdir().unwrap(); let root = directory.path().join("Pannello È (test) #1");
+        create_vite_project(path_string(&root), None).unwrap();
+        let package: serde_json::Value = serde_json::from_str(&fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
+        assert_eq!(package["name"], "pannello-test-1"); assert_eq!(package["private"], true);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn created_project_locked_image_keeps_destination_empty() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("locked-image-panel"); fs::create_dir(&root).unwrap();
+        let image = directory.path().join("machine.svg"); fs::write(&image, "synthetic image").unwrap();
+        let _locked = fs::OpenOptions::new().read(true).share_mode(0).open(&image).unwrap();
+        let files = vec![NewProjectFile { path: "public/machine.svg".into(), content: String::new(), source: Some(path_string(&image)) }];
+        assert!(create_vite_project(path_string(&root), Some(files)).is_err());
+        assert!(fs::read_dir(&root).unwrap().next().is_none());
     }
 
     #[test]
