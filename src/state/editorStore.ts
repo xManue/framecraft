@@ -37,6 +37,7 @@ import { matchLineEndings } from "../source-parser/lineEndings";
 import { categorySection, newPageCategory, readPageCategories, withCategoryPage, withPageCategories, type PageCategory } from "../core/pageNavigation";
 import { previewFullscreenController, type PreviewFullscreenSession } from "../preview/previewFullscreen";
 import { aiSelectionKey, prepareAiEdits, type AiEditSnapshot, type AiProposal } from "../ai/aiProposal";
+import { prepareAiPageFiles } from "../ai/aiPageEdits";
 
 type LeftPanel = "project" | "components" | "pages" | "plc" | "resources" | "scripts" | "faceplates" | "logs" | "page";
 /** How large the whole editor is drawn. A panel is built standing at a machine as often as sitting
@@ -271,6 +272,7 @@ export interface EditorState {
   createProject: () => Promise<void>;
   createStandardProject: (config: StandardProjectConfig) => Promise<void>;
   applyAiProposal: (snapshot: AiEditSnapshot, proposal: AiProposal, accepted: string[]) => Promise<boolean>;
+  applyAiPageProposal: (snapshot: AiEditSnapshot, proposal: AiProposal, accepted: string[]) => Promise<boolean>;
   openProject: (root: string) => Promise<void>;
   removeRecentProject: (root: string) => void;
   closeProject: () => Promise<void>;
@@ -892,6 +894,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
   /** Writes a file that is not the one open in the editor: the data a list is built from regularly
    * lives in its own module. History still records it, so Ctrl+Z brings it back. */
   async function applyToFile(file: string, next: string, valid = () => true, expected?: string, pushHistory = true) {
+    const project = get().project;
     if (!valid()) return false;
     refuseIfGuided();
     await refuseIfTemplateOwns(file);
@@ -902,6 +905,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     next = matchLineEndings(next);
     if (previous === next) return true;
     if (desktopAvailable) await desktopBridge.writeFile(file, next);
+    if (!valid() || get().project !== project) return false;
     if (pushHistory) set((state) => ({ history: [...state.history, { file, source: previous }].slice(-100), future: [] }));
     runtime.listBindingRequest = undefined;
     runtime.projectIndexRequest = undefined;
@@ -1419,6 +1423,31 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         finally { runtime.projectOpening = false; }
         await get().openProject(root);
       } catch (error) { set({ loading: false }); reportError(error); }
+    },
+    async applyAiPageProposal(snapshot, proposal, accepted) {
+      const state = get(), project = state.project, open = state.document;
+      if (!project || project.root !== snapshot.root || !snapshot.targets) throw new Error("Il progetto della proposta non è più aperto.");
+      if (state.dirty) throw new Error("Salva prima la bozza: le modifiche AI non la sovrascrivono.");
+      const files = prepareAiPageFiles(snapshot, proposal, accepted);
+      if (files.length !== 1) throw new Error("Approva un file alla volta, con confronto e Annulla separati.");
+      const file = files[0];
+      if (!insideProject(project.root, file.file) || file.file.replaceAll("\\", "/").split("/").includes("..")) throw new Error("La proposta non può modificare file fuori dal progetto.");
+      if (file.source === file.previous) throw new Error("Le modifiche scelte non cambiano la pagina.");
+      const current = () => get().project === project && get().document === open && !get().dirty && !get().loading && !get().reloadRecovery && get().interactionMode === "edit";
+      if (!current()) throw new Error("L’editor è cambiato: riprova la revisione della pagina.");
+      const disk = await desktopBridge.readFile(file.file);
+      if (!current() || disk !== file.previous || open?.file === file.file && open.source !== file.previous) throw new Error("Il file è cambiato dopo l’allegato: allega di nuovo la pagina senza sovrascrivere modifiche recenti.");
+      let applied;
+      try {
+        // Only the validated text/style transformations above can use the guided-page path.
+        applied = await declared(async () => open?.file === file.file ? !!await applySource(file.source, true, open, current) : await applyToFile(file.file, file.source, current, file.previous));
+      } catch (error) {
+        if (get().project === project && get().document?.source === file.source && open) set({ document: open, selectedId: state.selectedId, dirty: state.dirty });
+        throw error;
+      }
+      if (!applied) throw new Error("L’editor è cambiato durante il salvataggio: verifica il file prima di riprovare.");
+      reportSuccess(`Pagina aggiornata dall’AI: ${accepted.length} modifiche in ${fileName(file.file)}. Un solo Annulla per questo file.`);
+      return true;
     },
     async applyAiProposal(snapshot, proposal, accepted) {
       const state = get(), document = snapshot.document;

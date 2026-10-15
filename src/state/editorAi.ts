@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { codexProvider, type AiAccount, type AiModel, type AiProvider } from "../ai/aiProvider";
-import { aiEditContext, aiPrompt, aiProposalSchema, parseAiProposal, type AiEditSnapshot, type AiMode, type AiProposal } from "../ai/aiProposal";
+import { aiEditContext, aiPrompt, aiProposalSchema, aiPageProposalSchema, parseAiProposal, type AiEditSnapshot, type AiMode, type AiProposal } from "../ai/aiProposal";
 import { interviewConfig, interviewPrompt, newAiInterview, sameInterviewAiContext, type AiInterview } from "../ai/aiInterview";
 import { delegationQuestions, resolveInterviewDelegation } from "../ai/aiDelegation";
 import { aiChatPrompt, type AiChatContext } from "../ai/aiChat";
@@ -11,7 +11,8 @@ interface AiState {
   proposalUpdatedLocally: boolean;
   updateInterview(interview: AiInterview): void;
   resetInterview(): void;
-  open: boolean; mode: AiMode; provider: AiProvider; account?: AiAccount; models: AiModel[]; model: string;
+  open: boolean; mode: AiMode; provider: AiProvider; account?: AiAccount; models: AiModel[]; model: string; reasoningEffort: string;
+  setModel(model: string): void; setReasoningEffort(effort: string): void;
   busy: boolean; connecting: boolean; checking: boolean; accountError?: string; error?: string; proposal?: AiProposal; snapshot?: AiEditSnapshot; requestId?: string;
   show(mode: AiMode): void; close(): void; connect(): Promise<void>; refresh(): Promise<void>; logout(): Promise<void>;
   propose(prompt: string, snapshot?: AiEditSnapshot, chat?: AiChatContext): Promise<void>; cancel(): Promise<void>;
@@ -33,7 +34,9 @@ export const useEditorAi = create<AiState>((set, get) => ({
     set({ interview: next, proposal: undefined, resolvedInterview: undefined, proposalUpdatedLocally: false, error: undefined });
   },
   resetInterview() { if (get().busy) return; set({ interview: newAiInterview(), proposal: undefined, resolvedInterview: undefined, proposalUpdatedLocally: false, error: undefined }); },
-  open: false, mode: "create", provider: codexProvider, models: [], model: "", busy: false, connecting: false, checking: false,
+  open: false, mode: "create", provider: codexProvider, models: [], model: "", reasoningEffort: "", busy: false, connecting: false, checking: false,
+  setModel(model) { if (get().busy || !get().models.some(item => item.id === model)) return; set({ model, reasoningEffort: "" }); },
+  setReasoningEffort(reasoningEffort) { if (get().busy || reasoningEffort && !get().models.find(item => item.id === get().model)?.supportedReasoningEfforts?.some(item => item.reasoningEffort === reasoningEffort)) return; set({ reasoningEffort }); },
   show(mode) { if (get().busy || get().mode === mode) { set({ open: true }); return; } set({ open: true, mode, proposal: undefined, snapshot: undefined, error: undefined }); },
   close() { set({ open: false }); },
   async refresh() {
@@ -45,7 +48,9 @@ export const useEditorAi = create<AiState>((set, get) => ({
       set({ account });
       const models = account.connected ? await provider.models() : [];
       if (!current()) return;
-      set({ account, models, model: models.some(model => model.id === get().model) ? get().model : (models.find(model => model.default) ?? models[0])?.id ?? "" });
+      const model = models.some(model => model.id === get().model) ? get().model : (models.find(model => model.default) ?? models[0])?.id ?? "";
+      const reasoningEffort = models.find(item => item.id === model)?.supportedReasoningEfforts?.some(item => item.reasoningEffort === get().reasoningEffort) ? get().reasoningEffort : "";
+      set({ account, models, model, reasoningEffort });
     } catch (error) { if (current()) set({ accountError: message(error), account: undefined, models: [], model: "" }); }
     finally { if (current()) set({ checking: false }); }
   },
@@ -58,7 +63,7 @@ export const useEditorAi = create<AiState>((set, get) => ({
   async logout() {
     if (get().busy || get().connecting || get().checking) return;
     ++accountRefresh; set({ checking: true, accountError: undefined });
-    try { await get().provider.logout(); ++accountRefresh; set({ account: undefined, models: [], model: "", proposal: undefined }); }
+    try { await get().provider.logout(); ++accountRefresh; set({ account: undefined, models: [], model: "", reasoningEffort: "", proposal: undefined }); }
     catch (error) { set({ accountError: message(error) }); }
     finally { set({ checking: false }); }
   },
@@ -68,11 +73,13 @@ export const useEditorAi = create<AiState>((set, get) => ({
     const requestId = crypto.randomUUID();
     try {
       if (mode === "edit" && !snapshot && !chat) throw new Error("Seleziona l’elemento da modificare; l’AI non sceglie un altro oggetto al tuo posto.");
-      const context = snapshot ? aiEditContext(snapshot) : undefined;
+      const context = snapshot && !chat ? aiEditContext(snapshot) : undefined;
       const interview = get().interview;
       const input = mode === "create" ? interviewPrompt(interview) : chat ? aiChatPrompt(prompt, snapshot, chat) : aiPrompt(mode, prompt, context);
       set({ busy: true, requestId, snapshot, proposal: undefined, resolvedInterview: undefined, proposalUpdatedLocally: false, error: undefined });
-      const result = await provider.propose({ requestId, model, prompt: input, schema: aiProposalSchema });
+      const reasoningEffort = get().reasoningEffort;
+      if (reasoningEffort && !get().models.find(item => item.id === model)?.supportedReasoningEfforts?.some(item => item.reasoningEffort === reasoningEffort)) throw new Error("Il ragionamento scelto non è disponibile per questo modello. Scegli il predefinito o aggiorna il catalogo.");
+      const result = await provider.propose({ requestId, model, ...(reasoningEffort ? { reasoningEffort } : {}), prompt: input, schema: snapshot?.targets ? aiPageProposalSchema : aiProposalSchema });
       if (get().requestId !== requestId || result.requestId !== requestId || get().provider !== provider) return;
       const proposal = parseAiProposal(result.text, mode);
       if (mode === "edit" && !snapshot && proposal.operations.length) throw new Error("La risposta propone modifiche senza un elemento allegato. Nessuna modifica applicata: allega la destinazione e riprova.");

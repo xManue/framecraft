@@ -353,7 +353,7 @@ context before sending.
 Install [Codex CLI](https://developers.openai.com/codex/cli) separately; Framecraft does not install
 it or reuse the desktop Codex login. It launches the [App Server](https://learn.chatgpt.com/docs/app-server)
 in an isolated app-data profile, without shell, agents, file edits, tools or PLC execution.
-Only approved page/item labels, validated choices and counts go to AI; technical requirement
+During creation only approved page/item labels, validated choices and counts go to AI; technical requirement
 details, images/catalogues/addresses/tag names stay local.
 Further AI questions get separate answer fields. You review and explicitly create the plan;
 the generator rejects AI changes to the chosen machine/layout/categories. Closing the wizard
@@ -396,22 +396,61 @@ Open **Chat AI** in the activity bar or **Pannello → Chat AI · Codex** for th
 Right-click an element in **Modifica**, or a page in the page list, and choose **Aggiungi alla chat**.
 The composer also offers **Elemento selezionato** and **Pagina aperta**. References are explicit
 chips that can be removed: selecting another object does not silently replace the destination.
-Only one element can be the edit destination; up to five pages can be attached as name/route/file
-references, not full page contents. Without an element, the assistant can answer and ask questions,
-but cannot return applicable operations. Page-wide/multi-file edits remain unimplemented.
+Attach one element (including its children) or up to five pages. Pages supply actual source-derived
+hierarchy, literal texts, supported inline styles and editable/dynamic flags, not just navigation names.
+The assistant can propose a graphical restyling across these objects without requesting screenshots
+or individual selections. Component/state page boundaries are respected when declared. Imported
+component internals, stylesheet values and live Runtime visuals are not inferred. Large literal text
+runs are explicitly abbreviated in page rows; a single-element attachment retains its full text.
 
 Messages and the unsent draft survive closing/reopening the chat during the same project session.
 They are not saved to disk and are cleared on project close/change or account logout/change.
-**Nuova chat** requires confirmation and never edits the panel. Each send requires consent for the
-request, the attached context and up to the latest 12 completed messages; long historical messages
-are abbreviated to 4,000 characters and the history has a 32 KiB UTF-8 budget. A conversation stops
-at 40 messages with a clear new-chat instruction. Oversized context is rejected before inference.
+**Nuova chat** requires confirmation and never edits the panel. It keeps **Indicazioni da ricordare**
+(up to 2,000 characters, session-only); project/account changes clear these too. Use them for important
+constraints that must be sent every time, instead of relying on automatic recall of an old message.
+Authorize request/context transmission **once per project/account session**. The checkbox remains
+set across messages, changed attachments/notes, closing the chat and **Nuova chat**. Uncheck it to
+revoke authorization and cancel an in-flight request; switching project/account clears it. No consent
+is restored from disk. Applying a proposal always needs separate approval.
+A conversation stops at 40 messages with a clear new-chat instruction.
+
+Choose **Modello** and **Ragionamento** directly above the chat (also available in AI settings).
+Options come from the Codex model catalog, including its supported/default reasoning efforts;
+changing model restores its default. The native adapter sends an optional `effort` on `turn/start`,
+and rejects an unsupported override. The catalog is not a guarantee of account entitlement.
+Protocol reference: [Codex App Server](https://learn.chatgpt.com/docs/app-server).
+
+The context compiler sends compact JSON with a stable rules prefix. The element is included once,
+an element already included in an attached page is not sent twice. Single-element graphical requests
+use a template ID/version/purpose reference instead of the full behavioural contract; page scopes
+keep deduplicated template contracts. Requests, fixed notes or the last user turn
+involving operations, alarms, dynamic data or permissions keep the full contract. Editable capabilities
+and dynamic/Runtime flags are always preserved. This is selection, not compression of source code.
+
+Up to three recent user/assistant exchanges are retained together (9,000-byte history budget), plus
+up to two relevant older user excerpts selected locally by keyword overlap (1,800 bytes). No extra AI
+summarization, embeddings, tokenizer API call or account credits are used for this selection. Original
+messages stay in the chat; omissions and abbreviations are visible, and the exact technical payload
+is inspectable. This recall is not a guarantee of remembering every old instruction: pin important ones.
+Proposal-only changes and previously applied changes are distinct; only approved operations are
+recorded as applied. Historical application is not proof of the current file after Undo.
+
+The prompt plus serialized output schema is capped at **24,000 UTF-8 bytes**. Current request,
+fixed notes and prepared destination are never silently shortened to fit: oversized mandatory input is rejected before
+inference and the draft is kept. Optional history is abbreviated or excluded explicitly. The displayed
+token estimate is a local bytes/3 heuristic, not a model tokenizer, context-window limit, account quota,
+exact usage or bill. It excludes provider framing, internal instructions, reasoning and response tokens.
+Design references: [OpenAI context management](https://developers.openai.com/cookbook/examples/agents_sdk/session_memory)
+and [token counting guidance](https://developers.openai.com/api/docs/guides/token-counting).
 No full source, expression/handler bodies, real tag mappings or credentials are gathered for the
 request. Text explicitly typed into chat and literal element content can be sent: never enter secrets.
-Account/model settings and the initial guided creation wizard are unchanged.
+Account connection stays in settings; the initial guided creation wizard is unchanged.
 
-The assistant can propose text/style on the attached element, including supported geometry,
-with partial approval and a single undo/redo. Only the latest completed proposal can be applied;
+The assistant can propose text, supported geometry and bounded layout properties (spacing, flex/grid,
+alignment) on attached objects. Page operations address exact local target IDs; unknown targets and
+duplicate fields, including aliases through different attachments, are rejected. Partial approval is
+available **per file**, with one undo/redo per file; multi-file proposals are not atomic transactions.
+Only the latest completed proposal can be applied;
 cancelled/late replies cannot become new proposals in another project. Its review
 shows Italian property names and before/after source values. Unset values are labelled as CSS/
 component-dependent, not guessed as live readings. Unchanged operations are excluded; duplicate
@@ -426,10 +465,12 @@ Styles hidden or overridden by JSX attribute spreads remain Inspector-only.
 The two schematic drawings follow only the selected operations, using a common scale and bounded
 dimensions. They never mount the project's JSX, load its images, execute handlers or evaluate PLC
 data. This is not a live-panel preview: external CSS, images, placement, stacking and Runtime
-behaviour must be checked in the actual panel. Attachments remain pinned to their approved snapshot;
-selection/page/instance/scope changes block application until the original destination is selected
-again, or reattached and reproposed if the file changed. Selection metadata is checked again during
-file reading. After a successful edit only the same destination attachment is refreshed locally.
+behaviour must be checked in the actual panel. Attachments remain pinned to their approved snapshot.
+Single-element edits require the same selection/instance/scope; page edits target attached source
+objects independently of the current selection and can update a non-open file without navigating.
+Both refuse stale source, unsaved drafts and project changes. A successful edit refreshes affected
+attachments locally. A native compare-and-swap save is still pending: external writes racing after
+the final read are not covered by an atomic filesystem guarantee.
 Broader AI operations and whole-project semantic impact analysis remain on the roadmap.
 The native adapter needs a new desktop build; local CLI protocol 0.159.2 and synthetic/targeted
 tests are not proof of a successful real-account login or inference on a production installation.

@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { AiProjectChat } from "../src/editor/AiProjectChat";
 import { AiContextMenu } from "../src/editor/AiContextMenu";
-import { aiChatContext, aiChatPrompt, aiElementAttachment, aiPageAttachment } from "../src/ai/aiChat";
+import { aiChatContext, aiChatPrompt, aiElementAttachment, aiPageAttachment, prepareAiChat, aiChatInputBudget } from "../src/ai/aiChat";
 import { useEditorAi } from "../src/state/editorAi";
 import { installAiChatProjectScope, useEditorAiChat } from "../src/state/editorAiChat";
 import { useEditorStore } from "../src/state/editorStore";
@@ -29,17 +29,18 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   provider = { id: "test", connect: vi.fn(), models: vi.fn(), login: vi.fn(), logout: vi.fn(), subscribe: vi.fn(), cancel: vi.fn(), propose: vi.fn(async request => ({ requestId: request.requestId, text: JSON.stringify(plan()) })) };
   useEditorAi.setState({ ...initialAi, mode: "edit", open: true, provider, account: { connected: true, email: "synthetic@example.invalid", plan: null }, model: "synthetic-model", busy: false, checking: false }, true);
-  useEditorAiChat.setState(initialChat, true); seed();
+  useEditorAiChat.setState(initialChat, true); seed(); useEditorAiChat.getState().setAllowed(true);
 });
 afterEach(async () => { cleanup?.(); cleanup = undefined; await act(async () => root?.unmount()); root = undefined; host?.remove(); host = undefined; document.querySelectorAll("iframe").forEach(frame => frame.remove()); vi.restoreAllMocks(); useEditorAi.setState(initialAi, true); useEditorAiChat.setState(initialChat, true); useEditorStore.setState(initialEditor, true); });
-async function mount(component: ComponentType = AiProjectChat) { host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root!.render(createElement(StrictMode, null, createElement(component)))); }
+async function mount(component: ComponentType = AiProjectChat) { useEditorAiChat.getState().setAllowed(false); host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root!.render(createElement(StrictMode, null, createElement(component)))); }
 const button = (name: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent?.includes(name) || node.getAttribute("aria-label") === name)!;
 async function type(value: string) { await act(async () => { const area = document.querySelector("textarea")!; Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(area, value); area.dispatchEvent(new Event("input", { bubbles: true })); }); }
 it("allega pagine solo come metadati e non invia percorsi locali, sorgente, tag o handler", () => {
   const selected = seed(), element = aiElementAttachment(selected), attachedPage = aiPageAttachment(selected.root, page);
   const prompt = aiChatPrompt("Migliora il testo", selected, aiChatContext([element, attachedPage], []));
   expect(prompt).toContain("Overview.tsx"); expect(prompt).toContain("Prima"); expect(prompt).not.toMatch(/private-machine|PRIVATE_TAG|privatePlcWrite|secret/);
-  expect(JSON.parse(prompt).attachments[1].context).toEqual({ name: "Sinottico", route: "/overview", file: "Overview.tsx" });
+  expect(JSON.parse(prompt).attachments).toEqual([{ kind: "page", context: { name: "Sinottico", route: "/overview", file: "Overview.tsx" } }]);
+  expect(prompt.split('"text":"Prima"')).toHaveLength(2);
 });
 it("mantiene un solo elemento destinazione e la selezione del canvas non cambia gli allegati", () => {
   const state = useEditorAiChat.getState(); state.attachSelection(); state.attachPage(page);
@@ -96,7 +97,7 @@ it("limita pagine e cronologia, escludendo i tentativi falliti", async () => {
   const pages = Array.from({ length: 6 }, (_, index) => ({ ...page, id: `page-${index}` })); useEditorStore.setState({ pages });
   pages.forEach(page => useEditorAiChat.getState().attachPage(page)); expect(useEditorAiChat.getState().attachments).toHaveLength(5); expect(useEditorAiChat.getState().error).toContain("fino a 5");
   const messages = Array.from({ length: 15 }, (_, index) => ({ id: String(index), role: "user" as const, text: String(index) }));
-  expect(aiChatContext([], [...messages, { id: "failed", role: "user", text: "non inviare ancora", status: "error" }]).history).toHaveLength(12);
+  expect(aiChatContext([], [...messages, { id: "failed", role: "user", text: "non inviare ancora", status: "error" }]).history).toHaveLength(15);
   expect(aiChatContext([], [...messages, { id: "failed", role: "user", text: "non inviare ancora", status: "error" }]).history.at(-1)?.text).toBe("14");
   useEditorAiChat.setState({ messages: Array.from({ length: 39 }, (_, index) => ({ id: String(index), role: "user", text: "tentativo" })), draft: "Una domanda" });
   await useEditorAiChat.getState().send(); expect(provider.propose).not.toHaveBeenCalled(); expect(useEditorAiChat.getState().messages).toHaveLength(39);
@@ -104,7 +105,7 @@ it("limita pagine e cronologia, escludendo i tentativi falliti", async () => {
 it("limita la cronologia anche in byte UTF-8 e non invia allegati eccessivi", () => {
   const messages = Array.from({ length: 12 }, (_, index) => ({ id: String(index), role: "user" as const, text: "界".repeat(8000) }));
   const context = aiChatContext([], messages);
-  expect(new TextEncoder().encode(JSON.stringify(context.history)).length).toBeLessThanOrEqual(32_000);
+  expect(prepareAiChat("Una domanda", undefined, context).inputBytes).toBeLessThanOrEqual(aiChatInputBudget);
   expect(() => aiChatPrompt("x", undefined, { history: [], attachments: [{ kind: "page", label: "x", context: "x".repeat(100_000) }] })).toThrow("troppo grande");
   const selected = seed(); selected.document = parseSource(selected.document.file, `export const Page=()=> <button>${"x".repeat(33_000)}</button>`); selected.selectedId = Object.keys(selected.document.nodes)[0];
   expect(() => aiElementAttachment(selected)).toThrow("troppo testo");
@@ -118,13 +119,42 @@ it("propone senza scrivere e applica soltanto dopo conferma, una proposta preced
   expect(apply).not.toHaveBeenCalled(); const latest = useEditorAiChat.getState().messages.at(-1)!;
   await useEditorAiChat.getState().apply(latest.id, ["text"]); expect(apply).toHaveBeenCalledExactlyOnceWith(latest.snapshot, latest.proposal, ["text"]);
   expect(useEditorAiChat.getState().messages.at(-1)?.status).toBe("applied");
+  expect(useEditorAiChat.getState().messages.at(-1)?.appliedOperations).toEqual(["text"]);
 });
-it("mostra una chat non modale e revoca il consenso se cambiano testo o allegati", async () => {
+it("invia indicazioni fissate e la stessa richiesta tecnica mostrata nell’anteprima", async () => {
+  const chat = useEditorAiChat.getState(); chat.setContextNotes("Italiano. Non cambiare gli allarmi."); chat.attachSelection(); chat.setDraft("Cambia testo");
+  await chat.send();
+  const sent = vi.mocked(provider.propose).mock.calls[0][0].prompt;
+  expect(JSON.parse(sent).notes).toBe("Italiano. Non cambiare gli allarmi."); expect(sent).toBe(useEditorAiChat.getState().prepared?.prompt);
+  expect(useEditorAiChat.getState().prepared?.inputBytes).toBeLessThanOrEqual(aiChatInputBudget);
+});
+it("Nuova chat conserva le indicazioni, cambio progetto e account le eliminano", () => {
+  cleanup = installAiChatProjectScope(); const chat = useEditorAiChat.getState();
+  chat.setContextNotes("Italiano"); chat.clear(); expect(useEditorAiChat.getState().contextNotes).toBe("Italiano");
+  useEditorStore.setState({ project: { root: "C:/different-project" } as never }); expect(useEditorAiChat.getState().contextNotes).toBe("");
+  useEditorAiChat.getState().setContextNotes("Nota privata"); useEditorAi.setState({ account: undefined }); expect(useEditorAiChat.getState().contextNotes).toBe("");
+});
+it("blocca richieste troppo grandi prima dell’inferenza e conserva tutti gli input", async () => {
+  const document = parseSource("C:/private-machine/src/Overview.tsx", `export const Page=()=> <button>${"X".repeat(18_000)}</button>`);
+  useEditorStore.setState({ document, selectedId: Object.values(document.nodes)[0].id });
+  const chat = useEditorAiChat.getState(); chat.attachSelection(); chat.setDraft("Y".repeat(8000)); chat.setContextNotes("Z".repeat(2000)); await chat.send();
+  expect(provider.propose).not.toHaveBeenCalled(); expect(useEditorAiChat.getState().messages).toEqual([]); expect(useEditorAiChat.getState().error).toContain("non vengono tagliate"); expect(useEditorAiChat.getState().draft).toHaveLength(8000);
+  await mount(); expect(button("Invia").disabled).toBe(true); expect(globalThis.document.querySelector('[aria-label="Peso del contesto"]')?.textContent).toContain("Contesto da ridurre");
+});
+it("mostra il peso e conserva il consenso quando cambiano le indicazioni fissate", async () => {
+  await mount(); await type("Ciao"); const checkbox = document.querySelector<HTMLInputElement>(".ai-consent input")!;
+  await act(async () => checkbox.click()); expect(checkbox.checked).toBe(true);
+  const notes = document.querySelector<HTMLTextAreaElement>(".ai-context textarea")!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(notes, "Usa italiano"); notes.dispatchEvent(new Event("input", { bubbles: true })); });
+  expect(checkbox.checked).toBe(true); expect(useEditorAiChat.getState().contextNotes).toBe("Usa italiano"); expect(document.querySelector('[aria-label="Peso del contesto"]')?.textContent).toContain("token stimati");
+  expect(provider.propose).not.toHaveBeenCalled();
+});
+it("mostra una chat non modale e conserva il consenso se cambiano testo o allegati", async () => {
   await mount(); expect(document.querySelector('[aria-modal="true"]')).toBeNull(); expect(document.querySelector('[role="log"]')).not.toBeNull();
   await type("Ciao"); const checkbox = document.querySelector<HTMLInputElement>(".ai-consent input")!;
   await act(async () => checkbox.click()); expect(button("Invia").disabled).toBe(false);
-  await act(async () => button("Pagina aperta").click()); expect(checkbox.checked).toBe(false);
-  await act(async () => checkbox.click()); await type("Ciao ancora"); expect(checkbox.checked).toBe(false);
+  await act(async () => button("Pagina aperta").click()); expect(checkbox.checked).toBe(true);
+  await type("Ciao ancora"); expect(checkbox.checked).toBe(true);
   expect(provider.propose).not.toHaveBeenCalled();
 });
 it("invia dalla chat con consenso, visualizza risposta e mantiene il focus libero", async () => {
@@ -153,6 +183,36 @@ it("il menu di pagina allega la pagina senza aprirla né inviare una richiesta",
   await act(async () => window.dispatchEvent(new CustomEvent("framecraft:page-chat-menu", { detail: { page, x: 20, y: 30 } })));
   expect(document.querySelector('[role="menu"]')).not.toBeNull(); await act(async () => button("Aggiungi pagina alla chat").click());
   expect(useEditorAiChat.getState().attachments[0].kind).toBe("page"); expect(provider.propose).not.toHaveBeenCalled();
+});
+it("autorizza più invii nella stessa sessione, chiusura e Nuova chat non richiedono nuove spunte", async () => {
+  await mount(); await type("Prima richiesta"); const consent = document.querySelector<HTMLInputElement>(".ai-consent input")!;
+  await act(async () => consent.click()); await act(async () => button("Invia").click()); expect(consent.checked).toBe(true);
+  await type("Seconda richiesta"); await act(async () => button("Invia").click()); expect(provider.propose).toHaveBeenCalledTimes(2);
+  await act(async () => { useEditorAi.getState().close(); useEditorAi.getState().show("edit"); useEditorAiChat.getState().clear(); }); expect(consent.checked).toBe(true);
+  await act(async () => consent.click()); await type("Non inviare"); await useEditorAiChat.getState().send(); expect(provider.propose).toHaveBeenCalledTimes(2);
+});
+it("revocare il consenso interrompe la richiesta corrente e ignora la risposta tardiva", async () => {
+  let finish!: (value: { requestId: string; text: string }) => void;
+  vi.mocked(provider.propose).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const chat = useEditorAiChat.getState(); chat.setDraft("Richiesta in corso"); const pending = chat.send(), requestId = useEditorAi.getState().requestId!;
+  chat.setAllowed(false); finish({ requestId, text: JSON.stringify(plan()) }); await pending;
+  expect(provider.cancel).toHaveBeenCalledWith(requestId); expect(useEditorAiChat.getState().allowed()).toBe(false); expect(useEditorAiChat.getState().messages).toHaveLength(1); expect(useEditorAiChat.getState().messages[0].status).toBe("cancelled");
+});
+it("il consenso non passa a un altro progetto o account", () => {
+  cleanup = installAiChatProjectScope(); expect(useEditorAiChat.getState().allowed()).toBe(true);
+  useEditorAi.setState({ account: { connected: true, email: "different@example.invalid", plan: null } }); expect(useEditorAiChat.getState().allowed()).toBe(false);
+  useEditorAiChat.getState().setAllowed(true); useEditorStore.setState({ project: { root: "C:/different" } as never }); expect(useEditorAiChat.getState().allowed()).toBe(false);
+});
+it("mostra solo modello e ragionamenti del catalogo e inoltra la scelta al provider", async () => {
+  useEditorAi.setState({ models: [{ id: "synthetic-model", name: "Modello A", default: true, defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "Equilibrato" }, { reasoningEffort: "high", description: "Più approfondito" }] }, { id: "other-model", name: "Modello B", default: false, supportedReasoningEfforts: [{ reasoningEffort: "low", description: "Rapido" }] }] });
+  await mount(); const model = document.querySelector<HTMLSelectElement>("#chat-ai-model")!, reasoning = document.querySelector<HTMLSelectElement>("#chat-ai-reasoning")!;
+  expect([...reasoning.options].map(option => option.value)).toEqual(["", "medium", "high"]);
+  await act(async () => { reasoning.value = "high"; reasoning.dispatchEvent(new Event("change", { bubbles: true })); });
+  await type("Una domanda"); await act(async () => document.querySelector<HTMLInputElement>(".ai-consent input")!.click()); await act(async () => button("Invia").click());
+  expect(provider.propose).toHaveBeenCalledWith(expect.objectContaining({ model: "synthetic-model", reasoningEffort: "high" }));
+  await act(async () => { model.value = "other-model"; model.dispatchEvent(new Event("change", { bubbles: true })); }); expect(reasoning.value).toBe(""); expect([...reasoning.options].map(option => option.value)).toEqual(["", "low"]);
+  await act(async () => useEditorAi.getState().setReasoningEffort("ultra")); expect(useEditorAi.getState().reasoningEffort).toBe("");
+  await type("Seconda domanda"); await act(async () => button("Invia").click()); expect(vi.mocked(provider.propose).mock.calls[1][0]).not.toHaveProperty("reasoningEffort");
 });
 it("il menu ignora messaggi di altre finestre e origini diverse dall’iframe", async () => {
   const frame = document.createElement("iframe"); frame.title = "Project preview"; frame.src = "http://localhost:4173/panel"; document.body.append(frame);

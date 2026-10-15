@@ -6,12 +6,12 @@ import { updateInlineStyles, updateStaticText } from "../source-parser/transform
 import { standardPageTemplates } from "../core/hmiPageTemplates";
 import { guidedTemplateBehavior, type TemplateBehavior } from "../core/templateBehavior";
 import type { AiDecision } from "./aiDelegation";
-import { inspectElementValues } from "../source-parser/inspectElementValues";
+import { inspectElementValues, type createElementValueInspector } from "../source-parser/inspectElementValues";
 
 export type AiMode = "create" | "edit";
-export interface AiOperation { id: string; type: "text" | "style"; property: string | null; value: string }
+export interface AiOperation { id: string; type: "text" | "style"; property: string | null; value: string; target?: string | null }
 export interface AiProposal { version: 1; mode: AiMode; summary: string; questions: string[]; warnings: string[]; provenance: string[]; project: StandardProjectConfig | null; operations: AiOperation[]; decisions?: AiDecision[] }
-export interface AiEditSnapshot { root: string; document: EditorDocument; selectedId: string; selectionKey?: string }
+export interface AiEditSnapshot { root: string; document: EditorDocument; selectedId: string; selectionKey?: string; targets?: Record<string, AiEditSnapshot>; label?: string; pageId?: string }
 export function aiSelectionKey(info: RenderedInfo | undefined, scope: string) {
   return JSON.stringify({ scope, index: info?.instanceIndex ?? 0, count: info?.instanceCount ?? 1, list: info?.listIndex ?? null, locked: info?.locked ?? false });
 }
@@ -26,7 +26,7 @@ export function aiRuntimeProperties(node: EditorNode) {
     return { properties: Object.keys(mapping).filter(key => bindings.some(binding => binding && typeof binding === "object" && mapping[key].includes(binding.property))), unknown: false };
   } catch { return { properties: Object.keys(mapping), unknown: true }; }
 }
-export const aiStyleNames = ["color", "backgroundColor", "borderColor", "borderRadius", "fontSize", "fontWeight", "width", "height", "left", "top", "zIndex", "opacity", "rotate"] as const;
+export const aiStyleNames = ["color", "backgroundColor", "borderColor", "borderRadius", "fontSize", "fontWeight", "width", "height", "left", "top", "zIndex", "opacity", "rotate", "display", "position", "padding", "margin", "gap", "rowGap", "columnGap", "textAlign", "alignItems", "justifyContent", "flexDirection", "flexWrap", "gridTemplateColumns", "borderWidth", "borderStyle"] as const;
 const styleNames: readonly string[] = aiStyleNames;
 const textSchema = { type: "string" };
 const listSchema = { type: "array", items: textSchema };
@@ -42,6 +42,7 @@ const properties = {
   decisions: { type: "array", items: { type: "object", properties: { key: textSchema, value: textSchema }, required: ["key", "value"], additionalProperties: false } },
 };
 export const aiProposalSchema = { type: "object", properties, required: Object.keys(properties), additionalProperties: false };
+export const aiPageProposalSchema = { ...aiProposalSchema, properties: { ...properties, operations: { type: "array", items: { ...properties.operations.items, properties: { ...properties.operations.items.properties, target: textSchema }, required: [...properties.operations.items.required, "target"] } } } };
 
 function object(value: unknown, keys: readonly string[]) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some(key => !keys.includes(key))) throw new Error("La proposta contiene campi non supportati. Nessuna modifica applicata.");
@@ -54,6 +55,9 @@ function text(value: unknown, maximum = 2000) {
 function list(value: unknown) { if (!Array.isArray(value) || value.length > 24) throw new Error("Elenco della proposta non valido."); return value.map(item => text(item)); }
 export function aiStyleValue(property: string, value: string) {
   if (!styleNames.includes(property)) throw new Error("L’AI non può applicare questa proprietà.");
+  const choices: Record<string, string[]> = { display: ["block", "inline-block", "flex", "inline-flex", "grid", "none"], position: ["static", "relative", "absolute", "fixed", "sticky"], textAlign: ["left", "right", "center", "start", "end", "justify"], alignItems: ["start", "end", "center", "stretch", "baseline", "flex-start", "flex-end"], justifyContent: ["start", "end", "center", "space-between", "space-around", "space-evenly", "flex-start", "flex-end"], flexDirection: ["row", "column", "row-reverse", "column-reverse"], flexWrap: ["wrap", "nowrap", "wrap-reverse"], borderStyle: ["none", "solid", "dashed", "dotted", "double"] };
+  if (choices[property]) { if (!choices[property].includes(value)) throw new Error("Valore grafico non supportato."); return value; }
+  if (property === "gridTemplateColumns") { if (!/^repeat\(([1-9]|[1-4][0-9]),\s*(1fr|minmax\(0,\s*1fr\))\)$/.test(value) && !/^(\d{1,4}(px|fr|%)\s*){1,8}$/.test(value)) throw new Error("Colonne della griglia non valide."); return value; }
   if (["color", "backgroundColor", "borderColor"].includes(property)) {
     if (!/^(#[0-9a-f]{3,4}|#[0-9a-f]{6}|#[0-9a-f]{8}|transparent|currentColor)$/i.test(value)) throw new Error("Colore non valido: usa esadecimale o trasparente.");
     return value;
@@ -61,6 +65,11 @@ export function aiStyleValue(property: string, value: string) {
   if (property === "opacity") { const number = Number(value); if (!value.trim() || !Number.isFinite(number) || number < 0 || number > 1) throw new Error("Opacità fuori intervallo."); return number; }
   if (property === "zIndex" || property === "fontWeight") { const number = Number(value); if (!value.trim() || !Number.isInteger(number) || Math.abs(number) > 10_000 || property === "fontWeight" && (number < 100 || number > 900)) throw new Error("Numero non valido nella proprietà."); return number; }
   if (property === "rotate") { if (!/^-?\d{1,3}(\.\d+)?deg$/.test(value)) throw new Error("Rotazione non valida."); return value; }
+  if (["padding", "margin"].includes(property)) {
+    const parts = value.trim().split(/\s+/);
+    if (!parts.length || parts.length > 4 || parts.some(part => !(property === "margin" && part === "auto") && (!/^-?\d{1,4}(\.\d+)?(px|%|em|rem)?$/.test(part) || Math.abs(parseFloat(part)) > 4096 || property === "padding" && parseFloat(part) < 0))) throw new Error("Spaziatura non valida: usa da una a quattro misure semplici.");
+    return parts.length === 1 && /^-?\d+(\.\d+)?$/.test(parts[0]) ? Number(parts[0]) : parts.join(" ");
+  }
   if (!/^-?\d{1,4}(\.\d+)?(px|%|em|rem)?$/.test(value) || Math.abs(parseFloat(value)) > 4096 || (!["left", "top"].includes(property) && parseFloat(value) < 0)) throw new Error("Dimensione o posizione non valida.");
   return /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;
 }
@@ -71,16 +80,17 @@ export function parseAiProposal(input: unknown, mode: AiMode): AiProposal {
     catch (error) { if (error instanceof SyntaxError) throw new Error("Codex ha restituito una proposta incompleta o non leggibile. Nessun file modificato: prepara di nuovo la proposta."); throw error; }
   }
   const item = object(source, Object.keys(properties));
-  if (item.version !== 1 || item.mode !== mode || !Array.isArray(item.operations) || item.operations.length > 32) throw new Error("La proposta non corrisponde all’operazione richiesta.");
+  if (item.version !== 1 || item.mode !== mode || !Array.isArray(item.operations) || item.operations.length > 128) throw new Error("La proposta non corrisponde all’operazione richiesta.");
   const operations = item.operations.map(raw => {
-    const operation = object(raw, ["id", "type", "property", "value"]), id = text(operation.id, 64), value = text(operation.value, 512);
+    const operation = object(raw, ["id", "type", "property", "value", "target"]), id = text(operation.id, 64), value = text(operation.value, 512);
+    if (operation.target !== undefined && operation.target !== null && !/^[a-zA-Z0-9_-]{1,64}$/.test(text(operation.target, 64))) throw new Error("Destinazione della modifica non valida.");
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id) || !["text", "style"].includes(String(operation.type))) throw new Error("Operazione della proposta non valida.");
     if (operation.type === "text") { if (operation.property !== null) throw new Error("Il testo non può modificare proprietà o comportamenti."); }
     else aiStyleValue(text(operation.property, 64), value);
-    return { id, type: operation.type, property: operation.property, value } as AiOperation;
+    return { id, type: operation.type, property: operation.property, value, ...(operation.target != null ? { target: operation.target } : {}) } as AiOperation;
   });
   if (new Set(operations.map(operation => operation.id)).size !== operations.length) throw new Error("Operazioni duplicate nella proposta.");
-  if (new Set(operations.map(operation => operation.type === "text" ? "text" : `style:${operation.property}`)).size !== operations.length) throw new Error("La proposta modifica più volte la stessa proprietà. Richiedi una proposta con una sola modifica per campo.");
+  if (new Set(operations.map(operation => `${operation.target ?? "selection"}:${operation.type === "text" ? "text" : `style:${operation.property}`}`)).size !== operations.length) throw new Error("La proposta modifica più volte la stessa proprietà. Richiedi una proposta con una sola modifica per campo.");
   let project: StandardProjectConfig | null = null;
   if (mode === "create" && item.project !== null) {
     const config = object(item.project, ["machineName", "layout", "sections", "settingsProgram"]), machineName = text(config.machineName, 120).trim();
@@ -97,7 +107,7 @@ export function parseAiProposal(input: unknown, mode: AiMode): AiProposal {
   if (!provenance.every(source => allowed.includes(source))) throw new Error("La proposta cita una fonte che non è stata fornita o approvata.");
   return { version: 1, mode, summary: text(item.summary), questions: list(item.questions), warnings: list(item.warnings), provenance, project, operations, decisions };
 }
-export function aiEditContext(snapshot: AiEditSnapshot) {
+export function aiEditContext(snapshot: AiEditSnapshot, inspector?: ReturnType<typeof createElementValueInspector>) {
   const node = snapshot.document.nodes[snapshot.selectedId]; if (!node) throw new Error("Seleziona un elemento prima di chiedere una modifica.");
   let current: EditorNode | undefined = node, template: TemplateBehavior | undefined;
   const seen = new Set<string>();
@@ -106,7 +116,7 @@ export function aiEditContext(snapshot: AiEditSnapshot) {
     if (typeof id === "string" && current.props["data-hmi-template-version"] === 1) { template = id.startsWith("guided:") ? guidedTemplateBehavior(id.slice(7)) : standardPageTemplates.find(item => item.behavior.id === id)?.behavior; break; }
     current = current.parentId ? snapshot.document.nodes[current.parentId] : undefined;
   }
-  const inspected = inspectElementValues(snapshot.document.source, node.source, styleNames);
+  const inspected = inspector ? inspector(node.source, styleNames) : inspectElementValues(snapshot.document.source, node.source, styleNames);
   return { file: snapshot.document.file.split(/[\\/]/).at(-1), ...(template ? { template } : {}), element: { type: node.type, text: inspected.text.kind === "literal" ? inspected.text.value : undefined,
     styles: Object.fromEntries(Object.entries(inspected.styles).filter(([, value]) => value.kind === "literal").map(([key, value]) => [key, value.value])),
     dynamicProperties: [...(inspected.text.kind === "dynamic" ? ["text"] : []), ...Object.entries(inspected.styles).filter(([, value]) => value.kind === "dynamic").map(([key]) => key)],
@@ -119,6 +129,7 @@ export function aiPrompt(mode: AiMode, request: string, context?: ReturnType<typ
 }
 export function prepareAiEdits(snapshot: AiEditSnapshot, proposal: AiProposal, accepted: readonly string[]): string {
   proposal = parseAiProposal(proposal, "edit");
+  if (proposal.operations.some(operation => operation.target)) throw new Error("La proposta ha più destinatari: usa la revisione della pagina, non la modifica singola.");
   if (proposal.mode !== "edit" || proposal.questions.length) throw new Error("Rispondi alle domande della proposta prima di applicarla.");
   let source = snapshot.document.source;
   const original = snapshot.document.nodes[snapshot.selectedId]; if (!original) throw new Error("L’elemento della proposta non è più disponibile.");

@@ -93,16 +93,26 @@ serializzato; la chiusura forzata può perdere le ultime modifiche non ancora co
 L’assistenza durante le modifiche è una chat laterale continua: barra attività o Pannello → Chat AI.
 Tasto destro su elemento/pagina per allegare, oppure comandi nel compositore. Bozza e messaggi
 restano nella sessione del progetto; chiusura/cambio progetto e cambio account li svuotano.
-Fino a cinque pagine come riferimenti nome/percorso/file, senza sorgente né contenuto dedotto;
-un solo elemento destinazione, fissato esplicitamente e non sostituito da altre selezioni.
-Consenso a ogni invio per richiesta, allegati e fino agli ultimi dodici messaggi completati,
-con testi lunghi abbreviati e budget UTF-8. Nuova chat con conferma, annullamento e isolamento
+Fino a cinque pagine con struttura, testi e stili reali ricavati dal sorgente locale; anche i figli
+di un contenitore allegato sono modificabili. I target sono precisi e validati, non solo nomi pagina.
+Gli interni di componenti importati e il rendering Runtime non vengono dedotti.
+Consenso valido per la sessione progetto/account, revocabile e non persistito: copre richieste,
+allegati, indicazioni fissate e cronologia selezionata. Nessuna spunta a ogni messaggio:
+fino a tre scambi recenti e due estratti utente precedenti pertinenti, senza altre chiamate AI.
+JSON compatto e destinazione una sola volta, budget 24.000 byte UTF-8 per prompt più schema;
+stima locale token non equivalente al consumo Codex. Indicazioni fissate sempre integre,
+conservate con Nuova chat ma non dopo cambio progetto/account. Esclusioni e abbreviazioni
+visibili, richiesta tecnica ispezionabile; nessuna garanzia di memoria perfetta dei messaggi vecchi.
+Nuova chat con conferma, annullamento e isolamento
 delle risposte tardive. Nessun salvataggio persistente delle conversazioni o invio automatico.
-Oggi applica solo testo e stile/geometria dell’elemento allegato. Revisione con valori prima/dopo, nomi italiani, no-op
+Modello e ragionamento selezionabili nella chat dal catalogo Codex; predefinito senza override,
+livelli validati anche dal backend. Collegamento account solo nelle impostazioni.
+Oggi applica testo e stile/geometria/layout dei nodi allegati. Revisione con valori prima/dopo, nomi italiani, no-op
 esclusi e schema indicativo aggiornato dalle sole modifiche accettate. Valori dinamici o basi
 ancora pilotate dal Runtime non sono preselezionati: la sostituzione o il cambio del fallback
 richiede una scelta esplicita. Lo schema non monta JSX, immagini o eventi del progetto.
-Controllo di sorgente/selezione/istanza/ambito e un unico Annulla/Ripeti; il testo JSX è codificato
+Controllo del sorgente e del progetto; per il singolo elemento anche selezione/istanza/ambito.
+Conferma e un unico Annulla/Ripeti per file, non una transazione multi-file; il testo JSX è codificato
 per evitare che diventi codice eseguibile. Non è una preview completa della pagina né un’analisi
 delle dipendenze e dei comportamenti di tutto il progetto.
 Non equivale a completamento AI: restano generazione completa di funzioni operative, mapping
@@ -211,7 +221,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-EDIT-06 | Suggerimenti non invasivi | DA FARE | Accessibilità, copertura lingue, performance e coerenza standard |
 | AI-EDIT-07 | Spiegazione del progetto | DA FARE | Risponde usando dipendenze reali e link all'oggetto interessato |
 | AI-EDIT-08 | Generazione e manutenzione test | DA FARE | Aggiorna i test insieme alla funzione proposta |
-| AI-EDIT-09 | Chat con anteprima del diff | PARZIALE | Chat laterale di sessione, cronologia recente, allegati espliciti via tasto destro, revisione locale e accettazione parziale; restano storico persistente, revisioni ramificate, contesto completo pagine e piani multi-file |
+| AI-EDIT-09 | Chat con anteprima del diff | PARZIALE | Chat di sessione, contesto compatto di pagine reali, modello/ragionamento, consenso di sessione e approvazione per file; restano storico persistente, revisioni ramificate, rendering/dipendenze complete e transazioni multi-file |
 | AI-EDIT-10 | Cronologia delle proposte AI | DA FARE | Autore, input, diff, esito e rollback leggibili |
 
 ## 6. Esperienza utente
@@ -220,7 +230,7 @@ e collaudo della connessione restano possibili senza AI.
 |---|---|---|---|
 | AI-UX-01 | Scelta iniziale Manuale / Con AI | DA FARE | Default chiaro e modificabile, senza pressione sull'utente |
 | AI-UX-02 | Pannello AI richiudibile | DA FARE | Il canvas non dipende dalla sua presenza |
-| AI-UX-03 | Contesto esplicito | DA FARE | Mostrare selezione, pagina, file e documenti inviati |
+| AI-UX-03 | Contesto esplicito | PARZIALE | Allegati espliciti, payload ispezionabile, note fissate e budget locale prompt/schema; esclusioni e stima token visibili. Restano documenti/immagini completi e conteggio esatto provider |
 | AI-UX-04 | Preview visuale e diff semantico | PARZIALE | Schema indicativo del singolo elemento e confronto base prima/dopo; preview reale di pagina/progetto e contesto Runtime ancora da implementare |
 | AI-UX-05 | Accettazione parziale | PARZIALE | Scelta per proprietà sul selezionato, con dinamici non preselezionati; restano gruppi logici trasversali e dipendenze tra operazioni |
 | AI-UX-06 | Domande quando manca un dato critico | DA FARE | Chiedere invece di indovinare tag, soglie o permessi |

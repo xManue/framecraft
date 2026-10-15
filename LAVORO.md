@@ -4415,6 +4415,58 @@ Verifiche del 5 ottobre 2026:
   collaudo IPC desktop/macchina né una nuova inferenza. Restano storico persistente, pagine complete,
   transazioni multi-file e commissioning. Nessuna nuova dipendenza o dato macchina pubblicato.
 
+### 129. Contesto chat compatto e verificabile (2026-10-15)
+
+- Compilatore locale unico per anteprima e invio: JSON senza rientri, regole stabili e più brevi,
+  destinazione una sola volta invece che duplicata negli allegati, riferimenti pagina deduplicati.
+  Scheda template ridotta a riferimento ID/versione/scopo per sola grafica; contratto completo se
+  richiesta, indicazioni fissate o ultimo scambio coinvolgono funzionamento, dinamici o permessi.
+  Capacità modificabili, flag dinamici e proprietà Runtime restano sempre nel contesto.
+- Fino a tre scambi recenti mantenuti insieme, massimo 9.000 byte; fino a due estratti utente vecchi
+  pertinenti per sovrapposizione di parole, massimo 1.800 byte. Nessun riassunto AI o embedding:
+  nessuna inferenza nascosta. Estratti e testi abbreviati sono marcati, messaggi originali conservati.
+  Il recupero lessicale non garantisce memoria perfetta: i vincoli importanti vanno fissati.
+- “Indicazioni da ricordare” facoltative fino a 2.000 caratteri: sempre inviate integre con consenso,
+  conservate con Nuova chat, eliminate al cambio progetto/account e non persistite su disco.
+  Anteprima leggibile con scambi/richiami/esclusioni e richiesta tecnica effettiva espandibile.
+- Budget rigido di 24.000 byte UTF-8 per prompt più schema; richiesta, indicazioni e destinazione
+  non sono troncate per farle entrare. Se troppo grandi, invio bloccato prima dell’inferenza e bozza
+  conservata. Token mostrati come stima euristica locale byte/3, non quota o misura esatta Codex;
+  framing, istruzioni interne, ragionamento e risposta provider non sono misurati da questo valore.
+- Cronologia delle proposte distinta dalle applicazioni: solo gli ID accettati entrano nei dettagli
+  delle operazioni applicate, con stato storico esplicito (Annulla può aver cambiato il file).
+- Riferimenti ufficiali consultati: gestione per scambi e conteggio token OpenAI (link nel README).
+  Nessun cambio provider, nuova dipendenza, chiamata AI reale o dato macchina pubblicato.
+
+### 130. Pagine allegate modificabili, modello/ragionamento e consenso di sessione (2026-10-15)
+
+- La pagina allegata non è più un riferimento di navigazione: invia gerarchia, testi letterali,
+  stili supportati e flag modificabili/dinamici da sorgente. Un contenitore comprende i figli;
+  l’elemento già incluso nella pagina non viene duplicato. Target locali espliciti, controllo di
+  componenti/stato pagina e schede template deduplicate. Nessun corpo handler/script, valore PLC,
+  percorso assoluto o credenziale raccolto automaticamente. Componenti importati opachi, nessuna
+  lettura inventata del CSS o del rendering Runtime; testi pagina molto lunghi marcati come ridotti.
+- Restyling su più nodi: testi, geometria, spaziature, flex/grid e allineamento con valori validati.
+  Gli eventi e binding restano presenti. Confronto prima/dopo e scelta parziale; conferma e un solo
+  Annulla per file, anche per pagina allegata non aperta senza cambiare il canvas. Non è una
+  transazione multi-file atomica. Sorgente cambiato, bozza, target sconosciuti/duplicati e progetto
+  diverso bloccano la scrittura. Il CAS nativo contro scritture esterne concorrenti resta da fare.
+- Selettori Modello e Ragionamento visibili in chat e nelle impostazioni: solo catalogo Codex,
+  livelli supportati/default reali, override opzionale `effort` in `turn/start` verificato anche
+  nel backend. Fonte: https://learn.chatgpt.com/docs/app-server. Il catalogo non garantisce il piano
+  account; serve nuova compilazione desktop per il cambiamento dell’adapter nativo.
+- Consenso all’invio una volta nella sessione progetto/account, conservato cambiando testo,
+  note/allegati, chiudendo la chat e con Nuova chat. Revoca annulla l’invio in corso e ignora la
+  risposta tardiva; cambio progetto/account lo elimina. Nessuna persistenza o applicazione AI
+  automatica: confermare una proposta resta un’operazione distinta.
+- Verifiche sulla copia isolata di solo codice: 168 test mirati (8 file AI/parser), tipi TypeScript
+  e build Vite riusciti. Adapter nativo: 7 test passati, unica prova AI reale ignorata. Browser
+  separato a 375/768/1024/1440 px: menu sul target esatto, pagina reale, modello/ragionamento,
+  due invii con un solo consenso, riapertura/bozza, approvazione e Annulla/Ripeti; nessun overflow
+  o errore console. Provider/letture sintetici, nessun IPC o inferenza reale dichiarati.
+  Artefatti locali: `.hmi-preview/ai-pages-public-1792070209582/.hmi-preview/ai-context-ui/result.json`.
+  Nessuna nuova dipendenza, chiamata AI reale o dato macchina pubblicato; roadmap ancora aperta.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

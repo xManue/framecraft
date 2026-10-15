@@ -1,5 +1,6 @@
 import { LoaderCircle, LogIn, LogOut, RefreshCw } from "lucide-react";
 import { useEditorAi } from "../state/editorAi";
+import { AiModelControls } from "./AiModelControls";
 
 export function AiAccountSettings() {
   const ai = useEditorAi(), blocked = ai.busy || ai.connecting || ai.checking;
@@ -19,7 +20,7 @@ export function AiAccountSettings() {
       <p>Il profilo di Framecraft è separato da quello dell’app Codex. Non serve una chiave API condivisa e nessuna credenziale viene salvata nel progetto HMI.</p>
     </fieldset>
     <fieldset><legend>Modello da usare</legend>
-      <label htmlFor="editor-ai-model">Modello Codex</label><select id="editor-ai-model" value={ai.model} disabled={!ai.account?.connected || !ai.models.length || blocked} onChange={event => useEditorAi.setState({ model: event.target.value })}><option value="">Scegli un modello</option>{ai.models.map(model => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</select>
+      <AiModelControls prefix="editor-ai" />
       <p>Viene usato nelle richieste AI per questo account. Il catalogo non garantisce accesso a ogni modello: si applicano disponibilità e limiti del tuo piano.</p>
     </fieldset>
     <fieldset><legend>Installazione e privacy</legend>

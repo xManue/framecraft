@@ -29,11 +29,17 @@ function styleValue(expression: unknown, key: string, depth = 0): ElementValue {
   }
   return result;
 }
-export function inspectElementValues(source: string, ref: Pick<SourceRef, "start" | "end">, properties: readonly string[]) {
-  let element: JSXElement | undefined;
+export function createElementValueInspector(source: string) {
+  const elements = new Map<string, JSXElement>();
   traverse(parse(source, { sourceType: "module", plugins: ["jsx", "typescript", "decorators-legacy", "classProperties"] }), {
-    JSXElement(path) { if (path.node.start === ref.start && path.node.end === ref.end) { element = path.node; path.stop(); } },
+    JSXElement(path) { elements.set(`${path.node.start}:${path.node.end}`, path.node); },
   });
+  return (ref: Pick<SourceRef, "start" | "end">, properties: readonly string[]) => inspectNodeValues(elements.get(`${ref.start}:${ref.end}`), properties);
+}
+export function inspectElementValues(source: string, ref: Pick<SourceRef, "start" | "end">, properties: readonly string[]) {
+  return createElementValueInspector(source)(ref, properties);
+}
+function inspectNodeValues(element: JSXElement | undefined, properties: readonly string[]) {
   if (!element) throw new Error("L’elemento è cambiato: richiedi una nuova proposta.");
   const target = element as JSXElement, attributes = target.openingElement.attributes;
   const styles = attributes.filter(item => item.type === "JSXAttribute" && item.name.type === "JSXIdentifier" && item.name.name === "style");

@@ -3,6 +3,7 @@ import { inspectElementValues, type ElementValue } from "../source-parser/inspec
 
 const labels: Record<string, string> = { text: "Testo", color: "Colore del testo", backgroundColor: "Colore di sfondo", borderColor: "Colore del bordo", borderRadius: "Arrotondamento", fontSize: "Dimensione del testo", fontWeight: "Spessore del testo", width: "Larghezza", height: "Altezza", left: "Posizione orizzontale", top: "Posizione verticale", zIndex: "Livello di sovrapposizione", opacity: "Opacità", rotate: "Rotazione" };
 const pixels = new Set(["width", "height", "left", "top", "fontSize", "borderRadius"]);
+Object.assign(labels, { display: "Disposizione", position: "Posizionamento", padding: "Spazio interno", margin: "Margine esterno", gap: "Spazio tra elementi", rowGap: "Spazio tra righe", columnGap: "Spazio tra colonne", textAlign: "Allineamento testo", alignItems: "Allineamento elementi", justifyContent: "Distribuzione elementi", flexDirection: "Direzione", flexWrap: "A capo", gridTemplateColumns: "Colonne della griglia", borderWidth: "Spessore bordo", borderStyle: "Stile bordo" });
 export interface AiEditChange {
   operation: AiOperation; label: string; before: ElementValue; after: ElementValue;
   beforeText: string; afterText: string; unchanged: boolean; requiresConfirmation: boolean; warnings: string[]; blocked?: string;

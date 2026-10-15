@@ -2,8 +2,8 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 export interface AiAccount { connected: boolean; email: string | null; plan: string | null }
-export interface AiModel { id: string; name: string; default: boolean }
-export interface AiRequest { requestId: string; model: string; prompt: string; schema: unknown }
+export interface AiModel { id: string; name: string; default: boolean; defaultReasoningEffort?: string | null; supportedReasoningEfforts?: { reasoningEffort: string; description: string }[] }
+export interface AiRequest { requestId: string; model: string; reasoningEffort?: string; prompt: string; schema: unknown }
 export interface AiResult { requestId: string; text: string }
 export interface AiEvent { type: "account" | "progress"; requestId?: string; success?: boolean }
 export interface AiProvider {
