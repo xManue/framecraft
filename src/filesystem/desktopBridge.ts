@@ -5,6 +5,7 @@ import type { GeneratedProjectFile } from "../core/standardProject";
 import type { EditorDraftRecord, EditorReloadCheckpoint } from "../state/editorRecovery";
 import type { ConnectionConfigurationSnapshot } from "../core/plcConnections";
 import type { AlarmConfigurationSnapshot } from "../core/hmiAlarms";
+import type { AiInterviewDraftSnapshot } from "../ai/aiInterviewDraft";
 
 export const desktopAvailable = isTauri();
 
@@ -13,6 +14,12 @@ function requireDesktop() {
 }
 
 export const desktopBridge = {
+  async readAiInterviewDraft(): Promise<AiInterviewDraftSnapshot> {
+    requireDesktop(); return invoke("read_ai_interview_draft");
+  },
+  async writeAiInterviewDraft(expectedRevision: string, source: string | null): Promise<AiInterviewDraftSnapshot> {
+    requireDesktop(); return invoke("write_ai_interview_draft", { expectedRevision, source });
+  },
   async readAlarmConfiguration(root: string): Promise<AlarmConfigurationSnapshot> {
     requireDesktop(); return invoke("read_alarm_configuration", { root });
   },

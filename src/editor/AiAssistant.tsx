@@ -4,6 +4,7 @@ import { aiEditContext, type AiEditSnapshot } from "../ai/aiProposal";
 import { useEditorAi } from "../state/editorAi";
 import { useEditorStore } from "../state/editorStore";
 import { AiProjectInterview } from "./AiProjectInterview";
+import { AiInterviewDraft } from "./AiInterviewDraft";
 import { useEditorShortcuts } from "../state/editorShortcuts";
 import { useEditorGuidance } from "../state/editorGuidance";
 
@@ -58,7 +59,7 @@ export function AiAssistant() {
           {!ai.account?.connected && <p className="ai-hint">Puoi già rispondere alle domande; l’invio all’AI sarà disponibile dopo il collegamento.</p>}
           <button type="button" disabled={applying || loading} onClick={() => useEditorShortcuts.getState().setOpen(true, "ai")}><Settings size={16} />Apri impostazioni AI</button>
         </aside>
-        <section className="ai-work" aria-label="Richiesta e proposta AI">{ai.mode === "create" ? <AiProjectInterview /> : <>
+        <section className="ai-work" aria-label="Richiesta e proposta AI">{ai.mode === "create" ? <AiInterviewDraft><AiProjectInterview /></AiInterviewDraft> : <>
           <h3>Cosa vuoi cambiare nell’elemento selezionato?</h3>
           <label>La tua richiesta<textarea rows={4} maxLength={8000} value={prompt} disabled={ai.busy} onChange={event => { setPrompt(event.target.value); setConsent(false); }} placeholder="Per esempio: cambia il testo del pulsante e rendilo più grande…" /></label>
           {!context && <p role="status">Seleziona prima un elemento nel canvas. Chiudi questa finestra per sceglierlo.</p>}

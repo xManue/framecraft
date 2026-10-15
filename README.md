@@ -357,7 +357,20 @@ Only approved page/item labels, validated choices and counts go to AI; technical
 details, images/catalogues/addresses/tag names stay local.
 Further AI questions get separate answer fields. You review and explicitly create the plan;
 the generator rejects AI changes to the chosen machine/layout/categories. Closing the wizard
-preserves answers in the running app, not across an app restart yet.
+preserves answers in the running app. The desktop app also conserves one local questionnaire
+in its user profile (`ai-interview/questionnaire.json`, maximum 8 MiB). On reopening AI creation,
+choose **Riprendi il questionario** or **Ricomincia da zero**; deletion needs a second confirmation
+and never deletes projects or original images/catalogues. Responses, imported catalogues and
+image paths stay local, in a plaintext user-profile file: do not enter passwords, tokens or PINs.
+Account data, AI proposals, send consent and command-mapping approvals are not restored.
+Review image availability and reconfirm every write mapping after recovery; no AI request,
+project opening, PLC connection or command is triggered by recovery.
+
+Changes are queued and atomically saved after a short pause. Check the saved status before
+quitting; a hard process termination can still lose edits not yet confirmed as saved. Corrupt
+or changed drafts are not overwritten silently. Errors offer rereading or continuing with
+session-only answers, leaving the stored copy untouched. Browser-only use remains session-only.
+Building the native app requires Rust 1.89+ for the cross-instance file lock (tested with 1.96).
 
 Generated pages use the same standalone React project/editor as manual creation. Imported tags can
 be selected for read-only values and trend curves. For each manual command, choose **Scrivere un

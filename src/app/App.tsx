@@ -20,6 +20,7 @@ import { useEditorGuidance } from "../state/editorGuidance";
 import { AiAssistant } from "../editor/AiAssistant";
 import { useEditorAi } from "../state/editorAi";
 import { useAiAccountEvents } from "../ai/useAiAccountEvents";
+import { installAiInterviewDraftRecovery } from "../state/editorAiDraft";
 
 export function App() {
   return <EditorErrorBoundary><EditorApp /></EditorErrorBoundary>;
@@ -112,6 +113,7 @@ function EditorApp() {
   useAiAccountEvents();
   const aiOpen = useEditorAi(state => state.open);
   useEffect(() => installEditorDraftRecovery(useEditorStore), []);
+  useEffect(() => installAiInterviewDraftRecovery(), []);
   const project = useEditorStore((state) => state.project);
   const loading = useEditorStore((state) => state.loading);
   const reloadRecovery = useEditorStore((state) => state.reloadRecovery);

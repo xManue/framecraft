@@ -15,10 +15,14 @@ import { useAiAccountEvents } from "../src/ai/useAiAccountEvents";
 import { EditorHelp } from "../src/editor/EditorHelp";
 import { useEditorGuidance } from "../src/state/editorGuidance";
 import { resolveInterviewDelegation, toggleInterviewDelegation } from "../src/ai/aiDelegation";
+import { installAiInterviewDraftRecovery, useEditorAiDraft } from "../src/state/editorAiDraft";
+import { serializeAiInterviewDraft } from "../src/ai/aiInterviewDraft";
 
 const initialAi = useEditorAi.getState(), initialEditor = useEditorStore.getState();
 const initialSettings = useEditorShortcuts.getState();
 const initialGuidance = useEditorGuidance.getState();
+const initialDraft = useEditorAiDraft.getState();
+let draftCleanup: (() => void) | undefined;
 let container: HTMLDivElement, root: Root, fake: AiProvider;
 const plan = { version: 1, mode: "create", summary: "Pannello di test", project: { machineName: "Linea test", layout: "desktop-mobile", sections: ["main"], settingsProgram: "robot" }, operations: [], questions: [], warnings: [], provenance: ["approved-request", "framecraft-standard"] };
 beforeEach(() => {
@@ -51,7 +55,7 @@ it("riprende la creazione dopo un’immagine non disponibile senza perdere il pi
   expect(create).toHaveBeenCalledTimes(2); expect(create.mock.calls[1][0].guided?.pages[0].image).toBe("C:/synthetic/new.svg");
   expect(fake.propose).not.toHaveBeenCalled();
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); useEditorAi.setState(initialAi, true); useEditorStore.setState(initialEditor, true); useEditorShortcuts.setState(initialSettings, true); useEditorGuidance.setState(initialGuidance, true); });
+afterEach(async () => { await act(async () => { draftCleanup?.(); draftCleanup = undefined; root.unmount(); }); container.remove(); vi.restoreAllMocks(); useEditorAi.setState(initialAi, true); useEditorStore.setState(initialEditor, true); useEditorShortcuts.setState(initialSettings, true); useEditorGuidance.setState(initialGuidance, true); useEditorAiDraft.setState(initialDraft, true); });
 const button = (text: string) => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes(text) || button.getAttribute("aria-label")?.includes(text))!;
 function Frame() { useAiAccountEvents(); const open = useEditorShortcuts(state => state.open), helpOpen = useEditorGuidance(state => state.helpOpen); return createElement(Fragment, null, open && createElement(EditorSettings), helpOpen && createElement(EditorHelp), createElement(AiAssistant)); }
 async function mount() { await act(async () => root.render(createElement(StrictMode, null, createElement(Frame)))); }
@@ -61,6 +65,28 @@ function field(label: string) { return [...container.querySelectorAll("label")].
 function change(label: string, value: string) { const element = field(label), prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? "change" : "input", { bubbles: true })); }
 
 describe("flusso AI nell’interfaccia", () => {
+  it("offre Riprendi al riavvio senza caricare risposte o inviare richieste prima del click", async () => {
+    const interview = newAiInterview(); interview.machineName = "Linea conservata";
+    const source = serializeAiInterviewDraft(interview), write = vi.fn(async (_revision: string, source: string | null) => ({ revision: "next", source }));
+    draftCleanup = installAiInterviewDraftRecovery({ readAiInterviewDraft: async () => ({ revision: "saved", source }), writeAiInterviewDraft: write });
+    await mount(); expect(container.textContent).toContain("Vuoi riprendere");
+    expect(container.querySelector('input[placeholder="Es. Linea palletizzazione 1"]')).toBeNull();
+    expect(useEditorAi.getState().interview.machineName).toBe(""); expect(write).not.toHaveBeenCalled();
+    await act(async () => button("Riprendi il questionario").click());
+    expect(field("Come si chiama").value).toBe("Linea conservata");
+    expect(container.textContent).toContain("nuova conferma"); expect(fake.connect).not.toHaveBeenCalled(); expect(fake.propose).not.toHaveBeenCalled();
+  });
+  it("Ricomincia richiede conferma ed elimina solo la copia del questionario", async () => {
+    const interview = newAiInterview(); interview.machineName = "Da conservare";
+    const source = serializeAiInterviewDraft(interview), write = vi.fn(async (_revision: string, source: string | null) => ({ revision: "next", source }));
+    draftCleanup = installAiInterviewDraftRecovery({ readAiInterviewDraft: async () => ({ revision: "saved", source }), writeAiInterviewDraft: write });
+    await mount(); await act(async () => button("Ricomincia da zero").click());
+    expect(container.textContent).toContain("originali non vengono eliminati"); expect(write).not.toHaveBeenCalled();
+    await act(async () => button("Conserva le risposte").click()); expect(write).not.toHaveBeenCalled();
+    await act(async () => button("Ricomincia da zero").click()); await act(async () => button("Elimina bozza e ricomincia").click());
+    expect(write).toHaveBeenCalledWith("saved", null); expect(field("Come si chiama").value).toBe("");
+    expect(fake.propose).not.toHaveBeenCalled();
+  });
   it("salta una domanda, permette di avanzare e recupera la risposta precedente", async () => {
     const interview = newAiInterview(); interview.machineName = "Nome precedente"; interview.spec.purpose = "Processo scelto";
     useEditorAi.setState({ interview }); await mount();

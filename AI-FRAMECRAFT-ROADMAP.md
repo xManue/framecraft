@@ -1,6 +1,6 @@
 # AI facoltativa in Framecraft
 
-Aggiornato al 14 ottobre 2026.
+Aggiornato al 15 ottobre 2026.
 
 L'obiettivo finale è accompagnare l'intero ciclo di costruzione dell'HMI senza rendere l'AI un
 requisito. Priorità aggiornata dall’utente: completare adesso la pipeline AI + app,
@@ -64,8 +64,10 @@ accesso e modello si gestiscono soltanto in Impostazioni → AI e account. La sc
 lo stato e un pulsante per aprirle; il ritorno conserva risposte e richiesta di modifica. Le
 notifiche di fine accesso restano osservate anche a finestre chiuse, senza login o inferenza
 impliciti. Protocollo verificato
-contro le definizioni della CLI locale 0.159.2; il login e l’inferenza reali richiedono ancora
-collaudo nella nuova build desktop, non provati dai test con provider sintetico.
+contro le definizioni della CLI locale 0.159.2. Una richiesta reale autorizzata è stata completata
+con il profilo Framecraft: parser strict, generazione nativa, build e browser del pannello
+verificati (LAVORO, punti 124–125). Restano i gesti completi di login/dialoghi/IPC nella finestra
+desktop; il test motore/provider non prova ogni gesto della UI nativa.
 
 Il generatore standard accetta anche un piano esplicito: crea solo le pagine approvate,
 router/manifesto/menu coerenti, immagini per pagina e cataloghi locali validati. Salva requisiti
@@ -80,7 +82,13 @@ permesso; gateway disabilitato, autorizzazioni server, interlock e collaudo sono
 Non sono comandi a uomo presente o funzioni di sicurezza: pressione/rilascio e watchdog PLC
 richiedono un contratto operativo e prove di guasto. Targhette e grafiche
 restano modificabili nel normale editor. Le risposte sopravvivono alla chiusura/riapertura della
-finestra durante la stessa sessione; recupero persistente del questionario ancora da aggiungere.
+finestra durante la stessa sessione. Nell’app desktop la bozza locale permette anche la ripresa
+dopo riavvio, con scelta esplicita e conferma prima di eliminarla. Conserva solo intervista,
+requisiti, cataloghi e percorsi immagini nel profilo locale; nessun account, proposta AI o
+consenso all’invio. Le conferme dei mapping di scrittura vengono revocate nella copia conservata
+e al recupero. Conflitti fra istanze, file corrotti/bloccati e mancato salvataggio sono segnalati;
+si può continuare senza recupero locale senza cancellare la copia. Il salvataggio è atomico e
+serializzato; la chiusura forzata può perdere le ultime modifiche non ancora confermate.
 
 L’assistenza durante le modifiche mantiene la richiesta libera, ma oggi applica solo testo e
 stile dell’elemento selezionato, con revisione parziale, controllo di sorgente/selezione e un
@@ -204,7 +212,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-UX-04 | Preview visuale e diff semantico | DA FARE | Evidenziare cosa cambia prima di accettare |
 | AI-UX-05 | Accettazione parziale | DA FARE | Selezione per gruppo logico, non solo per file |
 | AI-UX-06 | Domande quando manca un dato critico | DA FARE | Chiedere invece di indovinare tag, soglie o permessi |
-| AI-UX-07 | Stato di esecuzione e annullamento | DA FARE | Operazioni lunghe visibili, cancellabili e recuperabili |
+| AI-UX-07 | Stato di esecuzione e annullamento | PARZIALE | Richiesta annullabile e stato esplicito; questionario desktop recuperabile localmente, senza consensi né mapping approvati; restano avanzamento dettagliato, transazioni AI multi-file e collaudo IPC nativo completo |
 | AI-UX-08 | Funzionamento offline manuale | PARZIALE | L'assenza AI non degrada le capacità dell'editor |
 
 ## 7. Sicurezza, qualità e valutazione

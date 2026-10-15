@@ -79,7 +79,7 @@ export function AiProjectInterview() {
     finally { setApplying(false); }
   };
   return <section className="ai-interview" aria-label="Domande guidate per il nuovo pannello" data-step={step}>
-    <p className="ai-hint">Passo {index + 1} di {steps.length} · Le domande si adattano alle pagine scelte. Puoi saltarne una con “Lascia scegliere all’AI”: controllerai la scelta prima di creare. Le risposte restano disponibili se chiudi questa finestra, finché l’app rimane aperta.</p>
+    <p className="ai-hint">Passo {index + 1} di {steps.length} · Le domande si adattano alle pagine scelte. Puoi saltarne una con “Lascia scegliere all’AI”: controllerai la scelta prima di creare. Nell’app desktop la bozza locale permette di riprendere dopo un riavvio: controlla lo stato del salvataggio qui sopra.</p>
     <h3 ref={heading} tabIndex={-1}>{steps[index].label}</h3>
     <fieldset className="ai-interview-fields" disabled={busy}>
       {step === "machine" && <>

@@ -4321,6 +4321,37 @@ Verifiche del 5 ottobre 2026:
   dopo riavvio, dispositivi fisici e commissioning. Nessun riavvio della sessione utente,
   nessun dato macchina reale pubblicato, modifiche trend/profile rinviate non incluse.
 
+### 126. Ripresa locale del questionario AI dopo riavvio (2026-10-15)
+
+- Una bozza per profilo desktop in `ai-interview/questionnaire.json`, separata da progetti,
+  backup delle pagine e profilo account Codex. Formato versionato, limite 8 MiB, whitelist e
+  controlli di forma prima del rendering; risposte incomplete restano recuperabili.
+- Conserva risposte, deleghe, requisiti, cataloghi e percorsi delle immagini scelti localmente.
+  Non conserva account, proposte AI o consenso all’invio. Le conferme dei mapping di scrittura
+  vengono rimosse dalla copia e revocate di nuovo al recupero; riconferma esplicita obbligatoria.
+  Le immagini devono restare disponibili; il normale preflight di creazione le ricontrolla.
+- Stato del salvataggio visibile, **Riprendi il questionario**, **Ricomincia da zero** con seconda
+  conferma e opzione per continuare solo nella sessione senza cancellare una vecchia copia.
+  Riprendere sostituisce eventuali risposte già aperte; nessun ripristino o invio AI implicito.
+  Stile e font esistenti conservati; messaggi e conferme guidati dalla skill UI/UX.
+- Scritture serializzate con debounce, flush su pagehide/visibilità/cleanup, sostituzione atomica
+  e CAS sul contenuto; lock fra istanze prima del controllo/salvataggio. La chiusura forzata
+  può perdere gli ultimi caratteri non ancora confermati: non si promette persistenza assoluta.
+  File corrotto/vuoto, troppo grande, bloccato o aggiornato altrove non è sovrascritto silenziosamente.
+  Riferimento del lock: [Rust std::fs::File::try_lock](https://doc.rust-lang.org/std/fs/struct.File.html#method.try_lock).
+  Rust minimo dichiarato 1.89, verifica eseguita con 1.96; nessuna nuova dipendenza/licenza.
+- Verificati 35 test mirati React/store/formato e 5 nativi su restart, scritture obsolete,
+  cancellazioni obsolete, corruzione, dimensioni e lock. Tipi e build del codice pubblicabile
+  passati; browser reale con bridge di test a 375/768/1024/1440 px: ripresa solo al click,
+  annullamento della cancellazione senza perdita, nessun overflow del dialogo, errore JS o
+  richiesta AI/PLC. Corretta anche la favicon mancante dell’editor, riusando l’icona esistente,
+  e dichiarata la lingua italiana dell’interfaccia per gli strumenti assistivi.
+- Artefatti locali: `.hmi-preview/ai-draft-public-1792054166708/.hmi-preview/ai-draft-ui/result.json`.
+  Il browser usa il vero editor React ma un bridge simulato; il deposito è provato su file nativi
+  temporanei. Restano il collaudo completo del riavvio/IPC nella finestra desktop installata,
+  recovery dopo arresto di sistema, storage cifrato/retention multipla e commissioning macchina.
+  Il deposito è locale in chiaro: non inserire segreti; nessun file macchina inviato o pubblicato.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

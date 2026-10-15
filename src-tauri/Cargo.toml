@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Visual React editor"
 authors = ["Framecraft"]
 edition = "2021"
+rust-version = "1.89"
 
 [lib]
 name = "framecraft_lib"
