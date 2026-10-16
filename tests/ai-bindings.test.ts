@@ -28,7 +28,7 @@ const count: PlcVariableDefinition = { ...tag, name: "PRIVATE_COUNTER", dataType
 const references: AiDataReference[] = [{ id: "data_alarm", label: "Allarme motore", tag }, { id: "data_count", label: "Contatore pezzi", tag: count }];
 const page = { id: "page", name: "Sinottico", route: "/synoptic", file };
 const source = 'export default ()=> <main><button onClick={()=>manualAction()} style={{backgroundColor:"#eeeeee"}}>Avvia</button><span>Contatore</span></main>';
-const initialEditor = useEditorStore.getState(), initialChat = useEditorAiChat.getState(), initialAi = useEditorAi.getState();
+const initialEditor = useEditorStore.getState(), initialChat = { ...useEditorAiChat.getState(), projectAccess: false }, initialAi = useEditorAi.getState();
 let provider: AiProvider, root: Root | undefined, host: HTMLDivElement | undefined, cleanup: (() => void) | undefined;
 const proposal = (operations: AiOperation[]): AiProposal => ({ version: 1, mode: "edit", summary: "Regola colore di lettura", questions: [], warnings: [], project: null, operations, provenance: ["approved-selection"], decisions: [] });
 const operation = (property = "BackColor", spec: unknown = { source: "data_alarm", mode: "boolean", falseValue: "#eeeeee", trueValue: "#ff0000" }): AiOperation => ({ id: property, type: "binding", property, value: JSON.stringify(spec) });

@@ -233,6 +233,7 @@ export interface EditorState {
   loading: boolean;
   /** A "save as" copy is running; the command must not be started twice. */
   exporting: boolean;
+  aiProjectBusy: boolean;
   dirty: boolean;
   recentProjects: string[];
   history: HistorySnapshot[];
@@ -274,6 +275,7 @@ export interface EditorState {
   createStandardProject: (config: StandardProjectConfig) => Promise<void>;
   applyAiProposal: (snapshot: AiEditSnapshot, proposal: AiProposal, accepted: string[]) => Promise<boolean>;
   applyAiPageProposal: (snapshot: AiEditSnapshot, proposal: AiProposal, accepted: string[]) => Promise<boolean>;
+  refreshAiProjectFiles: (root: string, files: string[]) => Promise<void>;
   openProject: (root: string) => Promise<void>;
   removeRecentProject: (root: string) => void;
   closeProject: () => Promise<void>;
@@ -750,10 +752,11 @@ function highlightSettings(settings: HighlightSettings) {
 
 const createEditorState: StateCreator<EditorState> = (set, get) => {
   async function restoreSnapshot(snapshot: HistorySnapshot) {
+    if (get().aiProjectBusy) throw new Error("Attendi il completamento delle modifiche AI prima di modificare altri file.");
     const sequence = ++runtime.selectionSequence;
     const currentDocument = get().document;
     const project = get().project;
-    const current = () => sequence === runtime.selectionSequence && get().document === currentDocument && get().project === project;
+    const current = () => !get().aiProjectBusy && sequence === runtime.selectionSequence && get().document === currentDocument && get().project === project;
     const selected = currentDocument?.file === snapshot.file && get().selectedId ? currentDocument.nodes[get().selectedId!] : undefined;
     const { parseSource } = await import("../source-parser/parseSource");
     if (!current()) return undefined;
@@ -895,6 +898,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
   /** Writes a file that is not the one open in the editor: the data a list is built from regularly
    * lives in its own module. History still records it, so Ctrl+Z brings it back. */
   async function applyToFile(file: string, next: string, valid = () => true, expected?: string, pushHistory = true) {
+    if (get().aiProjectBusy) throw new Error("Attendi il completamento delle modifiche AI.");
     const project = get().project;
     if (!valid()) return false;
     refuseIfGuided();
@@ -905,6 +909,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     if (expected !== undefined && previous !== expected) throw new Error(`${fileName(file)} è cambiato: aggiorna l'anteprima e riprova senza sovrascrivere il file.`);
     next = matchLineEndings(next);
     if (previous === next) return true;
+    if (get().aiProjectBusy) throw new Error("Salvataggio fermato: sono in corso modifiche AI al progetto.");
     if (desktopAvailable) await desktopBridge.writeFile(file, next);
     if (!valid() || get().project !== project) return false;
     if (pushHistory) set((state) => ({ history: [...state.history, { file, source: previous }].slice(-100), future: [] }));
@@ -1259,6 +1264,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     simulation: { on: false, values: {}, status: {}, elements: [], unresolved: [] },
     viewMode: "visual", zoom: 0.82, fitCanvas: true, leftPanel: "pages", leftPanelCollapsed: false, multiSelection: [],
     ...view, pageCategories: [], paletteOpen: false, userAccessOpen: false, userAccessBusy: false, panelManifest: undefined, zonePicking: undefined, unlockedPages: [], unlockedFiles: [], draggedComponent: undefined, consoleOpen: false, standalonePreviewOpen: false, loading: false, exporting: false, dirty: false, recentProjects: recent, history: [], future: [],
+    aiProjectBusy: false,
     consoleEntries: [entry("info", desktopAvailable ? "Desktop bridge ready" : "Browser mode: local project actions require the Tauri app")],
     setViewMode: (viewMode) => set({ viewMode }),
     retryReloadRecovery: async () => {
@@ -1424,6 +1430,27 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         finally { runtime.projectOpening = false; }
         await get().openProject(root);
       } catch (error) { set({ loading: false }); reportError(error); }
+    },
+    async refreshAiProjectFiles(root, files) {
+      const project = get().project;
+      if (!project || project.root !== root) return;
+      runtime.listBindingRequest = undefined; runtime.projectIndexRequest = undefined; runtime.callSiteRequest = undefined;
+      const open = get().document, relative = open?.file.replaceAll("\\", "/").slice(root.replaceAll("\\", "/").replace(/\/$/, "").length + 1);
+      try {
+        if (open && relative && files.includes(relative)) {
+          const source = await desktopBridge.readAiProjectFile(root, relative);
+          if (get().project === project && get().document === open) {
+            if (get().dirty) reportWarning("I file su disco sono stati aggiornati. La bozza aperta è conservata: confrontala prima di salvare.");
+            else {
+              const document = source === null ? undefined : parseSource(open.file, source, open.version + 1);
+              set({ document, selectedId: undefined, selectionRect: undefined, selectionInfo: undefined, unresolvedSelection: undefined });
+            }
+          }
+        }
+        const pages = await inspectPages(project);
+        if (get().project === project) set({ pages: pages.pages, pageCategories: pages.pageCategories, routerFile: pages.routerFile, routerEditable: pages.routerEditable });
+        if (get().project === project) await get().refreshPlcVariables();
+      } catch (error) { if (get().project === project) reportWarning(`File AI aggiornati; rilettura dell’editor da verificare: ${error instanceof Error ? error.message : String(error)}`); }
     },
     async applyAiPageProposal(snapshot, proposal, accepted) {
       const state = get(), project = state.project, open = state.document;
@@ -2551,6 +2578,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
     },
     replaceCode: (source) => { const document = get().document; if (document) set({ document: { ...document, source }, dirty: true }); },
     async save() {
+      if (get().aiProjectBusy) return;
       const { document, dirty } = get(); if (!document || !desktopAvailable) return;
       try {
         const previousSource = document.source;
@@ -2565,6 +2593,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
           const detail = error instanceof Error ? error.message : String(error);
           throw new Error(`${fileName(document.file)} contiene un errore di sintassi (${detail}), quindi non è stato salvato. Correggilo in modalità Code.`);
         }
+        if (get().aiProjectBusy) throw new Error("Attendi il completamento delle modifiche AI prima di salvare.");
         await desktopBridge.writeFile(document.file, document.source);
         set((state) => ({ document: parsed, dirty: false,
           history: diskSource !== previousSource ? [...state.history, { file: document.file, source: diskSource }].slice(-100) : state.history,

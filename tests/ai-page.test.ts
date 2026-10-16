@@ -17,7 +17,7 @@ import { useEditorStore } from "../src/state/editorStore";
 const root = "C:/synthetic-panel", file = `${root}/src/Overview.tsx`;
 const source = 'const PRIVATE_TAG="SECRET";export default function Overview(){return <main style={{display:"flex",padding:8}}><h1>Sinottico</h1><button onClick={()=>privatePlcWrite(PRIVATE_TAG)} style={{color:"#000000"}}>Prima</button><button>Altro</button><span>{privateValue}</span></main>}';
 const page: PageDefinition = { id: "overview", name: "Sinottico", file, route: "/overview" };
-const original = useEditorStore.getState(), originalChat = useEditorAiChat.getState(), originalAi = useEditorAi.getState();
+const original = useEditorStore.getState(), originalChat = { ...useEditorAiChat.getState(), projectAccess: false }, originalAi = useEditorAi.getState();
 const proposal = (operations: AiOperation[]): AiProposal => ({ version: 1, mode: "edit", summary: "Restyling", questions: [], warnings: [], provenance: ["approved-selection"], project: null, decisions: [], operations });
 function attachment(text = source, definition = page) { return aiPageAttachment(root, definition, parseSource(definition.file, text)); }
 function target(snapshot: AiEditSnapshot, text: string) { return Object.entries(snapshot.targets!).find(([, value]) => value.document.nodes[value.selectedId].text === text)![0]; }

@@ -396,7 +396,16 @@ Open **Chat AI** in the activity bar or **Pannello → Chat AI · Codex** for th
 Right-click an element in **Modifica**, or a page in the page list, and choose **Aggiungi alla chat**.
 The composer also offers **Elemento selezionato** and **Pagina aperta**. References are explicit
 chips that can be removed: selecting another object does not silently replace the destination.
-Attach one element (including its children) or up to five pages. Pages supply actual source-derived
+**Modifiche al progetto** is enabled by default: attachments choose where to start, not a hard
+boundary around Inspector properties. After session consent, the assistant can read bounded source
+excerpts, follow imported components, request configuration fragments, edit source and declare missing
+variables. No screenshot or manual attachment of every child is required for source-based changes.
+**Current compatibility limit:** the installed CLI was updated to 0.163.0, but its generated local
+protocol still lacks `ReadOnlyAccess`. Project-mode requests stop before inference with an explanation;
+the real project-edit pipeline is not yet validated or available with this CLI. Disable **Modifiche
+al progetto** to retain the previous graphical-only path. Do not remove the filesystem boundary as a fix.
+Disable this option for the previous graphical-only mode described below; switching scope revokes
+transmission consent. In graphical-only mode, attach one element (including its children) or up to five pages. Pages supply actual source-derived
 hierarchy, literal texts, supported inline styles and editable/dynamic flags, not just navigation names.
 The assistant can propose a graphical restyling across these objects without requesting screenshots
 or individual selections. Component/state page boundaries are respected when declared. Imported
@@ -423,9 +432,18 @@ revoke authorization and cancel an in-flight request; switching project/account 
 is restored from disk. Applying a proposal always needs separate approval.
 A conversation stops at 40 messages with a clear new-chat instruction.
 
-Project-wide AI edits are **not yet connected to the chat UI/provider**. The local foundation
-validates exact source replacements and proposed new, unmapped variables, and exposes native
-project-confined read/apply/restore primitives. It checks the expected disk text, writes a local
+Project mode uses the same Codex account, model and reasoning controls. It includes only necessary
+source excerpts plus variable names/types/access/descriptions, not addresses, connections or live
+values. Project sharing is authorized separately from applying changes. Context is limited to three
+model passes, 80,000 UTF-8 bytes per pass and 180,000 cumulative input bytes (including schema), at
+most six recent messages with explicit abbreviation, and an index of up to 500 source paths. No
+extra summarization model or full-project upload is used. The exact last request and local token
+estimate are inspectable; estimates are not provider billing. Unknown machine facts stay unknown.
+
+Review the file list, new variables and before/after code, then explicitly approve the batch.
+Nothing is applied on receipt of an AI answer. The local foundation validates exact source replacements
+and proposed new, unmapped variables, and exposes native project-confined read/apply/restore primitives.
+It checks the expected disk text, writes a local
 backup under `.framecraft/ai-backups/` before changes, and refuses stale versions during apply or
 restore. Source files outside `src/`, credentials/configuration paths, symlinks/junctions and direct
 file deletion are excluded. The PLC catalogue can only gain read-only variables with empty addresses;
@@ -435,9 +453,14 @@ filesystem transaction: rollback is best-effort and a backup can recover partial
 without overwriting later external edits.
 The source checks catch syntax/import problems and known dangerous calls; they are not a JavaScript
 sandbox, a complete secret detector, a type/build check of the edited panel or a machine safety
-validation. A future project-code mode still needs an explicit data-sharing consent, bounded context
-retrieval, reviewed diffs and apply/restore UI. No new project-source transmission or real AI run is
-enabled by these primitives. Existing limited element/page chat behaviour is unchanged.
+validation. New network/execution/PLC-write calls are not enabled through this code-edit path.
+Use **Ripristina questa proposta** with its separate confirmation to restore the whole batch;
+ordinary editor Undo concerns individual existing source files. A whitelisted backup reference,
+not proposal source or approval, survives a same-window reload so restore stays available. The
+restorer refuses newer external versions. During apply/restore the editor is temporarily locked and
+requests waiting before closing/reloading; forced termination is not covered by browser guards.
+Use the updated Framecraft desktop build for the native commands. Codex must support the restricted
+read-only sandbox policy; compatibility failures must not fall back to wider filesystem access.
 
 When the assistant needs clarification, answer in **Completa questi dettagli** inside its message,
 then choose **Invia risposte e continua**. Each question has its own field (up to 1,000 characters)

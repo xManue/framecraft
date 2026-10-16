@@ -3,7 +3,7 @@ import { useEditorStore, type EditorState } from "../state/editorStore";
 import { useEditorShortcuts } from "../state/editorShortcuts";
 
 export function editorCommandEnabled(id: EditorCommandId, state: EditorState) {
-  if (state.reloadRecovery || state.loading || state.exporting) return false;
+  if (state.reloadRecovery || state.loading || state.exporting || state.aiProjectBusy) return false;
   if (["commands", "settings", "open"].includes(id)) return true;
   if (!state.project) return false;
   if (editorCommands.find(command => command.id === id)?.edit && state.interactionMode !== "edit") return false;

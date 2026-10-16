@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { aiProjectPath, appendAiVariables, assertAiSourceShareable, parseAiProjectPlan, prepareAiProjectChanges, validateAiProjectCode, type AiProjectPlan } from "../src/ai/aiProjectEdits";
+import { aiProjectPath, appendAiVariables, assertAiSourceShareable, parseAiProjectPlan, parseAiProjectReceipt, prepareAiProjectChanges, validateAiProjectCode, validateAiProjectReview, type AiProjectPlan } from "../src/ai/aiProjectEdits";
 
 const plan = (update: Partial<AiProjectPlan> = {}): AiProjectPlan => ({ summary: "Collega la velocità", questions: [], warnings: [], reads: [], edits: [], variables: [], ...update });
 const source = 'import { HeaderValue, HeaderGauge } from "./Header"; const headerConfig={version:1,tags:{}}; export const Page=()=> <section><HeaderValue field="speed" config={headerConfig}/><HeaderGauge config={headerConfig}/></section>';
@@ -71,4 +71,27 @@ it("rivalida anche piani e variabili passati direttamente dalle API interne", ()
   const malformed = plan({ edits: [{ path: "../outside.ts", before: "x", after: "y" }] });
   expect(() => prepareAiProjectChanges(malformed, new Map([["../outside.ts", "x"]]), new Map([["../outside.ts", ["x"]]]), [])).toThrow("protetto");
   expect(() => appendAiVariables(null, [{ ...variable, dataType: "UnknownType" }])).toThrow("tipo");
+});
+it("il confronto deve corrispondere esattamente al piano, senza file o testo aggiunti", () => {
+  const value = plan({ edits: [{ path: "src/App.tsx", before, after }], variables: [variable] });
+  const changes = prepareAiProjectChanges(value, new Map([["src/App.tsx", source], ["framecraft.plc.json", null]]), new Map([["src/App.tsx", [source]]]), ["src/Header.tsx"]);
+  const review = { root: "C:/synthetic", plan: value, changes, bytes: 100, rounds: 1, knownFiles: ["src/Header.tsx"] };
+  expect(validateAiProjectReview(review).changes).toEqual(changes);
+  expect(() => validateAiProjectReview({ ...review, changes: [{ ...changes[0], after: changes[0].after.replace("Panel_Speed", "Other") }, changes[1]] })).toThrow("non corrisponde");
+  expect(() => validateAiProjectReview({ ...review, changes: [changes[0], changes[0]] })).toThrow("duplicati");
+  expect(() => validateAiProjectReview({ ...review, knownFiles: ["../outside"] })).toThrow("Indice");
+});
+it.each(["../backup", "123", "1-2/other"])("rifiuta riferimenti backup arbitrari: %s", backup => {
+  expect(() => parseAiProjectReceipt({ root: "C:/synthetic", backup, files: ["src/App.tsx"], restored: false })).toThrow();
+});
+it("i backup non possono includere percorsi protetti o campi contenenti codice", () => {
+  const value = { root: "C:/synthetic", backup: "123-456", files: ["src/App.tsx"], restored: false };
+  expect(parseAiProjectReceipt(value)).toEqual(value);
+  expect(() => parseAiProjectReceipt({ ...value, source: "do not store" })).toThrow();
+  expect(() => parseAiProjectReceipt({ ...value, files: ["package.json"] })).toThrow();
+});
+it("scarta sostituzioni identiche senza rendere impossibile la revisione finale", () => {
+  const value = plan({ edits: [{ path: "src/App.tsx", before: source, after: source }] });
+  const changes = prepareAiProjectChanges(value, new Map([["src/App.tsx", source]]), new Map([["src/App.tsx", [source]]]), []);
+  expect(changes).toEqual([]); expect(validateAiProjectReview({ root: "C:/synthetic", plan: value, changes, bytes: 100, rounds: 1 }).changes).toEqual([]);
 });

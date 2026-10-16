@@ -2,7 +2,7 @@ import { create, type StateCreator, type StoreApi, type UseBoundStore } from "zu
 import { installAiChatRecovery } from "./editorAiChatRecovery";
 import { aiChatContext, aiElementAttachment, aiPageAttachment, prepareAiChat, type AiChatAttachment, type AiChatMessage, type AiChatPrepared, type AiChatQuestionAnswer } from "../ai/aiChat";
 import { aiSelectionKey } from "../ai/aiProposal";
-import type { PageDefinition } from "../core/types";
+import type { FileEntry, PageDefinition } from "../core/types";
 import { useEditorAi } from "./editorAi";
 import { useEditorStore } from "./editorStore";
 import { aiChatScope } from "../ai/aiPageContext";
@@ -12,6 +12,9 @@ import { parseSource } from "../source-parser/parseSource";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { pendingAiQuestions, prepareAiQuestionReply } from "../ai/aiChatQuestions";
 import { aiReadableData, assertAiDataCurrent, sameAiDataReferences, type AiDataReference } from "../ai/aiBindings";
+import { runAiProject } from "../ai/aiProjectContext";
+import { aiProjectSchema, validateAiProjectReview, type AiProjectReceipt, type AiProjectReview } from "../ai/aiProjectEdits";
+import { applyAiProjectFiles, restoreAiProjectFiles } from "./editorAiProject";
 
 export interface ChatState {
   root?: string;
@@ -34,6 +37,13 @@ export interface ChatState {
   recovering?: boolean;
   sending: boolean;
   applying: boolean;
+  projectAccess: boolean;
+  projectProgress?: string;
+  setProjectAccess(value: boolean): void;
+  stageProjectReview(review: AiProjectReview): void;
+  sendProject(replyTo?: string): Promise<void>;
+  applyProject(id: string, expected: AiProjectReview): Promise<void>;
+  restoreProject(id: string, expected: AiProjectReceipt): Promise<void>;
   setDraft(value: string): void;
   setContextNotes(value: string): void;
   syncRoot(root?: string): void;
@@ -49,10 +59,11 @@ export interface ChatState {
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 function sessionKey() {
   const root = useEditorStore.getState().project?.root, ai = useEditorAi.getState();
-  return root && ai.account?.connected ? JSON.stringify([root, ai.provider.id, ai.account.email]) : undefined;
+  return root && ai.account?.connected ? JSON.stringify([root, ai.provider.id, ai.account.email, useEditorAiChat.getState().projectAccess ? "project" : "selection"]) : undefined;
 }
+const filePaths = (entries: FileEntry[]): string[] => entries.flatMap(entry => entry.kind === "directory" ? filePaths(entry.children ?? []) : [entry.path]);
 const createChatState: StateCreator<ChatState> = (set, get) => ({
-  generation: 0, draft: "", contextNotes: "", attachments: [], dataReferences: [], messages: [], sending: false, applying: false,
+  generation: 0, draft: "", contextNotes: "", attachments: [], dataReferences: [], messages: [], sending: false, applying: false, projectAccess: true,
   allowed() { return !!get().authorizedFor && get().authorizedFor === sessionKey(); },
   setAllowed(allowed) {
     set({ authorizedFor: allowed ? sessionKey() : undefined });
@@ -60,13 +71,14 @@ const createChatState: StateCreator<ChatState> = (set, get) => ({
   },
   setDraft(draft) { if (!get().sending && !get().applying && !get().recovering) set({ draft: draft.slice(0, 8000) }); },
   setContextNotes(contextNotes) { if (!get().sending && !get().applying && !get().recovering) set({ contextNotes: contextNotes.slice(0, 2000) }); },
+  setProjectAccess(projectAccess) { if (!get().sending && !get().applying && !get().recovering) set({ projectAccess, authorizedFor: undefined, prepared: undefined, projectProgress: undefined }); },
   syncRoot(root) {
     if (get().root === root) return;
     const ai = useEditorAi.getState();
     if (get().sending && ai.mode === "edit") {
       void ai.cancel(); useEditorAi.setState({ requestId: undefined, busy: false, proposal: undefined, snapshot: undefined });
     }
-    set({ root, generation: get().generation + 1, draft: "", contextNotes: "", prepared: undefined, authorizedFor: undefined, attachments: [], dataReferences: [], messages: [], sending: false, applying: false, error: undefined, recovered: false, recoveredReferences: [] });
+    set({ root, generation: get().generation + 1, draft: "", contextNotes: "", prepared: undefined, projectProgress: undefined, authorizedFor: undefined, attachments: [], dataReferences: [], messages: [], sending: false, applying: false, error: undefined, recovered: false, recoveredReferences: [] });
   },
   clear() {
     if (get().sending || get().applying) return;
@@ -94,7 +106,8 @@ const createChatState: StateCreator<ChatState> = (set, get) => ({
     try {
       const document = state.document?.file === page.file ? state.document : parseSource(page.file, await desktopBridge.readFile(page.file));
       if (get().generation !== generation || useEditorStore.getState().project?.root !== state.project.root || get().sending || get().applying) return;
-      attachment = aiPageAttachment(state.project.root, page, document);
+      if (get().projectAccess) attachment = { id: `page:${page.id}`, root: state.project.root, kind: "page", label: page.name, snapshot: { root: state.project.root, document, selectedId: document.roots[0] ?? "" }, context: { name: page.name, route: page.route, file: page.file.split(/[\\/]/).at(-1) } };
+      else attachment = aiPageAttachment(state.project.root, page, document);
     } catch (error) { if (get().generation === generation) set({ error: message(error) }); return; }
     const others = get().attachments.filter(item => item.id !== attachment.id);
     if (others.filter(item => item.kind === "page").length >= 5) { set({ error: "Puoi allegare fino a 5 pagine: rimuovi un riferimento prima di aggiungerne un altro." }); }
@@ -123,6 +136,7 @@ const createChatState: StateCreator<ChatState> = (set, get) => ({
     set({ messages: get().messages.map(item => item.id === id ? { ...item, answers } : item), error: undefined });
   },
   async send(replyTo) {
+    if (get().projectAccess) return get().sendProject(replyTo);
     const ai = useEditorAi.getState(), state = get(), root = useEditorStore.getState().project?.root;
     if (state.sending || state.applying || state.recovering || ai.busy || ai.checking || ai.connecting) return;
     if (!root || state.root !== root) { get().syncRoot(root); set({ error: "Apri un progetto prima di usare la chat." }); return; }
@@ -165,6 +179,99 @@ const createChatState: StateCreator<ChatState> = (set, get) => ({
       set({ sending: false });
       if (!useEditorAi.getState().requestId && id) useEditorAi.setState({ busy: false });
     }
+  },
+  stageProjectReview(input) {
+    if (get().sending || get().applying || get().recovering) return;
+    try {
+      const review = validateAiProjectReview(input);
+      if (review.root !== get().root || review.root !== useEditorStore.getState().project?.root) throw new Error("La proposta appartiene a un altro progetto.");
+      if (get().messages.length >= 40) throw new Error("Avvia una nuova chat prima di aggiungere altre proposte.");
+      set({ messages: [...get().messages, { id: crypto.randomUUID(), role: "assistant", text: [review.plan.summary, ...review.plan.questions, ...review.plan.warnings].join("\n\n"), projectReview: review }], error: undefined });
+    } catch (error) { set({ error: message(error) }); }
+  },
+  async sendProject(replyTo) {
+    const state = get(), ai = useEditorAi.getState(), editor = useEditorStore.getState(), project = editor.project;
+    if (state.sending || state.applying || state.recovering || ai.busy || ai.checking || ai.connecting) return;
+    if (!project || state.root !== project.root) { get().syncRoot(project?.root); set({ error: "Apri un progetto prima di usare la chat." }); return; }
+    if (!ai.account?.connected || !ai.model) { set({ error: "Collega l’account ChatGPT e scegli il modello in Impostazioni → AI e account." }); return; }
+    if (!get().allowed()) { set({ error: "Consenti l’invio di sorgenti e metadati del progetto per questa sessione prima di inviare." }); return; }
+    if (editor.dirty || editor.loading || editor.reloadRecovery) { set({ error: "Salva o scarta prima la bozza aperta e completa il recupero del progetto." }); return; }
+    if (state.messages.length + 2 > 40) { set({ error: "Questa conversazione ha raggiunto il limite. Avvia una nuova chat per continuare." }); return; }
+    let prompt = state.draft.trim();
+    try { if (replyTo) { const reply = prepareAiQuestionReply(replyTo, state.attachments, state.messages, state.contextNotes, state.dataReferences); prompt = `${reply.clarification.request}\n\n${reply.displayText}`; } }
+    catch (error) { set({ error: message(error) }); return; }
+    if (!prompt) return;
+    if (prompt.length > 8000) { set({ error: "Richiesta e risposte superano 8.000 caratteri: riducile prima dell’invio. Il testo è conservato." }); return; }
+    const generation = state.generation, provider = ai.provider, model = ai.model, effort = ai.reasoningEffort;
+    if (effort && !ai.models.find(item => item.id === model)?.supportedReasoningEfforts?.some(item => item.reasoningEffort === effort)) { set({ error: "Il ragionamento scelto non è disponibile: scegli il predefinito o aggiorna i modelli." }); return; }
+    const current = () => get().generation === generation && get().allowed() && useEditorStore.getState().project === project && useEditorAi.getState().provider === provider;
+    const user: AiChatMessage = { id: crypto.randomUUID(), role: "user", text: prompt, attachments: state.attachments.map(item => item.label) };
+    ai.show("edit"); useEditorAi.setState({ busy: true, requestId: crypto.randomUUID(), proposal: undefined, snapshot: undefined, error: undefined });
+    set({ sending: true, error: undefined, prepared: undefined, projectProgress: "Preparo il contesto di progetto…", messages: [...state.messages, user] });
+    try {
+      const listed = await desktopBridge.listProjectSourceFiles(); if (!current()) return;
+      const selections = state.attachments.flatMap(item => item.snapshot ? [{ path: item.snapshot.document.file, start: item.snapshot.document.nodes[item.snapshot.selectedId]?.source.start ?? 0, label: item.label }] : []);
+      if (!selections.length && editor.document) selections.push({ path: editor.document.file, start: editor.selectedId ? editor.document.nodes[editor.selectedId]?.source.start ?? 0 : 0, label: editor.pages.find(page => page.id === editor.activePageId)?.name ?? "Pagina aperta" });
+      const result = await runAiProject({ root: project.root, request: prompt, notes: state.contextNotes,
+        history: aiChatContext([], state.messages).history.map(({ role, text }) => ({ role, text })),
+        files: [...listed, ...filePaths(project.files ?? [])], selections, current,
+        read: path => desktopBridge.readAiProjectFile(project.root, path),
+        progress(projectProgress, input) {
+          if (!current()) return;
+          const inputBytes = new TextEncoder().encode(input + JSON.stringify(aiProjectSchema)).length;
+          set({ projectProgress, prepared: { prompt: input, payload: JSON.parse(input), inputBytes, estimatedTokens: Math.ceil(inputBytes / 3), recentTurns: Math.min(3, state.messages.length / 2), recalledTurns: 0, omittedTurns: Math.max(0, (state.messages.length - 6) / 2), abbreviatedMessages: state.messages.slice(-6).filter(item => item.text.length > 4000).length, template: "none" } });
+        },
+        async propose(input, schema) {
+          if (!current()) throw new Error("Invio annullato.");
+          const requestId = crypto.randomUUID(); useEditorAi.setState({ requestId });
+          const result = await provider.propose({ requestId, model, ...(effort ? { reasoningEffort: effort } : {}), prompt: input, schema });
+          if (!current() || useEditorAi.getState().requestId !== requestId || result.requestId !== requestId) throw new Error("Risposta AI superata o annullata.");
+          return result.text;
+        },
+      });
+      if (!current()) return;
+      const review = validateAiProjectReview(result);
+      set({ sending: false, projectProgress: undefined, ...(replyTo ? {} : { draft: "" }), messages: [...get().messages, { id: crypto.randomUUID(), role: "assistant", text: [review.plan.summary, ...review.plan.questions, ...review.plan.warnings].join("\n\n"), projectReview: review }] });
+    } catch (error) {
+      if (get().generation === generation && useEditorStore.getState().project === project) set({ sending: false, projectProgress: undefined, error: message(error), messages: get().messages.map(item => item.id === user.id ? { ...item, status: "error" } : item) });
+    } finally {
+      if (get().generation === generation && useEditorAi.getState().provider === provider) { set({ sending: false }); useEditorAi.setState({ busy: false, requestId: undefined }); }
+    }
+  },
+  async applyProject(id, expected) {
+    const state = get(), target = state.messages.find(item => item.id === id);
+    if (state.applying || state.sending || state.recovering || useEditorAi.getState().busy) return;
+    if (!target || target !== state.messages.at(-1) || target.projectReview !== expected || target.status || target.recovered) { set({ error: "La proposta è superata: controlla la revisione più recente." }); return; }
+    const generation = state.generation, editor = useEditorStore.getState(), project = editor.project;
+    set({ applying: true, error: undefined });
+    useEditorStore.setState({ aiProjectBusy: true });
+    try {
+      const receipt = await applyAiProjectFiles(expected, () => get().generation === generation && get().root === expected.root);
+      if (get().generation !== generation) return;
+      if (useEditorStore.getState().project === project && !useEditorStore.getState().dirty && useEditorStore.getState().history === editor.history) {
+        const previous = expected.changes.filter(change => change.before !== null && /\.[jt]sx?$/.test(change.path)).map(change => ({ file: `${expected.root.replace(/[\\/]$/, "")}/${change.path}`, source: change.before! }));
+        useEditorStore.setState({ history: [...editor.history, ...previous].slice(-100), future: [] });
+      }
+      set({ messages: get().messages.map(item => item.id === id ? { ...item, status: "applied", projectReceipt: receipt } : item), attachments: get().attachments.filter(item => !receipt.files.some(file => item.snapshot?.document.file.replaceAll("\\", "/").endsWith(`/${file}`))) });
+      await useEditorStore.getState().refreshAiProjectFiles(receipt.root, receipt.files);
+    } catch (error) { if (get().generation === generation) set({ error: message(error) }); }
+    finally { if (useEditorStore.getState().project === project) useEditorStore.setState({ aiProjectBusy: false }); if (get().generation === generation) set({ applying: false }); }
+  },
+  async restoreProject(id, expected) {
+    const state = get(), target = state.messages.find(item => item.id === id);
+    if (state.applying || state.sending || state.recovering || useEditorAi.getState().busy) return;
+    const latest = [...state.messages].reverse().find(item => item.projectReceipt && !item.projectReceipt.restored);
+    if (!target || latest !== target || target.projectReceipt !== expected || expected.restored) { set({ error: "Ripristina prima la modifica di progetto più recente." }); return; }
+    const generation = state.generation, project = useEditorStore.getState().project;
+    set({ applying: true, error: undefined });
+    useEditorStore.setState({ aiProjectBusy: true });
+    try {
+      const receipt = await restoreAiProjectFiles(expected, () => get().generation === generation && get().root === expected.root);
+      if (get().generation !== generation) return;
+      set({ messages: get().messages.map(item => item.id === id ? { ...item, projectReceipt: receipt, text: `${item.text}\n\nModifiche ripristinate dal backup su richiesta dell’utente.` } : item) });
+      await useEditorStore.getState().refreshAiProjectFiles(receipt.root, receipt.files);
+    } catch (error) { if (get().generation === generation) set({ error: message(error) }); }
+    finally { if (useEditorStore.getState().project === project) useEditorStore.setState({ aiProjectBusy: false }); if (get().generation === generation) set({ applying: false }); }
   },
   async apply(id, accepted) {
     const state = get(), target = state.messages.find(item => item.id === id);

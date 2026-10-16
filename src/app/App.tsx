@@ -119,6 +119,7 @@ function EditorApp() {
   useEffect(() => installAiChatProjectScope(), []);
   const project = useEditorStore((state) => state.project);
   const loading = useEditorStore((state) => state.loading);
+  const aiProjectBusy = useEditorStore((state) => state.aiProjectBusy);
   const reloadRecovery = useEditorStore((state) => state.reloadRecovery);
   const backupError = useEditorStore((state) => state.draftBackup?.error);
   const retryBackup = useEditorStore((state) => state.retryDraftBackup);
@@ -161,7 +162,8 @@ function EditorApp() {
 
   return (
     <>
-      {reloadRecovery ? <ReloadRecoveryScreen /> : loading ? <ProjectLoadingScreen /> : project ? <AppShell /> : <WelcomeScreen />}
+      <div inert={aiProjectBusy} style={{ display: "contents" }}>{reloadRecovery ? <ReloadRecoveryScreen /> : loading ? <ProjectLoadingScreen /> : project ? <AppShell /> : <WelcomeScreen />}</div>
+      {aiProjectBusy && <div className="ai-project-busy-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={22} /><strong>Aggiornamento protetto del progetto…</strong><p>Attendi il completamento del salvataggio o del ripristino. Non chiudere questa finestra.</p></div>}
       {!reloadRecovery && project && backupError && <aside className="draft-backup-warning" role="alert"><MessageNotice context="backup" raw={backupError} /><button onClick={() => void retryBackup()}>Riprova il backup</button></aside>}
       {paletteOpen && <CommandPalette />}
       {userAccessOpen && <UserAccessWindow />}

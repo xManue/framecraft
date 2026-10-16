@@ -1,4 +1,5 @@
 import type { AiChatMessage } from "./aiChat";
+import { parseAiProjectReceipt } from "./aiProjectEdits";
 
 export const aiChatRecoveryKey = "framecraft.ai-chat-reload.v1";
 const maxLength = 2_000_000;
@@ -31,6 +32,7 @@ function history(value: unknown): AiChatMessage {
   }
   if (value.originalRequest !== undefined) item.originalRequest = text(value.originalRequest, 8000);
   if (value.replyTo !== undefined) item.replyTo = text(value.replyTo, 200);
+  if (value.projectReceipt !== undefined) item.projectReceipt = parseAiProjectReceipt(value.projectReceipt);
   if (value.proposal !== undefined) {
     if (!object(value.proposal)) throw new Error("Riepilogo della chat non valido.");
     item.proposal = { version: 1, mode: "edit", summary: text(value.proposal.summary, 100_000), questions: strings(value.proposal.questions, 100, 100_000), warnings: strings(value.proposal.warnings, 100, 100_000), provenance: [], project: null, operations: [] };
@@ -49,7 +51,7 @@ export function serializeAiChatRecovery(value: AiChatRecovery) {
   const source = JSON.stringify({ version: 1, root: value.root, account: value.account, open: value.open, draft: value.draft, contextNotes: value.contextNotes,
     references: value.references,
     messages: value.messages.map(item => ({ id: item.id, role: item.role, text: item.text, attachments: item.attachments, status: item.status,
-      originalRequest: item.originalRequest, replyTo: item.replyTo, answers: item.answers,
+      originalRequest: item.originalRequest, replyTo: item.replyTo, answers: item.answers, projectReceipt: item.projectReceipt && parseAiProjectReceipt(item.projectReceipt),
       proposal: item.proposal && { summary: item.proposal.summary, questions: item.proposal.questions, warnings: item.proposal.warnings } })) });
   if (source.length > maxLength) throw new Error("La chat supera lo spazio previsto per il recupero. Copia i testi importanti prima di ricaricare.");
   parseAiChatRecovery(source);
@@ -59,6 +61,7 @@ export function parseAiChatRecovery(source: string): AiChatRecovery {
   if (source.length > maxLength) throw new Error("La copia della chat è troppo grande.");
   const value: unknown = JSON.parse(source);
   if (!object(value) || value.version !== 1 || typeof value.open !== "boolean" || !Array.isArray(value.messages) || value.messages.length > 40) throw new Error("La copia della chat non è valida.");
+  for (const message of value.messages) if (object(message) && message.projectReceipt !== undefined && parseAiProjectReceipt(message.projectReceipt).root !== value.root) throw new Error("Il backup della chat appartiene a un altro progetto.");
   return { version: 1, root: text(value.root, 8000), account: value.account === null ? null : text(value.account, 2000), open: value.open,
     draft: text(value.draft, 8000), contextNotes: text(value.contextNotes, 2000), messages: value.messages.map(history), references: strings(value.references, 14, 300) };
 }

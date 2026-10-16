@@ -4579,6 +4579,45 @@ Verifiche del 5 ottobre 2026:
   Nessuna inference, lettura PLC, modifica al progetto macchina aperto o riavvio dell’app.
   La prova symlink dipende dai permessi OS; non equivale a un audit generale del filesystem.
 
+### 135. Chat AI con contesto sorgente, variabili e revisione di progetto (2026-10-16)
+
+- L’utente ha esplicitamente autorizzato la condivisione del contesto necessario dell’impianto
+  tramite il proprio account. Superato il blocco di consenso del punto 134, senza aggiramenti.
+- Ambito “Modifiche al progetto” predefinito: pagine/elementi allegati avviano il recupero mirato
+  di sorgenti, componenti importati e configurazioni. HeaderValue/HeaderGauge non dipendono più
+  dalle sole proprietà esposte nell’Inspector. Modalità grafica precedente ancora disponibile.
+- Catalogo automatico di nomi/tipi/accessi/descrizioni; indirizzi, connessioni, valori ed extra
+  non inviati. Variabili scalari mancanti dichiarabili read-only, senza mapping inventato.
+  Massimo tre passaggi, 80 KB input per passaggio e 180 KB totali UTF-8 incluso schema, sei
+  messaggi recenti abbreviati, indice massimo 500 file. Nessun riassuntore AI aggiuntivo.
+- Modifiche su codice vero con sintassi/import e sostituzioni uniche verificate; preview solo
+  testuale, niente esecuzione del JSX ricevuto. Approvazione separata dall’invio e non preselezionata.
+  Rilettura disco/bozza prima dell’applicazione; backup nativo e ripristino dell’insieme con
+  conferma distinta. Ricevuta whitelisted conservata al refresh, mai sorgenti o approvazioni.
+- Durante scritture/ripristino: blocco UI/comandi, guard prima del reload, refresh dei file e
+  del catalogo senza cambiare progetto o avviare l’anteprima. Chiusure forzate e atomicità
+  multi-file restano fuori garanzia; le euristiche non sostituiscono build o collaudo macchina.
+- Verificati nella copia del solo indice Git **202 test mirati in otto file**, controllo tipi
+  e build Vite. Backend: 9 test Codex e 7 primitive progetto passati; prova reale ignorata nella
+  selezione ordinaria. Edge a 375/768/1024/1440 px: approvazione distinta dall’invio, ripristino
+  dopo reload, bozza conservata, nessun reinvio, errore browser o overflow. Screenshot verificato.
+  Copia pubblicabile: `.hmi-preview/ai-project-chat-public-1792133462896/`, senza dati macchina
+  o modifiche trend preesistenti; artefatti browser nella sua sottocartella `.hmi-preview/`.
+  Prima prova Codex reale fermata dal provider, senza modifiche ai file. Nessun reinvio automatico.
+  CLI 0.159.2 con protocollo diverso dalla documentazione corrente: l’utente ha autorizzato
+  l’aggiornamento. Vietato allargare l’accesso ai file come fallback.
+- Aggiornamento npm globale ufficiale a **0.163.0** eseguito e versione verificata. npm segnala
+  residui temporanei della vecchia installazione occupati da processi attivi: non eliminati né
+  processi terminati. Schema locale 0.163.0 ancora senza `ReadOnlyAccess`: aggiunto controllo
+  fail-closed prima dell’inferenza di progetto. Account/modelli e percorso grafico precedente
+  non richiedono questo gate aggiuntivo. Nessuna seconda richiesta AI reale eseguita.
+- Build desktop debug aggiornata verificata (`src-tauri/target/debug/framecraft.exe`), senza
+  avviare o interrompere l’app. Per utilizzare i nuovi comandi aprire questa build dopo aver
+  salvato il lavoro; non implica installer/artefatto production o collaudo macchina.
+- **Non dichiarare completata la pipeline reale di modifica progetto**: servono CLI/provider
+  compatibili con il confine di lettura e nuova prova end-to-end. I test UI usano provider
+  sintetico; preservare questo limite nelle comunicazioni e nella roadmap.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

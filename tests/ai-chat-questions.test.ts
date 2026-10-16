@@ -26,7 +26,7 @@ beforeEach(() => {
   provider = { id: "synthetic", connect: vi.fn(), models: vi.fn(), login: vi.fn(), logout: vi.fn(), cancel: vi.fn(), subscribe: vi.fn(), propose: vi.fn(async request => ({ requestId: request.requestId, text: JSON.stringify(plan()) })) };
   useEditorAi.setState({ ...initialAi, mode: "edit", provider, account: { connected: true, email: "test@example.invalid", plan: null }, model: "synthetic-model" }, true);
   useEditorStore.setState({ ...initialEditor, project: { root: rootPath, name: "Prova" } as never, document: parseSource(file, source), pages: [page], activePageId: page.id, selectedId: undefined, loading: false, interactionMode: "edit", dirty: false, history: [], future: [], panelManifest: undefined, unlockedPages: [], reloadRecovery: undefined }, true);
-  useEditorAiChat.setState(initialChat, true); useEditorAiChat.getState().syncRoot(rootPath); useEditorAiChat.getState().setAllowed(true);
+  useEditorAiChat.setState({ ...initialChat, projectAccess: false }, true); useEditorAiChat.getState().syncRoot(rootPath); useEditorAiChat.getState().setAllowed(true);
   bridge.readFile.mockResolvedValue(source); bridge.writeFile.mockResolvedValue(undefined);
 });
 afterEach(async () => { cleanup?.(); cleanup = undefined; await act(async () => root?.unmount()); root = undefined; host?.remove(); host = undefined; vi.restoreAllMocks(); useEditorAi.setState(initialAi, true); useEditorAiChat.setState(initialChat, true); useEditorStore.setState(initialEditor, true); });

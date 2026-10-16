@@ -29,7 +29,7 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   provider = { id: "test", connect: vi.fn(), models: vi.fn(), login: vi.fn(), logout: vi.fn(), subscribe: vi.fn(), cancel: vi.fn(), propose: vi.fn(async request => ({ requestId: request.requestId, text: JSON.stringify(plan()) })) };
   useEditorAi.setState({ ...initialAi, mode: "edit", open: true, provider, account: { connected: true, email: "synthetic@example.invalid", plan: null }, model: "synthetic-model", busy: false, checking: false }, true);
-  useEditorAiChat.setState(initialChat, true); seed(); useEditorAiChat.getState().setAllowed(true);
+  useEditorAiChat.setState({ ...initialChat, projectAccess: false }, true); seed(); useEditorAiChat.getState().setAllowed(true);
 });
 afterEach(async () => { cleanup?.(); cleanup = undefined; await act(async () => root?.unmount()); root = undefined; host?.remove(); host = undefined; document.querySelectorAll("iframe").forEach(frame => frame.remove()); vi.restoreAllMocks(); useEditorAi.setState(initialAi, true); useEditorAiChat.setState(initialChat, true); useEditorStore.setState(initialEditor, true); });
 async function mount(component: ComponentType = AiProjectChat) { useEditorAiChat.getState().setAllowed(false); host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root!.render(createElement(StrictMode, null, createElement(component)))); }

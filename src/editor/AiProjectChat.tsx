@@ -16,9 +16,11 @@ import { AiChatQuestions } from "./AiChatQuestions";
 import { pendingAiQuestions } from "../ai/aiChatQuestions";
 import { AiChatDataSources } from "./AiChatDataSources";
 import { sameAiDataReferences } from "../ai/aiBindings";
+import { AiProjectCodeReview } from "./AiProjectCodeReview";
 
 function ChatProposal({ message, latest }: { message: AiChatMessage; latest: boolean }) {
   const data = useEditorAiChat(state => state.dataReferences);
+  if (message.projectReview || message.projectReceipt) return <AiProjectCodeReview message={message} latest={latest} />;
   if (!message.status && message.proposal?.operations.some(operation => operation.type === "binding") && !sameAiDataReferences(message.snapshot?.dataReferences, data)) return <p className="ai-error">I dati nel contesto sono cambiati: richiedi una nuova proposta prima di applicare collegamenti.</p>;
   return message.snapshot?.targets ? <AiPageReview message={message} latest={latest} /> : <ElementChatProposal message={message} latest={latest} />;
 }
@@ -54,7 +56,7 @@ export function AiProjectChat() {
   const [reset, setReset] = useState(false);
   const [writingNew, setWritingNew] = useState<string>();
   const pendingQuestion = pendingAiQuestions(chat.messages)?.id, last = chat.messages.at(-1);
-  const pendingProposal = last?.role === "assistant" && last.proposal?.operations.length && !last.status ? last.id : undefined;
+  const pendingProposal = last?.role === "assistant" && (last.proposal?.operations.length || last.projectReview?.changes.length) && !last.status ? last.id : undefined;
   const pendingWork = pendingQuestion ?? pendingProposal, showComposer = !pendingWork || writingNew === pendingWork;
   const consent = chat.allowed();
   const textarea = useRef<HTMLTextAreaElement>(null), log = useRef<HTMLDivElement>(null);
@@ -68,11 +70,12 @@ export function AiProjectChat() {
   }, [chat.messages.length, chat.sending]);
   const page = pages.find(item => item.id === activePage);
   const preview = useMemo(() => {
+    if (chat.projectAccess) return { prepared: chat.prepared, error: undefined };
     try {
       const snapshot = aiChatScope(chat.attachments, chat.dataReferences);
       return { prepared: chat.sending && chat.prepared ? chat.prepared : prepareAiChat(chat.draft.trim(), snapshot, aiChatContext(chat.attachments, chat.messages, chat.contextNotes, chat.dataReferences)) };
     } catch (error) { return { error: error instanceof Error ? error.message : String(error) }; }
-  }, [chat.draft, chat.contextNotes, chat.attachments, chat.messages, chat.sending, chat.prepared, chat.dataReferences]);
+  }, [chat.projectAccess, chat.draft, chat.contextNotes, chat.attachments, chat.messages, chat.sending, chat.prepared, chat.dataReferences]);
   const prepared = preview.prepared;
   const send = () => { if (consent) void chat.send(); };
   return <aside className="ai-assistant ai-chat" aria-label="Chat AI del progetto" data-editor-shortcuts="off" onKeyDown={event => {
@@ -82,6 +85,7 @@ export function AiProjectChat() {
       <div className="ai-chat-tools"><button type="button" title="Nuova chat" aria-label="Nuova chat" disabled={resetBusy} onClick={() => setReset(true)}><Plus size={18} /></button><button type="button" aria-label="Impostazioni AI" onClick={() => useEditorShortcuts.getState().setOpen(true, "ai")}><Settings size={18} /></button><button type="button" aria-label="Chiudi chat AI" disabled={chat.applying} onClick={ai.close}><X size={18} /></button></div>
     </header>
     <AiModelControls />
+    <label className="ai-check ai-chat-scope"><input type="checkbox" checked={chat.projectAccess} disabled={busy} onChange={event => chat.setProjectAccess(event.target.checked)} /><span><strong>Modifiche al progetto</strong><small>{chat.projectAccess ? "Componenti, configurazioni e variabili mancanti. Codice necessario incluso nel contesto, solo dopo consenso all’invio." : "Solo proprietà e dati degli elementi allegati, senza sorgenti completi."}</small></span></label>
     {!ai.account?.connected || !ai.model ? <div className="ai-chat-account"><p>Collega l’account ChatGPT e scegli il modello in Impostazioni → AI e account.</p><button type="button" onClick={() => useEditorShortcuts.getState().setOpen(true, "ai")}>Apri impostazioni AI</button></div> : <p className="ai-chat-model">{ai.model} · testi conservati ai refresh di questa finestra</p>}
     {chat.recovering && <p className="ai-chat-model" role="status">Chat conservata: verifico l’account prima di mostrarla. Se la verifica non riesce, apri Impostazioni AI.</p>}
     {chat.recoveryError && <p className="ai-error" role="alert">{chat.recoveryError}</p>}
@@ -97,7 +101,7 @@ export function AiProjectChat() {
         {(message.status === "error" || message.status === "cancelled") && <small>{message.replyTo ? "Invio non completato · risposte conservate nei chiarimenti" : "Richiesta non completata · testo conservato qui sotto"}</small>}
         {message.role === "assistant" && <><AiChatQuestions message={message} /><ChatProposal message={message} latest={index === chat.messages.length - 1} /></>}
       </article>)}
-      {chat.sending && <p role="status"><LoaderCircle size={16} className="spin" /> Codex sta rispondendo. Nessun file viene modificato.</p>}
+      {chat.sending && <p role="status"><LoaderCircle size={16} className="spin" /> {chat.projectProgress ?? "Codex sta rispondendo. Nessun file viene modificato."}</p>}
     </div>
     <form className="ai-chat-composer" onSubmit={event => { event.preventDefault(); if (showComposer) send(); }}>
       {pendingWork && <div className="ai-chat-compose-mode"><button type="button" disabled={busy} aria-expanded={showComposer} onClick={() => setWritingNew(showComposer ? undefined : pendingWork)}>{showComposer ? pendingQuestion ? "Torna ai chiarimenti" : "Torna alla proposta" : "Scrivi una nuova richiesta"}</button>{!showComposer && <small>{chat.draft ? "Bozza conservata. " : ""}{pendingQuestion ? "Completa i dettagli sopra per continuare." : "Controlla la proposta sopra e scegli le modifiche da applicare."}</small>}</div>}
@@ -105,9 +109,9 @@ export function AiProjectChat() {
       <div className="ai-chat-attach"><button type="button" disabled={busy || !selectedId || mode !== "edit"} onClick={chat.attachSelection}><Paperclip size={15} />Elemento selezionato</button><button type="button" disabled={busy || !page} onClick={() => page && chat.attachPage(page)}><FileText size={15} />Pagina aperta</button></div>
       <div className="ai-chat-attachments" aria-label="Allegati della richiesta">{chat.attachments.map(item => <span key={item.id}><span>{item.kind === "element" ? "Elemento" : "Pagina"}: {item.label}{item.snapshot?.targets && ` · ${Object.keys(item.snapshot.targets).length} oggetti modificabili`}</span><button type="button" aria-label={`Rimuovi allegato ${item.label}`} disabled={busy} onClick={() => chat.removeAttachment(item.id)}><X size={14} /></button></span>)}</div>
       <label>La tua richiesta<textarea ref={textarea} rows={3} maxLength={8000} value={chat.draft} disabled={busy} onChange={event => chat.setDraft(event.target.value)} placeholder="Chiedi qualcosa sul pannello…" onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }} /></label>
-      <p className="ai-context-stats" aria-label="Peso del contesto">{prepared ? `~${prepared.estimatedTokens.toLocaleString("it-IT")} token stimati · ${(prepared.inputBytes / 1000).toLocaleString("it-IT", { maximumFractionDigits: 1 })} / ${aiChatInputBudget / 1000} kB locali` : "Contesto da ridurre prima dell’invio"}</p>
+      <p className="ai-context-stats" aria-label="Peso del contesto">{prepared ? `~${prepared.estimatedTokens.toLocaleString("it-IT")} token stimati · ${(prepared.inputBytes / 1000).toLocaleString("it-IT", { maximumFractionDigits: 1 })} / ${chat.projectAccess ? 80 : aiChatInputBudget / 1000} kB locali${chat.projectAccess ? " · ultimo passaggio" : ""}` : chat.projectAccess ? "Contesto mirato preparato all’invio · massimo 3 passaggi" : "Contesto da ridurre prima dell’invio"}</p>
       <details className="ai-context"><summary>Cosa invierai a Codex</summary>
-        <p>Richiesta corrente e destinazione una sola volta, indicazioni fissate, scambi recenti e richiami pertinenti. Nessun sorgente completo, valore PLC o credenziale raccolto automaticamente. Non inserire segreti.</p>
+        <p>{chat.projectAccess ? "Invii a Codex/OpenAI richiesta, note, fino a 6 messaggi recenti, indice dei file, estratti necessari di sorgente e metadati delle variabili (nomi, tipi, descrizioni). Le parti brevi dei componenti possono essere inviate intere. Indirizzi e valori PLC del catalogo non vengono raccolti. File di credenziali esclusi; non inserire segreti nei sorgenti o nella richiesta. Massimo 3 passaggi modello, 80 kB per passaggio e 180 kB complessivi; la cronologia può essere abbreviata. Il contesto tecnico dell’ultimo passaggio è consultabile dopo l’invio." : "Richiesta corrente e destinazione una sola volta, indicazioni fissate, scambi recenti e richiami pertinenti. Nessun sorgente completo, valore PLC o credenziale raccolto automaticamente. Non inserire segreti."}</p>
         <label>Indicazioni da ricordare<textarea rows={2} maxLength={2000} value={chat.contextNotes} disabled={busy} onChange={event => chat.setContextNotes(event.target.value)} placeholder="Es. testi in italiano, conserva i colori degli allarmi…" /></label>
         <p className="ai-hint">Testi e risposte sono conservati localmente, in chiaro, ai refresh di questa finestra; non è un archivio dopo la chiusura dell’app. Nuova chat mantiene le indicazioni, cambio progetto o account le elimina. Non inserire segreti. Le indicazioni vengono inviate integralmente, senza riscrittura AI.</p>
         {prepared && <><p>{prepared.recentTurns} scambi recenti · {prepared.recalledTurns} richiami da messaggi precedenti · {prepared.omittedTurns} scambi esclusi · {prepared.abbreviatedMessages} messaggi abbreviati. La chat originale resta visibile.</p>
@@ -116,8 +120,8 @@ export function AiProjectChat() {
       </details>
       {preview.error && <p className="ai-error" role="alert">{preview.error}</p>}
       </div>
-      <AiChatDataSources />
-      <label className="ai-consent"><input type="checkbox" checked={consent} disabled={!ai.account?.connected} onChange={event => chat.setAllowed(event.target.checked)} /><span>{consent && !showComposer ? "Invio autorizzato per questa sessione. Togli la spunta per revocare." : "Consenti l’invio di richieste e contesto scelto per questa sessione del progetto. Non serve confermare ogni messaggio; togli la spunta per revocare. Le modifiche richiedono comunque approvazione."}</span></label>
+      {!chat.projectAccess && <AiChatDataSources />}
+      <label className="ai-consent"><input type="checkbox" checked={consent} disabled={!ai.account?.connected} onChange={event => chat.setAllowed(event.target.checked)} /><span>{consent && !showComposer ? "Invio autorizzato per questa sessione. Togli la spunta per revocare." : chat.projectAccess ? "Consenti l’invio a Codex/OpenAI del codice necessario e dei metadati delle variabili per questa sessione del progetto. Non serve confermare ogni messaggio; togli la spunta per revocare. L’applicazione delle modifiche richiede un’approvazione separata." : "Consenti l’invio di richieste e contesto scelto per questa sessione del progetto. Non serve confermare ogni messaggio; togli la spunta per revocare. Le modifiche richiedono comunque approvazione."}</span></label>
       {chat.error && <p className="ai-error" role="alert">{chat.error}</p>}
       <div className="ai-chat-send">{showComposer && <small>Invio: invia · Maiusc+Invio: a capo</small>}{chat.sending ? <button type="button" onClick={() => void chat.cancel()}>Annulla richiesta</button> : showComposer && <button type="submit" className="button primary" disabled={!!preview.error || !consent || !chat.draft.trim() || !project || !ai.account?.connected || !ai.model || busy || ai.checking || ai.connecting}><Send size={16} />Invia</button>}</div>
     </form>

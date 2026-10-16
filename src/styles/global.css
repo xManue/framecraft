@@ -369,6 +369,17 @@ code, kbd { font-family: "JetBrains Mono", Consolas, monospace; }
 .ai-chat-tools button { padding: 6px; min-width: 32px; }
 .ai-chat-model { margin: 0; padding: 8px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .ai-chat-recovered-label { display: block; margin-top: 4px; color: var(--muted); }
+.ai-chat .ai-chat-scope { display: flex; align-items: flex-start; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.ai-chat .ai-chat-scope input { width: auto; flex: none; margin-top: 3px; }
+.ai-chat-scope > span { min-width: 0; flex: 1; }
+.ai-chat-scope small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.5; }
+.ai-project-code-review { min-width: 0; }
+.ai-project-code-review li, .ai-project-file-diff summary { overflow-wrap: anywhere; }
+.ai-project-file-diff { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.ai-project-file-diff summary { cursor: pointer; }
+.ai-project-file-diff pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; }
+.ai-project-new-variables { padding: 8px; border: 1px solid var(--border); border-radius: 5px; }
+.ai-project-busy-overlay { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; padding: 24px; background: var(--bg); color: var(--text); text-align: center; }
 .ai-chat-log { flex: 1; min-height: 100px; overflow: auto; overscroll-behavior: contain; padding: 12px; }
 .ai-chat-message { margin-bottom: 16px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
 .ai-chat-message.user { background: var(--accent-soft); }

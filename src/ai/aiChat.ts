@@ -2,6 +2,7 @@ import type { EditorDocument, PageDefinition } from "../core/types";
 import { aiEditContext, aiProposalSchema, aiPageProposalSchema, type AiEditSnapshot, type AiProposal } from "./aiProposal";
 import { aiAttachmentWireContext, aiContextAttachments, pageAiAttachment } from "./aiPageContext";
 import { publicAiData, type AiDataReference } from "./aiBindings";
+import type { AiProjectReceipt, AiProjectReview } from "./aiProjectEdits";
 
 export interface AiChatAttachment {
   id: string;
@@ -33,6 +34,8 @@ export interface AiChatMessage {
   clarification?: AiChatClarification;
   replyTo?: string;
   recovered?: boolean;
+  projectReview?: AiProjectReview;
+  projectReceipt?: AiProjectReceipt;
 }
 export interface AiChatHistoryItem {
   role: "user" | "assistant";

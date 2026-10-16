@@ -10,7 +10,8 @@ export interface AiProjectPlan {
   edits: { path: string; before: string; after: string }[];
   variables: { name: string; dataType: string; description: string }[];
 }
-export interface AiProjectReview { root: string; changes: AiProjectChange[]; plan: AiProjectPlan; bytes: number; rounds: number; backup?: string; restored?: boolean }
+export interface AiProjectReview { root: string; changes: AiProjectChange[]; plan: AiProjectPlan; bytes: number; rounds: number; knownFiles?: string[] }
+export interface AiProjectReceipt { root: string; backup: string; files: string[]; restored: boolean }
 const string = { type: "string" };
 const list = (properties: Record<string, unknown>) => ({ type: "array", items: { type: "object", properties, required: Object.keys(properties), additionalProperties: false } });
 export const aiProjectSchema = { type: "object", properties: {
@@ -74,12 +75,13 @@ function dangerousCalls(source: string) {
   return calls;
 }
 export function validateAiProjectCode(path: string, before: string | null, after: string, known: ReadonlySet<string>) {
+  const dependencies: string[] = [];
   if (!after.trim() || after.length > 300_000) throw new Error(`${path}: il risultato è vuoto o troppo grande.`);
   assertAiSourceShareable(after);
   if (path.endsWith(".css")) {
     if (/url\s*\(\s*["']?(?:https?:|data:|javascript:|\/\/)|@import/i.test(after) && after !== before) throw new Error("L’AI non aggiunge import CSS o risorse di rete.");
     if ((after.match(/\{/g)?.length ?? 0) !== (after.match(/\}/g)?.length ?? 0)) throw new Error(`${path}: parentesi CSS non bilanciate.`);
-    return;
+    return dependencies;
   }
   const next = ast(after), oldImports = new Set<string>();
   if (before) for (const item of ast(before).program.body) if (item.type === "ImportDeclaration" || item.type === "ExportNamedDeclaration" || item.type === "ExportAllDeclaration") if (item.source) oldImports.add(item.source.value);
@@ -90,13 +92,16 @@ export function validateAiProjectCode(path: string, before: string | null, after
     const parts = path.split("/"); parts.pop();
     for (const part of dependency.split("/")) { if (part === "..") parts.pop(); else if (part !== ".") parts.push(part); }
     const relative = parts.join("/");
-    if (![relative, ...[".ts", ".tsx", ".js", ".jsx", ".mjs", ".css", "/index.ts", "/index.tsx"].map(ext => relative + ext)].some(file => aiProjectPath(file) && known.has(file))) throw new Error(`${path}: import non risolvibile nel progetto (${dependency}).`);
+    const resolved = [relative, ...[".ts", ".tsx", ".js", ".jsx", ".mjs", ".css", "/index.ts", "/index.tsx"].map(ext => relative + ext)].find(file => aiProjectPath(file) && known.has(file));
+    if (!resolved) throw new Error(`${path}: import non risolvibile nel progetto (${dependency}).`);
+    dependencies.push(resolved);
   }
   const existing = dangerousCalls(before ?? "");
   for (const call of dangerousCalls(after)) {
     const at = existing.indexOf(call); if (at < 0) throw new Error(`${path}: nuove chiamate di rete, esecuzione o scrittura PLC richiedono una funzione dedicata; non vengono attivate da una modifica al codice AI.`);
     existing.splice(at, 1);
   }
+  return dependencies;
 }
 export function appendAiVariables(source: string | null, variables: AiProjectPlan["variables"]): string {
   variables = parseAiProjectPlan(JSON.stringify({ summary: "", questions: [], warnings: [], reads: [], edits: [], variables })).variables;
@@ -116,6 +121,7 @@ export function prepareAiProjectChanges(plan: AiProjectPlan, sources: ReadonlyMa
   if (plan.questions.length || plan.reads.length) return [];
   const changes = new Map<string, AiProjectChange>(), known = new Set([...knownFiles, ...plan.edits.map(edit => edit.path)]);
   for (const edit of plan.edits) {
+    if (edit.before === edit.after) continue;
     if (!sources.has(edit.path)) throw new Error(`L’AI deve leggere ${edit.path} prima di modificarlo, o confermare che è nuovo.`);
     const original = sources.get(edit.path)!, current = changes.get(edit.path) ?? { path: edit.path, before: original, after: original ?? "" };
     if (original === null) {
@@ -137,4 +143,27 @@ export function prepareAiProjectChanges(plan: AiProjectPlan, sources: ReadonlyMa
   const result = [...changes.values()].filter(change => change.before !== change.after);
   if (result.length > 8) throw new Error("La proposta coinvolge più di 8 file: dividila in passaggi più piccoli.");
   return result;
+}
+
+export function validateAiProjectReview(review: AiProjectReview): AiProjectReview {
+  if (!review || typeof review.root !== "string" || !review.root || review.root.length > 8000 || !Array.isArray(review.changes) || review.changes.length > 8) throw new Error("Revisione progetto non valida.");
+  const plan = parseAiProjectPlan(JSON.stringify(review.plan)), changes = review.changes.map(change => {
+    if (!change || !aiProjectPath(change.path) || change.before !== null && typeof change.before !== "string" || typeof change.after !== "string" || change.after.length > 300_000 || (change.before?.length ?? 0) > 300_000) throw new Error("File della revisione non valido.");
+    return { path: change.path, before: change.before, after: change.after };
+  });
+  if (new Set(changes.map(change => change.path.toLowerCase())).size !== changes.length) throw new Error("File duplicati nella revisione.");
+  const sources = new Map(changes.map(change => [change.path, change.before])), excerpts = new Map<string, string[]>();
+  for (const edit of plan.edits) excerpts.set(edit.path, [...(excerpts.get(edit.path) ?? []), edit.before]);
+  const knownFiles = review.knownFiles ?? [];
+  if (!Array.isArray(knownFiles) || knownFiles.length > 1200 || knownFiles.some(path => typeof path !== "string" || !aiProjectPath(path))) throw new Error("Indice file della revisione non valido.");
+  const derived = prepareAiProjectChanges(plan, sources, excerpts, knownFiles);
+  if (JSON.stringify(derived) !== JSON.stringify(changes)) throw new Error("Il confronto non corrisponde al piano proposto. Nessuna modifica applicata.");
+  return { root: review.root, changes, plan, knownFiles: [...knownFiles], bytes: Number.isFinite(review.bytes) ? Math.max(0, review.bytes) : 0, rounds: Number.isInteger(review.rounds) ? Math.min(3, Math.max(0, review.rounds)) : 0 };
+}
+export function parseAiProjectReceipt(value: unknown): AiProjectReceipt {
+  const item = object(value, ["root", "backup", "files", "restored"]), root = text(item.root, 8000), backup = text(item.backup, 80);
+  if (!root || !/^\d+-\d+$/.test(backup) || !Array.isArray(item.files) || !item.files.length || item.files.length > 8 || typeof item.restored !== "boolean") throw new Error("Riferimento al backup AI non valido.");
+  const files = item.files.map(file => { const path = text(file, 240); if (!aiProjectPath(path)) throw new Error("Percorso nel backup AI non valido."); return path; });
+  if (new Set(files.map(file => file.toLowerCase())).size !== files.length) throw new Error("File duplicati nel backup AI.");
+  return { root, backup, files, restored: item.restored };
 }

@@ -1,6 +1,6 @@
 # AI facoltativa in Framecraft
 
-Aggiornato al 15 ottobre 2026.
+Aggiornato al 16 ottobre 2026.
 
 L'obiettivo finale è accompagnare l'intero ciclo di costruzione dell'HMI senza rendere l'AI un
 requisito. Priorità aggiornata dall’utente: completare adesso la pipeline AI + app,
@@ -91,6 +91,10 @@ si può continuare senza recupero locale senza cancellare la copia. Il salvatagg
 serializzato; la chiusura forzata può perdere le ultime modifiche non ancora confermate.
 
 L’assistenza durante le modifiche è una chat laterale continua: barra attività o Pannello → Chat AI.
+Dal 16 ottobre **Modifiche al progetto** è l’ambito predefinito: i riferimenti sono il punto di
+partenza per leggere sorgenti e componenti importati, non un vincolo alle sole proprietà Inspector.
+La descrizione grafica limitata qui sotto resta disponibile disabilitando l’opzione; il cambio
+ambito revoca il consenso. Dettagli e limiti del nuovo percorso nel paragrafo “Modifiche progetto”.
 Tasto destro su elemento/pagina per allegare, oppure comandi nel compositore. Bozza e messaggi
 restano nella sessione del progetto; chiusura/cambio progetto e cambio account li svuotano.
 Fino a cinque pagine con struttura, testi e stili reali ricavati dal sorgente locale; anche i figli
@@ -126,14 +130,29 @@ Conferma e un unico Annulla/Ripeti per file, non una transazione multi-file; il 
 per evitare che diventi codice eseguibile. Non è una preview completa della pagina né un’analisi
 delle dipendenze e dei comportamenti di tutto il progetto.
 
-Base locale per modifiche progetto (2026-10-16): schema con sostituzioni esatte di codice,
+Modifiche progetto (2026-10-16): dopo autorizzazione esplicita alla condivisione del contesto,
+chat e provider sono collegati alle primitive locali. Recupero mirato di componenti importati,
+ricerca letterale nelle configurazioni, catalogo automatico dei soli nomi/tipi/accessi/descrizioni
+(non indirizzi, connessioni, valori o extra). Massimo tre passaggi modello, 80 KB per passaggio e
+180 KB complessivi UTF-8 incluso schema; fino a sei messaggi recenti abbreviati e 500 file nell’indice.
+Richiesta corrente e note non vengono troncate. Nessun modello aggiuntivo per riassumere il contesto.
+Schema con sostituzioni esatte di codice,
 creazione di file sorgente verificati e nuove variabili scalari non mappate; parser/import e
 controlli euristici delle chiamate note. Backend con confine progetto, precontrollo del testo
 atteso, backup e ripristino anche di batch parziali, senza sovrascrivere modifiche esterne;
 catalogo PLC in sola aggiunta, indirizzi/connessioni esistenti immutati. Non è una transazione
-atomica né una sandbox JavaScript. **NON collegato alla chat/provider**: restano consenso
-esplicito per inviare sorgenti/metadati a Codex, recupero contesto mirato e limitato, diff e UI
-di applicazione/ripristino. Il limite su HeaderValue/HeaderGauge non è ancora risolto end-to-end.
+atomica né una sandbox JavaScript. Revisione UI con file, variabili e diff come testo, approvazione
+non preselezionata; ripristino dell’intera proposta con conferma separata, disponibile anche dopo
+refresh tramite ricevuta locale senza sorgenti né autorizzazioni recuperate. Bozza/file cambiati
+bloccano la scrittura. Modello/ragionamento restano quelli scelti nella chat. Le variabili create
+sono dichiarazioni da mappare e collaudare, non segnali macchina disponibili automaticamente.
+Nuovi comandi nativi richiedono la build desktop aggiornata; il provider deve supportare la policy
+di sola lettura confinata, senza fallback a un accesso più ampio per aggirare incompatibilità.
+**Limite attuale verificato**: CLI aggiornata con autorizzazione dell’utente da 0.159.2 a 0.163.0,
+ma lo schema locale di entrambe non dichiara `ReadOnlyAccess`. Il nuovo percorso con sorgenti si
+ferma prima dell’inferenza con messaggio esplicito, non allarga l’accesso. Il percorso grafico
+precedente resta selezionabile. Prove locali/UI superate non equivalgono a una pipeline AI reale
+completata: occorre un provider/CLI compatibile e un nuovo collaudo end-to-end autorizzato.
 Non equivale a completamento AI: restano generazione completa di funzioni operative, mapping
 approvati di scrittura, ricette, PDF, ruoli server, modifiche multi-file atomiche, licensing,
 privacy/eval e commissioning industriale. Lingua inglese e protocollo selezionato sono requisiti

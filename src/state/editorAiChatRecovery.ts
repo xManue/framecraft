@@ -88,9 +88,10 @@ export function installAiChatRecovery(chat: StoreApi<ChatState>, storage?: Stora
   });
   const beforeUnload = (event: BeforeUnloadEvent) => {
     save();
+    if (chat.getState().applying) { event.preventDefault(); event.returnValue = "Attendi il completamento delle modifiche al progetto."; return; }
     if (blocked && (hasText(chat.getState()) || pending)) { event.preventDefault(); event.returnValue = "Copia la chat prima di ricaricare."; }
   };
-  const beforeFullReload = () => { save(); if (blocked && (hasText(chat.getState()) || pending)) throw new Error("Refresh fermato: copia la chat prima di ricaricare."); };
+  const beforeFullReload = () => { save(); if (chat.getState().applying) throw new Error("Refresh fermato: attendi il completamento delle modifiche al progetto."); if (blocked && (hasText(chat.getState()) || pending)) throw new Error("Refresh fermato: copia la chat prima di ricaricare."); };
   const hot = import.meta.hot?.data ? import.meta.hot : undefined;
   hot?.on("vite:beforeFullReload", beforeFullReload);
   window.addEventListener("beforeunload", beforeUnload);
