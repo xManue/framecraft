@@ -6,6 +6,7 @@ import { defaultHmiTrendConfig, serializeHmiTrendConfig } from "./hmiTrend";
 import { guidedCommandAttributes, guidedCommandIssues, type GuidedCommandItem } from "./guidedCommands";
 import { panelRequirementsIssues, panelRequirementsPending, type PanelRequirements } from "./panelRequirements";
 import { panelHeaderIssues, panelHeaderFields, type PanelHeaderConfig } from "./panelHeader";
+import { guidedReadBindingIssues } from "./guidedReadBindings";
 
 export const guidedPageKinds = [
   { id: "overview", label: "Vista macchina / pagina principale", section: "main", image: "Foto o rendering della macchina intera", items: "Stati o contatori da mostrare" },
@@ -66,7 +67,7 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
         if (spec.users === "roles-later" && item.command && !item.command.permission) issues.push(`${page.title}: ${item.label} · hai richiesto ruoli separati: scegli il permesso che abilita il comando.`);
         if (spec.users === "later" && item.command && !item.command.permission) issues.push(`${page.title}: ${item.label} · accesso non ancora definito: scegli un permesso reale o lascia il comando disabilitato.`);
       }
-    } else if (page.items.some(item => item.tag && (spec.tagsMode !== "import" || !spec.tags.some(tag => tag.name === item.tag && tag.access !== "write")))) issues.push(`${page.title}: un collegamento non identifica un tag leggibile del catalogo importato.`);
+    } else issues.push(...guidedReadBindingIssues(page, spec.tagsMode === "import" ? spec.tags : []).map(issue => `${page.title}: ${issue}`));
     if (kindOf(page).items && !page.items.length && !page.itemsDeferred) issues.push(`${page.title}: indica ${kindOf(page).items.toLowerCase()} oppure scegli di completarli dopo.`);
   }
   if ([...counts.values()].some(count => count > 14)) issues.push("Una categoria dello standard contiene al massimo 14 voci: distribuisci le pagine in più categorie.");
@@ -102,6 +103,7 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
 const literal = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
 function at(left: number, top: number, width: number, height: number) { return `position: "absolute", left: ${left}, top: ${top}, width: ${width}, height: ${height}`; }
 export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, componentName: string, imageUrl?: string, tags: readonly PlcVariableDefinition[] = [], requirements?: PanelRequirements): string {
+  const readIssues = guidedReadBindingIssues(page, tags); if (readIssues.length) throw new Error(`${page.title}: ${readIssues[0]}`);
   let body = `      <h1 data-hmi-type="HmiTextBox" style={{ ${at(32, 20, 1150, 40)}, margin: 0, fontSize: 26 }}>{${literal(page.title)}}</h1>\n`;
   const image = page.imageNeed !== "none" && !["alarms", "history", "trend"].includes(page.kind);
   if (image) body += `      <img data-hmi-type="HmiGraphicView" data-image-role="part" src=${literal(imageUrl ?? "/placeholder.svg")} alt=${literal(kindOf(page).image)} style={{ ${at(32, 76, 790, 530)}, objectFit: "contain", border: "1px dashed #A8A8A8" }} />\n`;

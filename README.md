@@ -373,7 +373,18 @@ session-only answers, leaving the stored copy untouched. Browser-only use remain
 Building the native app requires Rust 1.89+ for the cross-instance file lock (tested with 1.96).
 
 Generated pages use the same standalone React project/editor as manual creation. Imported tags can
-be selected for read-only values and trend curves. For each manual command, choose **Scrivere un
+be selected for read-only values and trend curves. Selection and generation now share scalar type
+checks with the existing MQTT/OPC UA configuration contract. Numeric curves exclude text, BOOL,
+arrays/UDTs, unsupported types, write-only and source-detected-only tags; ordinary value displays
+also accept supported BOOL/text scalars. Explicit scalar members can be mapped separately, but no
+array expansion or numeric conversion is inferred. An obsolete/invalid choice remains visible
+with a reason instead of being silently replaced. The same checks reject invalid direct generator
+calls and invalidate an AI proposal when a changed local tag type is incompatible.
+Before and after AI planning, **Letture dati** lists each page/element, actual local tag/type and
+whether it is configured, unmapped or invalid; **Rivedi** returns to its page. Configured means
+only a local binding, not a live connection, good quality or completed commissioning. The initial
+AI request still excludes the tag catalogue and addresses. Blank mappings stay blank.
+For each manual command, choose **Scrivere un
 valore in un tag PLC**, an operator event (click/double-click/context click), a declared writable
 tag, a compatible scalar value and an optional user permission; explicitly confirm the mapping.
 The wizard compiles the same event IR as the Inspector. Deferred commands stay disabled; changing

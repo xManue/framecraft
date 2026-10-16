@@ -72,7 +72,15 @@ desktop; il test motore/provider non prova ogni gesto della UI nativa.
 Il generatore standard accetta anche un piano esplicito: crea solo le pagine approvate,
 router/manifesto/menu coerenti, immagini per pagina e cataloghi locali validati. Salva requisiti
 e parti da completare in framecraft.requirements.json; la connessione PLC rimane disabilitata.
-Valori e curve leggono soltanto tag scelti dall’utente. I pulsanti non configurati restano
+Valori e curve leggono soltanto tag scelti dall’utente. La selezione verifica ora tipi scalari e
+accesso con lo stesso contratto dei driver: curve numeriche senza testi/BOOL/array/UDT o tipi non
+supportati; valori anche BOOL/testi scalari. Tag solo rilevati, ambigui o scrivibili senza lettura
+non sono collegamenti validi. Il generatore controlla gli stessi vincoli; un tipo cambiato invalida
+la proposta non più compatibile. Riepilogo locale per pagina/elemento/tag/tipo con ritorno alla
+pagina per correggere, senza sostituzioni o collegamenti automatici. “Impostato” non significa
+PLC collegato, qualità valida o commissioning concluso. Matrice operativa e driver avanzati restano
+parziali; nessuna nuova informazione macchina viene inventata o inviata all’AI iniziale.
+I pulsanti non configurati restano
 disabilitati; per scritture singole il questionario raccoglie evento operatore, tag scrivibile,
 valore compatibile, permesso e conferma esplicita del mapping. Usa la stessa IR/eventi
 dell’Inspector; tag e valori restano locali, il modello non li inventa o modifica. Cambi di

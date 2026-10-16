@@ -4644,6 +4644,36 @@ Verifiche del 5 ottobre 2026:
   recupero dopo reload; nessun errore o overflow. Provider/account sintetici, nessuna inferenza
   reale o lettura PLC. Nessuna modifica nativa: non ripetuti test backend non interessati.
 
+### 137. Collegamenti guidati tipizzati e revisione delle letture (2026-10-16)
+
+- Corretto un errore concreto della pipeline iniziale: un trend accettava qualunque tag leggibile,
+  anche STRING/BOOL o strutture che il grafico numerico non interpreta. Scelte ora compatibili
+  con il contratto scalare condiviso MQTT/OPC UA: numeri supportati per curve, anche BOOL/testi
+  per valori; niente tag solo scrivibili, rilevati senza dichiarazione o nomi ambigui.
+- Validazione comune fra interfaccia, questionario e generatore, anche chiamato direttamente.
+  Un tipo divenuto incompatibile invalida una proposta AI pronta. Collegamento vecchio visibile
+  con motivo e alternative, mai cancellato/rimpiazzato automaticamente; vuoto resta da collegare.
+- Riepilogo letture per pagina/elemento/tag/tipo prima e dopo il piano, senza duplicarlo nella
+  stessa revisione. Comando Rivedi torna alla pagina interessata. “Impostato” indica il mapping
+  locale, non connessione avviata, qualità valida o collaudo. Catalogo/indirizzi restano locali
+  nella pipeline iniziale; nessun dato macchina, valore, scala, soglia o comando nuovo inventato.
+- Verificati **127 test mirati complessivi in cinque file** nella copia del solo indice Git
+  `.hmi-preview/guided-read-public-1792136922527/`. Browser Edge 375/768/1024/1440 px: errore e
+  correzione, opzioni tipizzate, valori BOOL, revisione, consenso e approvazione espliciti,
+  generatore reale con due pagine e gateway disabilitato. Provider, cartella e handoff simulati;
+  nessun invio AI reale o richiesta PLC, errore browser o overflow. Nessun test nativo ripetuto:
+  backend non modificato. Ultima rifinitura verificata solo sul nuovo file (34 casi): i messaggi
+  per tipi anomali restano brevi senza riscrivere il catalogo. Controllo tipi e build Vite della
+  stessa copia isolata superati.
+- Non modificati o inclusi nel commit i lavori trend preesistenti. Nessuna dipendenza o asset
+  vendor nuovo. Riferimenti concettuali: sorgente per curva/penna, non una dichiarazione di
+  parità dei tipi o funzionalità complete:
+  https://docs.tia.siemens.cloud/r/en-us/v21/configuring-tags-rt-unified/displaying-tags-rt-unified/basics-rt-unified/outputting-the-tag-values-rt-unified
+  https://www.rockwellautomation.com/en-gb/docs/factorytalk-optix/1-2-0/contents-ditamap/creating-projects/graphic-objects/predefined-objects/data-controls-objects/trends/add-a-trend-object.html
+- Rimane il blocco del punto 135 sulla nuova modifica sorgenti tramite CLI; nessuna versione
+  preliminare installata né restrizione aggirata. Restano connessioni, autorizzazioni server,
+  licenze/distribuzione e commissioning da completare prima di dichiarare il prodotto production.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

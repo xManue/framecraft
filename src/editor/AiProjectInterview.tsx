@@ -19,6 +19,7 @@ import { AiQuestion, AiDelegationReview } from "./AiQuestion";
 import { PanelHeaderFields, PanelHeaderReview } from "./PanelHeaderFields";
 import { panelHeaderFields, panelHeaderTags } from "../core/panelHeader";
 import { sameInterviewAiContext } from "../ai/aiInterview";
+import { GuidedReadBindingFields, GuidedReadBindingsReview } from "./GuidedReadBindings";
 
 export function AiProjectInterview() {
   const ai = useEditorAi(), interview = ai.interview, spec = interview.spec;
@@ -121,7 +122,7 @@ export function AiProjectInterview() {
         {kind.items && question(`page.${page.id}.items`, <>
           <label>{kind.items} · un nome per riga, massimo {guidedItemLimit(page.kind)}<textarea rows={4} maxLength={1000} value={page.items.map(item => item.label).join("\n")} onChange={event => updatePage(page.id, { items: withGuidedItemLabels(page.items, event.target.value.split("\n")) })} placeholder={page.kind === "synoptic" ? "M2400\nM2401" : "Inserisci i nomi reali"} /></label>
           {!page.items.some(item => item.label.trim()) && <label className="ai-check"><input type="checkbox" checked={page.itemsDeferred} onChange={event => updatePage(page.id, { itemsDeferred: event.target.checked, items: [] })} />Non li conosco ancora: li aggiungerò nell’editor</label>}
-          {page.kind !== "commands" && page.items.map((item, index) => item.label.trim() && <label key={index}>Quale tag mostra “{item.label}”?<select value={item.tag} onChange={event => updatePage(page.id, { items: page.items.map((item, at) => at === index ? { ...item, tag: event.target.value } : item) })}><option value="">Lo collegherò dopo</option>{spec.tagsMode === "import" && spec.tags.filter(tag => tag.access !== "write").map(tag => <option key={tag.name} value={tag.name}>{tag.name} · {tag.dataType}</option>)}</select></label>)}
+          {page.kind !== "commands" && <GuidedReadBindingFields page={page} tags={spec.tagsMode === "import" ? spec.tags : []} onChange={items => updatePage(page.id, { items })} />}
           {page.kind === "commands" && <><p className="ai-hint">Configura qui i comandi di cui conosci il mapping reale. Gli altri restano disabilitati. Rinominare un comando richiede un nuovo controllo del collegamento: le azioni non vengono trasferite a un nome diverso.</p>
             {spec.tagsMode === "import" && page.items.some(item => item.command) && <GuidedCommandTagOptions id={`ai-write-tags-${page.id}`} tags={spec.tags} />}
             {page.items.map((item, index) => item.label.trim() && <GuidedCommandFields key={index} item={item} tags={spec.tagsMode === "import" ? spec.tags : []} tagListId={`ai-write-tags-${page.id}`} onGoData={() => go("data")} onChange={next => updatePage(page.id, { items: page.items.map((item, at) => at === index ? next : item) })} />)}
@@ -141,6 +142,7 @@ export function AiProjectInterview() {
         <h4>{interview.machineName} · {spec.pages.length} pagine · {interview.layout === "desktop-mobile" ? "Desktop e mobile" : "Desktop"}</h4>
         <ol>{spec.pages.map(page => <li key={page.id}><strong>{page.title}</strong> · {guidedPageKinds.find(kind => kind.id === page.kind)?.label} · {page.section}{page.image ? ` · immagine: ${page.image.split(/[\\/]/).at(-1)}` : ""}</li>)}</ol>
         <p>{spec.tags.length} tag importati localmente · {spec.alarms?.alarms.length ?? 0} allarmi. Nessun indirizzo o soglia inventato.</p>
+        {!ai.resolvedInterview && <GuidedReadBindingsReview spec={spec} onEdit={go} disabled={busy} />}
         {spec.requirements && <PanelRequirementsReview requirements={spec.requirements} pages={spec.pages} onEdit={go} />}
         {spec.pages.some(page => page.items.some(item => item.command)) && <section className="ai-command-review" aria-label="Mapping comandi da approvare"><h4>Controlla anche i comandi configurati</h4><ul>{spec.pages.flatMap(page => page.items.filter(item => item.command).map((item, index) => <li key={`${page.id}-${index}`}><strong>{page.title} · {item.label}</strong>: {hmiEventLabels[item.command!.event]} → {item.tag || "tag da scegliere"} = <code>{JSON.stringify(item.command!.value)}</code>{item.command!.permission ? ` · permesso ${item.command!.permission}` : " · tutti per la bozza"}</li>))}</ul><p>I mapping restano locali: tag e valori non vengono inviati a Codex. La ricevuta del trasporto non conferma l’esecuzione del comando nel PLC.</p></section>}
         <details><summary>Cosa resterà da completare e collaudare</summary><ul>{guidedProjectPending(spec).map((item, index) => <li key={index}>{item}</li>)}</ul></details>
@@ -156,6 +158,7 @@ export function AiProjectInterview() {
     {step === "review" && ai.proposal && <section className="ai-proposal" aria-label="Revisione proposta"><h3>Controlla il piano prima di creare</h3><p>{ai.proposal.summary}</p>
       <AiDelegationReview interview={interview} decisions={ai.proposal.decisions} />
       <PanelHeaderReview config={ai.resolvedInterview?.spec.header ?? spec.header} />
+      {ai.resolvedInterview && <GuidedReadBindingsReview spec={ai.resolvedInterview.spec} onEdit={id => go(spec.pages.some(page => page.id === id) ? id : "pages")} disabled={busy} />}
       {ai.proposalUpdatedLocally && <p className="ai-hint" role="status">Aggiornati solo i dati locali: il contesto e il piano AI non sono cambiati. Non è stata inviata un’altra richiesta. Controlla i nuovi collegamenti e immagini prima di approvare.</p>}
       {ai.resolvedInterview && delegatedQuestions(interview).length > 0 && <><h4>{ai.resolvedInterview.machineName} · {ai.resolvedInterview.spec.pages.length} pagine · {ai.resolvedInterview.layout === "desktop-mobile" ? "Desktop e mobile" : "Desktop"}</h4><p>{ai.resolvedInterview.spec.purpose}</p><ol>{ai.resolvedInterview.spec.pages.map(page => <li key={page.id}><strong>{page.title}</strong> · {guidedPageKinds.find(kind => kind.id === page.kind)?.label} · {standardProjectSectionChoices.find(section => section.id === page.section)?.label}</li>)}</ol>{ai.resolvedInterview.spec.requirements && <PanelRequirementsReview requirements={ai.resolvedInterview.spec.requirements} pages={ai.resolvedInterview.spec.pages} onEdit={go} />}<details><summary>Parti da completare dopo le scelte AI</summary><ul>{guidedProjectPending(ai.resolvedInterview.spec).map((pending, index) => <li key={index}>{pending}</li>)}</ul></details></>}
       {ai.proposal.warnings.length > 0 && <ul>{ai.proposal.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
