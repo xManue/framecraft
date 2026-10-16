@@ -7,6 +7,7 @@ import { guidedCommandAttributes, guidedCommandIssues, type GuidedCommandItem } 
 import { panelRequirementsIssues, panelRequirementsPending, type PanelRequirements } from "./panelRequirements";
 import { panelHeaderIssues, panelHeaderFields, type PanelHeaderConfig } from "./panelHeader";
 import { guidedReadBindingIssues } from "./guidedReadBindings";
+import { defaultHmiFunctionTrendConfig, serializeHmiFunctionTrendConfig } from "./hmiFunctionTrend";
 
 export const guidedPageKinds = [
   { id: "overview", label: "Vista macchina / pagina principale", section: "main", image: "Foto o rendering della macchina intera", items: "Stati o contatori da mostrare" },
@@ -16,6 +17,7 @@ export const guidedPageKinds = [
   { id: "alarms", label: "Allarmi attivi", section: "alarms", image: "", items: "" },
   { id: "history", label: "Storico allarmi", section: "alarms", image: "", items: "" },
   { id: "trend", label: "Grafico dei valori nel tempo", section: "statistics", image: "", items: "Nomi delle curve da mostrare" },
+  { id: "function-trend", label: "Grafico X/Y · un valore in funzione di un altro", section: "statistics", image: "", items: "Nomi delle curve X/Y da mostrare" },
   { id: "recipes", label: "Ricette e formati · struttura da configurare", section: "formats", image: "", items: "" },
   { id: "production", label: "Produzione e KPI · struttura da configurare", section: "statistics", image: "", items: "" },
   { id: "maintenance", label: "Manutenzione · struttura da configurare", section: "diagnostic", image: "Schema del gruppo da manutenere", items: "" },
@@ -23,8 +25,8 @@ export const guidedPageKinds = [
   { id: "empty", label: "Pagina personalizzata da completare", section: "main", image: "Grafica di sfondo, se desiderata", items: "" },
 ] as const;
 export type GuidedPageKind = (typeof guidedPageKinds)[number]["id"];
-export const guidedItemLimit = (kind: GuidedPageKind) => kind === "trend" ? 9 : 12;
-export interface GuidedItem extends GuidedCommandItem {}
+export const guidedItemLimit = (kind: GuidedPageKind) => ["trend", "function-trend"].includes(kind) ? 9 : 12;
+export interface GuidedItem extends GuidedCommandItem { xTag?: string }
 export interface GuidedPage {
   id: string; title: string; section: StandardProjectSectionId; kind: GuidedPageKind;
   imageNeed: "required" | "optional" | "none"; image?: string; imageDeferred: boolean;
@@ -60,7 +62,7 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
     if (!["required", "optional", "none"].includes(page.imageNeed) || typeof page.imageDeferred !== "boolean" || typeof page.itemsDeferred !== "boolean") issues.push(`${page.title}: completa le scelte sui contenuti.`);
     if (page.imageNeed === "required" && !page.image && !page.imageDeferred) issues.push(`${page.title}: scegli ${kindOf(page).image.toLowerCase()} o indica che lo inserirai dopo.`);
     if (page.image && (!plain(page.image, 2048) || !/\.(png|jpe?g|webp|gif|svg|avif|bmp)$/i.test(page.image))) issues.push(`${page.title}: scegli un’immagine supportata.`);
-    if (!Array.isArray(page.items) || page.items.length > guidedItemLimit(page.kind) || page.items.some(item => !plain(item.label, 80) || !item.label.trim() || !plain(item.tag, 200))) issues.push(`${page.title}: inserisci al massimo ${guidedItemLimit(page.kind)} nomi brevi, uno per elemento.`);
+    if (!Array.isArray(page.items) || page.items.length > guidedItemLimit(page.kind) || page.items.some(item => !plain(item.label, 80) || !item.label.trim() || !plain(item.tag, 200) || item.xTag !== undefined && (page.kind !== "function-trend" || !plain(item.xTag, 200)))) issues.push(`${page.title}: inserisci al massimo ${guidedItemLimit(page.kind)} nomi brevi e collegamenti validi per questa funzione, uno per elemento.`);
     else if (page.kind === "commands") {
       for (const item of page.items) {
         issues.push(...guidedCommandIssues(item, spec.tagsMode === "import" ? spec.tags : []).map(issue => `${page.title}: ${item.label} · ${issue}`));
@@ -82,7 +84,9 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
     ...(page.imageNeed !== "none" && !page.image ? [`${page.title}: immagine da inserire.`] : []),
     ...(page.itemsDeferred && !page.items.length ? [`${page.title}: elementi da definire.`] : []),
     ...(["recipes", "production", "maintenance", "reports"].includes(page.kind) ? [`${page.title}: creata soltanto la struttura; dati, funzioni e collegamenti da implementare e collaudare.`] : []),
-    ...page.items.filter(item => !item.tag && page.kind !== "commands").map(item => `${page.title} · ${item.label}: tag non collegato.`),
+    ...page.items.filter(item => !item.tag && page.kind !== "commands").map(item => `${page.title} · ${item.label}: ${page.kind === "function-trend" ? "asse Y non collegato" : "tag non collegato"}.`),
+    ...(page.kind === "function-trend" ? page.items.filter(item => !item.xTag).map(item => `${page.title} · ${item.label}: asse X non collegato.`) : []),
+    ...(page.kind === "function-trend" ? [`${page.title}: campionamento X/Y nel Runtime, non acquisizione sincrona PLC. Qualità, aggiornamento, abbinamento dei campioni e tolleranza temporale da verificare sulla sorgente reale.`] : []),
     ...(page.kind === "commands" ? page.items.length ? page.items.map(item => item.command && !guidedCommandIssues(item, spec.tagsMode === "import" ? spec.tags : []).length
       ? `${page.title} · ${item.label}: mapping configurato; collegamento, interlock e collaudo da verificare.${item.command.permission ? " Account e permesso richiesto da configurare; senza permesso il comando resta bloccato." : ""}`
       : `${page.title} · ${item.label}: comando disabilitato, da configurare e collaudare.`) : [`${page.title}: comandi disabilitati, da configurare e collaudare.`] : []),
@@ -105,7 +109,7 @@ function at(left: number, top: number, width: number, height: number) { return `
 export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, componentName: string, imageUrl?: string, tags: readonly PlcVariableDefinition[] = [], requirements?: PanelRequirements): string {
   const readIssues = guidedReadBindingIssues(page, tags); if (readIssues.length) throw new Error(`${page.title}: ${readIssues[0]}`);
   let body = `      <h1 data-hmi-type="HmiTextBox" style={{ ${at(32, 20, 1150, 40)}, margin: 0, fontSize: 26 }}>{${literal(page.title)}}</h1>\n`;
-  const image = page.imageNeed !== "none" && !["alarms", "history", "trend"].includes(page.kind);
+  const image = page.imageNeed !== "none" && !["alarms", "history", "trend", "function-trend"].includes(page.kind);
   if (image) body += `      <img data-hmi-type="HmiGraphicView" data-image-role="part" src=${literal(imageUrl ?? "/placeholder.svg")} alt=${literal(kindOf(page).image)} style={{ ${at(32, 76, 790, 530)}, objectFit: "contain", border: "1px dashed #A8A8A8" }} />\n`;
   if (["alarms", "history"].includes(page.kind)) body += `      <div data-hmi-type="HmiAlarmControl" data-hmi-alarm-source=${literal(page.kind === "history" ? "history" : "active")} data-hmi-alarm-filter="" style={{ ${at(32, 76, 1140, 530)}, overflow: "auto", background: "white" }}>Nessun dato allarmi disponibile: configura catalogo e collegamento PLC.</div>\n`;
   else if (page.kind === "trend") {
@@ -115,6 +119,16 @@ export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, compo
     if (["1000", "5000", "10000", "60000"].includes(sample ?? "")) config.sampleIntervalMs = Number(sample);
     if (page.items.length) config.trends = page.items.map((item, index) => ({ ...config.trends[0], id: `curve-${index + 1}`, name: item.label, tag: item.tag, source: "online" as const, color: ["#2388CC", "#CC5623", "#26A269", "#9141AC"][index % 4] }));
     body += `      <div data-hmi-type="HmiTrendControl" data-hmi-trend={${literal(serializeHmiTrendConfig(config))}} style={{ ${at(32, 76, 1140, 530)}, background: "#F7F8F9" }}>Configura le curve e il collegamento PLC dall’Inspector.</div>\n`;
+  } else if (page.kind === "function-trend") {
+    const config = defaultHmiFunctionTrendConfig(); config.caption = page.title;
+    const range = requirements?.answers["trends.range"], sample = requirements?.answers["trends.sample"];
+    if (["1000", "5000", "10000", "60000"].includes(sample ?? "")) config.sampleIntervalMs = Number(sample);
+    const base = config.trends[0];
+    if (page.items.length) config.trends = page.items.map((item, index) => ({ ...base, id: `curve-${index + 1}`, name: item.label,
+      color: ["#2388CC", "#CC5623", "#26A269", "#9141AC"][index % 4],
+      x: { source: "online" as const, tag: item.xTag ?? "" }, y: { source: "online" as const, tag: item.tag }, range: { ...base.range } }));
+    if (["60000", "600000", "3600000", "28800000", "86400000"].includes(range ?? "")) for (const curve of config.trends) curve.range.durationMs = Number(range);
+    body += `      <div data-hmi-type="HmiFunctionTrendControl" data-hmi-function-trend={${literal(serializeHmiFunctionTrendConfig(config))}} style={{ ${at(32, 76, 1140, 530)}, background: "#F7F8F9" }}>Configura le sorgenti X e Y e il collegamento PLC dall’Inspector.</div>\n`;
   } else if (["recipes", "production", "maintenance", "reports"].includes(page.kind)) {
     body += `      <p data-hmi-type="HmiTextBox" style={{ ${at(image ? 850 : 32, 92, image ? 320 : 1100, 160)}, padding: 16, background: "white", border: "1px dashed #A8A8A8" }}>Struttura da completare: questa funzione non è ancora configurata. Consulta i requisiti raccolti e aggiungi dati, controlli e collegamenti nell’editor. Nessun comando o dato macchina inventato.</p>\n`;
   } else {

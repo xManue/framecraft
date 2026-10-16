@@ -4674,6 +4674,43 @@ Verifiche del 5 ottobre 2026:
   preliminare installata né restrizione aggirata. Restano connessioni, autorizzazioni server,
   licenze/distribuzione e commissioning da completare prima di dichiarare il prodotto production.
 
+### 138. Grafici X/Y nella pipeline guidata iniziale (2026-10-16)
+
+- Aggiunta la base `function-trend`, distinta dai grafici nel tempo e disponibile anche ai
+  piani pagina delegati. Massimo nove curve, ognuna con nome e due tag reali X/Y scelti
+  separatamente. Stesso controllo numerico scalare delle letture: nessun testo, BOOL, array,
+  UDT, tag solo rilevato/scrivibile o nome ambiguo convertito in una misura.
+- Il generatore emette `HmiFunctionTrendControl` e usa il Runtime già distribuito; niente
+  disegno statico o dati fittizi. Applica campionamento e finestra dei campioni, preserva gli
+  assi automatici e i default del controllo. La tolleranza di abbinamento resta quella
+  dichiarata nella scheda, modificabile nell’Inspector, non una garanzia di sincronismo PLC.
+  Unità, limiti, qualità, acquisizione/abbinamento e sorgenti reali vanno configurati/collaudati.
+- Campi accessibili per asse, errore accanto al lato non valido, revisione con due righe per
+  curva e ritorno alla pagina. Rinvio dei dati azzera entrambi gli assi; reimport conserva solo
+  mapping ancora presenti/leggibili, tipo incompatibile blocca piano e generazione. Bozza
+  recuperata conserva X e Y; riordino mantiene i tag sulla stessa etichetta, nuove etichette
+  non ereditano sorgenti. Nessuna scrittura PLC o nuova connessione dal questionario.
+- Contratto di funzionamento condiviso fra catalogo, domande e AI; al provider arrivano solo
+  i flag X/Y collegati, non nomi tag/indirizzi. La nuova base partecipa alle domande trend
+  ereditando soltanto default reali; l’AI non deve chiedere nuovamente come funziona il controllo.
+- Verifiche nella copia pubblica `.hmi-preview/guided-xy-public-1792140020398/`, senza JSON
+  reali né modifiche trend preesistenti: 87 test mirati in cinque file; dopo tre nuovi casi di
+  importazione/rinvio, 61 in tre file (sovrapposti: 131 casi unici in sette file). Controllo tipi
+  e build Vite superati. Ultima ottimizzazione del calcolo errori ricontrollata sui soli campi
+  lettura/X-Y: 54 test, controllo tipi e build. Eseguito anche il modulo Runtime realmente
+  generato: coppie X/Y e CSV.
+  Edge 375/768/1024/1440 px: validazione/correzione, tastiera, revisione/consenso/approvazione,
+  annullamento cartella senza perdere risposte, pagina e Runtime generati con due coppie e CSV;
+  nessun errore console o overflow del dialogo. Account/provider e filesystem/handoff nativi
+  simulati; nessuna chiamata Codex reale, connessione PLC o prova touch fisica.
+- Non modificati i moduli trend/Runtime o `standardProject.ts` già sporchi. Nessuna dipendenza,
+  asset o codice vendor copiato. Riferimenti concettuali, non attestazione di parità completa:
+  https://docs.tia.siemens.cloud/r/en-us/v20/configuring-screens-rt-unified/overview-of-screen-objects-rt-unified/controls-rt-unified/function-trend-control-rt-unified
+  https://www.rockwellautomation.com/en-be/docs/factorytalk-optix/1-4-4/contents-ditamap/creating-projects/graphic-objects/predefined-objects/data-controls-objects/xy-chart.html
+- Resta il gate CLI sulle modifiche ai sorgenti del punto 135; non allargato alcun permesso.
+  Restano AI operativa completa, capacità Unified/Optix residue, licenze/distribuzione,
+  autorizzazioni server e commissioning: l’obiettivo generale non è concluso.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

@@ -335,6 +335,17 @@ up to 2 MB/5000 tags. Alarm inputs: `framecraft.alarms.json`, validated against 
 tags and their trigger types. A list of messages alone does not establish activation conditions.
 Images are selected locally and copied into distinct assets for each page. No invented PLC data.
 
+The guided page catalogue also includes **Grafico X/Y**: up to nine curves, each with
+separate readable numeric scalar tags for horizontal X and vertical Y. The AI receives the
+template contract and linked/unlinked flags, not either tag name or its address. Both axes
+are reviewed locally; missing links remain explicit and incompatible types block creation.
+The generated page uses the existing Function Trend Runtime, not a drawing or fake samples.
+Sampling and the time window apply to the paired samples, not to the X-axis scale. Axes remain
+linear/automatic; units, limits, pairing tolerance and archived sources can be configured in
+the Inspector. Runtime sampling does not establish synchronous acquisition in the PLC.
+Draft recovery preserves both mappings; new labels do not inherit another curve's tags.
+Creating the page never enables a gateway, writes a tag or approves machine commissioning.
+
 Creation prepares and validates the files in a temporary sibling directory before publishing
 the complete project. Missing/locked images or invalid generated files leave the selected
 destination unchanged; correct the problem and retry the same empty folder. Existing files

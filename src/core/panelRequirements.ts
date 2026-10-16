@@ -54,7 +54,7 @@ export const panelRequirementGroups: readonly PanelRequirementGroup[] = [
     detail("classes", "Quali classi, priorità e istruzioni per risolverli servono?", "I trigger devono provenire dal catalogo reale; un elenco di testi non identifica le condizioni PLC."),
     choice("export", "Serve esportare lo storico?", [["none", "No"], ["csv", "CSV"], ["pdf", "PDF"]]),
   ] },
-  { id: "trends", label: "Trend e archiviazione dei valori", optional: true, pageKinds: ["trend"], hint: "Intervallo visibile e campionamento vengono applicati ai trend generati. Archiviazione persistente e destinazione dati restano da configurare.", questions: [
+  { id: "trends", label: "Trend e archiviazione dei valori", optional: true, pageKinds: ["trend", "function-trend"], hint: "Intervallo e campionamento vengono applicati ai grafici temporali e X/Y generati. Nei grafici X/Y l’intervallo seleziona i campioni, non l’asse X. Archiviazione persistente e destinazione dati restano da configurare.", questions: [
     choice("range", "Quale intervallo mostra il grafico all’apertura?", [["60000", "1 minuto"], ["600000", "10 minuti"], ["3600000", "1 ora"], ["28800000", "8 ore"], ["86400000", "24 ore"]]),
     choice("sample", "Ogni quanto acquisire un punto del trend?", [["1000", "1 secondo"], ["5000", "5 secondi"], ["10000", "10 secondi"], ["60000", "1 minuto"]]),
     choice("source", "Servono valori online o anche dati archiviati?", [["online", "Online"], ["history", "Archiviati"], ["both", "Entrambi"]]),

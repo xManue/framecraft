@@ -1,7 +1,11 @@
 import { normalizeMqttTagValue } from "../../runtime/connection-config.mjs";
 import type { GuidedItem, GuidedPage, GuidedPageKind, GuidedProjectSpec } from "./guidedProject";
 import type { PlcVariableDefinition } from "./plcVariables";
-const readKinds: readonly GuidedPageKind[] = ["overview", "synoptic", "values", "trend"];
+const readKinds: readonly GuidedPageKind[] = ["overview", "synoptic", "values", "trend", "function-trend"];
+const numericKind = (kind: GuidedPageKind) => kind === "trend" || kind === "function-trend";
+export function guidedReadBindingFields(kind: GuidedPageKind, item: GuidedItem) {
+  return kind === "function-trend" ? [{ field: "xTag" as const, axis: "X", tag: item.xTag ?? "" }, { field: "tag" as const, axis: "Y", tag: item.tag }] : [{ field: "tag" as const, axis: undefined, tag: item.tag }];
+}
 const typeLabel = (value: string) => typeof value !== "string" || !value ? "tipo mancante" : value.length > 80 ? `${value.slice(0, 77)}...` : value;
 
 function scalarType(dataType: string, numeric: boolean) {
@@ -22,33 +26,34 @@ function declaredTags(tags: readonly PlcVariableDefinition[]) {
   }
   return byName;
 }
-function readIssue(item: GuidedItem, kind: GuidedPageKind, catalog: ReadonlyMap<string, PlcVariableDefinition[]>) {
+function readIssue(name: string, kind: GuidedPageKind, catalog: ReadonlyMap<string, PlcVariableDefinition[]>) {
   if (!readKinds.includes(kind)) return "Questa funzione pagina non prevede elementi con letture guidate. Scegli una pagina valori, sinottico, vista macchina o trend.";
-  if (!item.tag) return;
-  const matches = catalog.get(item.tag) ?? [];
+  if (!name) return;
+  const matches = catalog.get(name) ?? [];
   if (matches.length !== 1) return "Scegli un tag dichiarato una sola volta nel catalogo importato, oppure lascia il collegamento da completare.";
   const tag = matches[0];
   if (!["read", "read-write"].includes(tag.access)) return "Il tag è di sola scrittura: per mostrare un valore serve un segnale leggibile.";
-  if (!scalarType(tag.dataType, kind === "trend")) return kind === "trend"
+  if (!scalarType(tag.dataType, numericKind(kind))) return numericKind(kind)
     ? `La curva richiede un tag numerico scalare supportato; ${typeLabel(tag.dataType)} non è compatibile. Testi, BOOL, array e strutture non diventano curve numeriche automaticamente.`
     : `Il tipo ${typeLabel(tag.dataType)} non è supportato dai collegamenti scalari guidati. Array e strutture richiedono un mapping dedicato.`;
 }
 export function guidedReadBindingTags(kind: GuidedPageKind, tags: readonly PlcVariableDefinition[]) {
   if (!readKinds.includes(kind)) return [];
   const catalog = declaredTags(tags);
-  return tags.filter(tag => !tag.detected && catalog.get(tag.name)?.length === 1 && ["read", "read-write"].includes(tag.access) && scalarType(tag.dataType, kind === "trend"));
+  return tags.filter(tag => !tag.detected && catalog.get(tag.name)?.length === 1 && ["read", "read-write"].includes(tag.access) && scalarType(tag.dataType, numericKind(kind)));
 }
 export function guidedReadBindingIssues(page: Pick<GuidedPage, "kind" | "items">, tags: readonly PlcVariableDefinition[]): string[] {
-  if (page.kind === "commands") return [];
+  const extra = page.items.filter(item => item.xTag !== undefined && (page.kind !== "function-trend" || typeof item.xTag !== "string" || item.xTag.length > 200 || /[\u0000-\u001f]/.test(item.xTag))).map(item => `${item.label}: il collegamento X richiede una pagina X/Y e un nome tag valido fino a 200 caratteri.`);
+  if (extra.length || page.kind === "commands") return extra;
   const catalog = declaredTags(tags);
-  return page.items.flatMap(item => { const issue = readIssue(item, page.kind, catalog); return issue ? [`${item.label}: ${issue}`] : []; });
+  return page.items.flatMap(item => guidedReadBindingFields(page.kind, item).flatMap(binding => { const issue = readIssue(binding.tag, page.kind, catalog); return issue ? [`${item.label}${binding.axis ? ` · asse ${binding.axis}` : ""}: ${issue}`] : []; }));
 }
 export function guidedReadBindings(spec: GuidedProjectSpec) {
   const catalog = declaredTags(spec.tagsMode === "import" ? spec.tags : []);
-  return spec.pages.filter(page => page.kind !== "commands").flatMap(page => page.items.map((item, index) => {
-    const issue = readIssue(item, page.kind, catalog);
-    return { pageId: page.id, pageTitle: page.title, index, label: item.label, tag: item.tag,
-      dataType: catalog.get(item.tag)?.length === 1 ? typeLabel(catalog.get(item.tag)![0].dataType) : undefined,
-      state: issue ? "invalid" as const : item.tag ? "configured" as const : "unmapped" as const, issue };
-  }));
+  return spec.pages.filter(page => page.kind !== "commands").flatMap(page => page.items.flatMap((item, index) => guidedReadBindingFields(page.kind, item).map(binding => {
+    const issue = readIssue(binding.tag, page.kind, catalog);
+    return { pageId: page.id, pageTitle: page.title, index, axis: binding.axis, label: item.label, tag: binding.tag,
+      dataType: catalog.get(binding.tag)?.length === 1 ? typeLabel(catalog.get(binding.tag)![0].dataType) : undefined,
+      state: issue ? "invalid" as const : binding.tag ? "configured" as const : "unmapped" as const, issue };
+  })));
 }

@@ -1,5 +1,6 @@
 import { panelSize } from "./hmiStandard";
 import { defaultHmiTrendConfig } from "./hmiTrend";
+import { defaultHmiFunctionTrendConfig } from "./hmiFunctionTrend";
 
 export interface TemplateInput { kind: "image" | "tags" | "alarms" | "commands" | "permissions" | "content" | "routing" | "service" | "recipes"; label: string }
 export interface TemplateBehavior {
@@ -17,6 +18,7 @@ function guided(id: string, purpose: string, known: readonly string[], inputs: r
 }
 function buildGuidedTemplateBehaviors(): Record<string, TemplateBehavior> {
   const trend = defaultHmiTrendConfig();
+  const xy = defaultHmiFunctionTrendConfig();
   return {
     overview: guided("overview", "Vista generale della macchina con stati e contatori scelti.", ["Titolo, immagine richiesta/facoltativa e valori leggibili sono elementi separati e modificabili."], [image, tags], ["Nessuno stato di produzione o contatore viene dedotto o inventato."]),
     synoptic: guided("synoptic", "Vista di una parte macchina con targhette dei motori o dispositivi.", ["Le targhette non fanno parte della foto: si possono spostare nell’editor.", "Il posizionamento iniziale è affiancato all’immagine; non vengono creati hotspot o popup automatici."], [image, input("content", "Nomi reali dei motori/dispositivi da etichettare."), tags], ["Nessuna azione viene associata a una targhetta dal solo nome."]),
@@ -25,6 +27,7 @@ function buildGuidedTemplateBehaviors(): Record<string, TemplateBehavior> {
     alarms: guided("alarms", "Mostrare gli allarmi attivi usando il controllo allarmi del Runtime.", ["La sorgente è allarmi attivi, non lo storico.", "Messaggi, classi e trigger provengono dal catalogo importato, non dall’AI."], [tags, input("alarms", "Catalogo allarmi con segnali e condizioni reali, oppure rinvio esplicito.")], ["Conferme, priorità e istruzioni dipendono dal catalogo; non si inventano condizioni di attivazione."]),
     history: guided("history", "Consultare gli eventi dello storico allarmi.", ["La sorgente del controllo è lo storico, non gli allarmi attivi.", "La conservazione iniziale è di sessione."], [tags, input("alarms", "Catalogo reale e requisiti di archiviazione oltre la sessione.")], ["La pagina non crea un archivio industriale persistente."], { "alarms.history": "session" }),
     trend: guided("trend", "Mostrare l’andamento nel tempo dei valori scelti.", ["Curve online collegate ai tag selezionati; nomi e colori restano modificabili.", "Intervallo e campionamento sono configurati dalla procedura; il campionamento del grafico non è il polling del gateway."], [tags, input("content", "Nomi delle curve e tag leggibili da mostrare.")], ["Archivio persistente, retention e curve X/Y non sono creati automaticamente."], { "trends.range": String(trend.timeRangeMs), "trends.sample": String(trend.sampleIntervalMs), "trends.source": "online", "trends.retention": "session" }),
+    "function-trend": guided("function-trend", "Mostrare una misura Y in funzione di una misura X, non del tempo.", ["Fino a nove curve, ognuna con tag X e Y scelti separatamente e sorgenti online.", "Assi lineari con intervallo automatico; campionamento e finestra temporale dei campioni sono configurati dalla procedura.", `Tolleranza di abbinamento iniziale del controllo: ${xy.trends[0].pairToleranceMs} ms, modificabile nell’Inspector; non è una garanzia di sincronismo PLC.`], [tags, input("content", "Nome delle curve e due tag numerici scalari leggibili per ognuna.")], ["Array, UDT, scale, unità, soglie e archivi non sono configurati dalla procedura.", "Acquisizione, timestamp, qualità e abbinamento vanno collaudati sulle sorgenti reali."], { "trends.range": String(xy.trends[0].range.durationMs), "trends.sample": String(xy.sampleIntervalMs), "trends.source": "online", "trends.retention": "session" }),
     recipes: guided("recipes", "Predisporre una pagina per ricette e formati.", ["Titolo e avviso esplicito che la funzione va completata."], [input("recipes", "Schema, valori reali, limiti, permessi e handshake PLC della ricetta.")], [unsupported], {}, true),
     production: guided("production", "Predisporre una pagina per produzione e KPI.", ["Non vengono calcolati o mostrati indicatori fittizi."], [input("content", "Segnali, formule, finestre temporali e reset degli indicatori.")], [unsupported], {}, true),
     maintenance: guided("maintenance", "Predisporre una pagina per manutenzione.", ["Immagine del gruppo facoltativa e area da completare."], [image, input("content", "Parti, scadenze, contatori, consensi e reset reali.")], [unsupported], {}, true),
