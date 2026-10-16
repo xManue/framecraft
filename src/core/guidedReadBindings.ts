@@ -1,10 +1,12 @@
 import { normalizeMqttTagValue } from "../../runtime/connection-config.mjs";
 import type { GuidedItem, GuidedPage, GuidedPageKind, GuidedProjectSpec } from "./guidedProject";
 import type { PlcVariableDefinition } from "./plcVariables";
+import { guidedLogBindingIssue } from "./guidedDataLogs";
+import type { HmiDataLogCatalog } from "./hmiDataLogs";
 const readKinds: readonly GuidedPageKind[] = ["overview", "synoptic", "values", "trend", "function-trend"];
 const numericKind = (kind: GuidedPageKind) => kind === "trend" || kind === "function-trend";
 export function guidedReadBindingFields(kind: GuidedPageKind, item: GuidedItem) {
-  return kind === "function-trend" ? [{ field: "xTag" as const, axis: "X", tag: item.xTag ?? "" }, { field: "tag" as const, axis: "Y", tag: item.tag }] : [{ field: "tag" as const, axis: undefined, tag: item.tag }];
+  return kind === "function-trend" ? [{ field: "xTag" as const, axis: "X", tag: item.xTag ?? "", logged: item.xLogged }, { field: "tag" as const, axis: "Y", tag: item.tag, logged: item.logged }] : [{ field: "tag" as const, axis: undefined, tag: item.tag, logged: item.logged }];
 }
 const typeLabel = (value: string) => typeof value !== "string" || !value ? "tipo mancante" : value.length > 80 ? `${value.slice(0, 77)}...` : value;
 
@@ -42,17 +44,19 @@ export function guidedReadBindingTags(kind: GuidedPageKind, tags: readonly PlcVa
   const catalog = declaredTags(tags);
   return tags.filter(tag => !tag.detected && catalog.get(tag.name)?.length === 1 && ["read", "read-write"].includes(tag.access) && scalarType(tag.dataType, numericKind(kind)));
 }
-export function guidedReadBindingIssues(page: Pick<GuidedPage, "kind" | "items">, tags: readonly PlcVariableDefinition[]): string[] {
+export function guidedReadBindingIssues(page: Pick<GuidedPage, "kind" | "items">, tags: readonly PlcVariableDefinition[], dataLogs?: HmiDataLogCatalog): string[] {
   const extra = page.items.filter(item => item.xTag !== undefined && (page.kind !== "function-trend" || typeof item.xTag !== "string" || item.xTag.length > 200 || /[\u0000-\u001f]/.test(item.xTag))).map(item => `${item.label}: il collegamento X richiede una pagina X/Y e un nome tag valido fino a 200 caratteri.`);
+  for (const item of page.items) if (item.logged !== undefined && !numericKind(page.kind) || item.xLogged !== undefined && page.kind !== "function-trend") extra.push(`${item.label}: le sorgenti archiviate richiedono una pagina trend temporale o X/Y.`);
   if (extra.length || page.kind === "commands") return extra;
   const catalog = declaredTags(tags);
-  return page.items.flatMap(item => guidedReadBindingFields(page.kind, item).flatMap(binding => { const issue = readIssue(binding.tag, page.kind, catalog); return issue ? [`${item.label}${binding.axis ? ` · asse ${binding.axis}` : ""}: ${issue}`] : []; }));
+  return page.items.flatMap(item => guidedReadBindingFields(page.kind, item).flatMap(binding => { const issue = binding.logged !== undefined ? guidedLogBindingIssue(binding.logged, binding.tag, dataLogs) ?? readIssue(binding.tag, page.kind, catalog) : readIssue(binding.tag, page.kind, catalog); return issue ? [`${item.label}${binding.axis ? ` · asse ${binding.axis}` : ""}: ${issue}`] : []; }));
 }
 export function guidedReadBindings(spec: GuidedProjectSpec) {
   const catalog = declaredTags(spec.tagsMode === "import" ? spec.tags : []);
   return spec.pages.filter(page => page.kind !== "commands").flatMap(page => page.items.flatMap((item, index) => guidedReadBindingFields(page.kind, item).map(binding => {
-    const issue = readIssue(binding.tag, page.kind, catalog);
-    return { pageId: page.id, pageTitle: page.title, index, axis: binding.axis, label: item.label, tag: binding.tag,
+    const issue = binding.logged !== undefined ? guidedLogBindingIssue(binding.logged, binding.tag, spec.dataLogs) ?? readIssue(binding.tag, page.kind, catalog) : readIssue(binding.tag, page.kind, catalog);
+    const log = binding.logged && spec.dataLogs?.logs.find(log => log.id === binding.logged!.logId);
+    return { pageId: page.id, pageTitle: page.title, index, axis: binding.axis, label: item.label, tag: binding.tag, source: binding.logged ? "log" as const : "online" as const, logName: log?.name,
       dataType: catalog.get(binding.tag)?.length === 1 ? typeLabel(catalog.get(binding.tag)![0].dataType) : undefined,
       state: issue ? "invalid" as const : binding.tag ? "configured" as const : "unmapped" as const, issue };
   })));

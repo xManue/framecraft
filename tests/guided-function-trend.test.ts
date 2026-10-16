@@ -118,7 +118,7 @@ it("l’AI può proporre la nuova base in un piano delegato senza inventare sorg
 it("i campi X e Y hanno etichette, errori indipendenti e non modificano l’altro lato", async () => {
   const interview = fixture(), page = interview.spec.pages[0]; page.items[0].xTag = "Text"; const onChange = vi.fn();
   await mount(createElement(GuidedReadBindingFields, { page, tags: interview.spec.tags, onChange }));
-  const [x, y] = [...host!.querySelectorAll("select")]; expect(x.value).toBe("Text"); expect(y.value).toBe("MeasureY"); expect(x.getAttribute("aria-invalid")).toBe("true"); expect(y.getAttribute("aria-invalid")).toBe("false");
+  const x = host!.querySelector<HTMLSelectElement>("#ai-read-x-tag-page-1-0")!, y = host!.querySelector<HTMLSelectElement>("#ai-read-tag-page-1-0")!; expect(x.value).toBe("Text"); expect(y.value).toBe("MeasureY"); expect(x.getAttribute("aria-invalid")).toBe("true"); expect(y.getAttribute("aria-invalid")).toBe("false");
   expect(host!.querySelector(`#${x.getAttribute("aria-describedby")}`)?.textContent).toContain("asse X");
   expect(host!.querySelector(`label[for="${x.id}"]`)?.textContent).toContain("Asse X"); expect(host!.querySelector(`label[for="${y.id}"]`)?.textContent).toContain("Asse Y");
   expect(x.querySelector('option[value="Text"]')?.hasAttribute("disabled")).toBe(true); expect(y.querySelector('option[value="Flag"]')).toBeNull();

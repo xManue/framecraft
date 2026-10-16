@@ -20,6 +20,8 @@ import { PanelHeaderFields, PanelHeaderReview } from "./PanelHeaderFields";
 import { panelHeaderFields, panelHeaderTags } from "../core/panelHeader";
 import { sameInterviewAiContext } from "../ai/aiInterview";
 import { GuidedReadBindingFields, GuidedReadBindingsReview } from "./GuidedReadBindings";
+import { parseGuidedDataLogs } from "../core/guidedDataLogs";
+import { GuidedDataLogsReview } from "./GuidedDataLogs";
 
 export function AiProjectInterview() {
   const ai = useEditorAi(), interview = ai.interview, spec = interview.spec;
@@ -38,6 +40,10 @@ export function AiProjectInterview() {
   };
   const updateSpec = (change: Partial<typeof spec>) => {
     const next = { ...spec, ...change };
+    if (change.tagsMode && change.tagsMode !== "import") {
+      next.dataLogs = undefined; next.dataLogsFile = undefined;
+      next.pages = next.pages.map(page => ({ ...page, items: page.items.map(item => { const next = { ...item }; delete next.logged; delete next.xLogged; return next; }) }));
+    }
     if (change.tags && next.header) next.header = { ...next.header, tags: Object.fromEntries(panelHeaderFields.map(field => [field.id, panelHeaderTags(next.tags, field.numeric).some(tag => tag.name === next.header!.tags[field.id]) ? next.header!.tags[field.id] : ""])) };
     if (change.pages && next.requirements) next.requirements = { ...next.requirements, enabled: { ...next.requirements.enabled, ...Object.fromEntries(panelRequirementGroups.filter(group => group.optional && next.pages.some(page => group.pageKinds?.includes(page.kind))).map(group => [group.id, "yes" as const])) } };
     update({ spec: next });
@@ -53,11 +59,15 @@ export function AiProjectInterview() {
     catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
     finally { setFileBusy(false); }
   };
-  const importFile = async (file: File | undefined, type: "tags" | "alarms") => {
+  const importFile = async (file: File | undefined, type: "tags" | "alarms" | "dataLogs") => {
     if (!file) return; setFileBusy(true); setNotice(undefined);
     try {
       if (file.size > 2_000_000) throw new Error("Scegli un file fino a 2 MB. Nessun dato è stato importato.");
       const source = await file.text(); if (useEditorAi.getState().interview !== interview) return;
+      if (type === "dataLogs") {
+        const dataLogs = parseGuidedDataLogs(source, spec.tagsMode === "import" ? spec.tags : []);
+        updateSpec({ dataLogs, dataLogsFile: file.name }); setNotice("Configurazioni Data Log importate localmente. Nessun campione storico importato e nessuna connessione avviata."); return;
+      }
       if (type === "tags") {
         const { tags, warnings } = parseInterviewTags(file.name, source);
         updateSpec({ tags, tagsFile: file.name, tagsMode: "import", alarms: undefined, alarmsFile: undefined, pages: spec.pages.map(page => ({ ...page, items: page.items.map(item => ({ ...item, tag: tags.some(tag => tag.name === item.tag && (page.kind === "commands" ? tag.access !== "read" : tag.access !== "write")) ? item.tag : "", ...(page.kind === "function-trend" ? { xTag: tags.some(tag => tag.name === item.xTag && tag.access !== "write") ? item.xTag : "" } : {}), ...(item.command ? { command: { ...item.command, reviewed: false } } : {}) })) })) });
@@ -107,6 +117,11 @@ export function AiProjectInterview() {
           {spec.pages.some(page => page.kind === "history") && <p className="ai-hint">Lo storico iniziale è di sessione. La conservazione persistente va configurata prima della produzione.</p>}
         </>}
       </>}
+      {step === "data" && spec.pages.some(page => ["trend", "function-trend"].includes(page.kind)) && <div className="ai-import">
+        <label>Hai già un catalogo Data Log? Importa framecraft.logs.json (facoltativo)<input type="file" accept=".json" onChange={event => { void importFile(event.target.files?.[0], "dataLogs"); event.target.value = ""; }} /></label>
+        <p>Importa prima i tag. Configurazioni di archiviazione, non dati storici o database esterni. Puoi saltare l’importazione: le curve restano online oppure da collegare dopo.</p>
+        <GuidedDataLogsReview catalog={spec.dataLogs} file={spec.dataLogsFile} onRemove={() => updateSpec({ dataLogs: undefined, dataLogsFile: undefined })} />
+      </div>}
       {step === "header" && <PanelHeaderFields config={spec.header} tags={spec.tagsMode === "import" ? spec.tags : []} onChange={header => updateSpec({ header })} question={question} />}
       {page && kind && <>
         <p>{kind.label} · {page.title}</p>
@@ -122,7 +137,7 @@ export function AiProjectInterview() {
         {kind.items && question(`page.${page.id}.items`, <>
           <label>{kind.items} · un nome per riga, massimo {guidedItemLimit(page.kind)}<textarea rows={4} maxLength={1000} value={page.items.map(item => item.label).join("\n")} onChange={event => updatePage(page.id, { items: withGuidedItemLabels(page.items, event.target.value.split("\n")) })} placeholder={page.kind === "synoptic" ? "M2400\nM2401" : "Inserisci i nomi reali"} /></label>
           {!page.items.some(item => item.label.trim()) && <label className="ai-check"><input type="checkbox" checked={page.itemsDeferred} onChange={event => updatePage(page.id, { itemsDeferred: event.target.checked, items: [] })} />Non li conosco ancora: li aggiungerò nell’editor</label>}
-          {page.kind !== "commands" && <GuidedReadBindingFields page={page} tags={spec.tagsMode === "import" ? spec.tags : []} onChange={items => updatePage(page.id, { items })} />}
+          {page.kind !== "commands" && <GuidedReadBindingFields page={page} tags={spec.tagsMode === "import" ? spec.tags : []} dataLogs={spec.dataLogs} onGoData={() => go("data")} onChange={items => updatePage(page.id, { items })} />}
           {page.kind === "commands" && <><p className="ai-hint">Configura qui i comandi di cui conosci il mapping reale. Gli altri restano disabilitati. Rinominare un comando richiede un nuovo controllo del collegamento: le azioni non vengono trasferite a un nome diverso.</p>
             {spec.tagsMode === "import" && page.items.some(item => item.command) && <GuidedCommandTagOptions id={`ai-write-tags-${page.id}`} tags={spec.tags} />}
             {page.items.map((item, index) => item.label.trim() && <GuidedCommandFields key={index} item={item} tags={spec.tagsMode === "import" ? spec.tags : []} tagListId={`ai-write-tags-${page.id}`} onGoData={() => go("data")} onChange={next => updatePage(page.id, { items: page.items.map((item, at) => at === index ? next : item) })} />)}
@@ -143,6 +158,7 @@ export function AiProjectInterview() {
         <ol>{spec.pages.map(page => <li key={page.id}><strong>{page.title}</strong> · {guidedPageKinds.find(kind => kind.id === page.kind)?.label} · {page.section}{page.image ? ` · immagine: ${page.image.split(/[\\/]/).at(-1)}` : ""}</li>)}</ol>
         <p>{spec.tags.length} tag importati localmente · {spec.alarms?.alarms.length ?? 0} allarmi. Nessun indirizzo o soglia inventato.</p>
         {!ai.resolvedInterview && <GuidedReadBindingsReview spec={spec} onEdit={go} disabled={busy} />}
+        {!ai.resolvedInterview && <GuidedDataLogsReview catalog={spec.dataLogs} file={spec.dataLogsFile} />}
         {spec.requirements && <PanelRequirementsReview requirements={spec.requirements} pages={spec.pages} onEdit={go} />}
         {spec.pages.some(page => page.items.some(item => item.command)) && <section className="ai-command-review" aria-label="Mapping comandi da approvare"><h4>Controlla anche i comandi configurati</h4><ul>{spec.pages.flatMap(page => page.items.filter(item => item.command).map((item, index) => <li key={`${page.id}-${index}`}><strong>{page.title} · {item.label}</strong>: {hmiEventLabels[item.command!.event]} → {item.tag || "tag da scegliere"} = <code>{JSON.stringify(item.command!.value)}</code>{item.command!.permission ? ` · permesso ${item.command!.permission}` : " · tutti per la bozza"}</li>))}</ul><p>I mapping restano locali: tag e valori non vengono inviati a Codex. La ricevuta del trasporto non conferma l’esecuzione del comando nel PLC.</p></section>}
         <details><summary>Cosa resterà da completare e collaudare</summary><ul>{guidedProjectPending(spec).map((item, index) => <li key={index}>{item}</li>)}</ul></details>
@@ -158,6 +174,7 @@ export function AiProjectInterview() {
     {step === "review" && ai.proposal && <section className="ai-proposal" aria-label="Revisione proposta"><h3>Controlla il piano prima di creare</h3><p>{ai.proposal.summary}</p>
       <AiDelegationReview interview={interview} decisions={ai.proposal.decisions} />
       <PanelHeaderReview config={ai.resolvedInterview?.spec.header ?? spec.header} />
+      {ai.resolvedInterview && <GuidedDataLogsReview catalog={ai.resolvedInterview.spec.dataLogs} file={spec.dataLogsFile} />}
       {ai.resolvedInterview && <GuidedReadBindingsReview spec={ai.resolvedInterview.spec} onEdit={id => go(spec.pages.some(page => page.id === id) ? id : "pages")} disabled={busy} />}
       {ai.proposalUpdatedLocally && <p className="ai-hint" role="status">Aggiornati solo i dati locali: il contesto e il piano AI non sono cambiati. Non è stata inviata un’altra richiesta. Controlla i nuovi collegamenti e immagini prima di approvare.</p>}
       {ai.resolvedInterview && delegatedQuestions(interview).length > 0 && <><h4>{ai.resolvedInterview.machineName} · {ai.resolvedInterview.spec.pages.length} pagine · {ai.resolvedInterview.layout === "desktop-mobile" ? "Desktop e mobile" : "Desktop"}</h4><p>{ai.resolvedInterview.spec.purpose}</p><ol>{ai.resolvedInterview.spec.pages.map(page => <li key={page.id}><strong>{page.title}</strong> · {guidedPageKinds.find(kind => kind.id === page.kind)?.label} · {standardProjectSectionChoices.find(section => section.id === page.section)?.label}</li>)}</ol>{ai.resolvedInterview.spec.requirements && <PanelRequirementsReview requirements={ai.resolvedInterview.spec.requirements} pages={ai.resolvedInterview.spec.pages} onEdit={go} />}<details><summary>Parti da completare dopo le scelte AI</summary><ul>{guidedProjectPending(ai.resolvedInterview.spec).map((pending, index) => <li key={index}>{pending}</li>)}</ul></details></>}

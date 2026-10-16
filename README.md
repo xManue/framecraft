@@ -335,6 +335,27 @@ up to 2 MB/5000 tags. Alarm inputs: `framecraft.alarms.json`, validated against 
 tags and their trigger types. A list of messages alone does not establish activation conditions.
 Images are selected locally and copied into distinct assets for each page. No invented PLC data.
 
+For time trends and X/Y pages, **Dati e tag disponibili** can also import a local
+`framecraft.logs.json` after the PLC tags. This imports logging configuration, not previous
+samples or an external database. Limits: 2 MB, 32 logs, 5000 logged variables, up to 100000
+samples per log and one year of retention. Unknown fields/storage modes, duplicate IDs,
+missing required settings, unreadable/missing tags and ambiguous equality triggers are rejected.
+The configuration is copied without inventing a logger or changing its storage/retention.
+
+Choose **Online** or **Archivio** for each curve, independently for X and Y. Selecting an
+archive does not pick its first variable automatically. Only enabled imported sources with
+compatible readable numeric tags are offered; changed IDs/tag mappings remain visible and
+block creation until corrected. Review shows the actual per-curve sources and each logger's
+storage, enabled state, sampling and limits. General source/retention answers remain requirements
+and do not overwrite this configuration. Draft recovery retains both the catalogue and references.
+AI receives only counts and source-mode flags, not log names, IDs, tags, addresses or samples.
+
+The emitted Data Log catalogue gets a fresh project storage key; importing configuration does
+not reopen another project's previous browser history. Logging is performed only while the panel
+is open and receives values. Memory and browser-local storage are not an industrial historian:
+quotas, deletion, retention, backup/recovery and server logging still need commissioning.
+No gateway, PLC connection or write is enabled by importing or creating the project.
+
 The guided page catalogue also includes **Grafico X/Y**: up to nine curves, each with
 separate readable numeric scalar tags for horizontal X and vertical Y. The AI receives the
 template contract and linked/unlinked flags, not either tag name or its address. Both axes

@@ -4711,6 +4711,48 @@ Verifiche del 5 ottobre 2026:
   Restano AI operativa completa, capacità Unified/Optix residue, licenze/distribuzione,
   autorizzazioni server e commissioning: l’obiettivo generale non è concluso.
 
+### 139. Data Log importati e sorgenti archiviate nella pipeline iniziale (2026-10-16)
+
+- Import facoltativo di `framecraft.logs.json` dopo il catalogo tag: configurazioni, non
+  campioni storici o database esterni. Contratto stretto: 2 MB, 32 log, 5000 variabili archiviate,
+  massimo 100000 campioni/log e un anno di conservazione. Campi/tipi di storage sconosciuti,
+  ID duplicati, impostazioni mancanti, trigger/tag assenti o non leggibili vengono rifiutati,
+  senza normalizzazioni dei limiti fuori contratto. Confronto di trigger `equals` senza
+  operando esplicito rifiutato: non deve diventare il default 1 del Runtime.
+- Ogni curva temporale e ciascun asse X/Y possono scegliere Online o Archivio. Nessun tag
+  preselezionato dal cambio sorgente; solo Data Log abilitati e tag numerici compatibili.
+  Nome/ID/tag cambiati, archivio disabilitato o riferimenti malformati bloccano piano e
+  generatore, anche chiamato direttamente. Tornare Online elimina il riferimento; niente
+  binding trasferiti implicitamente a un’altra variabile. I comandi non usano dati storici.
+- Import e revisione mostrano configurazione effettiva, modalità, limiti e tempi leggibili,
+  fonti per curva/asse e nomi completi anche su mobile. Le risposte generali su sorgente e
+  conservazione restano requisiti, non sovrascrivono le impostazioni importate. Memoria/browser
+  locali, raccolta solo a pannello aperto, quote/cancellazione/backup e limiti industriali espliciti.
+- Generazione con collector e adattatore storico già distribuiti; nuovo spazio archivio per
+  ogni pannello, senza aprire campioni locali di un progetto precedente dal solo catalogo.
+  Recupero bozza conserva configurazioni e riferimenti, non consensi/proposte/account.
+  All’AI soltanto conteggi e modalità; nessun nome log, ID, tag, indirizzo o campione aggiunto
+  al payload. Nessuna nuova rete, scrittura PLC o servizio attivato dall’import/generazione.
+- Verifiche nella copia pubblica `.hmi-preview/guided-logs-public-1792161428739/`, esclusi
+  export reali e lavori trend preesistenti: 157 test mirati in otto file; ultime due regressioni
+  del trigger verificate nel solo nuovo file (28 casi; 159 casi unici complessivi). Tipi e build
+  Vite superati. Edge 375/768/1024/1440 px: import valido/invalido, nessuna sorgente scelta da
+  sola, assi misti online/archivio, revisione/consenso/approvazione e moduli realmente generati:
+  collector, adattatore numerico storico, grafico temporale, X/Y, due coppie e CSV. Nessun errore
+  console, overflow del dialogo, upload dei tag o chiamata AI/PLC reale. Provider/account e
+  filesystem/handoff nativi simulati; nessuna modifica backend o prova touch fisica.
+- Il primo test browser usava direttamente stringhe del Data Log nel grafico temporale:
+  fixture corretta caricando l’adattatore effettivo del Runtime generato. Test rafforzato sul
+  tracciato non vuoto, non solo sulla presenza del controllo; Runtime originale non modificato.
+- Tre soli agganci al generatore `standardProject.ts` (catalogo, riferimenti e import); nel
+  commit devono restare esclusi tutti i precedenti lavori profili/Runtime. Nessuna dipendenza,
+  asset o codice vendor nuovo. Riferimenti concettuali su sorgenti online/archiviate:
+  https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/overview-of-screen-objects-rt-unified/controls-rt-unified/trend-control-rt-unified
+  https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/1-7-0/contents-ditamap/creating-projects/graphic-objects/predefined-objects/data-controls-objects/trends/add-a-trend-object.html
+- Restano archivio server continuo/industriale, commissioning reale, capacità Unified/Optix
+  residue e pipeline AI completa. Il gate CLI sui sorgenti del punto 135 non è aggirato;
+  licenze, autorizzazioni server e distribuzione restano criteri di rilascio aperti.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

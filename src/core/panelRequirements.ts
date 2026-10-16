@@ -57,8 +57,8 @@ export const panelRequirementGroups: readonly PanelRequirementGroup[] = [
   { id: "trends", label: "Trend e archiviazione dei valori", optional: true, pageKinds: ["trend", "function-trend"], hint: "Intervallo e campionamento vengono applicati ai grafici temporali e X/Y generati. Nei grafici X/Y l’intervallo seleziona i campioni, non l’asse X. Archiviazione persistente e destinazione dati restano da configurare.", questions: [
     choice("range", "Quale intervallo mostra il grafico all’apertura?", [["60000", "1 minuto"], ["600000", "10 minuti"], ["3600000", "1 ora"], ["28800000", "8 ore"], ["86400000", "24 ore"]]),
     choice("sample", "Ogni quanto acquisire un punto del trend?", [["1000", "1 secondo"], ["5000", "5 secondi"], ["10000", "10 secondi"], ["60000", "1 minuto"]]),
-    choice("source", "Servono valori online o anche dati archiviati?", [["online", "Online"], ["history", "Archiviati"], ["both", "Entrambi"]]),
-    choice("retention", "Quanto conservare i dati archiviati?", [["session", "Solo sessione"], ["7d", "7 giorni"], ["30d", "30 giorni"], ["365d", "1 anno"]]),
+    choice("source", "Servono valori online o anche dati archiviati?", [["online", "Online"], ["history", "Archiviati"], ["both", "Entrambi"]], "Requisito generale: le sorgenti effettive si scelgono per curva nei contenuti delle pagine; questa risposta non cambia i collegamenti."),
+    choice("retention", "Quanto conservare i dati archiviati?", [["session", "Solo sessione"], ["7d", "7 giorni"], ["30d", "30 giorni"], ["365d", "1 anno"]], "Requisito generale: non sovrascrive i limiti del catalogo Data Log importato e non configura un database industriale."),
     choice("export", "Serve esportare i campioni?", yesNo),
     detail("axes", "Quali unità, assi, soglie e curve X/Y servono?", "I tag si scelgono nei contenuti delle pagine. Soglie e curve X/Y non vengono dedotte automaticamente."),
   ] },

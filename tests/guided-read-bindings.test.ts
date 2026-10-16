@@ -78,9 +78,9 @@ it("il riepilogo distingue configurato, non collegato e invalido e non include i
 });
 it("tiene visibile un collegamento invalido e mostra solo alternative compatibili", async () => {
   const page = fixture("trend", "Name").spec.pages[0], onChange = vi.fn(); await mount(createElement(GuidedReadBindingFields, { page, tags, onChange }));
-  const select = host!.querySelector("select")!; expect(select.value).toBe("Name"); expect(select.getAttribute("aria-invalid")).toBe("true");
+  const select = host!.querySelector<HTMLSelectElement>("#ai-read-tag-page-1-0")!; expect(select.value).toBe("Name"); expect(select.getAttribute("aria-invalid")).toBe("true");
   expect(host!.querySelector('option[value="Name"]')?.hasAttribute("disabled")).toBe(true); expect(host!.querySelector('option[value="Running"]')).toBeNull();
-  expect(host!.querySelector(`#${select.getAttribute("aria-describedby")}`)?.textContent).toContain("tag numerico"); expect(host!.querySelector("label")?.htmlFor).toBe(select.id);
+  expect(host!.querySelector(`#${select.getAttribute("aria-describedby")}`)?.textContent).toContain("tag numerico"); expect(host!.querySelector<HTMLLabelElement>(`label[for="${select.id}"]`)?.htmlFor).toBe(select.id);
   await act(async () => { select.value = "Speed"; select.dispatchEvent(new Event("change", { bubbles: true })); });
   expect(onChange).toHaveBeenCalledExactlyOnceWith([{ label: "Velocità", tag: "Speed" }]); expect(page.items[0].tag).toBe("Name");
 });

@@ -8,6 +8,8 @@ import { panelRequirementsIssues, panelRequirementsPending, type PanelRequiremen
 import { panelHeaderIssues, panelHeaderFields, type PanelHeaderConfig } from "./panelHeader";
 import { guidedReadBindingIssues } from "./guidedReadBindings";
 import { defaultHmiFunctionTrendConfig, serializeHmiFunctionTrendConfig } from "./hmiFunctionTrend";
+import { parseGuidedDataLogs, guidedTrendSource, type GuidedLogBinding } from "./guidedDataLogs";
+import { emptyHmiDataLogCatalog, type HmiDataLogCatalog } from "./hmiDataLogs";
 
 export const guidedPageKinds = [
   { id: "overview", label: "Vista macchina / pagina principale", section: "main", image: "Foto o rendering della macchina intera", items: "Stati o contatori da mostrare" },
@@ -26,7 +28,7 @@ export const guidedPageKinds = [
 ] as const;
 export type GuidedPageKind = (typeof guidedPageKinds)[number]["id"];
 export const guidedItemLimit = (kind: GuidedPageKind) => ["trend", "function-trend"].includes(kind) ? 9 : 12;
-export interface GuidedItem extends GuidedCommandItem { xTag?: string }
+export interface GuidedItem extends GuidedCommandItem { xTag?: string; logged?: GuidedLogBinding; xLogged?: GuidedLogBinding }
 export interface GuidedPage {
   id: string; title: string; section: StandardProjectSectionId; kind: GuidedPageKind;
   imageNeed: "required" | "optional" | "none"; image?: string; imageDeferred: boolean;
@@ -36,6 +38,7 @@ export interface GuidedProjectSpec {
   version: 1; purpose: string; pages: GuidedPage[];
   tagsMode: "import" | "later" | "none"; tags: PlcVariableDefinition[]; tagsFile?: string;
   alarmsMode: "import" | "later"; alarms?: AlarmCatalog; alarmsFile?: string;
+  dataLogs?: HmiDataLogCatalog; dataLogsFile?: string;
   protocol: "later" | "mqtt" | "opcua" | "simulation"; language: "it" | "en";
   users: "everyone" | "roles-later" | "later";
   requirements?: PanelRequirements;
@@ -50,6 +53,7 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
   if (!["import", "later", "none"].includes(spec.tagsMode) || !["import", "later"].includes(spec.alarmsMode) || !["later", "mqtt", "opcua", "simulation"].includes(spec.protocol) || !["it", "en"].includes(spec.language) || !["everyone", "roles-later", "later"].includes(spec.users)) issues.push("Completa le scelte sui dati e sull’uso del pannello.");
   if (!Array.isArray(spec.tags) || spec.tags.length > 5000 || spec.tags.some(tag => !isPlcVariableName(tag.name) || !tag.dataType.trim() || !["read", "write", "read-write"].includes(tag.access)) || new Set(spec.tags.map(tag => tag.name)).size !== spec.tags.length) issues.push("Il catalogo tag contiene nomi duplicati, tipi mancanti o tag non validi.");
   if (spec.tagsMode === "import" && !spec.tags.length) issues.push("Inserisci la lista tag oppure scegli di collegarla più tardi.");
+  if (spec.dataLogs) try { parseGuidedDataLogs(spec.dataLogs, spec.tagsMode === "import" ? spec.tags : []); } catch (error) { issues.push(error instanceof Error ? error.message : String(error)); }
   if (new Set(spec.pages.map(page => page.id)).size !== spec.pages.length) issues.push("Le pagine hanno identificativi duplicati.");
   if (spec.requirements) issues.push(...panelRequirementsIssues(spec.requirements, spec.pages));
   issues.push(...panelHeaderIssues(spec.header, spec.tagsMode === "import" ? spec.tags : []));
@@ -65,11 +69,12 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
     if (!Array.isArray(page.items) || page.items.length > guidedItemLimit(page.kind) || page.items.some(item => !plain(item.label, 80) || !item.label.trim() || !plain(item.tag, 200) || item.xTag !== undefined && (page.kind !== "function-trend" || !plain(item.xTag, 200)))) issues.push(`${page.title}: inserisci al massimo ${guidedItemLimit(page.kind)} nomi brevi e collegamenti validi per questa funzione, uno per elemento.`);
     else if (page.kind === "commands") {
       for (const item of page.items) {
+        if (item.logged !== undefined || item.xLogged !== undefined) issues.push(`${page.title}: ${item.label} · i comandi non possono usare sorgenti archiviate.`);
         issues.push(...guidedCommandIssues(item, spec.tagsMode === "import" ? spec.tags : []).map(issue => `${page.title}: ${item.label} · ${issue}`));
         if (spec.users === "roles-later" && item.command && !item.command.permission) issues.push(`${page.title}: ${item.label} · hai richiesto ruoli separati: scegli il permesso che abilita il comando.`);
         if (spec.users === "later" && item.command && !item.command.permission) issues.push(`${page.title}: ${item.label} · accesso non ancora definito: scegli un permesso reale o lascia il comando disabilitato.`);
       }
-    } else issues.push(...guidedReadBindingIssues(page, spec.tagsMode === "import" ? spec.tags : []).map(issue => `${page.title}: ${issue}`));
+    } else issues.push(...guidedReadBindingIssues(page, spec.tagsMode === "import" ? spec.tags : [], spec.dataLogs).map(issue => `${page.title}: ${issue}`));
     if (kindOf(page).items && !page.items.length && !page.itemsDeferred) issues.push(`${page.title}: indica ${kindOf(page).items.toLowerCase()} oppure scegli di completarli dopo.`);
   }
   if ([...counts.values()].some(count => count > 14)) issues.push("Una categoria dello standard contiene al massimo 14 voci: distribuisci le pagine in più categorie.");
@@ -98,6 +103,7 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
   if (spec.users === "roles-later") pending.push("Ruoli, permessi e autenticazione server da configurare.");
   if (spec.users === "later") pending.push("Accesso e autorizzazioni da definire: nessun permesso scelto dall’AI; comandi senza permesso reale disabilitati.");
   if (spec.language === "en") pending.push("Traduzioni inglesi dell’interfaccia e dei messaggi da completare.");
+  if (spec.dataLogs?.logs.length) pending.push("Data Log importati: configurazioni, non campioni precedenti. Acquisizione solo mentre il pannello è aperto; memoria/browser locali, non archivio industriale centralizzato. Quote, cancellazione, conservazione e backup da collaudare.");
   const missingHeader = panelHeaderFields.filter(field => !spec.header?.tags[field.id]).map(field => field.label);
   if (missingHeader.length) pending.push(`Barra superiore: ${missingHeader.join(", ")} da collegare; nessun valore macchina inventato.`);
   if (spec.header?.tags.speed && (!spec.header.speedMin || !spec.header.speedMax)) pending.push("Barra superiore: limiti reali della velocità da configurare, nessuna scala presunta.");
@@ -106,8 +112,9 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
 }
 const literal = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
 function at(left: number, top: number, width: number, height: number) { return `position: "absolute", left: ${left}, top: ${top}, width: ${width}, height: ${height}`; }
-export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, componentName: string, imageUrl?: string, tags: readonly PlcVariableDefinition[] = [], requirements?: PanelRequirements): string {
-  const readIssues = guidedReadBindingIssues(page, tags); if (readIssues.length) throw new Error(`${page.title}: ${readIssues[0]}`);
+export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, componentName: string, imageUrl?: string, tags: readonly PlcVariableDefinition[] = [], requirements?: PanelRequirements, dataLogs?: HmiDataLogCatalog): string {
+  if (dataLogs) parseGuidedDataLogs(dataLogs, tags);
+  const readIssues = guidedReadBindingIssues(page, tags, dataLogs); if (readIssues.length) throw new Error(`${page.title}: ${readIssues[0]}`);
   let body = `      <h1 data-hmi-type="HmiTextBox" style={{ ${at(32, 20, 1150, 40)}, margin: 0, fontSize: 26 }}>{${literal(page.title)}}</h1>\n`;
   const image = page.imageNeed !== "none" && !["alarms", "history", "trend", "function-trend"].includes(page.kind);
   if (image) body += `      <img data-hmi-type="HmiGraphicView" data-image-role="part" src=${literal(imageUrl ?? "/placeholder.svg")} alt=${literal(kindOf(page).image)} style={{ ${at(32, 76, 790, 530)}, objectFit: "contain", border: "1px dashed #A8A8A8" }} />\n`;
@@ -117,7 +124,7 @@ export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, compo
     const range = requirements?.answers["trends.range"], sample = requirements?.answers["trends.sample"];
     if (["60000", "600000", "3600000", "28800000", "86400000"].includes(range ?? "")) config.timeRangeMs = Number(range);
     if (["1000", "5000", "10000", "60000"].includes(sample ?? "")) config.sampleIntervalMs = Number(sample);
-    if (page.items.length) config.trends = page.items.map((item, index) => ({ ...config.trends[0], id: `curve-${index + 1}`, name: item.label, tag: item.tag, source: "online" as const, color: ["#2388CC", "#CC5623", "#26A269", "#9141AC"][index % 4] }));
+    if (page.items.length) config.trends = page.items.map((item, index) => ({ ...config.trends[0], id: `curve-${index + 1}`, name: item.label, ...guidedTrendSource(item.tag, item.logged), color: ["#2388CC", "#CC5623", "#26A269", "#9141AC"][index % 4] }));
     body += `      <div data-hmi-type="HmiTrendControl" data-hmi-trend={${literal(serializeHmiTrendConfig(config))}} style={{ ${at(32, 76, 1140, 530)}, background: "#F7F8F9" }}>Configura le curve e il collegamento PLC dall’Inspector.</div>\n`;
   } else if (page.kind === "function-trend") {
     const config = defaultHmiFunctionTrendConfig(); config.caption = page.title;
@@ -126,7 +133,7 @@ export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, compo
     const base = config.trends[0];
     if (page.items.length) config.trends = page.items.map((item, index) => ({ ...base, id: `curve-${index + 1}`, name: item.label,
       color: ["#2388CC", "#CC5623", "#26A269", "#9141AC"][index % 4],
-      x: { source: "online" as const, tag: item.xTag ?? "" }, y: { source: "online" as const, tag: item.tag }, range: { ...base.range } }));
+      x: guidedTrendSource(item.xTag ?? "", item.xLogged), y: guidedTrendSource(item.tag, item.logged), range: { ...base.range } }));
     if (["60000", "600000", "3600000", "28800000", "86400000"].includes(range ?? "")) for (const curve of config.trends) curve.range.durationMs = Number(range);
     body += `      <div data-hmi-type="HmiFunctionTrendControl" data-hmi-function-trend={${literal(serializeHmiFunctionTrendConfig(config))}} style={{ ${at(32, 76, 1140, 530)}, background: "#F7F8F9" }}>Configura le sorgenti X e Y e il collegamento PLC dall’Inspector.</div>\n`;
   } else if (["recipes", "production", "maintenance", "reports"].includes(page.kind)) {
@@ -146,4 +153,7 @@ export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, compo
 }
 export function guidedAlarmCatalog(spec: GuidedProjectSpec): AlarmCatalog {
   return spec.alarmsMode === "import" && spec.alarms ? parseAlarmCatalog(spec.alarms, spec.tagsMode === "import" ? spec.tags : []) : emptyAlarmCatalog();
+}
+export function guidedDataLogCatalog(spec: GuidedProjectSpec | undefined, projectKey: string): HmiDataLogCatalog {
+  return spec?.dataLogs ? { ...parseGuidedDataLogs(spec.dataLogs, spec.tagsMode === "import" ? spec.tags : []), projectKey: `${projectKey}:${crypto.randomUUID()}` } : emptyHmiDataLogCatalog(projectKey);
 }

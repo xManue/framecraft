@@ -87,6 +87,14 @@ Bozza, reimport e delega delle etichette conservano o azzerano i collegamenti se
 a una curva diversa. Contratto del template e soli flag X/Y collegati arrivano all’AI; catalogo
 e indirizzi restano locali. Misure sincrone PLC, unità/scale/soglie, archivi e collaudo non sono
 dedotti; una pagina generata non è una sorgente dati o una connessione già verificata.
+Dal punto 139 anche i Data Log Framecraft reali possono essere importati nella pipeline:
+configurazioni, non campioni precedenti o database esterni. Sorgente online/archivio selezionata
+per curva e per asse X/Y; riferimenti, stato abilitato e tipi verificati prima della generazione.
+Riepilogo di sorgenti, modalità, conservazione e limiti locali; nessuna selezione automatica.
+Il generatore usa catalogo, collector e adattatore storico effettivi, con spazio locale nuovo
+per non recuperare lo storico di un altro progetto. Bozza e catalogo restano locali; all’AI
+solo conteggi e modalità, non nomi/ID/tag/indirizzi o valori. La raccolta dipende dal pannello
+aperto: archiviazione server continua, quote, backup e collaudo non diventano pronti con l’import.
 I pulsanti non configurati restano
 disabilitati; per scritture singole il questionario raccoglie evento operatore, tag scrivibile,
 valore compatibile, permesso e conferma esplicita del mapping. Usa la stessa IR/eventi
@@ -253,7 +261,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-PLAN-02 | Scelta motivata di template e famiglie pagina | PARZIALE | Famiglie scelte dall’utente con funzionamento noto nel contesto AI; scelta automatica motivata tra tutti i template da implementare |
 | AI-PLAN-03 | Piano pagine, navigazione e popup | PARZIALE | Pagine/categorie esplicite e pagina iniziale applicata; popup e oggetti ripetuti raccolti come requisiti da configurare |
 | AI-PLAN-04 | Piano binding e interazioni | PARZIALE | Letture e comandi singoli con tag, valore, evento e permessi espliciti; matrice operativa completa ancora da fare |
-| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, trend temporali e X/Y con due sorgenti approvate, requisiti ricette/archivio; generazione operativa completa da implementare |
+| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, trend temporali e X/Y con sorgenti online o Data Log reali importati e approvati, requisiti ricette/archivio industriale; generazione operativa completa da implementare |
 | AI-PLAN-06 | Piano utenti e sicurezza | PARZIALE | Requisiti mirati su identità, ruoli, sessione e audit; implementazione server e matrice da approvare separatamente |
 | AI-PLAN-07 | Stima compatibilità target e licenze | DA FARE | Limiti funzionali Framecraft, licenze dipendenze/provider e diritti degli asset verificati prima di creare file; destinazione React autonoma OPC UA/MQTT, non licenze dei Runtime vendor |
 | AI-PLAN-08 | Revisione e approvazione del piano | DA FARE | L'utente può correggere singole decisioni o procedere manualmente |
@@ -267,7 +275,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-GEN-03 | Posizionamento di grafica macchina, hotspot e targhette | PARZIALE | Immagini e identificativi reali, niente macchina fittizia |
 | AI-GEN-04 | Binding tag e dinamizzazioni | PARZIALE | Mapping approvato, tipi compatibili e dipendenze verificabili |
 | AI-GEN-05 | Eventi, script e navigazione | PARZIALE | Scritture singole confermate compilate con la stessa IR dell’editor e gate di interazione; altri script/azioni/handshake ancora da fare |
-| AI-GEN-06 | Allarmi, trend, ricette e report | PARZIALE | Catalogo allarmi, trend temporali e X/Y reali con mapping tipizzati, letture e tempi da dati scelti; ricette/report solo strutture esplicitamente incomplete e requisiti, non funzioni operative |
+| AI-GEN-06 | Allarmi, trend, ricette e report | PARZIALE | Catalogo allarmi, trend temporali e X/Y reali, mapping tipizzati e Data Log locali importati; collector/query effettivi ma archivio industriale continuo ancora da fare. Ricette/report solo strutture esplicitamente incomplete e requisiti, non funzioni operative |
 | AI-GEN-07 | Testi e traduzioni | PARZIALE | Dizionario, fallback e copertura lingua visibili |
 | AI-GEN-08 | Utenti, ruoli e autorizzazioni | PARZIALE | Proposta separata ad alta attenzione e matrice revisionabile |
 | AI-GEN-09 | Validazione e test del progetto generato | PARZIALE | Report completo prima di dichiarare pronta la prima versione |
