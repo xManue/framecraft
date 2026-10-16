@@ -115,7 +115,7 @@ export function resolveInterviewDelegation(interview: AiInterview, decisions?: r
     else if (question.key.startsWith("req.") && spec.requirements) spec.requirements.answers[question.key.slice(4)] = value ?? "later";
     else if (question.key.startsWith("page.")) {
       const [, id, field] = question.key.split("."), page = spec.pages.find(page => page.id === id)!;
-      if (field === "title") page.title = value === undefined ? "Pagina da scegliere" : plain(value, 80);
+      if (field === "title") { const title = value === undefined ? "Pagina da scegliere" : plain(value, 80); if (page.title !== title) delete page.titleTextKey; page.title = title; }
       else if (field === "kind" && value) {
         const previous = guidedPageKinds.find(kind => kind.id === page.kind)!;
         page.kind = value as GuidedPage["kind"]; const kind = guidedPageKinds.find(kind => kind.id === page.kind)!;

@@ -6,6 +6,7 @@ import { panelRequirementGroups } from "../core/panelRequirements";
 import { panelHeaderFields } from "../core/panelHeader";
 import { parseAlarmCatalog } from "../core/hmiAlarms";
 import { parseGuidedDataLogs } from "../core/guidedDataLogs";
+import { parseGuidedResources } from "../core/guidedTexts";
 
 export interface AiInterviewDraft { version: 1; savedAt: number; interview: AiInterview }
 export interface AiInterviewDraftSnapshot { revision: string; source: string | null }
@@ -22,13 +23,14 @@ const tag = shape({ name: text(200), dataType: text(200), access: one(["read", "
 const command = shape({ event: one(guidedCommandEvents), value: text(512), permission: one(guidedCommandPermissions.map(item => item.id)), reviewed: bool });
 const logged = shape({ logId: text(80), loggedTagId: text(80) });
 const dataLogs: Rule = value => { try { parseGuidedDataLogs(value); return true; } catch { return false; } };
-const page = shape({ id: value => typeof value === "string" && /^page-\d{1,2}$/.test(value), title: text(), section: one(["main", "settings", "alarms", "statistics", "manuals", "diagnostic", "formats"]), kind: one(guidedPageKinds.map(item => item.id)), imageNeed: one(["required", "optional", "none"]), image: text(2048), imageDeferred: bool, items: list(shape({ label: text(), tag: text(200), xTag: text(200), logged, xLogged: logged, command }, ["xTag", "logged", "xLogged", "command"]), 200), itemsDeferred: bool }, ["image"]);
+const resources: Rule = value => { try { parseGuidedResources(value); return true; } catch { return false; } };
+const page = shape({ id: value => typeof value === "string" && /^page-\d{1,2}$/.test(value), title: text(), titleTextKey: text(200), section: one(["main", "settings", "alarms", "statistics", "manuals", "diagnostic", "formats"]), kind: one(guidedPageKinds.map(item => item.id)), imageNeed: one(["required", "optional", "none"]), image: text(2048), imageDeferred: bool, items: list(shape({ label: text(), tag: text(200), xTag: text(200), logged, xLogged: logged, textKey: text(200), command }, ["xTag", "logged", "xLogged", "textKey", "command"]), 200), itemsDeferred: bool }, ["image", "titleTextKey"]);
 const requirements = shape({ version: one([1]), enabled: dictionary(panelRequirementGroups.filter(group => group.optional).map(group => group.id), one(["yes", "no", "later"])), answers: value => object(value) && Object.entries(value).every(([key, answer]) => {
   const question = panelRequirementGroups.flatMap(group => group.questions.map(question => ({ ...question, key: `${group.id}.${question.id}` }))).find(question => question.key === key);
   return !!question && text(1500)(answer) && (!question.options || answer === "later" || question.options.some(option => option[0] === answer));
 }), startPageId: text(100) });
 const header = shape({ version: one([1]), tags: dictionary(panelHeaderFields.map(field => field.id), text(200)), speedUnit: text(24), speedMin: text(100), speedMax: text(100) }, ["speedUnit", "speedMin", "speedMax"]);
-const interviewShape = shape({ machineName: text(), layout: one(["desktop", "desktop-mobile"]), step: text(100), delegated: list(text(200), 1000), followups: list(shape({ question: text(), answer: text(), skipped: bool }, ["skipped"]), 100), spec: shape({ version: one([1]), purpose: text(), pages: list(page, 28), tagsMode: one(["import", "later", "none"]), tags: list(tag, 5000), tagsFile: text(), alarmsMode: one(["import", "later"]), alarms: object, alarmsFile: text(), dataLogs, dataLogsFile: text(), protocol: one(["later", "mqtt", "opcua", "simulation"]), language: one(["it", "en"]), users: one(["everyone", "roles-later", "later"]), requirements, header }, ["tagsFile", "alarms", "alarmsFile", "dataLogs", "dataLogsFile", "requirements", "header"]) }, ["delegated"]);
+const interviewShape = shape({ machineName: text(), layout: one(["desktop", "desktop-mobile"]), step: text(100), delegated: list(text(200), 1000), followups: list(shape({ question: text(), answer: text(), skipped: bool }, ["skipped"]), 100), spec: shape({ version: one([1]), purpose: text(), pages: list(page, 28), tagsMode: one(["import", "later", "none"]), tags: list(tag, 5000), tagsFile: text(), alarmsMode: one(["import", "later"]), alarms: object, alarmsFile: text(), dataLogs, dataLogsFile: text(), resources, resourcesFile: text(), protocol: one(["later", "mqtt", "opcua", "simulation"]), language: one(["it", "en"]), users: one(["everyone", "roles-later", "later"]), requirements, header }, ["tagsFile", "alarms", "alarmsFile", "dataLogs", "dataLogsFile", "resources", "resourcesFile", "requirements", "header"]) }, ["delegated"]);
 
 function safeInterview(value: unknown): AiInterview {
   if (!interviewShape(value)) throw new Error("La bozza del questionario contiene campi non supportati. Nessuna risposta è stata caricata o eliminata.");
@@ -36,6 +38,7 @@ function safeInterview(value: unknown): AiInterview {
   if (new Set(interview.spec.pages.map(page => page.id)).size !== interview.spec.pages.length) throw new Error("La bozza contiene pagine duplicate. Nessuna risposta è stata caricata.");
   if (interview.spec.alarms) interview.spec.alarms = parseAlarmCatalog(interview.spec.alarms, interview.spec.tags);
   if (interview.spec.dataLogs) interview.spec.dataLogs = parseGuidedDataLogs(interview.spec.dataLogs);
+  if (interview.spec.resources) interview.spec.resources = parseGuidedResources(interview.spec.resources);
   const keys = new Set(delegationQuestions(interview).map(question => question.key));
   interview.delegated = interview.delegated?.filter(key => keys.has(key));
   for (const page of interview.spec.pages) for (const item of page.items) if (item.command) item.command.reviewed = false;

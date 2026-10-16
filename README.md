@@ -335,6 +335,26 @@ up to 2 MB/5000 tags. Alarm inputs: `framecraft.alarms.json`, validated against 
 tags and their trigger types. A list of messages alone does not establish activation conditions.
 Images are selected locally and copied into distinct assets for each page. No invented PLC data.
 
+The optional `framecraft.resources.json` import adds existing translations to guided creation.
+Choose a dictionary key explicitly for each page title and static label in overview, synoptic,
+values or commands pages. Only keys containing the exact original text in a declared language
+are offered; no key or translation is inferred. Invalid/stale choices block creation until corrected
+or reset to the original text. Page titles also translate the visible navigation entry; routes,
+page identifiers, PLC tags/values, permissions and command events remain unchanged.
+
+The operator-language answer sets the generated Runtime locale, preferring an imported locale
+of the same language when available. Review shows original/effective texts, unresolved choices
+and fallback languages, with **Rivedi** returning to the corresponding page. This is not full
+automatic HMI translation: unmapped text, curve names, alarms and system controls can remain
+in their original language. Check translations and text fit before commissioning.
+
+Import limits: 2 MB, 32 declared BCP 47 languages, 5000 multilingual texts, 200 text lists and
+200 graphic lists, with 20000 list entries in total. Unknown fields, duplicate keys and malformed
+values are rejected without replacing the previous catalogue. Lists are preserved, but referenced
+images are not imported. Draft recovery retains the local catalogue and selected keys, not send
+consent. AI receives only counts and linked/unlinked flags, not dictionary keys, translations or
+the imported filename. Changing an AI-delegated title clears its old dictionary link.
+
 For time trends and X/Y pages, **Dati e tag disponibili** can also import a local
 `framecraft.logs.json` after the PLC tags. This imports logging configuration, not previous
 samples or an external database. Limits: 2 MB, 32 logs, 5000 logged variables, up to 100000
@@ -427,7 +447,9 @@ browser UI rules, not server/PLC authentication. Connections, interlocks and com
 separate. These are single writes, not hold-to-run or safety functions; a PLC watchdog/lease and
 fault tests are necessary before implementing momentary machine commands. Transport receipt
 does not confirm PLC execution and uncertain/rejected commands are not automatically retried.
-MQTT/OPC UA choice, roles and English translation are recorded requirements, not automatic setup.
+MQTT/OPC UA choice and roles are recorded requirements, not automatic setup. The selected
+operator locale and explicitly mapped static translations are applied; complete English
+translation is not automatic.
 Alarm history is session history, not a production retention guarantee. No deployment occurs.
 
 The event model follows the [WinCC Unified event documentation](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/triggering-events-rt-unified/basics-on-the-events-rt-unified)

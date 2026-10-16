@@ -4753,6 +4753,45 @@ Verifiche del 5 ottobre 2026:
   residue e pipeline AI completa. Il gate CLI sui sorgenti del punto 135 non è aggirato;
   licenze, autorizzazioni server e distribuzione restano criteri di rilascio aperti.
 
+### 140. Lingua Runtime e dizionario testi nella creazione guidata (2026-10-16)
+
+- La scelta della lingua operatore imposta ora davvero il catalogo Runtime generato, anche
+  senza traduzioni importate. Preferita una lingua già dichiarata della stessa famiglia,
+  preservando la lingua di ripiego. Non equivale a tradurre ogni scritta dell’HMI.
+- Import facoltativo di `framecraft.resources.json`: 2 MB, 32 lingue BCP 47, 5000 testi,
+  200 liste testo e 200 grafiche, massimo 20000 voci complessive. Contratto stretto senza
+  campi sconosciuti o coercizioni dei numeri, errori leggibili e vecchio catalogo conservato.
+  Liste mantenute, segnaposto grafici vuoti ammessi; immagini riferite non importate.
+- Chiave scelta esplicitamente per titolo di ogni pagina e testi statici di overview,
+  sinottico, valori e comandi. Proposte soltanto voci contenenti esattamente il testo originale:
+  nessuna associazione/chiave/traduzione inventata. Chiave cambiata, mancante o incompatibile
+  blocca pipeline e generatore diretto; titolo delegato cambiato perde il vecchio collegamento.
+- Campi accessibili, errore vicino alla scelta, anteprima della lingua effettiva e ripiego;
+  riepilogo prima/dopo piano senza duplicati, Rivedi torna anche ai titoli allarmi/storico.
+  Gli originali restano disponibili; nomi curve, allarmi e controlli di sistema non sono
+  dichiarati tradotti. Da verificare copertura e ingombri prima dell’uso reale.
+- Titoli e voci visibili del menu usano il dizionario senza cambiare rotte, numeri pagina,
+  tag/valori PLC, permessi o eventi dei comandi. Metadati testo conservati anche aggiungendo
+  categorie. Chiavi codificate come espressioni JSX sicure; traduzioni trattate come testo.
+  Recupero bozza conserva catalogo/chiavi, non consenso/account/proposte. All’AI solo conteggi
+  e flag di collegamento; nessuna nuova chiave, traduzione o nome file nel payload.
+- Verificati **122 casi mirati unici in otto file**, controllo tipi e build Vite nella copia
+  pubblica `.hmi-preview/guided-texts-public-1792163591089/`, senza export reali o lavori trend
+  preesistenti. Edge 375/768/1024/1440 px: import valido/invalido, selezione esplicita, lingua,
+  revisione/consenso/approvazione, App e pagine realmente generate, menu tradotto, navigazione
+  che conserva la lingua e cambio lingua Runtime. Nessun errore console o overflow del dialogo.
+  Provider/account, router, header e filesystem/handoff nativi sintetici; nessuna inferenza AI,
+  chiamata PLC, prova touch fisica o collaudo IPC. Non ripetuti test backend: nessuna modifica nativa.
+- Sei sole righe del generatore `standardProject.ts` interessate; i lavori profili/trend
+  precedenti restano esclusi. Nessuna nuova dipendenza, asset o codice vendor. Riferimento
+  concettuale ai dizionari e alla lingua Runtime, non attestazione di parità completa:
+  https://www.rockwellautomation.com/en-ua/docs/factorytalk-optix/1-4-4/contents-ditamap/creating-projects/translations.html
+- Ricontrollati CLI installata e registro npm ufficiale: entrambi **0.163.0**. Anche lo schema
+  `--experimental` rigenerato non espone `ReadOnlyAccess`; nessuna reinstallazione inutile,
+  versione preliminare o ampliamento dei permessi. Resta il gate del punto 135 sulla pipeline
+  reale dei sorgenti. Obiettivo generale, traduzioni complete, capacità Unified/Optix residue,
+  licenze, autorizzazioni server, distribuzione e commissioning non conclusi.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

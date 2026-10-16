@@ -1,5 +1,5 @@
 import { standardPageSource, standardPageTemplates, planPageNumber, type StandardPagePlan, type StandardPageTemplateId } from "./hmiPages";
-import { guidedAlarmCatalog, guidedDataLogCatalog, guidedPageSource, guidedProjectIssues, guidedProjectPending, type GuidedPage, type GuidedProjectSpec } from "./guidedProject";
+import { guidedAlarmCatalog, guidedDataLogCatalog, guidedPageSource, guidedProjectIssues, guidedProjectPending, guidedResourceCatalog, type GuidedPage, type GuidedProjectSpec } from "./guidedProject";
 import { guidedTemplateBehaviors } from "./templateBehavior";
 import { newPanelHeader } from "./panelHeader";
 import panelHeaderSource from "./panelHeader.ts?raw";
@@ -1184,7 +1184,7 @@ function appSource(machineName: string, planned: readonly PlannedSection[], mobi
     label: section.label,
     route: section.route,
     pages: section.pages.map((page) => page.route),
-    entries: section.entries,
+    entries: section.entries.map(entry => { const key = pages.find(page => page.route === entry.route)?.guided?.titleTextKey; return key ? { ...entry, textKey: key } : entry; }),
     menu: section.menu ?? null,
   })},`).join("\n");
   const icons = planned.map((section) => `  ${section.id}: (${svgIcon(sectionIcon[section.id])}),`).join("\n");
@@ -1271,7 +1271,7 @@ interface PanelSection {
   route: string;
   /** Tutte le sue pagine: servono a sapere quale tessera e' accesa. */
   pages: string[];
-  entries: { label: string; icon: string; route: string }[];
+  entries: { label: string; icon: string; route: string; textKey?: string }[];
   /** Dove si apre il pannello del sottomenu, in coordinate del pannello. */
   menu: { panel: Box; pointer: Box; entry: { left: number; width: number; height: number; pitch: number; first: number } } | null;
 }
@@ -1539,7 +1539,7 @@ ${routes}
               <li key={index} style={{ height: openSection.menu!.entry.pitch }}>
                 <button type="button" data-hmi-type="HmiButton" disabled={!entry.route} onClick={() => chooseEntry(entry.route)}>
                   <span className="hmi-submenu-icon">{entryIcons[entry.icon] ?? Object.values(entryIcons)[0]}</span>
-                  {entry.label}
+                  <span data-hmi-text={entry.textKey}>{entry.label}</span>
                 </button>
               </li>
             ))}
@@ -1759,7 +1759,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
   });
   const pageFiles = pages.map(({ page }) => ({
     path: `src/pages/${page.componentName}.tsx`,
-    content: page.guided ? guidedPageSource(page.guided, page.plan, page.componentName, pageImages.find(image => image.id === page.guided!.id)?.url, config.guided?.tagsMode === "import" ? config.guided.tags : [], config.guided?.requirements, config.guided?.dataLogs) : withMachineImage(standardPageSource({ componentName: page.componentName, title: page.title, plan: page.plan, templateId: page.templateId, folderTab: page.folderTab, folderRoutes: page.folderRoutes }), photo?.url),
+    content: page.guided ? guidedPageSource(page.guided, page.plan, page.componentName, pageImages.find(image => image.id === page.guided!.id)?.url, config.guided?.tagsMode === "import" ? config.guided.tags : [], config.guided?.requirements, config.guided?.dataLogs, config.guided?.resources) : withMachineImage(standardPageSource({ componentName: page.componentName, title: page.title, plan: page.plan, templateId: page.templateId, folderTab: page.folderTab, folderRoutes: page.folderRoutes }), photo?.url),
   }));
   const manifest = {
     id: slug(machineName), name: machineName, version: "1.0.0",
@@ -1830,7 +1830,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     ...pageFiles,
     { path: "panel.json", content: `${JSON.stringify(manifest, null, 2)}\n` },
     { path: "framecraft.plc.json", content: config.guided ? serializePlcCatalog(config.guided.tagsMode === "import" ? config.guided.tags : []) : `${JSON.stringify({ version: 1, variables: [] }, null, 2)}\n` },
-    { path: "framecraft.resources.json", content: `${JSON.stringify(emptyHmiResourceCatalog(), null, 2)}\n` },
+    { path: "framecraft.resources.json", content: `${JSON.stringify(config.guided ? guidedResourceCatalog(config.guided) : emptyHmiResourceCatalog(), null, 2)}\n` },
     { path: "framecraft.scripts.json", content: `${JSON.stringify(emptyHmiScriptCatalog(), null, 2)}\n` },
     { path: "framecraft.faceplates.json", content: serializeHmiFaceplateCatalog(standardHmiFaceplateCatalog()) },
     { path: "framecraft.logs.json", content: `${JSON.stringify(config.guided?.dataLogs ? guidedDataLogCatalog(config.guided, slug(machineName)) : emptyHmiDataLogCatalog(slug(machineName)), null, 2)}\n` },

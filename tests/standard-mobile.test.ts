@@ -6,6 +6,7 @@ import { JsxEmit, ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readPageCategories } from "../src/core/pageNavigation";
 import { standardProjectFiles } from "../src/core/standardProject";
+import { newPanelHeader, panelHeaderIssues, panelClockText } from "../src/core/panelHeader";
 
 const generated = standardProjectFiles({ machineName: "Synthetic mobile", layout: "desktop-mobile", sections: ["main", "settings", "alarms", "statistics", "diagnostic"] });
 const source = generated.find((file) => file.path === "src/App.tsx")!.content;
@@ -35,6 +36,10 @@ function loadApp(input = source): React.ComponentType {
       Routes: ({ children }: { children: React.ReactNode }) => (Children.toArray(children) as React.ReactElement<{ path: string; element: React.ReactNode }>[]).find((child) => child.props.path === route)?.props.element,
     };
     if (id === "../framecraft.resources.json") return { default: resources };
+    if (id === "../framecraft.header.json") return { default: JSON.parse(generated.find(file => file.path === "framecraft.header.json")!.content) };
+    if (id === "../framecraft.plc.json") return { default: JSON.parse(generated.find(file => file.path === "framecraft.plc.json")!.content) };
+    if (id === "./framecraftPanelHeader") return { newPanelHeader, panelHeaderIssues, panelClockText };
+    if (id === "./framecraftPanelHeaderUi") return { HeaderValue: () => createElement("span", null, "—"), HeaderGauge: () => null, HeaderUser: () => null };
     if (id === "./framecraftHmiRuntime") return { installFramecraftHmiRuntime: installRuntime };
     if (id.startsWith("./pages/")) return { [id.split("/").at(-1)!]: () => createElement("section", { className: "hmi-page", style: { width: drawingWidth } }, id) };
     throw Error(`Unexpected synthetic dependency: ${id}`);

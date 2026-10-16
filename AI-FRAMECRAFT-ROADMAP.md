@@ -189,8 +189,15 @@ per carichi production. L’adapter CLI è provvisorio: provider supportato, sic
 collaudo Runtime restano necessari prima di dichiarare l’app pronta per la produzione.
 Non equivale a completamento AI: restano generazione completa di funzioni operative, mapping
 approvati di scrittura, ricette, PDF, ruoli server, modifiche multi-file atomiche, licensing,
-privacy/eval e commissioning industriale. Lingua inglese e protocollo selezionato sono requisiti
-da completare, non traduzioni o connessioni automaticamente pronte.
+privacy/eval e commissioning industriale. Il protocollo resta un requisito, non una connessione
+pronta. Dal punto 140 la lingua operatore imposta il Runtime e il catalogo testi importato può
+essere collegato esplicitamente a titoli e testi statici delle basi supportate. Solo chiavi che
+contengono il testo originale sono selezionabili, nessuna traduzione o associazione automatica.
+Riepilogo locale con testo effettivo, ripiego e ritorno alla pagina; collegamenti obsoleti bloccano
+la generazione. Le voci del menu seguono i titoli tradotti senza modificare rotte o identificativi.
+Bozza e catalogo restano locali; all’AI solo conteggi e flag, non chiavi, traduzioni o nome file.
+Liste conservate, immagini riferite non importate. Lingua completa dei controlli, nomi curve,
+allarmi e testi non collegati restano da completare/collaudare: non è traduzione completa dell’HMI.
 
 ## Le tre modalità devono essere equivalenti
 
@@ -276,7 +283,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-GEN-04 | Binding tag e dinamizzazioni | PARZIALE | Mapping approvato, tipi compatibili e dipendenze verificabili |
 | AI-GEN-05 | Eventi, script e navigazione | PARZIALE | Scritture singole confermate compilate con la stessa IR dell’editor e gate di interazione; altri script/azioni/handshake ancora da fare |
 | AI-GEN-06 | Allarmi, trend, ricette e report | PARZIALE | Catalogo allarmi, trend temporali e X/Y reali, mapping tipizzati e Data Log locali importati; collector/query effettivi ma archivio industriale continuo ancora da fare. Ricette/report solo strutture esplicitamente incomplete e requisiti, non funzioni operative |
-| AI-GEN-07 | Testi e traduzioni | PARZIALE | Dizionario, fallback e copertura lingua visibili |
+| AI-GEN-07 | Testi e traduzioni | PARZIALE | Lingua Runtime, catalogo locale importato, chiavi esplicite per titoli/menu/testi statici supportati e revisione di originali/ripieghi; restano controlli, allarmi, nomi curve e copertura completa |
 | AI-GEN-08 | Utenti, ruoli e autorizzazioni | PARZIALE | Proposta separata ad alta attenzione e matrice revisionabile |
 | AI-GEN-09 | Validazione e test del progetto generato | PARZIALE | Report completo prima di dichiarare pronta la prima versione |
 | AI-GEN-10 | Handoff all'editor manuale | PARZIALE | Nessun lock-in: canvas, Inspector e sorgente restano normali |

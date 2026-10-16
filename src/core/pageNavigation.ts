@@ -10,7 +10,7 @@ export interface PageCategory {
   number: number;
   route: string;
   pages: string[];
-  entries: { label: string; icon: string; route: string }[];
+  entries: { label: string; icon: string; route: string; textKey?: string }[];
   menu: { panel: { left: number; top: number; width: number; height: number }; pointer: { left: number; top: number; width: number; height: number }; entry: { left: number; width: number; height: number; pitch: number; first: number } } | null;
 }
 const traverse = (traverseModule as unknown as { default?: typeof traverseModule }).default ?? traverseModule;
@@ -39,6 +39,7 @@ export function readPageCategories(source: string): PageCategory[] {
   const seenNumbers = new Set<number>();
   return value.map((item, index) => {
     if (!item || typeof item.id !== "string" || !item.id || seen.has(item.id) || typeof item.label !== "string" || typeof item.route !== "string" || !Array.isArray(item.pages) || !item.pages.every((page) => typeof page === "string") || !Array.isArray(item.entries) || !item.entries.every((entry) => entry && typeof entry.label === "string" && typeof entry.icon === "string" && typeof entry.route === "string")) throw Error("La navigazione del pannello non è valida. Correggila prima di aggiungere categorie.");
+    if (item.entries.some(entry => entry.textKey !== undefined && (typeof entry.textKey !== "string" || entry.textKey.length > 200 || /[\u0000-\u001f]/.test(entry.textKey)))) throw Error("La navigazione contiene una chiave testo non valida.");
     seen.add(item.id);
     const number = item.number ?? sections.find((section) => section.id === item.id)?.number ?? 10 + index;
     if (!Number.isInteger(number) || number < 1 || number > 99 || number === 9) throw Error("Numero categoria non valido: 9 è riservato ai popup.");

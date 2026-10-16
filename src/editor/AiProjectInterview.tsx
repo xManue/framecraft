@@ -22,6 +22,8 @@ import { sameInterviewAiContext } from "../ai/aiInterview";
 import { GuidedReadBindingFields, GuidedReadBindingsReview } from "./GuidedReadBindings";
 import { parseGuidedDataLogs } from "../core/guidedDataLogs";
 import { GuidedDataLogsReview } from "./GuidedDataLogs";
+import { parseGuidedResources } from "../core/guidedTexts";
+import { GuidedPageTextFields, GuidedTextsReview } from "./GuidedTexts";
 
 export function AiProjectInterview() {
   const ai = useEditorAi(), interview = ai.interview, spec = interview.spec;
@@ -53,17 +55,22 @@ export function AiProjectInterview() {
   const delegate = (key: string) => update(toggleInterviewDelegation(interview, key));
   const question = (key: string, children: ReactNode) => { const item = questions.find(question => question.key === key)!; return <AiQuestion label={item.label} delegated={interview.delegated?.includes(key) ?? false} pending={item.type === "pending"} onToggle={() => delegate(key)}>{children}</AiQuestion>; };
   const go = (id: string) => useEditorAi.setState(state => ({ interview: { ...state.interview, step: id } }));
+  const goText = (id: string) => go(steps.some(step => step.id === id) ? id : "pages");
   const chooseImage = async (id: string) => {
     setFileBusy(true); setNotice(undefined);
     try { const image = await desktopBridge.chooseImage(); if (image && useEditorAi.getState().interview === interview) updatePage(id, { image, imageDeferred: false }); }
     catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
     finally { setFileBusy(false); }
   };
-  const importFile = async (file: File | undefined, type: "tags" | "alarms" | "dataLogs") => {
+  const importFile = async (file: File | undefined, type: "tags" | "alarms" | "dataLogs" | "resources") => {
     if (!file) return; setFileBusy(true); setNotice(undefined);
     try {
       if (file.size > 2_000_000) throw new Error("Scegli un file fino a 2 MB. Nessun dato è stato importato.");
       const source = await file.text(); if (useEditorAi.getState().interview !== interview) return;
+      if (type === "resources") {
+        const resources = parseGuidedResources(source); updateSpec({ resources, resourcesFile: file.name });
+        setNotice("Catalogo testi importato localmente. Scegli esplicitamente le chiavi nei contenuti delle pagine; nessuna traduzione automatica o invio all’AI."); return;
+      }
       if (type === "dataLogs") {
         const dataLogs = parseGuidedDataLogs(source, spec.tagsMode === "import" ? spec.tags : []);
         updateSpec({ dataLogs, dataLogsFile: file.name }); setNotice("Configurazioni Data Log importate localmente. Nessun campione storico importato e nessuna connessione avviata."); return;
@@ -106,6 +113,7 @@ export function AiProjectInterview() {
           {question(`page.${page.id}.kind`, <label>Funzione pagina {index + 1}<select value={page.kind} onChange={event => { const kind = guidedPageKinds.find(kind => kind.id === event.target.value)!; updatePage(page.id, { kind: kind.id, section: kind.section, imageNeed: ["overview", "synoptic", "commands"].includes(kind.id) ? "required" : kind.image ? "optional" : "none", items: [], itemsDeferred: false, image: undefined, imageDeferred: false }); }}>{guidedPageKinds.map(kind => <option value={kind.id} key={kind.id}>{kind.label}</option>)}</select></label>)}
           {question(`page.${page.id}.section`, <label>Categoria pagina {index + 1}<select value={page.section} onChange={event => updatePage(page.id, { section: event.target.value as typeof page.section })}>{standardProjectSectionChoices.map(section => <option value={section.id} key={section.id}>{section.label}</option>)}</select></label>)}
           <details className="ai-page-behavior"><summary>Come funziona questa base</summary><TemplateBehaviorInfo behavior={guidedTemplateBehavior(page.kind)!} /></details>
+          <GuidedPageTextFields page={page} spec={spec} onChange={next => updatePage(page.id, next)} />
         </div>)}
       </>}
       {step === "data" && <>
@@ -123,9 +131,15 @@ export function AiProjectInterview() {
         <GuidedDataLogsReview catalog={spec.dataLogs} file={spec.dataLogsFile} onRemove={() => updateSpec({ dataLogs: undefined, dataLogsFile: undefined })} />
       </div>}
       {step === "header" && <PanelHeaderFields config={spec.header} tags={spec.tagsMode === "import" ? spec.tags : []} onChange={header => updateSpec({ header })} question={question} />}
+      {step === "data" && <div className="ai-import">
+        <label>Hai già i testi tradotti? Importa framecraft.resources.json (facoltativo)<input type="file" accept=".json" onChange={event => { void importFile(event.target.files?.[0], "resources"); event.target.value = ""; }} /></label>
+        <p>Catalogo Framecraft, massimo 2 MB. Nessuna chiave è associata automaticamente: le sceglierai nei contenuti delle pagine. Senza catalogo restano i testi originali, anche scegliendo un’altra lingua.</p>
+        {spec.resources && <p>{spec.resourcesFile} · {spec.resources.multilingualTexts.length} testi · {spec.resources.languages.join(", ")} <button type="button" onClick={() => updateSpec({ resources: undefined, resourcesFile: undefined })}>Rimuovi catalogo testi</button></p>}
+      </div>}
       {page && kind && <>
         <p>{kind.label} · {page.title}</p>
         <TemplateBehaviorInfo behavior={guidedTemplateBehavior(page.kind)!} />
+        <GuidedPageTextFields page={page} spec={spec} onChange={next => updatePage(page.id, next)} />
         {kind.image && question(`page.${page.id}.image`, <>
           <label>Vuoi un’immagine in questa pagina?<select value={page.imageNeed} onChange={event => updatePage(page.id, { imageNeed: event.target.value as typeof page.imageNeed })}><option value="required">Sì, è necessaria per capire la macchina</option><option value="optional">È utile ma facoltativa</option><option value="none">No, questa pagina non la deve avere</option></select></label>
           {page.imageNeed !== "none" && <div className="ai-import"><strong>{page.imageNeed === "required" ? "Immagine richiesta" : "Immagine facoltativa"}: {kind.image}</strong><p>{page.kind === "synoptic" ? "Usa lo screen della parte della tua macchina. Le targhette sono elementi separati, spostabili con il mouse nell’editor: non fanno parte della foto." : "Scegli la grafica reale della tua macchina. Non verrà sostituita con un’immagine inventata dall’AI."}</p>
@@ -148,7 +162,8 @@ export function AiProjectInterview() {
       </>}
       {step === "use" && <>
         {question("protocol", <label>Come arriveranno i dati della macchina?<select value={spec.protocol} onChange={event => updateSpec({ protocol: event.target.value as typeof spec.protocol })}><option value="later">Non so ancora: configurerò la connessione dopo</option><option value="mqtt">MQTT</option><option value="opcua">OPC UA</option><option value="simulation">Per adesso solo simulazione</option></select></label>)}<p>Questa scelta registra il requisito. Broker, endpoint, certificati e credenziali si configurano dopo: la procedura non avvia connessioni.</p>
-        {question("language", <label>Qual è la lingua prevista per l’operatore?<select value={spec.language} onChange={event => updateSpec({ language: event.target.value as typeof spec.language })}><option value="it">Italiano</option><option value="en">Inglese (traduzioni da completare)</option></select></label>)}
+        {question("language", <label>Qual è la lingua prevista per l’operatore?<select value={spec.language} onChange={event => updateSpec({ language: event.target.value as typeof spec.language })}><option value="it">Italiano</option><option value="en">Inglese · testi dal dizionario dove collegati</option></select></label>)}
+        <p>La lingua Runtime viene impostata davvero; non traduce ogni scritta dell’HMI. Collega i testi statici dal catalogo, poi controlla i ripieghi e le parti ancora da tradurre. <button type="button" onClick={() => go("data")}>Importa o rivedi i testi tradotti</button></p>
         {question("users", <label>Tutti possono usare gli stessi comandi?<select value={spec.users} onChange={event => updateSpec({ users: event.target.value as typeof spec.users })}><option value="everyone">Sì, per questa prima bozza</option><option value="roles-later">No: servono ruoli operatore / manutenzione da configurare</option><option value="later">Accesso da definire · niente comandi senza permesso reale</option></select></label>)}<p>Le autorizzazioni della macchina vanno verificate sul server e nel PLC, non affidate alla sola grafica.</p>
       </>}
       {spec.requirements && (step === "features" || step.startsWith("req-")) && <PanelRequirementFields step={step} requirements={spec.requirements} pages={spec.pages} delegated={interview.delegated} questions={questions} onDelegate={delegate} onChange={requirements => updateSpec({ requirements })} />}
@@ -159,6 +174,7 @@ export function AiProjectInterview() {
         <p>{spec.tags.length} tag importati localmente · {spec.alarms?.alarms.length ?? 0} allarmi. Nessun indirizzo o soglia inventato.</p>
         {!ai.resolvedInterview && <GuidedReadBindingsReview spec={spec} onEdit={go} disabled={busy} />}
         {!ai.resolvedInterview && <GuidedDataLogsReview catalog={spec.dataLogs} file={spec.dataLogsFile} />}
+        {!ai.resolvedInterview && <GuidedTextsReview spec={spec} onEdit={goText} disabled={busy} />}
         {spec.requirements && <PanelRequirementsReview requirements={spec.requirements} pages={spec.pages} onEdit={go} />}
         {spec.pages.some(page => page.items.some(item => item.command)) && <section className="ai-command-review" aria-label="Mapping comandi da approvare"><h4>Controlla anche i comandi configurati</h4><ul>{spec.pages.flatMap(page => page.items.filter(item => item.command).map((item, index) => <li key={`${page.id}-${index}`}><strong>{page.title} · {item.label}</strong>: {hmiEventLabels[item.command!.event]} → {item.tag || "tag da scegliere"} = <code>{JSON.stringify(item.command!.value)}</code>{item.command!.permission ? ` · permesso ${item.command!.permission}` : " · tutti per la bozza"}</li>))}</ul><p>I mapping restano locali: tag e valori non vengono inviati a Codex. La ricevuta del trasporto non conferma l’esecuzione del comando nel PLC.</p></section>}
         <details><summary>Cosa resterà da completare e collaudare</summary><ul>{guidedProjectPending(spec).map((item, index) => <li key={index}>{item}</li>)}</ul></details>
@@ -175,6 +191,7 @@ export function AiProjectInterview() {
       <AiDelegationReview interview={interview} decisions={ai.proposal.decisions} />
       <PanelHeaderReview config={ai.resolvedInterview?.spec.header ?? spec.header} />
       {ai.resolvedInterview && <GuidedDataLogsReview catalog={ai.resolvedInterview.spec.dataLogs} file={spec.dataLogsFile} />}
+      {ai.resolvedInterview && <GuidedTextsReview spec={ai.resolvedInterview.spec} onEdit={goText} disabled={busy} />}
       {ai.resolvedInterview && <GuidedReadBindingsReview spec={ai.resolvedInterview.spec} onEdit={id => go(spec.pages.some(page => page.id === id) ? id : "pages")} disabled={busy} />}
       {ai.proposalUpdatedLocally && <p className="ai-hint" role="status">Aggiornati solo i dati locali: il contesto e il piano AI non sono cambiati. Non è stata inviata un’altra richiesta. Controlla i nuovi collegamenti e immagini prima di approvare.</p>}
       {ai.resolvedInterview && delegatedQuestions(interview).length > 0 && <><h4>{ai.resolvedInterview.machineName} · {ai.resolvedInterview.spec.pages.length} pagine · {ai.resolvedInterview.layout === "desktop-mobile" ? "Desktop e mobile" : "Desktop"}</h4><p>{ai.resolvedInterview.spec.purpose}</p><ol>{ai.resolvedInterview.spec.pages.map(page => <li key={page.id}><strong>{page.title}</strong> · {guidedPageKinds.find(kind => kind.id === page.kind)?.label} · {standardProjectSectionChoices.find(section => section.id === page.section)?.label}</li>)}</ol>{ai.resolvedInterview.spec.requirements && <PanelRequirementsReview requirements={ai.resolvedInterview.spec.requirements} pages={ai.resolvedInterview.spec.pages} onEdit={go} />}<details><summary>Parti da completare dopo le scelte AI</summary><ul>{guidedProjectPending(ai.resolvedInterview.spec).map((pending, index) => <li key={index}>{pending}</li>)}</ul></details></>}
