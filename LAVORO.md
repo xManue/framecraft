@@ -4552,6 +4552,33 @@ Verifiche del 5 ottobre 2026:
   sintetici: nessuna inference reale o richiesta PLC. Tipi e build Vite della copia isolata
   verificati. Artefatti locali: `.hmi-preview/ai-chat-recovery-public-1792076362654/.hmi-preview/ai-chat-recovery-ui/`.
 
+### 134. Primitive locali per modifiche AI di progetto, integrazione ancora da completare (2026-10-16)
+
+- Richiesta: la chat deve seguire componenti/configurazioni e creare le variabili mancanti,
+  non fermarsi alle sole proprietà dell’Inspector (caso HeaderValue/HeaderGauge).
+- Implementato e testato il piano locale: sostituzioni before/after esatte e uniche nei frammenti
+  disponibili, sintassi/import, file sorgente nuovi dopo verifica d’assenza, nuova dichiarazione
+  scalare read-only senza indirizzo/connessione. Preservati catalogo esistente, mapping e campi extra.
+- Tre comandi nativi interni di lettura/applicazione/ripristino: solo progetto aperto, percorsi
+  ammessi, niente symlink/junction o nomi Windows riservati, nessuna cancellazione diretta.
+  Precontrollo delle versioni, backup locale prima di scrivere, rollback best-effort in errore,
+  ripristino di batch parziali senza sovrascrivere modifiche esterne. Non è CAS atomico fra
+  processi esterni né transazione multi-file. I backup contengono codice locale in chiaro.
+- Il guard sorgente riconosce errori sintattici/import e forme note di chiamate operative o
+  credenziali: è euristico, non sandbox JS né garanzia su segreti, comportamento o sicurezza macchina.
+- **Non ancora collegato a chat/provider**. Verifica automatica ha fermato la preparazione del
+  nuovo payload sorgenti/metadati verso Codex/OpenAI per mancanza di consenso sufficientemente
+  esplicito. Nessun aggiramento né invio eseguito; vecchio provider e comportamento chat invariati.
+  Interruzione successiva per crediti del revisore, risolta alla ripresa per le sole operazioni locali.
+- Restano autorizzazione alla condivisione, recupero mirato del contesto/componenti importati,
+  integrazione nella chat con budget e cancellazione, confronto e approvazione/ripristino UI,
+  prove end-to-end e aggiornamento della build desktop prima dell’uso dei nuovi comandi.
+- Verificati 32 test unitari TS su dati sintetici e 7 test Rust mirati alle primitive locali.
+  Ripetuti nella copia del solo indice Git, insieme a controllo tipi e build Vite superati:
+  `.hmi-preview/ai-project-local-public-1792131020023/`, senza JSON macchina o modifiche trend.
+  Nessuna inference, lettura PLC, modifica al progetto macchina aperto o riavvio dell’app.
+  La prova symlink dipende dai permessi OS; non equivale a un audit generale del filesystem.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

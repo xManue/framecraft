@@ -6,6 +6,7 @@ import type { EditorDraftRecord, EditorReloadCheckpoint } from "../state/editorR
 import type { ConnectionConfigurationSnapshot } from "../core/plcConnections";
 import type { AlarmConfigurationSnapshot } from "../core/hmiAlarms";
 import type { AiInterviewDraftSnapshot } from "../ai/aiInterviewDraft";
+import type { AiProjectChange } from "../ai/aiProjectEdits";
 
 export const desktopAvailable = isTauri();
 
@@ -14,6 +15,15 @@ function requireDesktop() {
 }
 
 export const desktopBridge = {
+  async readAiProjectFile(root: string, path: string): Promise<string | null> {
+    requireDesktop(); return invoke("read_ai_project_file", { root, path });
+  },
+  async applyAiProjectChanges(root: string, changes: AiProjectChange[]): Promise<string> {
+    requireDesktop(); return invoke("apply_ai_project_changes", { root, changes });
+  },
+  async restoreAiProjectChanges(root: string, backup: string): Promise<void> {
+    requireDesktop(); return invoke("restore_ai_project_changes", { root, backup });
+  },
   async readAiInterviewDraft(): Promise<AiInterviewDraftSnapshot> {
     requireDesktop(); return invoke("read_ai_interview_draft");
   },

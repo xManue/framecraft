@@ -423,6 +423,22 @@ revoke authorization and cancel an in-flight request; switching project/account 
 is restored from disk. Applying a proposal always needs separate approval.
 A conversation stops at 40 messages with a clear new-chat instruction.
 
+Project-wide AI edits are **not yet connected to the chat UI/provider**. The local foundation
+validates exact source replacements and proposed new, unmapped variables, and exposes native
+project-confined read/apply/restore primitives. It checks the expected disk text, writes a local
+backup under `.framecraft/ai-backups/` before changes, and refuses stale versions during apply or
+restore. Source files outside `src/`, credentials/configuration paths, symlinks/junctions and direct
+file deletion are excluded. The PLC catalogue can only gain read-only variables with empty addresses;
+existing rows/mapping and extra catalogue fields remain intact. These are not live machine signals.
+Backups contain local plaintext source and are not an AI-upload source. Multi-file writes are not a
+filesystem transaction: rollback is best-effort and a backup can recover partially applied batches
+without overwriting later external edits.
+The source checks catch syntax/import problems and known dangerous calls; they are not a JavaScript
+sandbox, a complete secret detector, a type/build check of the edited panel or a machine safety
+validation. A future project-code mode still needs an explicit data-sharing consent, bounded context
+retrieval, reviewed diffs and apply/restore UI. No new project-source transmission or real AI run is
+enabled by these primitives. Existing limited element/page chat behaviour is unchanged.
+
 When the assistant needs clarification, answer in **Completa questi dettagli** inside its message,
 then choose **Invia risposte e continua**. Each question has its own field (up to 1,000 characters)
 and **Non ho questo dato: lascia invariata questa parte**. Deferral is not permission to invent

@@ -125,6 +125,15 @@ Controllo del sorgente e del progetto; per il singolo elemento anche selezione/i
 Conferma e un unico Annulla/Ripeti per file, non una transazione multi-file; il testo JSX è codificato
 per evitare che diventi codice eseguibile. Non è una preview completa della pagina né un’analisi
 delle dipendenze e dei comportamenti di tutto il progetto.
+
+Base locale per modifiche progetto (2026-10-16): schema con sostituzioni esatte di codice,
+creazione di file sorgente verificati e nuove variabili scalari non mappate; parser/import e
+controlli euristici delle chiamate note. Backend con confine progetto, precontrollo del testo
+atteso, backup e ripristino anche di batch parziali, senza sovrascrivere modifiche esterne;
+catalogo PLC in sola aggiunta, indirizzi/connessioni esistenti immutati. Non è una transazione
+atomica né una sandbox JavaScript. **NON collegato alla chat/provider**: restano consenso
+esplicito per inviare sorgenti/metadati a Codex, recupero contesto mirato e limitato, diff e UI
+di applicazione/ripristino. Il limite su HeaderValue/HeaderGauge non è ancora risolto end-to-end.
 Non equivale a completamento AI: restano generazione completa di funzioni operative, mapping
 approvati di scrittura, ricette, PDF, ruoli server, modifiche multi-file atomiche, licensing,
 privacy/eval e commissioning industriale. Lingua inglese e protocollo selezionato sono requisiti
