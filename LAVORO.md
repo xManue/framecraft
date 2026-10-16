@@ -4618,6 +4618,32 @@ Verifiche del 5 ottobre 2026:
   compatibili con il confine di lettura e nuova prova end-to-end. I test UI usano provider
   sintetico; preservare questo limite nelle comunicazioni e nella roadmap.
 
+### 136. Chiarimenti progetto e continuità del contesto (2026-10-16)
+
+- Ripresa dal punto 135: verificato anche lo schema completo `--experimental` di Codex CLI
+  0.163.0, ancora senza `ReadOnlyAccess`. Nessuna versione preliminare installata, nessuna
+  nuova richiesta reale e nessun allargamento del confine di lettura. Il blocco resta esplicito.
+- Sistemato un limite concreto della nuova chat: le domande del piano progetto ora hanno
+  gli stessi campi accessibili del percorso grafico. Obiettivo iniziale e risposte strutturate
+  conservati nella catena; risposte ripetute aggiornano solo quella domanda, rinvii espliciti
+  prevalgono sulla cronologia e non inviano il testo locale disattivato. Non si applicano file.
+- Seguito ancorato alle pagine da cui era partita la richiesta, anche quando l’utente naviga
+  altrove senza allegati espliciti. Rilettura del codice attuale, non di una vecchia copia.
+  Cambio allegati/ambito richiede nuova richiesta; account, consenso, bozza e budget restano
+  verificati. Le risposte non assorbono né cancellano la bozza separata del compositore.
+- Recupero refresh dei soli testi di domande/risposte progetto, anche dei campi rinviati:
+  nessun sorgente, selezione/ancoraggio attivo, approvazione o invio riavviato. Vecchia proposta
+  di sola consultazione; serve nuova revisione per tornare a modificarla.
+- Documentato il gate production del provider: App Server ufficialmente sperimentale e non
+  supportato per carichi production. L’AI resta opzionale; adapter provvisorio non equivale a
+  certificazione/collaudo del pannello. Fonte: https://learn.chatgpt.com/docs/app-server .
+- Verificati **85 test mirati in quattro file**, controllo tipi e build Vite nella copia del solo
+  indice Git `.hmi-preview/ai-project-questions-public-1792135261995/`, senza JSON macchina o
+  modifiche trend preesistenti. Edge a 375/768/1024/1440 px: domande compilabili, rinvio escluso
+  dal payload, bozza distinta, ancoraggio pagina iniziale, applicazione/ripristino separati e
+  recupero dopo reload; nessun errore o overflow. Provider/account sintetici, nessuna inferenza
+  reale o lettura PLC. Nessuna modifica nativa: non ripetuti test backend non interessati.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

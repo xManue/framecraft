@@ -3,6 +3,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AiProjectCodeReview } from "../src/editor/AiProjectCodeReview";
+import { AiProjectChat } from "../src/editor/AiProjectChat";
+import { pendingAiQuestions, prepareAiProjectQuestionReply, prepareAiQuestionReply } from "../src/ai/aiChatQuestions";
 import { aiProjectSchema, prepareAiProjectChanges, type AiProjectPlan, type AiProjectReview } from "../src/ai/aiProjectEdits";
 import { aiChatRecoveryKey, parseAiChatRecovery, serializeAiChatRecovery } from "../src/ai/aiChatRecovery";
 import { desktopBridge } from "../src/filesystem/desktopBridge";
@@ -144,4 +146,117 @@ it.each([false, true])("il refresh effettivo aggiorna il documento senza perdere
   await useEditorStore.getState().refreshAiProjectFiles(projectRoot, ["src/App.tsx"]);
   expect(useEditorStore.getState().document?.source).toContain(dirty ? "Prima" : "Dopo"); expect(useEditorStore.getState().dirty).toBe(dirty);
   expect(useEditorStore.getState().refreshPlcVariables).toHaveBeenCalledTimes(1);
+});
+
+async function askProject(questions = ["Quale nome deve avere la variabile?", "Quale unità vuoi mostrare?"]) {
+  vi.mocked(provider.propose).mockImplementation(async request => ({ requestId: request.requestId, text: JSON.stringify(plan({ questions, edits: [], variables: [] })) }));
+  await send(); return latest();
+}
+function answerProject(id: string) {
+  const chat = useEditorAiChat.getState(); chat.setAnswer(id, 0, { text: "Panel_Speed" }); chat.setAnswer(id, 1, { deferred: true });
+}
+async function mountChat() {
+  host = document.createElement("div"); document.body.append(host); reactRoot = createRoot(host);
+  await act(async () => reactRoot!.render(createElement(AiProjectChat)));
+}
+it("riprende i chiarimenti di progetto con dati strutturati, obiettivo iniziale e bozza separata", async () => {
+  const target = await askProject(), chat = useEditorAiChat.getState(); answerProject(target.id); chat.setAnswer(target.id, 1, { text: "LOCAL_DEFERRED_TEXT" }); chat.setDraft("Una richiesta ancora da inviare");
+  const original = target.originalRequest; vi.mocked(provider.propose).mockImplementation(async request => ({ requestId: request.requestId, text: JSON.stringify(plan()) }));
+  await chat.send(target.id); const payload = JSON.parse(vi.mocked(provider.propose).mock.calls[1][0].prompt);
+  expect(payload.request).toBe(original); expect(payload.clarification).toEqual([{ question: "Quale nome deve avere la variabile?", status: "answered", answer: "Panel_Speed" }, { question: "Quale unità vuoi mostrare?", status: "deferred" }]);
+  expect(JSON.stringify(payload)).not.toContain("LOCAL_DEFERRED_TEXT"); expect(payload.rules).toContain("non inventare dati macchina");
+  expect(latest().originalRequest).toBe(original); expect(useEditorAiChat.getState().draft).toBe("Una richiesta ancora da inviare");
+  expect(useEditorAiChat.getState().messages[2].replyTo).toBe(target.id); expect(desktopBridge.applyAiProjectChanges).not.toHaveBeenCalled();
+});
+it("i chiarimenti restano ancorati alla pagina iniziale quando si naviga su un’altra pagina", async () => {
+  const target = await askProject(); answerProject(target.id);
+  const other = `${projectRoot}/src/Other.tsx`; files.set("src/Other.tsx", "export const Other=()=> <div>Altra pagina</div>");
+  const document = parseSource(other, files.get("src/Other.tsx")!); useEditorStore.setState({ document, selectedId: document.roots[0] });
+  vi.mocked(desktopBridge.readAiProjectFile).mockClear(); await useEditorAiChat.getState().send(target.id);
+  const payload = JSON.parse(vi.mocked(provider.propose).mock.calls[1][0].prompt);
+  expect(payload.selected[0].path).toBe("src/App.tsx"); expect(payload.files.some((file: { path: string }) => file.path === "src/Other.tsx")).toBe(false);
+  expect(desktopBridge.readAiProjectFile).not.toHaveBeenCalledWith(projectRoot, "src/Other.tsx");
+});
+it("accumula le risposte esplicite fra più giri senza duplicare la richiesta originale", async () => {
+  const first = await askProject(), chat = useEditorAiChat.getState(); answerProject(first.id);
+  vi.mocked(provider.propose).mockImplementation(async request => ({ requestId: request.requestId, text: JSON.stringify(plan({ questions: ["Quale nome deve avere la variabile?", "Quale colore vuoi?"], edits: [], variables: [] })) }));
+  await chat.send(first.id); const second = latest(); chat.setAnswer(second.id, 0, { text: "Line_Speed" }); chat.setAnswer(second.id, 1, { text: "Blu" }); await chat.send(second.id);
+  const payload = JSON.parse(vi.mocked(provider.propose).mock.calls[2][0].prompt);
+  expect(payload.request).toBe(first.originalRequest); expect(payload.clarification).toEqual([{ question: "Quale nome deve avere la variabile?", status: "answered", answer: "Line_Speed" }, { question: "Quale unità vuoi mostrare?", status: "deferred" }, { question: "Quale colore vuoi?", status: "answered", answer: "Blu" }]);
+  expect(latest().originalRequest).not.toContain("Risposte ai chiarimenti");
+});
+it("non invia risposte incomplete o appartenenti ad allegati cambiati", async () => {
+  const target = await askProject(), chat = useEditorAiChat.getState(); chat.setAnswer(target.id, 0, { text: "Panel_Speed" }); await chat.send(target.id);
+  expect(provider.propose).toHaveBeenCalledTimes(1); expect(chat.messages).toHaveLength(2); expect(useEditorAiChat.getState().error).toContain("domanda 2");
+  chat.setAnswer(target.id, 1, { deferred: true }); chat.attachSelection(); await chat.send(target.id);
+  expect(provider.propose).toHaveBeenCalledTimes(1); expect(useEditorAiChat.getState().error).toContain("allegati sono cambiati"); expect(latest().answers?.[0].text).toBe("Panel_Speed");
+});
+it("cambiare ambito rende i vecchi chiarimenti di sola consultazione", async () => {
+  const target = await askProject(); answerProject(target.id); const chat = useEditorAiChat.getState(); chat.setProjectAccess(false); chat.setAllowed(true);
+  expect(pendingAiQuestions(useEditorAiChat.getState().messages, false)).toBeUndefined();
+  await chat.send(target.id); expect(provider.propose).toHaveBeenCalledTimes(1); expect(useEditorAiChat.getState().error).toContain("precedente");
+  expect(() => prepareAiQuestionReply(target.id, chat.attachments, useEditorAiChat.getState().messages, "")).toThrow("precedente");
+  chat.setAnswer(target.id, 0, { text: "Non trasferire" }); expect(latest().answers?.[0].text).toBe("Panel_Speed");
+});
+it.each(["account", "consent", "dirty"])("le risposte progetto non aggirano il controllo: %s", async reason => {
+  const target = await askProject(); answerProject(target.id); vi.mocked(desktopBridge.readAiProjectFile).mockClear();
+  if (reason === "account") useEditorAi.setState({ account: undefined });
+  if (reason === "consent") useEditorAiChat.getState().setAllowed(false);
+  if (reason === "dirty") useEditorStore.setState({ dirty: true });
+  await useEditorAiChat.getState().send(target.id); expect(provider.propose).toHaveBeenCalledTimes(1); expect(desktopBridge.readAiProjectFile).not.toHaveBeenCalled();
+  expect(latest().answers?.[0].text).toBe("Panel_Speed");
+});
+it("risposte oltre 8.000 caratteri usano il budget progetto, non il limite del messaggio", async () => {
+  const target = await askProject(Array.from({ length: 10 }, (_, index) => `Dettaglio ${index + 1}?`)), chat = useEditorAiChat.getState();
+  for (let index = 0; index < 10; index++) chat.setAnswer(target.id, index, { text: "x".repeat(1000) });
+  await chat.send(target.id); expect(useEditorAiChat.getState().error).toBeUndefined(); expect(provider.propose).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(vi.mocked(provider.propose).mock.calls[1][0].prompt).clarification).toHaveLength(10);
+});
+it("un contesto troppo grande conserva risposte e bozza senza effettuare altre richieste", async () => {
+  const target = await askProject(Array.from({ length: 24 }, (_, index) => `Dettaglio ${index + 1}?`)), chat = useEditorAiChat.getState();
+  for (let index = 0; index < 24; index++) chat.setAnswer(target.id, index, { text: "界".repeat(1000) });
+  chat.setContextNotes("界".repeat(2000)); chat.setDraft("Bozza separata"); await chat.send(target.id);
+  expect(provider.propose).toHaveBeenCalledTimes(1); expect(useEditorAiChat.getState().error).toContain("limite locale");
+  expect(useEditorAiChat.getState().messages[1].answers?.[23].text).toHaveLength(1000); expect(useEditorAiChat.getState().draft).toBe("Bozza separata");
+});
+it("annullare un seguito conserva risposte e obiettivo e ignora la risposta tardiva", async () => {
+  const target = await askProject(); answerProject(target.id); const chat = useEditorAiChat.getState(); chat.setDraft("Non inviare questa bozza");
+  let finish!: (value: { requestId: string; text: string }) => void;
+  vi.mocked(provider.propose).mockImplementation(() => new Promise(resolve => { finish = resolve; })); const pending = chat.send(target.id);
+  await vi.waitFor(() => expect(provider.propose).toHaveBeenCalledTimes(2)); const request = vi.mocked(provider.propose).mock.calls[1][0];
+  await chat.cancel(); finish({ requestId: request.requestId, text: JSON.stringify(plan()) }); await pending;
+  const fresh = useEditorAiChat.getState(); expect(pendingAiQuestions(fresh.messages)?.id).toBe(target.id); expect(fresh.messages.at(-1)?.status).toBe("cancelled");
+  expect(fresh.draft).toBe("Non inviare questa bozza"); expect(prepareAiProjectQuestionReply(target.id, fresh.attachments, fresh.messages).clarification.request).toBe(target.originalRequest);
+});
+it("mostra domande progetto accessibili e non applica modifiche quando si inviano le risposte", async () => {
+  await askProject(); await mountChat(); const form = host!.querySelector<HTMLFormElement>('[aria-label="Chiarimenti richiesti dall’AI"]')!;
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!, [first, second] = [...form.querySelectorAll("textarea")];
+  expect(button.disabled).toBe(true); expect(form.querySelector("label")?.htmlFor).toBe(first.id);
+  expect(host!.querySelector(".ai-chat-message.assistant > .ai-chat-text")?.textContent).not.toContain("Quale nome deve avere la variabile?");
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(first, "Panel_Speed"); first.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => form.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1].click()); expect(second.disabled).toBe(true); expect(button.disabled).toBe(false);
+  expect(form.querySelector("pre")?.textContent).toContain('"status": "deferred"'); expect(form.textContent).toContain("sorgenti preparati all’invio");
+  vi.mocked(provider.propose).mockImplementation(async request => ({ requestId: request.requestId, text: JSON.stringify(plan()) }));
+  await act(async () => button.click()); expect(provider.propose).toHaveBeenCalledTimes(2); expect(desktopBridge.applyAiProjectChanges).not.toHaveBeenCalled();
+  expect(host!.querySelector('[aria-label="Revisione modifiche progetto"]')).not.toBeNull();
+});
+it("il refresh conserva domande e risposte progetto come testi, non sorgenti o invii riattivabili", async () => {
+  cleanup = installAiChatProjectScope(); const target = await askProject(); answerProject(target.id); useEditorAiChat.getState().setAnswer(target.id, 1, { text: "Testo locale rinviato" });
+  window.dispatchEvent(new Event("pagehide")); const saved = sessionStorage.getItem(aiChatRecoveryKey)!;
+  expect(saved).not.toMatch(/questionSelections|projectReview|"changes"|export const App/); expect(parseAiChatRecovery(saved).messages[1].projectQuestions).toHaveLength(2);
+  cleanup(); useEditorAiChat.setState(initialChat, true); cleanup = installAiChatProjectScope();
+  const fresh = useEditorAiChat.getState(); expect(fresh.messages[1].answers?.[1].text).toBe("Testo locale rinviato"); expect(pendingAiQuestions(fresh.messages)).toBeUndefined();
+  await mountChat(); expect(host!.querySelector('[aria-label="Chiarimenti richiesti dall’AI"]')).toBeNull(); expect(host!.querySelector(".ai-chat-questions-previous")?.textContent).toContain("Testo locale rinviato");
+  expect(provider.propose).toHaveBeenCalledTimes(1); expect(() => prepareAiProjectQuestionReply(target.id, fresh.attachments, fresh.messages)).toThrow("precedente");
+});
+it("rifiuta liste di domande recuperate corrotte o troppo grandi", () => {
+  const record = { version: 1, root: projectRoot, account: null, open: true, draft: "", contextNotes: "", references: [], messages: [{ id: "a", role: "assistant", text: "Domande", projectQuestions: [42] }] };
+  expect(() => parseAiChatRecovery(JSON.stringify(record))).toThrow();
+  record.messages[0].projectQuestions = Array(25).fill("Domanda?") as never; expect(() => parseAiChatRecovery(JSON.stringify(record))).toThrow();
+});
+it("il refresh di una proposta non sposta la pagina aperta quando cambia un altro file", async () => {
+  vi.mocked(useEditorStore.getState().refreshAiProjectFiles).mockRestore(); vi.spyOn(useEditorStore.getState(), "refreshPlcVariables").mockResolvedValue(undefined);
+  const document = parseSource(`${projectRoot}/src/Other.tsx`, "export const Other=()=> <div>Altra pagina</div>"); useEditorStore.setState({ document, selectedId: document.roots[0] });
+  files.set("src/App.tsx", source.replace("Prima", "Dopo")); await useEditorStore.getState().refreshAiProjectFiles(projectRoot, ["src/App.tsx"]);
+  expect(useEditorStore.getState().document).toBe(document); expect(useEditorStore.getState().selectedId).toBe(document.roots[0]);
 });

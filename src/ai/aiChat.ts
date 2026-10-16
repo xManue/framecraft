@@ -17,6 +17,7 @@ export interface AiChatClarification {
   request: string;
   answers: ({ question: string; status: "answered"; answer: string } | { question: string; status: "deferred" })[];
 }
+export interface AiProjectSelection { path: string; start: number; label: string }
 export interface AiChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -30,6 +31,8 @@ export interface AiChatMessage {
   originalRequest?: string;
   questionAttachments?: AiChatAttachment[];
   questionData?: readonly AiDataReference[];
+  questionSelections?: AiProjectSelection[];
+  projectQuestions?: string[];
   answers?: AiChatQuestionAnswer[];
   clarification?: AiChatClarification;
   replyTo?: string;

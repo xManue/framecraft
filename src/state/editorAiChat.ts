@@ -10,7 +10,7 @@ import { aiProposalGroups, prepareAiPageFiles } from "../ai/aiPageEdits";
 import { insideProject } from "../core/paths";
 import { parseSource } from "../source-parser/parseSource";
 import { desktopBridge } from "../filesystem/desktopBridge";
-import { pendingAiQuestions, prepareAiQuestionReply } from "../ai/aiChatQuestions";
+import { aiMessageQuestions, pendingAiQuestions, prepareAiQuestionReply, prepareAiProjectQuestionReply } from "../ai/aiChatQuestions";
 import { aiReadableData, assertAiDataCurrent, sameAiDataReferences, type AiDataReference } from "../ai/aiBindings";
 import { runAiProject } from "../ai/aiProjectContext";
 import { aiProjectSchema, validateAiProjectReview, type AiProjectReceipt, type AiProjectReview } from "../ai/aiProjectEdits";
@@ -129,9 +129,9 @@ const createChatState: StateCreator<ChatState> = (set, get) => ({
   removeData(id) { if (!get().sending && !get().applying && !get().recovering) set({ dataReferences: get().dataReferences.filter(item => item.id !== id), error: undefined }); },
   setAnswer(id, index, update) {
     if (get().sending || get().applying || get().recovering) return;
-    const target = pendingAiQuestions(get().messages);
-    if (target?.id !== id || !Number.isInteger(index) || index < 0 || index >= target.proposal!.questions.length) return;
-    const answers = target.proposal!.questions.map((_, at) => target.answers?.[at] ?? { text: "", deferred: false });
+    const target = pendingAiQuestions(get().messages, get().projectAccess);
+    if (!target || target.id !== id || !Number.isInteger(index) || index < 0 || index >= aiMessageQuestions(target).length) return;
+    const answers = aiMessageQuestions(target).map((_, at) => target.answers?.[at] ?? { text: "", deferred: false });
     answers[index] = { text: typeof update.text === "string" ? update.text.slice(0, 1000) : answers[index].text, deferred: typeof update.deferred === "boolean" ? update.deferred : answers[index].deferred };
     set({ messages: get().messages.map(item => item.id === id ? { ...item, answers } : item), error: undefined });
   },
@@ -197,22 +197,22 @@ const createChatState: StateCreator<ChatState> = (set, get) => ({
     if (!get().allowed()) { set({ error: "Consenti l’invio di sorgenti e metadati del progetto per questa sessione prima di inviare." }); return; }
     if (editor.dirty || editor.loading || editor.reloadRecovery) { set({ error: "Salva o scarta prima la bozza aperta e completa il recupero del progetto." }); return; }
     if (state.messages.length + 2 > 40) { set({ error: "Questa conversazione ha raggiunto il limite. Avvia una nuova chat per continuare." }); return; }
-    let prompt = state.draft.trim();
-    try { if (replyTo) { const reply = prepareAiQuestionReply(replyTo, state.attachments, state.messages, state.contextNotes, state.dataReferences); prompt = `${reply.clarification.request}\n\n${reply.displayText}`; } }
+    let prompt = state.draft.trim(), reply: ReturnType<typeof prepareAiProjectQuestionReply> | undefined;
+    try { if (replyTo) { reply = prepareAiProjectQuestionReply(replyTo, state.attachments, state.messages); prompt = reply.clarification.request; } }
     catch (error) { set({ error: message(error) }); return; }
     if (!prompt) return;
-    if (prompt.length > 8000) { set({ error: "Richiesta e risposte superano 8.000 caratteri: riducile prima dell’invio. Il testo è conservato." }); return; }
+    if (prompt.length > 8000) { set({ error: "La richiesta iniziale supera 8.000 caratteri: riducila prima dell’invio. Il testo è conservato." }); return; }
     const generation = state.generation, provider = ai.provider, model = ai.model, effort = ai.reasoningEffort;
     if (effort && !ai.models.find(item => item.id === model)?.supportedReasoningEfforts?.some(item => item.reasoningEffort === effort)) { set({ error: "Il ragionamento scelto non è disponibile: scegli il predefinito o aggiorna i modelli." }); return; }
     const current = () => get().generation === generation && get().allowed() && useEditorStore.getState().project === project && useEditorAi.getState().provider === provider;
-    const user: AiChatMessage = { id: crypto.randomUUID(), role: "user", text: prompt, attachments: state.attachments.map(item => item.label) };
+    const user: AiChatMessage = { id: crypto.randomUUID(), role: "user", text: reply?.displayText ?? prompt, attachments: state.attachments.map(item => item.label), ...(replyTo ? { replyTo } : {}) };
     ai.show("edit"); useEditorAi.setState({ busy: true, requestId: crypto.randomUUID(), proposal: undefined, snapshot: undefined, error: undefined });
     set({ sending: true, error: undefined, prepared: undefined, projectProgress: "Preparo il contesto di progetto…", messages: [...state.messages, user] });
     try {
       const listed = await desktopBridge.listProjectSourceFiles(); if (!current()) return;
-      const selections = state.attachments.flatMap(item => item.snapshot ? [{ path: item.snapshot.document.file, start: item.snapshot.document.nodes[item.snapshot.selectedId]?.source.start ?? 0, label: item.label }] : []);
-      if (!selections.length && editor.document) selections.push({ path: editor.document.file, start: editor.selectedId ? editor.document.nodes[editor.selectedId]?.source.start ?? 0 : 0, label: editor.pages.find(page => page.id === editor.activePageId)?.name ?? "Pagina aperta" });
-      const result = await runAiProject({ root: project.root, request: prompt, notes: state.contextNotes,
+      const selections = reply?.selections ?? state.attachments.flatMap(item => item.snapshot ? [{ path: item.snapshot.document.file, start: item.snapshot.document.nodes[item.snapshot.selectedId]?.source.start ?? 0, label: item.label }] : []);
+      if (!reply && !selections.length && editor.document) selections.push({ path: editor.document.file, start: editor.selectedId ? editor.document.nodes[editor.selectedId]?.source.start ?? 0 : 0, label: editor.pages.find(page => page.id === editor.activePageId)?.name ?? "Pagina aperta" });
+      const result = await runAiProject({ root: project.root, request: prompt, notes: state.contextNotes, clarification: reply?.clarification.answers,
         history: aiChatContext([], state.messages).history.map(({ role, text }) => ({ role, text })),
         files: [...listed, ...filePaths(project.files ?? [])], selections, current,
         read: path => desktopBridge.readAiProjectFile(project.root, path),
@@ -231,7 +231,8 @@ const createChatState: StateCreator<ChatState> = (set, get) => ({
       });
       if (!current()) return;
       const review = validateAiProjectReview(result);
-      set({ sending: false, projectProgress: undefined, ...(replyTo ? {} : { draft: "" }), messages: [...get().messages, { id: crypto.randomUUID(), role: "assistant", text: [review.plan.summary, ...review.plan.questions, ...review.plan.warnings].join("\n\n"), projectReview: review }] });
+      set({ sending: false, projectProgress: undefined, ...(replyTo ? {} : { draft: "" }), messages: [...get().messages, { id: crypto.randomUUID(), role: "assistant", text: [review.plan.summary, ...review.plan.questions, ...review.plan.warnings].join("\n\n"), projectReview: review, originalRequest: prompt, clarification: reply?.clarification,
+        questionAttachments: review.plan.questions.length ? state.attachments : undefined, questionSelections: review.plan.questions.length ? selections : undefined }] });
     } catch (error) {
       if (get().generation === generation && useEditorStore.getState().project === project) set({ sending: false, projectProgress: undefined, error: message(error), messages: get().messages.map(item => item.id === user.id ? { ...item, status: "error" } : item) });
     } finally {

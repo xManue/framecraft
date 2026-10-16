@@ -136,6 +136,12 @@ ricerca letterale nelle configurazioni, catalogo automatico dei soli nomi/tipi/a
 (non indirizzi, connessioni, valori o extra). Massimo tre passaggi modello, 80 KB per passaggio e
 180 KB complessivi UTF-8 incluso schema; fino a sei messaggi recenti abbreviati e 500 file nell’indice.
 Richiesta corrente e note non vengono troncate. Nessun modello aggiuntivo per riassumere il contesto.
+Chiarimenti progetto collegati ai campi della chat: obiettivo e risposte strutturate conservati
+fra giri, una domanda ripetuta sostituisce solo la propria risposta, rinvio esplicito della parte
+non definita e nessun invio del testo disattivato. Se non ci sono allegati, il seguito resta sulle
+pagine iniziali anche dopo una navigazione. Sorgenti riletti, bozza separata conservata; cambio
+allegati/ambito richiede nuova richiesta. Al refresh si recuperano soltanto domande e risposte
+leggibili, non sorgenti, ancoraggi attivi, approvazioni o un invio riattivabile.
 Schema con sostituzioni esatte di codice,
 creazione di file sorgente verificati e nuove variabili scalari non mappate; parser/import e
 controlli euristici delle chiamate note. Backend con confine progetto, precontrollo del testo
@@ -153,6 +159,11 @@ ma lo schema locale di entrambe non dichiara `ReadOnlyAccess`. Il nuovo percorso
 ferma prima dell’inferenza con messaggio esplicito, non allarga l’accesso. Il percorso grafico
 precedente resta selezionabile. Prove locali/UI superate non equivalgono a una pipeline AI reale
 completata: occorre un provider/CLI compatibile e un nuovo collaudo end-to-end autorizzato.
+Verifica ripetuta anche con `generate-json-schema --experimental` sulla CLI stabile 0.163.0:
+il campo resta assente, nessuna versione preliminare installata né nuova inferenza. Ulteriore
+gate di produzione: la documentazione ufficiale definisce App Server sperimentale/non supportato
+per carichi production. L’adapter CLI è provvisorio: provider supportato, sicurezza/privacy e
+collaudo Runtime restano necessari prima di dichiarare l’app pronta per la produzione.
 Non equivale a completamento AI: restano generazione completa di funzioni operative, mapping
 approvati di scrittura, ricette, PDF, ruoli server, modifiche multi-file atomiche, licensing,
 privacy/eval e commissioning industriale. Lingua inglese e protocollo selezionato sono requisiti

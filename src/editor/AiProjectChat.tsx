@@ -24,6 +24,10 @@ function ChatProposal({ message, latest }: { message: AiChatMessage; latest: boo
   if (!message.status && message.proposal?.operations.some(operation => operation.type === "binding") && !sameAiDataReferences(message.snapshot?.dataReferences, data)) return <p className="ai-error">I dati nel contesto sono cambiati: richiedi una nuova proposta prima di applicare collegamenti.</p>;
   return message.snapshot?.targets ? <AiPageReview message={message} latest={latest} /> : <ElementChatProposal message={message} latest={latest} />;
 }
+function messageText(message: AiChatMessage) {
+  const proposal = message.projectReview?.plan ?? message.proposal;
+  return message.role === "assistant" && proposal?.questions.length ? [proposal.summary, ...proposal.warnings].join("\n\n") : message.text;
+}
 function ElementChatProposal({ message, latest }: { message: AiChatMessage; latest: boolean }) {
   const { proposal, snapshot } = message;
   const document = useEditorStore(state => state.document), selectedId = useEditorStore(state => state.selectedId), root = useEditorStore(state => state.project?.root);
@@ -55,7 +59,7 @@ export function AiProjectChat() {
   const selectedId = useEditorStore(state => state.selectedId), mode = useEditorStore(state => state.interactionMode);
   const [reset, setReset] = useState(false);
   const [writingNew, setWritingNew] = useState<string>();
-  const pendingQuestion = pendingAiQuestions(chat.messages)?.id, last = chat.messages.at(-1);
+  const pendingQuestion = pendingAiQuestions(chat.messages, chat.projectAccess)?.id, last = chat.messages.at(-1);
   const pendingProposal = last?.role === "assistant" && (last.proposal?.operations.length || last.projectReview?.changes.length) && !last.status ? last.id : undefined;
   const pendingWork = pendingQuestion ?? pendingProposal, showComposer = !pendingWork || writingNew === pendingWork;
   const consent = chat.allowed();
@@ -97,7 +101,7 @@ export function AiProjectChat() {
         <strong>{message.role === "user" ? "Tu" : "Assistente"}</strong>
         {message.recovered && <small className="ai-chat-recovered-label">Testo recuperato · nessuna operazione ripresa automaticamente</small>}
         {!!message.attachments?.length && <p className="ai-chat-references">{message.attachments.join(" · ")}</p>}
-        <p className="ai-chat-text">{message.role === "assistant" && message.proposal?.questions.length ? [message.proposal.summary, ...message.proposal.warnings].join("\n\n") : message.text}</p>
+        <p className="ai-chat-text">{messageText(message)}</p>
         {(message.status === "error" || message.status === "cancelled") && <small>{message.replyTo ? "Invio non completato · risposte conservate nei chiarimenti" : "Richiesta non completata · testo conservato qui sotto"}</small>}
         {message.role === "assistant" && <><AiChatQuestions message={message} /><ChatProposal message={message} latest={index === chat.messages.length - 1} /></>}
       </article>)}

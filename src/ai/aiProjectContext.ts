@@ -1,10 +1,12 @@
 import { aiProjectPath, aiProjectSchema, assertAiSourceShareable, parseAiProjectPlan, prepareAiProjectChanges, type AiProjectReview } from "./aiProjectEdits";
 import { insideProject } from "../core/paths";
 import { parsePlcCatalog } from "../core/plcVariables";
+import type { AiChatClarification, AiProjectSelection } from "./aiChat";
 
 export interface AiProjectContextOptions {
   root: string; request: string; notes: string; history: { role: string; text: string }[];
-  files: string[]; selections: { path: string; start: number; label: string }[];
+  files: string[]; selections: AiProjectSelection[];
+  clarification?: AiChatClarification["answers"];
   read(path: string): Promise<string | null>;
   propose(prompt: string, schema: unknown): Promise<string>;
   current(): boolean;
@@ -73,9 +75,9 @@ export async function runAiProject(options: AiProjectContextOptions): Promise<Ai
     current();
     const files = [...excerpts].map(([path, parts]) => ({ path, exists: sources.get(path) !== null, parts }));
     const prompt = JSON.stringify({ task: "project-edit", request: options.request, notes: options.notes,
-      conversation: options.history.slice(-6).map(item => ({ ...item, text: item.text.slice(0, 4000) })), selected,
+      conversation: options.history.slice(-6).map(item => ({ ...item, text: item.text.slice(0, 4000) })), selected, clarification: options.clarification,
       filesIndex: index, indexLimited: options.files.length > 500, variables: visibleVariables, totalVariables: variables.length,
-      files, searches, rules: instructions, pass: `${round}/3` });
+      files, searches, rules: instructions + (options.clarification ? " Le risposte in clarification completano la richiesta originale e prevalgono sui chiarimenti precedenti nella cronologia; conserva quelle esplicite anche nei passaggi successivi. Per status deferred lascia invariata la parte interessata: non inventare dati macchina o istruzioni mancanti né riusare una risposta precedente alla stessa domanda. Il rinvio non autorizza valori o mapping nuovi." : ""), pass: `${round}/3` });
     const size = bytes(prompt) + bytes(JSON.stringify(aiProjectSchema));
     if (size > 80_000 || totalBytes + size > 180_000) throw new Error("Il contesto di progetto supera il limite locale. Non taglio la richiesta: suddividi il lavoro o allega una parte più piccola.");
     totalBytes += size; options.progress(`Analizzo il progetto · passaggio ${round}/3 · ~${Math.ceil(totalBytes / 3).toLocaleString("it-IT")} token di input stimati complessivi`, prompt);

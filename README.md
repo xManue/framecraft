@@ -472,6 +472,18 @@ require a new request to avoid applying old answers to another object. Responses
 the chat and failed/cancelled sends, but not **Nuova chat**, project/account changes or app exit.
 The exact follow-up context is inspectable before sending and uses the same 24 kB budget and
 session consent. Answers alone never apply changes: review and approve the new proposal separately.
+In project mode the same question fields are available. The original objective and all explicit
+answers in the clarification chain are carried as structured data, within the project input budget
+(80 kB per pass, 180 kB cumulative), not the 24 kB graphical-mode budget. Its pre-send preview shows
+the objective and answers; source retrieval happens on Send, and the technical pane then shows the
+exact last prepared request. Repeating a question updates its answer; a deferral replaces an earlier
+answer and instructs the assistant to keep that part unchanged. Review the resulting diff; the
+instructions are not a semantic correctness guarantee. Disabled field text
+is not collected. Without explicit attachments, follow-ups keep the initial source pages even if
+you navigate elsewhere; they reread current disk content, not an old source snapshot. Changing the
+attachments or editing scope requires a new request. Separate composer drafts are never sent as
+answers or overwritten by them. After reload project questions and unsent answers remain readable,
+but cannot resume an old proposal or restore approval automatically; request a new review.
 During clarification the main composer is compacted; **Scrivi una nuova richiesta** reopens it
 without losing its draft or the answers. New questions open at their first field; typing does not
 reset the conversation scroll position.
@@ -483,6 +495,12 @@ Choose **Modello** and **Ragionamento** directly above the chat (also available 
 Options come from the Codex model catalog, including its supported/default reasoning efforts;
 changing model restores its default. The native adapter sends an optional `effort` on `turn/start`,
 and rejects an unsupported override. The catalog is not a guarantee of account entitlement.
+
+Production gate: the [official App Server documentation](https://learn.chatgpt.com/docs/app-server)
+describes this integration as experimental and unsupported for production workloads. The current
+CLI-backed editor assistant is a prototype provider, not a production-readiness guarantee. Shipping
+requires a supported provider contract, release/security/privacy checks and a separately validated
+HMI runtime; AI must stay optional.
 Protocol reference: [Codex App Server](https://learn.chatgpt.com/docs/app-server).
 
 For data-driven changes, expand **Dati da usare**, choose a scalar readable tag from the local

@@ -32,6 +32,7 @@ function history(value: unknown): AiChatMessage {
   }
   if (value.originalRequest !== undefined) item.originalRequest = text(value.originalRequest, 8000);
   if (value.replyTo !== undefined) item.replyTo = text(value.replyTo, 200);
+  if (value.projectQuestions !== undefined) item.projectQuestions = strings(value.projectQuestions, 24, 2000);
   if (value.projectReceipt !== undefined) item.projectReceipt = parseAiProjectReceipt(value.projectReceipt);
   if (value.proposal !== undefined) {
     if (!object(value.proposal)) throw new Error("Riepilogo della chat non valido.");
@@ -51,7 +52,7 @@ export function serializeAiChatRecovery(value: AiChatRecovery) {
   const source = JSON.stringify({ version: 1, root: value.root, account: value.account, open: value.open, draft: value.draft, contextNotes: value.contextNotes,
     references: value.references,
     messages: value.messages.map(item => ({ id: item.id, role: item.role, text: item.text, attachments: item.attachments, status: item.status,
-      originalRequest: item.originalRequest, replyTo: item.replyTo, answers: item.answers, projectReceipt: item.projectReceipt && parseAiProjectReceipt(item.projectReceipt),
+      originalRequest: item.originalRequest, replyTo: item.replyTo, answers: item.answers, projectQuestions: item.projectReview?.plan.questions ?? item.projectQuestions, projectReceipt: item.projectReceipt && parseAiProjectReceipt(item.projectReceipt),
       proposal: item.proposal && { summary: item.proposal.summary, questions: item.proposal.questions, warnings: item.proposal.warnings } })) });
   if (source.length > maxLength) throw new Error("La chat supera lo spazio previsto per il recupero. Copia i testi importanti prima di ricaricare.");
   parseAiChatRecovery(source);
