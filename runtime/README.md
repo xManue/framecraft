@@ -468,9 +468,20 @@ l'intero grafo né sostituisce le notice. Il server SDK è soltanto una dipenden
 
 Il pannello esportato include `framecraft.recipes.json`, inizialmente `{ "version": 1,
 "schemas": [] }`, e i moduli `recipe-catalog.mjs` / `recipe-store.mjs` con i rispettivi tipi.
-Non sono inserite ricette dimostrative o parametri macchina. La pagina ricette guidata resta
-una struttura: editor visuale, import guidato e collegamento alla chat non sono ancora cablati
-a questo servizio. Non confondere l’archivio con l’applicazione della ricetta al PLC.
+Non sono inserite ricette dimostrative o parametri macchina. In Framecraft, **Pannello → Ricette**
+configura schemi scalari e ricette iniziali senza AI: campi tipizzati, limiti, valori espliciti,
+copia/rimozione e import JSON Framecraft con approvazione della bozza prima del salvataggio.
+I form operatore Runtime, la pagina guidata e la chat non sono ancora cablati a questo servizio.
+Non confondere l’archivio con l’applicazione della ricetta al PLC.
+
+Il dialogo salva solo il catalogo iniziale, con snapshot della sessione e confronto del file
+su disco. Se esiste `.framecraft-runtime/recipes`, anche incompleta, resta in sola lettura:
+non elimina file o lock e non riscrive i valori operativi. Il controllo nativo verifica
+sessione, file regolare, dimensione e involucro JSON v1; la validazione completa dei campi è
+nel parser condiviso UI/servizio, non duplicata nel codice Rust. Una configurazione errata non
+viene mostrata grezza o sostituita con un catalogo vuoto. Il salvataggio non riavvia servizi.
+Fermare il servizio prima di preparare la configurazione e coordinare avvii esterni: il check
+dei file non è una transazione distribuita con un altro processo che inizializza l’archivio.
 
 Il formato Framecraft v1 contiene fino a 32 schemi `{ id, name, fields, records }`. Ogni campo
 ha `id`, `name` e `type` (`boolean`, `integer`, `number`, `string`), più `unit`, `minimum`,

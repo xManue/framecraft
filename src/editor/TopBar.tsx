@@ -14,6 +14,7 @@ import type { ViewMode, Viewport } from "../core/types";
 import { layoutPresets, snapGrids, useEditorStore, type UiDensity, type WorkLayout } from "../state/editorStore";
 import { PlcConnectionsDialog } from "./PlcConnectionsDialog";
 import { AlarmsDialog } from "./AlarmsDialog";
+import { RecipesDialog } from "./RecipesDialog";
 import { formatEditorShortcut, type EditorCommandId } from "../../scripts/editor-shortcuts.mjs";
 import { useEditorShortcuts } from "../state/editorShortcuts";
 import { useEditorGuidance } from "../state/editorGuidance";
@@ -105,6 +106,7 @@ export function TopBar() {
   const setHelpOpen = useEditorGuidance(state => state.setHelpOpen);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [alarmsOpen, setAlarmsOpen] = useState(false);
+  const [recipesOpen, setRecipesOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<TopMenu>();
   const menuRef = useRef<HTMLElement>(null);
 
@@ -205,6 +207,7 @@ export function TopBar() {
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("plc"))}><Gauge size={15} /><span><strong>Variabili PLC e valori di prova</strong><small>Catalogo e prova locale dell’HMI, senza collegare un PLC</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setConnectionsOpen(true))}><Cable size={15} /><span><strong>Connessioni PLC</strong><small>Broker MQTT, mapping tag e gateway del pannello</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setAlarmsOpen(true))}><FileCheck2 size={15} /><span><strong>Allarmi</strong><small>Segnali, soglie, presa visione e prova senza PLC</small></span></button>
+              <button role="menuitem" onClick={() => runAndClose(() => setRecipesOpen(true))}><Database size={15} /><span><strong>Ricette</strong><small>Schemi, parametri e valori iniziali del progetto</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("resources"))}><Languages size={15} /><span><strong>Testi e grafiche</strong><small>Lingue, risorse e asset del progetto</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("scripts"))}><Braces size={15} /><span><strong>Moduli JavaScript</strong><small>Funzioni globali e definizioni locali compilate</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("faceplates"))}><Blocks size={15} /><span><strong>Tipi faceplate</strong><small>Versioni, tag, proprietà, eventi e stato locale</small></span></button>
@@ -236,5 +239,6 @@ export function TopBar() {
     </header>
     {connectionsOpen && <PlcConnectionsDialog key={project.root} onClose={() => setConnectionsOpen(false)} />}
     {alarmsOpen && <AlarmsDialog key={project.root} onClose={() => setAlarmsOpen(false)} />}
+    {recipesOpen && <RecipesDialog key={project.root} onClose={() => setRecipesOpen(false)} />}
   </>;
 }

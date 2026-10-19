@@ -31,7 +31,7 @@ pub struct ConfigurationUpdate {
     pub runtime: String,
 }
 
-fn target(root: &Path, name: &str) -> Result<PathBuf, String> {
+pub(super) fn target(root: &Path, name: &str) -> Result<PathBuf, String> {
     let path = root.join(name);
     match fs::symlink_metadata(&path) {
         Ok(meta) => {
@@ -46,7 +46,7 @@ fn target(root: &Path, name: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn read_one(root: &Path, name: &str) -> Result<Option<String>, String> {
+pub(super) fn read_one(root: &Path, name: &str) -> Result<Option<String>, String> {
     let path = target(root, name)?;
     let file = match fs::File::open(path) {
         Ok(file) => file,
@@ -82,7 +82,7 @@ fn read_for_root(root: &str, state: &RuntimeState) -> Result<ConfigurationSnapsh
     Ok(ConfigurationSnapshot { generation: state.project_generation.load(std::sync::atomic::Ordering::SeqCst), files: read_files(root)? })
 }
 
-fn stage(root: &Path, name: &str, source: &str) -> Result<NamedTempFile, String> {
+pub(super) fn stage(root: &Path, name: &str, source: &str) -> Result<NamedTempFile, String> {
     if source.len() > LIMIT { return Err(format!("{name}: catalogo troppo grande (massimo 4 MiB).")); }
     let value: serde_json::Value = serde_json::from_str(source).map_err(|_| format!("{name}: JSON non valido."))?;
     if !value.is_object() || value.get("version").and_then(|v| v.as_u64()) != Some(1) {
@@ -94,7 +94,7 @@ fn stage(root: &Path, name: &str, source: &str) -> Result<NamedTempFile, String>
     Ok(file)
 }
 
-fn persist(file: NamedTempFile, path: &Path) -> Result<(), String> {
+pub(super) fn persist(file: NamedTempFile, path: &Path) -> Result<(), String> {
     file.persist(path).map_err(|_| "Impossibile sostituire il catalogo.")?;
     Ok(())
 }

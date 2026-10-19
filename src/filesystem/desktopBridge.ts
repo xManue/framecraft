@@ -7,6 +7,7 @@ import type { ConnectionConfigurationSnapshot } from "../core/plcConnections";
 import type { AlarmConfigurationSnapshot } from "../core/hmiAlarms";
 import type { AiInterviewDraftSnapshot } from "../ai/aiInterviewDraft";
 import type { AiProjectChange } from "../ai/aiProjectEdits";
+import type { RecipeConfigurationSnapshot } from "../core/recipeConfiguration";
 
 export const desktopAvailable = isTauri();
 
@@ -15,6 +16,12 @@ function requireDesktop() {
 }
 
 export const desktopBridge = {
+  async readRecipeConfiguration(root: string): Promise<RecipeConfigurationSnapshot> {
+    requireDesktop(); return invoke("read_recipe_configuration", { root });
+  },
+  async saveRecipeConfiguration(root: string, expected: RecipeConfigurationSnapshot, source: string): Promise<RecipeConfigurationSnapshot> {
+    requireDesktop(); return invoke("save_recipe_configuration", { root, expected, source });
+  },
   async readAiProjectFile(root: string, path: string): Promise<string | null> {
     requireDesktop(); return invoke("read_ai_project_file", { root, path });
   },

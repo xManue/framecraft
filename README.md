@@ -289,8 +289,12 @@ Gateway recipe operations require a separate server-side identity/authorization 
 standard launcher deliberately denies access until that integration exists. A damaged recipe
 store does not stop unrelated PLC monitoring. See [runtime configuration and recovery](runtime/README.md#ricette-archivio-dati-server-non-trasferimento-plc).
 
-This is the data-service layer, not a finished recipe editor. Guided recipe pages remain
-structures; Runtime forms, AI/wizard wiring, controller comparison/apply handshake, vendor
+Use **Pannello → Ricette** to configure initial scalar schemas, fields and recipes without AI.
+The dialog validates every value, supports copying/removing recipes and reviewing a Framecraft
+JSON import, and saves only after an explicit click. Existing operational archives make the
+initial configuration read-only: migration and backup are required, not archive deletion.
+This is not a finished Runtime operator editor. Guided recipe pages remain structures;
+Runtime forms, AI/wizard wiring, controller comparison/apply handshake, vendor
 CSV/TSV compatibility, industrial database/backup and regulated audit still need implementation
 or commissioning. File persistence and passing loopback tests do not establish production readiness.
 

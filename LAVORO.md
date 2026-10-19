@@ -4970,6 +4970,53 @@ Verifiche del 5 ottobre 2026:
   https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes.html,
   flush Node 24 https://nodejs.org/docs/latest-v24.x/api/fs.html#filehandlesync.
 
+### 145. Editor manuale della configurazione iniziale ricette (2026-10-19)
+
+- Turno precedente di progresso: `c1d583c`, archivio/API ricette persistenti, prove mirate e
+  push verificato. Questo turno collega il lavoro all’editor; nessun provisioning Windows
+  autorizzato o eseguito, nessuna richiesta AI reale, nessun agente o riavvio dell’app.
+- Nuova finestra ampia **Pannello → Ricette**, nello stile esistente. Schemi scalari, campi
+  booleani/interi/decimali/testo, unità e limiti, ricette iniziali, copia e rimozione con
+  conferma. Nessun valore macchina presunto: una nuova ricetta deve essere compilata, anche
+  per `false` e `0`; cambio tipo o campo nuovo non convertono/completano i valori esistenti.
+- Import locale JSON Framecraft v1 entro 2 MB: parser condiviso, riepilogo e approvazione della
+  sostituzione della sola bozza, poi salvataggio separato. Non è import TSV Unified/CSV Optix.
+  Errori riferiti a schema/ricetta/campo, nessuna esposizione del file corrotto, nessun reset a
+  catalogo vuoto. Bozza mantenuta dopo conflitto; Escape/chiusura chiedono prima di scartarla.
+  Focus confinato e ripristinato, target da 44 px, intestazione/chiusura e salvataggio visibili
+  durante lo scroll. Numeri negativi e decimali inseribili senza riscrivere il testo a metà.
+- Due comandi nativi dedicati al solo `framecraft.recipes.json`: progetto corrente e generation
+  verificati, confronto del contenuto atteso prima della sostituzione con temporaneo/flush.
+  Riutilizzati gli helper di file regolare e dimensione delle configurazioni esistenti.
+  Il backend controlla involucro JSON v1/sessione/file; il parser condiviso JS UI/servizio
+  valida integralmente campi e valori. Nessuna duplicazione incompleta dei tipi PLC in Rust.
+- Se compare `.framecraft-runtime/recipes`, anche senza marker o dati validi, salvataggio
+  iniziale negato e configurazione in sola lettura: serve migrazione con backup, non cancellare
+  l’archivio. Verifica ripetuta al salvataggio; il check non è una transazione distribuita con
+  avvii di altri processi. Preparare la configurazione a servizio fermo e coordinare gli avvii.
+  Nessun accesso/modifica ai valori operativi o ai lock, nessun riavvio o comando MQTT/OPC UA.
+- Errori stringa restituiti dal nativo conservano il rimedio; build desktop senza i nuovi
+  comandi spiegata all’utente, senza riavvio automatico. Per usare i nuovi RPC serve una build
+  desktop aggiornata: l’eseguibile attuale non è stato ricompilato o sostituito, hash invariato
+  prima/dopo i soli test della libreria Rust. Nessuna apertura forzata dell’app per il collaudo.
+- Copia pubblica `.hmi-preview/public-check-Z9fdKb/`, priva di JSON standard/foto/modifiche
+  trend-profili non committate, dipendenze locali collegate e non installazione pulita.
+  Passati 20 test iniziali su ricette/menu/allarmi; dopo le rifiniture ripetuti soltanto i due
+  file ricette, aggiungendo la regressione sugli errori nativi. Passati 15 test Rust dei moduli
+  configurazione, non tutta la suite. Tipi e build Vite nella copia isolata; avvisi già noti
+  sugli import statici/dinamici, nessuna nuova dipendenza o asset/font scaricato.
+- Edge headless a 375/768/1024/1440 px: nessun overflow, inserimento di negativi/decimali,
+  valori obbligatori, salvataggio esplicito, bozza protetta e focus restituito. Soli adattatori
+  sintetici, zero richieste esterne e zero errori console. Screenshot mobile/desktop ispezionati;
+  questa prova non è un test IPC Tauri nell’app aperta, né collaudo touch/PLC o industriale.
+- Skill UI/UX adattata all’interfaccia scura esistente per focus, contrasto, target e scroll;
+  progettazione/revisione/documentazione hanno distinto configurazione iniziale da gestione
+  operativa. Restano form operatore Runtime, wizard/AI, identità applicativa, migrazioni,
+  UDT/array, DB/audit industriale e apply/upload PLC. Obiettivo generale e gate produzione aperti.
+- Riferimento funzionale Optix letto prima delle verifiche:
+  https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes/recipex-schemas.html.
+  Il designer scalare non implementa TargetNode/Item/DataItem né un formato vendor.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
