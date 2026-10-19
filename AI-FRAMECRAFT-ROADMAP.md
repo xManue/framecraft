@@ -192,8 +192,15 @@ minimi di piattaforma, nessuna scrittura/rete degli strumenti, nessun fallback p
 Nuovi profili temporanei segnalano `notConfigured`; entrambi fermano la richiesta prima del thread
 e del modello, con rimedio distinto dal login o dall’aggiornamento CLI. Nessun setup automatico:
 servono autorizzazione esplicita per il setup Windows, build desktop aggiornata e nuovo collaudo
-end-to-end. Passati 16 test mirati e il preflight nativo con CLI reale senza account/inferenza;
+end-to-end. Il preflight nativo del punto 142 con CLI reale non usava account/inferenza;
 configurazione e stato non provano l’enforcement del filesystem né una modifica AI completata.
+Dal punto 143 il controllo e la configurazione sono nelle impostazioni AI: verifica soltanto
+su richiesta, spiegazione degli effetti Windows, checkbox vuota e pulsante separato di avvio.
+ACK distinto da completamento e nuova lettura della readiness; esito incerto non riavviato,
+notifiche ricevute anche a impostazioni chiuse, nessuna inferenza dopo il setup. Backend rifiuta
+avvii duplicati/senza consenso o concorrenti con richieste AI. Passati 21 test nativi di stato/
+adapter, 86 test AI pertinenti, tipi/build pubblica e quattro larghezze Edge con provider finto.
+Non è una prova UAC, provisioning Windows, setup su PC aziendali o modifica AI reale.
 Nessuna versione preliminare installata o inferenza inviata per questi controlli. Ulteriore
 gate di produzione: la documentazione ufficiale definisce App Server sperimentale/non supportato
 per carichi production. L’adapter CLI è provvisorio: provider supportato, sicurezza/privacy e

@@ -40,7 +40,7 @@ pub(super) fn verify_allowed(profiles: &Value) -> Result<(), String> {
 pub(super) fn verify_windows_readiness(readiness: &Value) -> Result<(), String> {
     match readiness["status"].as_str() {
         Some("ready") => Ok(()),
-        Some("notConfigured" | "updateRequired") => Err("Isolamento Windows di Codex da configurare o aggiornare. L’account resta collegato, ma le modifiche AI ai sorgenti non sono ancora disponibili. Serve il setup Windows autorizzato da te o dall’IT; aggiornare la CLI o premere Riprova non basta. Nessuna richiesta AI inviata.".into()),
+        Some("notConfigured" | "updateRequired") => Err("Isolamento Windows di Codex da configurare o aggiornare. L’account resta collegato, ma le modifiche AI ai sorgenti non sono ancora disponibili. Apri Impostazioni → AI e account → Protezione dei file e premi Verifica isolamento. Serve il setup Windows autorizzato da te o dall’IT; aggiornare la CLI o premere Riprova non basta. Nessuna richiesta AI inviata.".into()),
         _ => Err("Non posso verificare l’isolamento Windows di Codex. Nessuna richiesta AI inviata: controlla la configurazione con chi ti assiste.".into()),
     }
 }

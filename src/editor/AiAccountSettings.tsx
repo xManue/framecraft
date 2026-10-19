@@ -1,9 +1,11 @@
 import { LoaderCircle, LogIn, LogOut, RefreshCw } from "lucide-react";
 import { useEditorAi } from "../state/editorAi";
 import { AiModelControls } from "./AiModelControls";
+import { AiSandboxSettings } from "./AiSandboxSettings";
+import { sandboxPending } from "../ai/aiProvider";
 
 export function AiAccountSettings() {
-  const ai = useEditorAi(), blocked = ai.busy || ai.connecting || ai.checking;
+  const ai = useEditorAi(), configuring = ai.sandboxStarting || sandboxPending(ai.sandbox), blocked = ai.busy || ai.connecting || ai.checking || configuring;
   return <div className="editor-settings-workspace" aria-label="Impostazioni AI e account">
     <p className="editor-settings-hint">Collega qui il tuo account ChatGPT. La creazione e la modifica manuale del pannello restano disponibili senza AI.</p>
     <fieldset><legend>Account ChatGPT · Codex CLI</legend>
@@ -19,7 +21,8 @@ export function AiAccountSettings() {
       {ai.accountError && <p className="ai-account-error" role="alert">{ai.accountError}</p>}
       <p>Il profilo di Framecraft è separato da quello dell’app Codex. Non serve una chiave API condivisa e nessuna credenziale viene salvata nel progetto HMI.</p>
     </fieldset>
-    <fieldset><legend>Modello da usare</legend>
+    <AiSandboxSettings />
+    <fieldset disabled={configuring}><legend>Modello da usare</legend>
       <AiModelControls prefix="editor-ai" />
       <p>Viene usato nelle richieste AI per questo account. Il catalogo non garantisce accesso a ogni modello: si applicano disponibilità e limiti del tuo piano.</p>
     </fieldset>

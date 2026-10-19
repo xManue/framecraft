@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { codexProvider, type AiAccount, type AiModel, type AiProvider } from "../ai/aiProvider";
+import { codexProvider, sandboxPending, type AiAccount, type AiModel, type AiProvider, type AiSandboxStatus } from "../ai/aiProvider";
 import { aiEditContext, aiPrompt, aiProposalSchema, aiPageProposalSchema, parseAiProposal, type AiEditSnapshot, type AiMode, type AiProposal } from "../ai/aiProposal";
 import { interviewConfig, interviewPrompt, newAiInterview, sameInterviewAiContext, type AiInterview } from "../ai/aiInterview";
 import { delegationQuestions, resolveInterviewDelegation } from "../ai/aiDelegation";
@@ -15,11 +15,15 @@ interface AiState {
   open: boolean; mode: AiMode; provider: AiProvider; account?: AiAccount; models: AiModel[]; model: string; reasoningEffort: string;
   setModel(model: string): void; setReasoningEffort(effort: string): void;
   busy: boolean; connecting: boolean; checking: boolean; accountError?: string; error?: string; proposal?: AiProposal; snapshot?: AiEditSnapshot; requestId?: string;
+  sandbox?: AiSandboxStatus; sandboxChecking: boolean; sandboxStarting: boolean; sandboxError?: string;
+  checkSandbox(): Promise<void>; setupSandbox(approved: boolean): Promise<void>;
   show(mode: AiMode): void; close(): void; connect(): Promise<void>; refresh(): Promise<void>; logout(): Promise<void>;
   propose(prompt: string, snapshot?: AiEditSnapshot, chat?: AiChatContext): Promise<void>; cancel(): Promise<void>;
 }
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 let accountRefresh = 0;
+let sandboxRevision = 0;
+let sandboxRecheck = false;
 export const useEditorAi = create<AiState>((set, get) => ({
   interview: newAiInterview(), proposalUpdatedLocally: false,
   updateInterview(interview) {
@@ -37,6 +41,32 @@ export const useEditorAi = create<AiState>((set, get) => ({
   },
   resetInterview() { if (get().busy) return; set({ interview: newAiInterview(), proposal: undefined, resolvedInterview: undefined, proposalUpdatedLocally: false, error: undefined }); },
   open: false, mode: "create", provider: codexProvider, models: [], model: "", reasoningEffort: "", busy: false, connecting: false, checking: false,
+  sandboxChecking: false, sandboxStarting: false,
+  async checkSandbox() {
+    if (get().sandboxStarting) return;
+    if (get().sandboxChecking) { sandboxRecheck = true; return; }
+    const provider = get().provider, revision = ++sandboxRevision;
+    set({ sandboxChecking: true, sandboxError: undefined });
+    try {
+      if (!provider.sandboxStatus) throw new Error("Questo provider non offre il controllo locale dell’isolamento. Per Codex usa una build desktop aggiornata.");
+      const sandbox = await provider.sandboxStatus();
+      if (revision === sandboxRevision && get().provider === provider) set({ sandbox });
+    } catch (error) { if (revision === sandboxRevision && get().provider === provider) set({ sandbox: sandboxPending(get().sandbox) ? get().sandbox : undefined, sandboxError: message(error) }); }
+    finally { if (revision === sandboxRevision && get().provider === provider) { set({ sandboxChecking: false }); if (sandboxRecheck) { sandboxRecheck = false; void get().checkSandbox(); } } }
+  },
+  async setupSandbox(approved) {
+    if (!approved) { set({ sandboxError: "Leggi gli effetti e autorizza esplicitamente la configurazione Windows." }); return; }
+    const { provider, sandbox, busy, connecting, checking, sandboxChecking, sandboxStarting, account } = get();
+    if (busy || connecting || checking || sandboxChecking || sandboxStarting || sandboxPending(sandbox)) return;
+    if (!account?.connected || !sandbox || !["notConfigured", "updateRequired"].includes(sandbox.status) || !provider.setupSandbox) { set({ sandboxError: "Collega l’account e verifica l’isolamento prima di configurare Windows." }); return; }
+    const revision = ++sandboxRevision;
+    set({ sandboxStarting: true, sandboxError: undefined });
+    try {
+      const result = await provider.setupSandbox(true);
+      if (revision === sandboxRevision && get().provider === provider) set({ sandbox: result });
+    } catch (error) { if (revision === sandboxRevision && get().provider === provider) set({ sandbox: { status: "unknown", phase: "uncertain" }, sandboxError: message(error) }); }
+    finally { if (revision === sandboxRevision && get().provider === provider) set({ sandboxStarting: false }); }
+  },
   setModel(model) { if (get().busy || !get().models.some(item => item.id === model)) return; set({ model, reasoningEffort: "" }); },
   setReasoningEffort(reasoningEffort) { if (get().busy || reasoningEffort && !get().models.find(item => item.id === get().model)?.supportedReasoningEfforts?.some(item => item.reasoningEffort === reasoningEffort)) return; set({ reasoningEffort }); },
   show(mode) { if (get().busy || get().mode === mode) { set({ open: true }); return; } set({ open: true, mode, proposal: undefined, snapshot: undefined, error: undefined }); },
@@ -57,13 +87,13 @@ export const useEditorAi = create<AiState>((set, get) => ({
     finally { if (current()) set({ checking: false }); }
   },
   async connect() {
-    if (get().connecting || get().checking || get().busy) return; set({ connecting: true, accountError: undefined });
+    if (get().connecting || get().checking || get().busy || get().sandboxStarting || sandboxPending(get().sandbox)) return; set({ connecting: true, accountError: undefined });
     try { await get().refresh(); if (!get().accountError && !get().account?.connected) await get().provider.login(); }
     catch (error) { set({ accountError: message(error) }); }
     finally { set({ connecting: false }); }
   },
   async logout() {
-    if (get().busy || get().connecting || get().checking) return;
+    if (get().busy || get().connecting || get().checking || get().sandboxStarting || sandboxPending(get().sandbox)) return;
     ++accountRefresh; set({ checking: true, accountError: undefined });
     try { await get().provider.logout(); ++accountRefresh; set({ account: undefined, models: [], model: "", reasoningEffort: "", proposal: undefined }); }
     catch (error) { set({ accountError: message(error) }); }
@@ -71,6 +101,7 @@ export const useEditorAi = create<AiState>((set, get) => ({
   },
   async propose(prompt, snapshot, chat) {
     const { provider, mode, model, account, busy, checking, connecting } = get(); if (busy || checking || connecting) return;
+    if (get().sandboxStarting || sandboxPending(get().sandbox)) { set({ error: "Attendi l’esito della configurazione Windows prima di inviare una richiesta AI." }); return; }
     if (!account?.connected || !model) { set({ error: "Collega il tuo account ChatGPT e scegli un modello in Impostazioni → AI e account prima di inviare la richiesta." }); return; }
     const requestId = crypto.randomUUID();
     let published = false;
@@ -106,3 +137,10 @@ export const useEditorAi = create<AiState>((set, get) => ({
     catch (error) { if (get().requestId === id) set({ error: message(error) }); }
   },
 }));
+useEditorAi.subscribe((state, previous) => {
+  if (state.provider !== previous.provider || state.account?.connected !== previous.account?.connected || state.account?.email !== previous.account?.email) {
+    ++sandboxRevision;
+    sandboxRecheck = false;
+    useEditorAi.setState({ sandbox: undefined, sandboxChecking: false, sandboxStarting: false, sandboxError: undefined });
+  }
+});

@@ -4869,6 +4869,52 @@ Verifiche del 5 ottobre 2026:
   Documentazione aggiornata, codice/test soltanto nel commit; lavori trend/profili preesistenti
   preservati e dati macchina esclusi. Obiettivo generale e pipeline AI reale non completati.
 
+### 143. Isolamento e setup Windows guidati nelle impostazioni AI (2026-10-19)
+
+- Il turno precedente è progresso: commit `02eb815`, correzione del protocollo CLI, test e push
+  verificato. Nessuna risposta umana di autorizzazione al setup Windows: la continuazione
+  automatica dell’obiettivo non è consenso. Proseguito sul flusso prodotto, senza agenti,
+  senza eseguire setup, riaprire l’app o inviare richieste AI reali.
+- In Impostazioni → AI e account aggiunta Protezione dei file: verifica locale solo su click
+  dopo il controllo account; stati da configurare/aggiornare/pronto, nessuna verifica o login
+  all’apertura. “Configura Windows…” espone effetti su utenti, firewall e criteri di accesso,
+  eventuale UAC/IT, checkbox inizialmente vuota e pulsante separato. Rinvio/chiusura/cambio
+  account revocano il consenso; niente memorizzazione o avvio implicito. Stile dell’editor
+  mantenuto, target da 44 px, focus gestito dopo rinvio/avvio, link ufficiale accessibile.
+- Comandi nativi di stato/setup, guardia di consenso anche nel backend, profilo Framecraft
+  separato e cwd limitata alla cartella proposta. Setup solo `elevated` su Windows e su
+  richiesta esplicita; nessun ampliamento del profilo file/rete del modello o installazione CLI.
+  Stato condiviso fra riconnessioni nella stessa app: esclusione con nuove richieste AI,
+  logout/annullamenti che interromperebbero il setup, duplicati e nuovo tentativo su esito
+  incerto. Un fallimento definitivo permette solo un nuovo tentativo esplicitamente autorizzato.
+- ACK `started` non è completamento: ascolto di `windowsSandbox/setupCompleted`, poi verifica
+  readiness, anche a impostazioni chiuse. Eventi con modo inatteso ignorati; errore grezzo non
+  propagato. RPC/processo interrotto non significa fallimento certo: stato incerto, nessun retry
+  o reset basato su timeout. Stato in memoria, non garanzia di recovery del provisioning dopo
+  chiusura forzata dell’app; in quel caso verificare Windows/IT prima di avviare altro setup.
+  Non cambiano progetto, MQTT/OPC UA, consensi delle proposte o bozza della chat.
+- **21 test nativi mirati**, **86 test AI in quattro file**, tipi e build Vite passati. I test
+  nativi coprono transizioni pure e adapter, non invocano setup/inferenza; quelli UI usano
+  soltanto provider sintetici. Primo controllo nativo corretto per il tipo Arc del client;
+  test UI ha trovato focus su un bottone ancora disabilitato: ripristino spostato dopo il render,
+  poi ripetuto solo il nuovo file e il gruppo interessato nella copia pubblica.
+- Copia pubblica isolata `.hmi-preview/ai-sandbox-public-pj1OZ1/`, senza export standard,
+  foto, lavori trend/profili non committati; dipendenze locali collegate, non installazione
+  pulita. Build con avvisi già noti su import statici/dinamici. Revisione ha tolto un lock
+  durante logout RPC e collegato gli errori nativi al percorso esatto nelle impostazioni.
+  Coperta anche una notifica di completamento arrivata durante una verifica: una sola rilettura
+  locale accodata, non una ripetizione del setup o dell’inferenza; niente stato “in corso” obsoleto.
+- Edge headless 375/768/1024/1440 px: checkbox non preselezionata, consenso nuovo dopo rinvio,
+  focus ripristinato, nessun overflow, stato aggiornato dopo chiusura/riapertura, nessuna chiamata
+  esterna/AI/account e nessun errore console. Fixture iniziale priva delle trasformazioni HTML
+  React e dei define Babel dell’app: corretta la fixture per usare la vera configurazione Vite,
+  non il prodotto per adattarlo ai test. Ispezionati screenshot mobile/desktop. Nessuna nuova
+  dipendenza, fonte/asset vendor o licenza; le skill UI/UX hanno guidato accessibilità e consenso.
+- Fonti ufficiali, lette prima dell’implementazione: https://learn.chatgpt.com/docs/app-server
+  e https://learn.chatgpt.com/docs/windows/windows-sandbox. Restano setup Windows autorizzato
+  e reale, UAC/IT, enforcement filesystem, nuova build desktop in uso e prova modifica AI
+  end-to-end. Obiettivo completo Unified/Optix/AI e gate di produzione ancora aperti.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

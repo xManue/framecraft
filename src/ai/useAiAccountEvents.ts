@@ -8,6 +8,7 @@ export function useAiAccountEvents() {
     let live = true, dispose: (() => void) | undefined;
     void provider.subscribe(event => {
       if (live && event.type === "account" && useEditorAi.getState().provider === provider) void useEditorAi.getState().refresh();
+      if (live && event.type === "sandbox" && useEditorAi.getState().provider === provider) void useEditorAi.getState().checkSandbox();
     }).then(value => { if (live) dispose = value; else value(); }).catch(() => {});
     return () => { live = false; dispose?.(); };
   }, [provider]);

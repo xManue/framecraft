@@ -489,9 +489,20 @@ readable, no writes or tool network access. Effective configuration, managed-pol
 the selected thread profile are checked; legacy and named sandbox fields are never mixed in a request.
 **Current Windows limit:** the Framecraft profile reports `updateRequired`. The adapter checks
 readiness before creating a source-edit thread and explains when Windows sandbox setup is needed.
-It never starts that setup automatically or widens permissions. Administrative setup requires
-separate consent and may change dedicated local sandbox accounts and firewall rules; see the
+In **Impostazioni → AI e account → Protezione dei file**, choose **Verifica isolamento** after
+connecting/checking the account. Opening settings does not perform that check or start setup.
+When needed, **Configura Windows…** explains the effects; its separate, initially unchecked consent
+and **Autorizza e avvia configurazione** are both required. **Non adesso** makes no OS changes.
+It never starts setup automatically or widens permissions. Administrative setup may change
+dedicated local sandbox accounts, firewall and logon rules; see the
 [official Windows sandbox documentation](https://learn.chatgpt.com/docs/windows/windows-sandbox).
+An accepted start is not success: Framecraft waits for the completion notification, then reads
+readiness again, including when settings were closed. A lost response/process keeps the outcome
+uncertain and blocks duplicate setup and new AI requests for the current app session. Do not
+restart/retry setup merely because a wait expired: check the Windows prompt or contact IT.
+Confirmed failure requires a fresh explicit consent before another attempt. No raw setup errors,
+tokens or source paths are forwarded to the UI. Manual editing remains available; finishing setup
+never sends an AI request or applies a proposal automatically.
 The native preflight verifies configuration, not successful source editing or filesystem enforcement.
 An updated desktop build, authorized Windows setup and a new end-to-end test are still required.
 Disable this option for the previous graphical-only mode described below; switching scope revokes
