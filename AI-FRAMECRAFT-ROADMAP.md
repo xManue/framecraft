@@ -183,13 +183,18 @@ bloccano la scrittura. Modello/ragionamento restano quelli scelti nella chat. Le
 sono dichiarazioni da mappare e collaudare, non segnali macchina disponibili automaticamente.
 Nuovi comandi nativi richiedono la build desktop aggiornata; il provider deve supportare la policy
 di sola lettura confinata, senza fallback a un accesso più ampio per aggirare incompatibilità.
-**Limite attuale verificato**: CLI aggiornata con autorizzazione dell’utente da 0.159.2 a 0.163.0,
-ma lo schema locale di entrambe non dichiara `ReadOnlyAccess`. Il nuovo percorso con sorgenti si
-ferma prima dell’inferenza con messaggio esplicito, non allarga l’accesso. Il percorso grafico
-precedente resta selezionabile. Prove locali/UI superate non equivalgono a una pipeline AI reale
-completata: occorre un provider/CLI compatibile e un nuovo collaudo end-to-end autorizzato.
-Verifica ripetuta anche con `generate-json-schema --experimental` sulla CLI stabile 0.163.0:
-il campo resta assente, nessuna versione preliminare installata né nuova inferenza. Ulteriore
+Dal punto 142 il gate non dipende più soltanto da `ReadOnlyAccess`: la CLI 0.163.0 espone profili
+nominati con API sperimentale. L’adapter li seleziona esplicitamente per thread e turno sorgenti,
+senza mescolarli ai campi sandbox legacy. Profilo esatto, consenso delle regole del computer e
+provenienza della sessione sono verificati; letture limitate alla cartella proposta e ai percorsi
+minimi di piattaforma, nessuna scrittura/rete degli strumenti, nessun fallback più ampio.
+**Limite attuale verificato**: il sandbox Windows del profilo Framecraft segnala `updateRequired`.
+Nuovi profili temporanei segnalano `notConfigured`; entrambi fermano la richiesta prima del thread
+e del modello, con rimedio distinto dal login o dall’aggiornamento CLI. Nessun setup automatico:
+servono autorizzazione esplicita per il setup Windows, build desktop aggiornata e nuovo collaudo
+end-to-end. Passati 16 test mirati e il preflight nativo con CLI reale senza account/inferenza;
+configurazione e stato non provano l’enforcement del filesystem né una modifica AI completata.
+Nessuna versione preliminare installata o inferenza inviata per questi controlli. Ulteriore
 gate di produzione: la documentazione ufficiale definisce App Server sperimentale/non supportato
 per carichi production. L’adapter CLI è provvisorio: provider supportato, sicurezza/privacy e
 collaudo Runtime restano necessari prima di dichiarare l’app pronta per la produzione.

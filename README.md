@@ -482,10 +482,18 @@ chips that can be removed: selecting another object does not silently replace th
 boundary around Inspector properties. After session consent, the assistant can read bounded source
 excerpts, follow imported components, request configuration fragments, edit source and declare missing
 variables. No screenshot or manual attachment of every child is required for source-based changes.
-**Current compatibility limit:** the installed CLI was updated to 0.163.0, but its generated local
-protocol still lacks `ReadOnlyAccess`. Project-mode requests stop before inference with an explanation;
-the real project-edit pipeline is not yet validated or available with this CLI. Disable **Modifiche
-al progetto** to retain the previous graphical-only path. Do not remove the filesystem boundary as a fix.
+The native adapter supports CLI 0.163.0's named permission profiles; the missing legacy
+`ReadOnlyAccess` field alone is no longer considered an incompatibility. Source requests explicitly
+select a dedicated profile: only the proposal workspace and Codex's minimal platform paths are
+readable, no writes or tool network access. Effective configuration, managed-policy allowance and
+the selected thread profile are checked; legacy and named sandbox fields are never mixed in a request.
+**Current Windows limit:** the Framecraft profile reports `updateRequired`. The adapter checks
+readiness before creating a source-edit thread and explains when Windows sandbox setup is needed.
+It never starts that setup automatically or widens permissions. Administrative setup requires
+separate consent and may change dedicated local sandbox accounts and firewall rules; see the
+[official Windows sandbox documentation](https://learn.chatgpt.com/docs/windows/windows-sandbox).
+The native preflight verifies configuration, not successful source editing or filesystem enforcement.
+An updated desktop build, authorized Windows setup and a new end-to-end test are still required.
 Disable this option for the previous graphical-only mode described below; switching scope revokes
 transmission consent. In graphical-only mode, attach one element (including its children) or up to five pages. Pages supply actual source-derived
 hierarchy, literal texts, supported inline styles and editable/dynamic flags, not just navigation names.
@@ -541,8 +549,11 @@ ordinary editor Undo concerns individual existing source files. A whitelisted ba
 not proposal source or approval, survives a same-window reload so restore stays available. The
 restorer refuses newer external versions. During apply/restore the editor is temporarily locked and
 requests waiting before closing/reloading; forced termination is not covered by browser guards.
-Use the updated Framecraft desktop build for the native commands. Codex must support the restricted
-read-only sandbox policy; compatibility failures must not fall back to wider filesystem access.
+Use the updated Framecraft desktop build for the native commands. Codex must support the named
+restricted profile or the legacy restricted read-only policy. Compatibility failures never fall
+back to wider filesystem access. The protocol follows the [official App Server documentation](https://learn.chatgpt.com/docs/app-server)
+and [permission profiles](https://learn.chatgpt.com/docs/permissions); named profiles require the
+experimental API opt-in. This adapter is provisional, not a production-support guarantee.
 
 When the assistant needs clarification, answer in **Completa questi dettagli** inside its message,
 then choose **Invia risposte e continua**. Each question has its own field (up to 1,000 characters)

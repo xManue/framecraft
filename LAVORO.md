@@ -4833,6 +4833,42 @@ Verifiche del 5 ottobre 2026:
   autorizzazioni server/pagine, licensing/distribuzione e commissioning reale. Obiettivo
   generale Unified/Optix/AI non concluso, nessun ampliamento dei permessi del provider.
 
+### 142. Compatibilità CLI e diagnosi sandbox Windows per le modifiche AI (2026-10-19)
+
+- Segnalazione: la chat non permette più di modificare il pannello. Il vecchio gate verificava
+  soltanto `ReadOnlyAccess`, assente anche nella CLI 0.163.0: non riconosceva i profili nominati
+  effettivamente disponibili. Nessuna reinstallazione/pre-release o inferenza come tentativo.
+- Adapter nativo aggiornato: opt-in API sperimentale e rilevamento delle capacità dei parametri
+  di thread e turno; profilo `framecraft-proposal` esplicito per i sorgenti, mai combinato con
+  `sandbox`/`sandboxPolicy` legacy. Resta il ramo confinato legacy se dichiarato dalla CLI;
+  nessuna rimozione del gate e nessun fallback ad accesso più ampio. Il percorso grafico conserva
+  i suoi parametri precedenti; default generale in sola lettura, non accesso completo.
+- Profilo con sola lettura della cartella proposta e `:minimal`, rete strumenti disabilitata e
+  nessuna scrittura. Prima di ogni richiesta sorgenti si verificano configurazione effettiva
+  esatta (ignorando soltanto i campi null), disponibilità/allowlist e readiness Windows.
+  Prima del contesto al modello si controllano ID del profilo attivo e approvazioni `never`.
+  Permessi aggiuntivi/ereditarietà, dati mancanti o modalità sconosciute vengono rifiutati.
+- Il profilo Framecraft reale segnala **`updateRequired`**; i profili sintetici nuovi senza
+  configurazione Windows segnalano **`notConfigured`**. Errore ora distinto da login e versione
+  CLI: account conservato, nessuna richiesta inviata, setup Windows da autorizzare. Non chiamato
+  `windowsSandbox/setupStart`, non modificati utenti/firewall/criteri OS, non copiati segreti.
+  L’autorizzazione al setup chiesta all’utente non è stata ancora ricevuta.
+- **16 test nativi mirati passati**, due test opt-in esclusi dal normale lancio. Eseguito poi
+  soltanto il preflight locale opt-in: profilo temporaneo, CLI reale, schema/configurazione/
+  allowlist/stato, nessun account, thread o inferenza. Il primo preflight ha trovato l’obbligo
+  CLI di impostare `default_permissions` quando si definiscono profili: corretto con il preset
+  `:read-only`, poi ripetuti solo questi test e il preflight con successo. Diagnostica senza
+  contenuti/sorgenti/token e con rimedio Windows separato. Nessun test globale o frontend.
+- Configurazione riconfermata con CLI 0.163.0 anche sul profilo Framecraft reale, senza leggere
+  credenziali. Le sonde locali non provano ancora lettura consentita/negata e scrittura negata
+  dal sandbox: restano setup esplicitamente autorizzato, nuova build desktop e prova end-to-end.
+  Non riavviata/rimpiazzata l’app in uso, né applicata una proposta a progetti dell’utente.
+- Riferimenti: https://learn.chatgpt.com/docs/app-server,
+  https://learn.chatgpt.com/docs/permissions,
+  https://learn.chatgpt.com/docs/windows/windows-sandbox.
+  Documentazione aggiornata, codice/test soltanto nel commit; lavori trend/profili preesistenti
+  preservati e dati macchina esclusi. Obiettivo generale e pipeline AI reale non completati.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
