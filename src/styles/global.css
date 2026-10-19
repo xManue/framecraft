@@ -31,6 +31,8 @@
   --z-modal: 50;
 }
 
+.interface-loading { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1500; display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); padding: 16px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-1); color: var(--text); font-size: 16px; line-height: 1.5; box-shadow: 0 8px 32px #0006; }
+.interface-loading svg { flex-shrink: 0; }
 .connections-backdrop { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, .7); }
 .connections-dialog { width: min(1080px, 100%); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); color: var(--text); background: var(--surface-1); box-shadow: 0 20px 64px rgba(0,0,0,.5); font-size: 14px; }
 .connections-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--border); }

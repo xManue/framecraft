@@ -5126,6 +5126,44 @@ Verifiche del 5 ottobre 2026:
   Windows pronto/autorizzato; l’eseguibile dell’app non è stato sostituito o riavviato.
   Roadmap aggiornate senza dichiarare la parità Unified/Optix o la pipeline completa raggiunte.
 
+### 148. Avvio dell’app senza attendere tutto l’editor sulla home (2026-10-19)
+
+- Segnalazione: con `npm run dev` la finestra appare ma resta bianca per uno/due minuti.
+  Intervento autorizzato mantenendo il comando, senza eliminare cartelle, progetti o bozze.
+  Distinto il caricamento frontend dalla compilazione Rust: nessuna modifica nativa.
+- Riprodotto un costo del watcher Vite: circa 5.400 directory/42.900 file temporanei sotto
+  `.hmi-preview` erano sorvegliati nonostante `.gitignore`. Confronto ripetuto con cache nuove
+  equivalenti: home in 70,5 s con vecchie esclusioni, 11,2 s escludendo il temporaneo. Il vecchio
+  scanner dipendenze non attraversava già le directory nascoste: non era quella la causa.
+- Esclusione assoluta e circoscritta alla `.hmi-preview` del checkout; i sorgenti restano
+  sorvegliati anche in una copia di verifica annidata in un temporaneo. Entry dipendenze esplicita
+  `index.html`. Nessuna cancellazione o modifica alle cartelle dei pannelli.
+- AppShell, finestre impostazioni/aiuto/account/comandi/AI e procedura Nuovo pannello differiti
+  con `lazy`/`Suspense` a livello modulo. Scelte e conteggi standard separati dal generatore,
+  preservandone anche le vecchie esportazioni; sezioni, pagine e procedura manuale/AI invariate.
+  Home: 186 → 87 moduli sorgente e 36 → 0 moduli `?raw`; circa 250 → 120 richieste.
+- Stato iniziale direttamente nell’HTML: tema scuro esistente, annuncio accessibile e movimento
+  ridotto. Errori del modulo iniziale mostrano una spiegazione, senza reload o pulizie automatiche;
+  gli errori successivi non sostituiscono il progetto già montato. Skill debug e UI/UX applicate
+  all’isolamento del ritardo e al feedback iniziale, senza nuovi font, asset o dipendenze.
+- Copia pubblica `.hmi-preview/public-check-XZ6b6y`: 70 test mirati in sei file passati (avvio,
+  wizard, eventi desktop/recupero, account, intervista e pipeline AI). Dopo la sola correzione
+  di compatibilità TypeScript del config, otto test avvio ripetuti nella copia `public-check-4ZFfBl`;
+  tipi e build produzione passati. Restano gli avvisi di import statici/dinamici condivisi in
+  altri moduli: il bundle iniziale è ancora ottimizzabile, non è stato riscritto lo store globale.
+  Dipendenze locali collegate, non installazione pulita; export macchina e lavori trend/profili
+  preesistenti esclusi dallo snapshot e dal commit. Nessuna suite globale, inferenza o test Rust.
+- Edge headless sul codice pubblico: home 8,5 s nella prova isolata, 17 s durante tipi/test in
+  parallelo, zero errori JS, finestre impostazioni apri/chiudi/riapri, nessun generatore caricato
+  sulla home. Screenshot iniziale a 375/1440 px ispezionati: niente overflow, tema corretto,
+  reduced motion e fallimento del modulo spiegato. Nessuna richiesta esterna o scrittura IPC.
+  Anche il frontend compilato apre home e impostazioni senza errori, caricando i chunk delle
+  finestre solo su richiesta. Build, browser e test usano codice pubblico senza i lavori trend.
+  Questi tempi misurano il frontend locale, non l’intero avvio della finestra Windows.
+- Per applicare il config serve rilanciare `npm run dev`. Da confermare il tempo nel WebView
+  dell’utente e nell’installer finale; compilazione Rust a freddo e gate produzione restano
+  separati. L’eseguibile esistente non è stato sostituito o riavviato da queste verifiche.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

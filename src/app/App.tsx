@@ -1,10 +1,7 @@
-import { Component, useEffect } from "react";
+import { Component, lazy, Suspense, useEffect } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, LoaderCircle, RotateCcw } from "lucide-react";
-import { AppShell } from "../editor/AppShell";
 import { WelcomeScreen } from "../editor/WelcomeScreen";
-import { CommandPalette } from "../editor/CommandPalette";
-import { UserAccessWindow } from "../editor/UserAccessWindow";
 import { useEditorStore } from "../state/editorStore";
 import { desktopAvailable } from "../filesystem/desktopBridge";
 import type { PreviewExit, PreviewOutput } from "../core/types";
@@ -14,14 +11,22 @@ import { MessageNotice } from "../editor/MessageNotice";
 import { describeEditorMessage } from "../core/editorMessages";
 import { installEditorKeyboardShortcuts } from "../core/editorCommands";
 import { useEditorShortcuts } from "../state/editorShortcuts";
-import { EditorSettings } from "../editor/EditorSettings";
-import { EditorHelp } from "../editor/EditorHelp";
 import { useEditorGuidance } from "../state/editorGuidance";
-import { AiAssistant } from "../editor/AiAssistant";
 import { useEditorAi } from "../state/editorAi";
 import { useAiAccountEvents } from "../ai/useAiAccountEvents";
 import { installAiInterviewDraftRecovery } from "../state/editorAiDraft";
 import { installAiChatProjectScope } from "../state/editorAiChat";
+
+const AppShell = lazy(() => import("../editor/AppShell").then(module => ({ default: module.AppShell })));
+const CommandPalette = lazy(() => import("../editor/CommandPalette").then(module => ({ default: module.CommandPalette })));
+const UserAccessWindow = lazy(() => import("../editor/UserAccessWindow").then(module => ({ default: module.UserAccessWindow })));
+const EditorSettings = lazy(() => import("../editor/EditorSettings").then(module => ({ default: module.EditorSettings })));
+const EditorHelp = lazy(() => import("../editor/EditorHelp").then(module => ({ default: module.EditorHelp })));
+const AiAssistant = lazy(() => import("../editor/AiAssistant").then(module => ({ default: module.AiAssistant })));
+
+function InterfaceLoading() {
+  return <div className="interface-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} /> Caricamento dell’interfaccia…</div>;
+}
 
 export function App() {
   return <EditorErrorBoundary><EditorApp /></EditorErrorBoundary>;
@@ -162,14 +167,14 @@ function EditorApp() {
 
   return (
     <>
-      <div inert={aiProjectBusy} style={{ display: "contents" }}>{reloadRecovery ? <ReloadRecoveryScreen /> : loading ? <ProjectLoadingScreen /> : project ? <AppShell /> : <WelcomeScreen />}</div>
+      <div inert={aiProjectBusy} style={{ display: "contents" }}>{reloadRecovery ? <ReloadRecoveryScreen /> : loading ? <ProjectLoadingScreen /> : project ? <Suspense fallback={<InterfaceLoading />}><AppShell /></Suspense> : <WelcomeScreen />}</div>
       {aiProjectBusy && <div className="ai-project-busy-overlay" role="status" aria-live="polite"><LoaderCircle className="spin" size={22} /><strong>Aggiornamento protetto del progetto…</strong><p>Attendi il completamento del salvataggio o del ripristino. Non chiudere questa finestra.</p></div>}
       {!reloadRecovery && project && backupError && <aside className="draft-backup-warning" role="alert"><MessageNotice context="backup" raw={backupError} /><button onClick={() => void retryBackup()}>Riprova il backup</button></aside>}
-      {paletteOpen && <CommandPalette />}
-      {userAccessOpen && <UserAccessWindow />}
-      {settingsOpen && <EditorSettings />}
-      {helpOpen && <EditorHelp />}
-      {aiOpen && aiMode === "create" && <AiAssistant />}
+      {paletteOpen && <Suspense fallback={<InterfaceLoading />}><CommandPalette /></Suspense>}
+      {userAccessOpen && <Suspense fallback={<InterfaceLoading />}><UserAccessWindow /></Suspense>}
+      {settingsOpen && <Suspense fallback={<InterfaceLoading />}><EditorSettings /></Suspense>}
+      {helpOpen && <Suspense fallback={<InterfaceLoading />}><EditorHelp /></Suspense>}
+      {aiOpen && aiMode === "create" && <Suspense fallback={<InterfaceLoading />}><AiAssistant /></Suspense>}
     </>
   );
 }

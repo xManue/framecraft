@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, ImagePlus, LoaderCircle, Sparkles } from "lucide
 import { useEffect, useRef, useState } from "react";
 import { interviewConfig, interviewContext, interviewStepIssues, interviewSteps, newGuidedPage, parseInterviewAlarms, parseInterviewTags } from "../ai/aiInterview";
 import { guidedItemLimit, guidedPageKinds, guidedProjectPending, type GuidedPage } from "../core/guidedProject";
-import { standardProjectSectionChoices } from "../core/standardProject";
+import { standardProjectSectionChoices } from "../core/standardProjectChoices";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorAi } from "../state/editorAi";
 import { useEditorStore } from "../state/editorStore";

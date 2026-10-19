@@ -3,7 +3,7 @@ import type { AiInterview } from "../ai/aiInterview";
 import { delegatedQuestions } from "../ai/aiDelegation";
 import { panelRequirementGroups } from "../core/panelRequirements";
 import { guidedPageKinds } from "../core/guidedProject";
-import { standardProjectSectionChoices } from "../core/standardProject";
+import { standardProjectSectionChoices } from "../core/standardProjectChoices";
 
 export function AiQuestion({ label, delegated, pending, onToggle, children }: { label: string; delegated: boolean; pending?: boolean; onToggle(): void; children: ReactNode }) {
   return <div className="ai-question" data-delegated={delegated}>

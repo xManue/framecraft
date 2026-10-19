@@ -1,5 +1,6 @@
 import type { EditorDocument, EditorNode, RenderedInfo } from "../core/types";
-import { standardProjectSectionChoices, type StandardProjectConfig } from "../core/standardProject";
+import { standardProjectSectionChoices } from "../core/standardProjectChoices";
+import type { StandardProjectConfig } from "../core/standardProject";
 import { settingsProgramChoices } from "../core/hmiSectionMenu";
 import { parseSource } from "../source-parser/parseSource";
 import { updateInlineStyles, updateStaticAttributes, updateStaticText } from "../source-parser/transformSource";

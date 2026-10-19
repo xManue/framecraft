@@ -1,6 +1,6 @@
 import type { AiInterview } from "./aiInterview";
 import { guidedPageKinds, guidedItemLimit, type GuidedPage } from "../core/guidedProject";
-import { standardProjectSectionChoices } from "../core/standardProject";
+import { standardProjectSectionChoices } from "../core/standardProjectChoices";
 import { panelRequirementGroups, requirementGroupEnabled, requirementQuestionActive } from "../core/panelRequirements";
 import { panelHeaderFields } from "../core/panelHeader";
 

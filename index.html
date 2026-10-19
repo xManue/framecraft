@@ -6,10 +6,31 @@
     <meta name="theme-color" content="#111318" />
     <link rel="icon" type="image/svg+xml" href="/src-tauri/icons/icon.svg" />
     <title>Framecraft</title>
+    <style>
+      html, body { margin: 0; background: #0b0d11; color: #eef1f6; font-family: "Segoe UI", sans-serif; }
+      #framecraft-startup { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 16px; padding: 24px; box-sizing: border-box; text-align: center; }
+      #framecraft-startup h1, #framecraft-startup p { margin: 0; }
+      #framecraft-startup p { max-width: 500px; font-size: 16px; line-height: 1.5; color: #a8b0bf; }
+      .startup-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: #3d9be0; color: #fff; font-size: 28px; font-weight: 700; }
+      .startup-progress { width: 24px; height: 24px; border: 3px solid #333b4a; border-top-color: #6fbcf0; border-radius: 50%; animation: startup-spin 1s linear infinite; }
+      #framecraft-startup[data-failed] .startup-progress { display: none; }
+      @keyframes startup-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .startup-progress { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script>globalThis.process = { env: { NODE_ENV: "development", BABEL_TYPES_8_BREAKING: false } };</script>
+    <div id="root"><main id="framecraft-startup" role="status" aria-live="polite"><span class="startup-mark" aria-hidden="true">F</span><h1>Framecraft</h1><span class="startup-progress" aria-hidden="true"></span><p id="framecraft-startup-message">Avvio dell’editor…</p></main></div>
+    <script>
+      globalThis.process = { env: { NODE_ENV: "development", BABEL_TYPES_8_BREAKING: false } };
+      function framecraftStartupFailed() {
+        var startup = document.getElementById("framecraft-startup");
+        if (!startup) return;
+        startup.setAttribute("data-failed", ""); startup.setAttribute("role", "alert");
+        document.getElementById("framecraft-startup-message").textContent = "L’interfaccia non è stata caricata. Controlla l’errore nel terminale e riapri Framecraft quando è risolto. Progetti e bozze non sono stati eliminati.";
+      }
+      window.addEventListener("error", function (event) { if (event instanceof ErrorEvent || event.target instanceof HTMLScriptElement) framecraftStartupFailed(); }, true);
+      window.addEventListener("unhandledrejection", framecraftStartupFailed);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

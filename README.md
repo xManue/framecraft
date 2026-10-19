@@ -733,6 +733,13 @@ npm run dev
 
 `npm run dev` launches the native Tauri window. Do not open `localhost:1420` manually: it is only the internal development frontend used by the desktop host.
 
+The first HTML shows a dark startup status while the editor loads. Heavy editor dialogs and
+the new-panel procedure load only when opened; the home screen does not fetch the generated
+Runtime sources. Vite watches application sources but excludes this checkout's `.hmi-preview`
+temporary tree, without deleting previews, projects or drafts. Restart `npm run dev` after
+changing Vite configuration. A first development launch or changed Rust sources can still
+require compilation; browser startup measurements are not native WebView startup guarantees.
+
 To work on the web shell alone, without local filesystem access, use:
 
 ```bash
