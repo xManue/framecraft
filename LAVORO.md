@@ -5075,6 +5075,57 @@ Verifiche del 5 ottobre 2026:
   Restano wizard iniziale ricette, form operatore Runtime, identità applicativa, UDT/migrazioni,
   audit/DB industriali e apply/upload PLC. Obiettivo Unified/Optix/AI e gate produzione aperti.
 
+### 147. Catalogo ricette iniziale nel wizard AI e nel progetto generato (2026-10-19)
+
+- Progresso precedente `ae6cccb`: chat del progetto collegata alle ricette iniziali. La domanda
+  successiva sulla configurazione Windows è stata chiarita confrontando documentazione ufficiale
+  e profilo separato Framecraft; nessun provisioning autorizzato o eseguito. Ripresa la pipeline,
+  senza agenti, inferenza reale o modifiche al confinamento Codex.
+- Il passo dati di Nuovo pannello → Con AI accetta facoltativamente `framecraft.recipes.json`.
+  Parser scalare condiviso con editor e servizio: massimo 2 MB, identificativi/nomi unici,
+  tipi, limiti e tutti i valori obbligatori. Archivi operativi con revisioni/ricevute, campi
+  extra, versioni o valori non validi sono rifiutati; il catalogo già scelto resta intatto.
+- Separati selezione file, controllo e pulsante Usa questo catalogo. Prima del pulsante il file
+  non è incluso nel piano. Ogni schema espone campi, tipi, unità e limiti; la selezione della
+  ricetta consente di controllare tutti i valori senza riempire la pagina con centinaia di righe.
+  `0`, `false`, decimali negativi e stringa vuota rimangono distinguibili e non vengono convertiti.
+  Annullare mantiene la scelta precedente; rimuovere chiede conferma e cambia solo il questionario.
+  Letture terminate dopo chiusura o sostituzione del catalogo vengono ignorate.
+- Catalogo validato e nome del file conservati nella bozza locale recuperabile. Le bozze precedenti
+  senza ricette continuano a essere accettate. Consensi e operazioni macchina non vengono recuperati
+  implicitamente. La validazione blocca configurazione e generazione se il catalogo non è valido.
+- Il generatore copia il catalogo approvato nel file iniziale, senza reinterpretazione AI,
+  modifiche alle ricette in base ai requisiti testuali, creazione di un archivio operativo o
+  avvio di connessioni/servizi. Senza scelta resta il catalogo vuoto, non ricette dimostrative.
+  La prova del servizio distribuito usa adesso il file prodotto realmente dall’intervista.
+- All’AI di creazione arrivano solo conteggi di schemi/campi/ricette e limiti espliciti:
+  niente nomi, valori, filename, tag o percorsi. Cambiare soli valori locali aggiorna il piano
+  e la revisione senza altra richiesta quando il contesto rimane identico; nuovi conteggi o
+  dati non validi invalidano il piano. Prima della creazione l’utente rivede il catalogo locale.
+- Copia pubblica iniziale `.hmi-preview/public-check-4oZsku/`: **74 test mirati in cinque file**
+  (intervista, deleghe, recupero, ricette e servizio generato), tipi e build passati. Copia finale
+  `.hmi-preview/public-check-SRGxyH/`: ripetuto solo il file cambiato, **27 test** incluse due
+  regressioni nuove; nella copia finale `.hmi-preview/public-check-lhmXLa/` passata la sola
+  regressione sul blocco del ritorno alla modifica durante la creazione (una passata, 27
+  saltate), per **77 test unici**. Tipi/build e browser ricontrollati sul codice finale.
+  Dipendenze locali collegate, non installazione pulita;
+  dati macchina e lavori trend/profili non committati esclusi. Nessuna suite globale o test Rust
+  ripetuto: nessun codice nativo è cambiato.
+- Edge headless 375/768/1024/1440 px: importazione esplicita, valori leggibili, nessun overflow,
+  chiamata AI, scrittura nativa, richiesta esterna o errore console. Screenshot mobile/desktop
+  ispezionati; skill UI/UX applicata a wrapping, target da 44 px, focus e testo mobile da 16 px,
+  senza introdurre temi, font o asset esterni. Non è un collaudo IPC Tauri, touch fisico o PLC.
+- Riferimento funzionale Optix letto:
+  https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes/recipex-schemas.html.
+  Il catalogo Framecraft non implementa TargetNode/Item/DataItem, un formato vendor o una licenza
+  Runtime vendor. Nessuna dipendenza/licenza nuova e nessun asset/documento vendor distribuito.
+- Restano creazione diretta degli schemi nel wizard, adattatori CSV/vendor/DB, form operatore
+  Runtime e collegamento alla pagina Ricette, identità/autorizzazione server, confronto e
+  trasferimento/handshake PLC, UDT/migrazioni, audit e collaudo industriale. La pagina guidata
+  Ricette resta esplicitamente struttura. Il percorso reale Codex richiede ancora preflight
+  Windows pronto/autorizzato; l’eseguibile dell’app non è stato sostituito o riavviato.
+  Roadmap aggiornate senza dichiarare la parità Unified/Optix o la pipeline completa raggiunte.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

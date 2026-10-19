@@ -24,6 +24,7 @@ import { parseGuidedDataLogs } from "../core/guidedDataLogs";
 import { GuidedDataLogsReview } from "./GuidedDataLogs";
 import { parseGuidedResources } from "../core/guidedTexts";
 import { GuidedPageTextFields, GuidedTextsReview } from "./GuidedTexts";
+import { GuidedRecipesInput, GuidedRecipesReview } from "./GuidedRecipes";
 
 export function AiProjectInterview() {
   const ai = useEditorAi(), interview = ai.interview, spec = interview.spec;
@@ -131,6 +132,7 @@ export function AiProjectInterview() {
         <GuidedDataLogsReview catalog={spec.dataLogs} file={spec.dataLogsFile} onRemove={() => updateSpec({ dataLogs: undefined, dataLogsFile: undefined })} />
       </div>}
       {step === "header" && <PanelHeaderFields config={spec.header} tags={spec.tagsMode === "import" ? spec.tags : []} onChange={header => updateSpec({ header })} question={question} />}
+      {step === "data" && <GuidedRecipesInput catalog={spec.recipes} file={spec.recipesFile} onChange={(recipes, recipesFile) => updateSpec({ recipes, recipesFile })} onBusyChange={setFileBusy} />}
       {step === "data" && <div className="ai-import">
         <label>Hai già i testi tradotti? Importa framecraft.resources.json (facoltativo)<input type="file" accept=".json" onChange={event => { void importFile(event.target.files?.[0], "resources"); event.target.value = ""; }} /></label>
         <p>Catalogo Framecraft, massimo 2 MB. Nessuna chiave è associata automaticamente: le sceglierai nei contenuti delle pagine. Senza catalogo restano i testi originali, anche scegliendo un’altra lingua.</p>
@@ -172,6 +174,7 @@ export function AiProjectInterview() {
         <h4>{interview.machineName} · {spec.pages.length} pagine · {interview.layout === "desktop-mobile" ? "Desktop e mobile" : "Desktop"}</h4>
         <ol>{spec.pages.map(page => <li key={page.id}><strong>{page.title}</strong> · {guidedPageKinds.find(kind => kind.id === page.kind)?.label} · {page.section}{page.image ? ` · immagine: ${page.image.split(/[\\/]/).at(-1)}` : ""}</li>)}</ol>
         <p>{spec.tags.length} tag importati localmente · {spec.alarms?.alarms.length ?? 0} allarmi. Nessun indirizzo o soglia inventato.</p>
+        {!ai.resolvedInterview && <GuidedRecipesReview catalog={spec.recipes} file={spec.recipesFile} disabled={busy} onEdit={() => go("data")} />}
         {!ai.resolvedInterview && <GuidedReadBindingsReview spec={spec} onEdit={go} disabled={busy} />}
         {!ai.resolvedInterview && <GuidedDataLogsReview catalog={spec.dataLogs} file={spec.dataLogsFile} />}
         {!ai.resolvedInterview && <GuidedTextsReview spec={spec} onEdit={goText} disabled={busy} />}
@@ -190,10 +193,11 @@ export function AiProjectInterview() {
     {step === "review" && ai.proposal && <section className="ai-proposal" aria-label="Revisione proposta"><h3>Controlla il piano prima di creare</h3><p>{ai.proposal.summary}</p>
       <AiDelegationReview interview={interview} decisions={ai.proposal.decisions} />
       <PanelHeaderReview config={ai.resolvedInterview?.spec.header ?? spec.header} />
+      {ai.resolvedInterview && <GuidedRecipesReview catalog={ai.resolvedInterview.spec.recipes} file={spec.recipesFile} disabled={busy} onEdit={() => go("data")} />}
       {ai.resolvedInterview && <GuidedDataLogsReview catalog={ai.resolvedInterview.spec.dataLogs} file={spec.dataLogsFile} />}
       {ai.resolvedInterview && <GuidedTextsReview spec={ai.resolvedInterview.spec} onEdit={goText} disabled={busy} />}
       {ai.resolvedInterview && <GuidedReadBindingsReview spec={ai.resolvedInterview.spec} onEdit={id => go(spec.pages.some(page => page.id === id) ? id : "pages")} disabled={busy} />}
-      {ai.proposalUpdatedLocally && <p className="ai-hint" role="status">Aggiornati solo i dati locali: il contesto e il piano AI non sono cambiati. Non è stata inviata un’altra richiesta. Controlla i nuovi collegamenti e immagini prima di approvare.</p>}
+      {ai.proposalUpdatedLocally && <p className="ai-hint" role="status">Aggiornati solo i dati locali: il contesto e il piano AI non sono cambiati. Non è stata inviata un’altra richiesta. Controlla i nuovi collegamenti, immagini e ricette iniziali prima di approvare.</p>}
       {ai.resolvedInterview && delegatedQuestions(interview).length > 0 && <><h4>{ai.resolvedInterview.machineName} · {ai.resolvedInterview.spec.pages.length} pagine · {ai.resolvedInterview.layout === "desktop-mobile" ? "Desktop e mobile" : "Desktop"}</h4><p>{ai.resolvedInterview.spec.purpose}</p><ol>{ai.resolvedInterview.spec.pages.map(page => <li key={page.id}><strong>{page.title}</strong> · {guidedPageKinds.find(kind => kind.id === page.kind)?.label} · {standardProjectSectionChoices.find(section => section.id === page.section)?.label}</li>)}</ol>{ai.resolvedInterview.spec.requirements && <PanelRequirementsReview requirements={ai.resolvedInterview.spec.requirements} pages={ai.resolvedInterview.spec.pages} onEdit={go} />}<details><summary>Parti da completare dopo le scelte AI</summary><ul>{guidedProjectPending(ai.resolvedInterview.spec).map((pending, index) => <li key={index}>{pending}</li>)}</ul></details></>}
       {ai.proposal.warnings.length > 0 && <ul>{ai.proposal.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
       {ai.proposal.questions.length > 0 ? <><p>Servono ancora queste informazioni. Puoi rispondere oppure lasciare la scelta all’AI.</p><button type="button" disabled={busy} onClick={() => update({ followups: [...interview.followups, ...ai.proposal!.questions.map(question => ({ question, answer: "" }))] })}>Rispondi alle domande aggiuntive</button></> : <button type="button" className="button primary" disabled={busy || !!issues.length} onClick={() => void approve()}><Sparkles size={16} />Approva, scegli cartella e crea {ai.resolvedInterview?.spec.pages.length ?? spec.pages.length} pagine</button>}

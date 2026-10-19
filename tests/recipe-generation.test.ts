@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from "node:fs/
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { standardProjectFiles } from "../src/core/standardProject";
+import { interviewConfig, newAiInterview, newGuidedPage } from "../src/ai/aiInterview";
 import { openRecipeStore } from "../runtime/recipe-store.mjs";
 import type { RecipeCatalog } from "../runtime/recipe-catalog.mjs";
 const token = "recipe_generated_test_token_01234567890123456789", origin = "http://127.0.0.1:4173", marker = "SYNTHETIC_PRIVATE_RECIPE_VALUE";
@@ -10,14 +11,16 @@ const catalog: RecipeCatalog = { version: 1, schemas: [{ id: "s1", name: "Schema
 async function generated(mode: "valid" | "invalid" | "corrupt") {
   const base = path.resolve(".hmi-preview"); await mkdir(base, { recursive: true }); const root = await mkdtemp(path.join(base, "recipe-generated-"));
   if (path.dirname(await realpath(root)) !== await realpath(base)) throw new Error("Fixture fuori directory");
-  const files = standardProjectFiles({ machineName: "Ricette sintetiche", layout: "desktop", sections: ["main"] });
+  const interview = newAiInterview(); interview.machineName = "Ricette sintetiche"; interview.spec.purpose = "Catalogo iniziale approvato";
+  interview.spec.pages = [{ ...newGuidedPage(0), title: "Ricette", kind: "recipes", section: "formats", imageNeed: "none" }]; interview.spec.recipes = catalog;
+  const files = standardProjectFiles(interviewConfig(interview));
   for (const file of files.filter(file => file.path.startsWith("runtime/") || ["framecraft.connections.json", "framecraft.plc.json", "framecraft.alarms.json", "framecraft.recipes.json"].includes(file.path))) {
     const target = path.resolve(root, file.path); if (path.relative(root, target).startsWith("..")) throw new Error("File fixture esterno");
     await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, file.content);
   }
   await symlink(path.resolve("node_modules"), path.join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
   await writeFile(path.join(root, "framecraft.connections.json"), JSON.stringify({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "FRAMECRAFT_RECIPE_TEST_TOKEN", allowedOrigins: [origin], allowWrites: false }, connections: [] }));
-  await writeFile(path.join(root, "framecraft.recipes.json"), JSON.stringify(mode === "invalid" ? { ...catalog, version: 99 } : catalog));
+  if (mode === "invalid") await writeFile(path.join(root, "framecraft.recipes.json"), JSON.stringify({ ...catalog, version: 99 }));
   if (mode === "corrupt") { await mkdir(path.join(root, ".framecraft-runtime")); await openRecipeStore({ directory: path.join(root, ".framecraft-runtime/recipes"), catalog }); await writeFile(path.join(root, ".framecraft-runtime/recipes/recipes.json"), "PRIVATE_BROKEN_STORE"); }
   let output = "", errors = ""; const child: ChildProcess = spawn(process.execPath, [path.join(root, "runtime/start-gateway.mjs"), "--json"], { cwd: root, windowsHide: true, env: { ...process.env, FRAMECRAFT_RECIPE_TEST_TOKEN: token }, stdio: ["pipe", "pipe", "pipe"] });
   child.stdout!.on("data", chunk => { output += String(chunk); }); child.stderr!.on("data", chunk => { errors += String(chunk); });

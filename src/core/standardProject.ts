@@ -2,6 +2,7 @@ import { standardPageSource, standardPageTemplates, planPageNumber, type Standar
 import { guidedAlarmCatalog, guidedDataLogCatalog, guidedPageSource, guidedProjectIssues, guidedProjectPending, guidedResourceCatalog, type GuidedPage, type GuidedProjectSpec } from "./guidedProject";
 import { guidedTemplateBehaviors } from "./templateBehavior";
 import { newPanelHeader } from "./panelHeader";
+import { emptyRecipeCatalog, parseRecipeCatalog } from "./recipeConfiguration";
 import panelHeaderSource from "./panelHeader.ts?raw";
 import panelHeaderUiSource from "../../templates/panel-header.tsx?raw";
 import panelViteConfigSource from "../../templates/panel-vite.config.ts?raw";
@@ -1795,7 +1796,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/recipe-catalog.d.mts", content: recipeCatalogTypes },
     { path: "runtime/recipe-store.mjs", content: recipeStoreSource },
     { path: "runtime/recipe-store.d.mts", content: recipeStoreTypes },
-    { path: "framecraft.recipes.json", content: JSON.stringify({ version: 1, schemas: [] }, null, 2) + "\n" },
+    { path: "framecraft.recipes.json", content: JSON.stringify(config.guided?.recipes !== undefined ? parseRecipeCatalog(config.guided.recipes) : emptyRecipeCatalog(), null, 2) + "\n" },
     { path: "runtime/alarm-labels.mjs", content: alarmLabelSource },
     { path: "runtime/alarm-labels.d.mts", content: alarmLabelTypes },
     { path: "runtime/alarm-engine.mjs", content: alarmEngineSource },

@@ -42,12 +42,14 @@ applicati dal generatore; gli altri campi restano requisiti espliciti nel proget
 configurazioni dichiarate pronte. Dal punto 144 esiste un servizio dati ricette persistente
 tipizzato con API protette; il punto 145 aggiunge l’editor manuale della configurazione iniziale
 e il 146 la modifica del catalogo iniziale via chat con confronto/backup e contesto su richiesta.
-Restano il collegamento al wizard di creazione e i form operatore Runtime. La prova reale Codex
-resta subordinata all’isolamento Windows autorizzato; le verifiche del 146 usano provider sintetici.
+Il punto 147 collega l’importazione del catalogo iniziale Framecraft al wizard, recupero e
+generatore, con revisione locale esplicita e soli conteggi inviati all’AI. Restano creazione
+diretta degli schemi nel wizard, form operatore Runtime e adattatori CSV/vendor/DB. La prova
+reale Codex resta subordinata all’isolamento Windows autorizzato; queste verifiche usano provider sintetici.
 Le pagine di
 ricette, produzione, manutenzione e report hanno strutture
-di pagina chiaramente incomplete. PDF/documenti e file ricette non sono importati/interpretati
-dalle nuove domande; ne viene raccolta la disponibilità. Dettagli testuali tecnici soltanto
+di pagina chiaramente incomplete. PDF/documenti e ricette non Framecraft non sono interpretati
+dalle domande; ne viene raccolta la disponibilità. Dettagli testuali tecnici soltanto
 locali, all’AI arrivano opzioni validate e presenza dei dettagli. Nessun segreto richiesto.
 
 Ogni template standard e ogni base guidata ora dichiara una scheda di funzionamento versionata:
@@ -292,7 +294,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-PLAN-02 | Scelta motivata di template e famiglie pagina | PARZIALE | Famiglie scelte dall’utente con funzionamento noto nel contesto AI; scelta automatica motivata tra tutti i template da implementare |
 | AI-PLAN-03 | Piano pagine, navigazione e popup | PARZIALE | Pagine/categorie esplicite e pagina iniziale applicata; popup e oggetti ripetuti raccolti come requisiti da configurare |
 | AI-PLAN-04 | Piano binding e interazioni | PARZIALE | Letture, scritture singole e destinazioni pagina con evento, permessi e conferma espliciti; matrice operativa completa ancora da fare |
-| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, trend temporali e X/Y con sorgenti online o Data Log reali importati e approvati, requisiti ricette/archivio industriale; generazione operativa completa da implementare |
+| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, trend temporali e X/Y con sorgenti online o Data Log reali importati e approvati, catalogo ricette iniziale Framecraft importato (147); form ricette e archivio industriale da completare |
 | AI-PLAN-06 | Piano utenti e sicurezza | PARZIALE | Requisiti mirati su identità, ruoli, sessione e audit; implementazione server e matrice da approvare separatamente |
 | AI-PLAN-07 | Stima compatibilità target e licenze | DA FARE | Limiti funzionali Framecraft, licenze dipendenze/provider e diritti degli asset verificati prima di creare file; destinazione React autonoma OPC UA/MQTT, non licenze dei Runtime vendor |
 | AI-PLAN-08 | Revisione e approvazione del piano | DA FARE | L'utente può correggere singole decisioni o procedere manualmente |
@@ -306,7 +308,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-GEN-03 | Posizionamento di grafica macchina, hotspot e targhette | PARZIALE | Immagini e identificativi reali, niente macchina fittizia |
 | AI-GEN-04 | Binding tag e dinamizzazioni | PARZIALE | Mapping approvato, tipi compatibili e dipendenze verificabili |
 | AI-GEN-05 | Eventi, script e navigazione | PARZIALE | Scritture singole e cambio pagina del piano con conferma, stessa IR/Runtime dell’editor e gate di interazione; altri script/azioni/handshake ancora da fare |
-| AI-GEN-06 | Allarmi, trend, ricette e report | PARZIALE | Catalogo allarmi, trend temporali e X/Y reali, mapping tipizzati e Data Log locali importati; collector/query effettivi ma archivio industriale continuo ancora da fare. Ricette/report solo strutture esplicitamente incomplete e requisiti, non funzioni operative |
+| AI-GEN-06 | Allarmi, trend, ricette e report | PARZIALE | Catalogo allarmi, trend temporali e X/Y reali, mapping tipizzati, Data Log e catalogo ricette iniziale Framecraft importati; collector/query effettivi ma archivio industriale continuo ancora da fare. Pagine ricette/report ancora strutture, non form operatore o trasferimenti PLC |
 | AI-GEN-07 | Testi e traduzioni | PARZIALE | Lingua Runtime, catalogo locale importato, chiavi esplicite per titoli/menu/testi statici supportati e revisione di originali/ripieghi; restano controlli, allarmi, nomi curve e copertura completa |
 | AI-GEN-08 | Utenti, ruoli e autorizzazioni | PARZIALE | Proposta separata ad alta attenzione e matrice revisionabile |
 | AI-GEN-09 | Validazione e test del progetto generato | PARZIALE | Report completo prima di dichiarare pronta la prima versione |

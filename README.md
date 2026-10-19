@@ -282,7 +282,7 @@ Browser layout checks are not physical-device or live-PLC commissioning.
 
 ## Recipe data service
 
-Generated panels include an empty `framecraft.recipes.json` and a Node recipe store with typed
+Generated panels include `framecraft.recipes.json` (empty unless explicitly supplied) and a Node recipe store with typed
 schemas, create/update/copy/rename/delete, persistent operation receipts and content-revision
 conflict checks. No sample machine values, automatic schema migrations or PLC writes are added.
 Gateway recipe operations require a separate server-side identity/authorization callback; the
@@ -299,9 +299,19 @@ comparison, explicit approval and the existing project backup. Applying or resto
 change is blocked if an operational archive is present. This is not live recipe editing:
 the real Codex/Windows isolation preflight remains required and has not been bypassed.
 This is not a finished Runtime operator editor. Guided recipe pages remain structures;
-Runtime forms, initial creation-wizard wiring, controller comparison/apply handshake, vendor
+Runtime forms, controller comparison/apply handshake, vendor
 CSV/TSV compatibility, industrial database/backup and regulated audit still need implementation
 or commissioning. File persistence and passing loopback tests do not establish production readiness.
+
+In **Nuovo pannello → Con AI**, the data step optionally imports an initial Framecraft v1 recipe
+catalog. Review fields, types, limits and each recipe's values, then select **Usa questo catalogo**.
+Only that explicit selection becomes part of the questionnaire, recovery draft and generated
+project; invalid imports leave previous answers intact. Zero, false and empty text stay typed.
+Only aggregate counts reach the creation AI, not recipe names, fields, values or filenames.
+Changing local values can refresh an existing plan without another model call when its context
+is unchanged; inspect the updated local review before approving creation. No operational archive,
+service identity or controller mapping is imported. CSV/vendor/DB adapters and creating a recipe
+catalog directly inside the wizard are still pending; the manual editor remains available after creation.
 
 ## Guided AI project creation
 

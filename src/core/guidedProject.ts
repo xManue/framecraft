@@ -13,6 +13,7 @@ import { parseGuidedDataLogs, guidedTrendSource, type GuidedLogBinding } from ".
 import { emptyHmiDataLogCatalog, type HmiDataLogCatalog } from "./hmiDataLogs";
 import { guidedPageTextIssues, parseGuidedResources, guidedResourceCatalog } from "./guidedTexts";
 import type { HmiResourceCatalog } from "./hmiResources";
+import { parseRecipeCatalog, type RecipeCatalog } from "./recipeConfiguration";
 export { guidedResourceCatalog };
 
 export const guidedPageKinds = [
@@ -44,6 +45,7 @@ export interface GuidedProjectSpec {
   alarmsMode: "import" | "later"; alarms?: AlarmCatalog; alarmsFile?: string;
   dataLogs?: HmiDataLogCatalog; dataLogsFile?: string;
   resources?: HmiResourceCatalog; resourcesFile?: string;
+  recipes?: RecipeCatalog; recipesFile?: string;
   protocol: "later" | "mqtt" | "opcua" | "simulation"; language: "it" | "en";
   users: "everyone" | "roles-later" | "later";
   requirements?: PanelRequirements;
@@ -59,6 +61,7 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
   if (!Array.isArray(spec.tags) || spec.tags.length > 5000 || spec.tags.some(tag => !isPlcVariableName(tag.name) || !tag.dataType.trim() || !["read", "write", "read-write"].includes(tag.access)) || new Set(spec.tags.map(tag => tag.name)).size !== spec.tags.length) issues.push("Il catalogo tag contiene nomi duplicati, tipi mancanti o tag non validi.");
   if (spec.tagsMode === "import" && !spec.tags.length) issues.push("Inserisci la lista tag oppure scegli di collegarla più tardi.");
   if (spec.dataLogs) try { parseGuidedDataLogs(spec.dataLogs, spec.tagsMode === "import" ? spec.tags : []); } catch (error) { issues.push(error instanceof Error ? error.message : String(error)); }
+  if (spec.recipes !== undefined) try { parseRecipeCatalog(spec.recipes); } catch { issues.push("Ricette iniziali: controlla schema, tipi e valori. Nessun catalogo non valido viene generato."); }
   let resources: HmiResourceCatalog | undefined;
   if (spec.resources !== undefined) try { resources = parseGuidedResources(spec.resources); } catch (error) { issues.push(error instanceof Error ? error.message : String(error)); }
   if (new Set(spec.pages.map(page => page.id)).size !== spec.pages.length) issues.push("Le pagine hanno identificativi duplicati.");
@@ -113,6 +116,7 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
   if (spec.language === "en") pending.push("Lingua Runtime inglese impostata; testi senza dizionario, nomi curve, messaggi allarmi e controlli di sistema mantengono i testi originali. La traduzione completa dell’HMI resta da verificare, non è inventata dall’AI.");
   if (spec.resources) pending.push("Catalogo multilingua conservato localmente. Le grafiche eventualmente riferite nelle liste non vengono importate come immagini e vanno verificate; nessuna traduzione automatica o modifica degli identificativi PLC.");
   if (spec.dataLogs?.logs.length) pending.push("Data Log importati: configurazioni, non campioni precedenti. Acquisizione solo mentre il pannello è aperto; memoria/browser locali, non archivio industriale centralizzato. Quote, cancellazione, conservazione e backup da collaudare.");
+  if (spec.recipes?.schemas.length) pending.push("Ricette iniziali conservate in framecraft.recipes.json: schemi e valori approvati, non un archivio operativo importato. Form operatore, identità e permessi server, collegamenti e conferma PLC restano da completare; generare non avvia servizi o scritture.");
   const missingHeader = panelHeaderFields.filter(field => !spec.header?.tags[field.id]).map(field => field.label);
   if (missingHeader.length) pending.push(`Barra superiore: ${missingHeader.join(", ")} da collegare; nessun valore macchina inventato.`);
   if (spec.header?.tags.speed && (!spec.header.speedMin || !spec.header.speedMax)) pending.push("Barra superiore: limiti reali della velocità da configurare, nessuna scala presunta.");

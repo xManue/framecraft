@@ -64,7 +64,7 @@ export const panelRequirementGroups: readonly PanelRequirementGroup[] = [
   ] },
   { id: "recipes", label: "Ricette e formati", optional: true, pageKinds: ["recipes"], hint: "Requisito raccolto, non ricette operative generate. Servono schema, valori reali, validazione e conferma applicativa PLC.", questions: [
     detail("fields", "Quali parametri compongono una ricetta?", "Per ogni parametro: tipo, unità, limiti, tag e valore iniziale reale; nessun valore inventato."),
-    choice("source", "Da dove arrivano le ricette?", [["new", "Da inserire nell’editor"], ["csv", "File CSV disponibile"], ["json", "File JSON disponibile"], ["db", "Database esterno"]], "La procedura registra la disponibilità, non importa né interpreta questi file."),
+    choice("source", "Da dove arrivano le ricette?", [["new", "Da inserire nell’editor"], ["csv", "File CSV disponibile"], ["json", "File JSON disponibile"], ["db", "Database esterno"]], "Importa il catalogo Framecraft JSON nel passo dei dati. Questa risposta registra il requisito: non importa altri formati né cambia schemi e valori già scelti."),
     choice("edit", "L’operatore può creare o modificare ricette?", [["view", "Solo vedere/selezionare"], ["edit", "Modificare con permesso"]]),
     choice("apply", "Quando si possono inviare i parametri al PLC?", [["idle", "Solo a macchina ferma"], ["approved", "Dopo conferma operatore e consensi PLC"]]),
     detail("handshake", "Come il PLC conferma che la ricetta è stata applicata?", "Indica ID/versione e segnali di conferma o errore: una ricevuta di scrittura non basta."),
