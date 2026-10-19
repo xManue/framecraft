@@ -4915,6 +4915,61 @@ Verifiche del 5 ottobre 2026:
   e reale, UAC/IT, enforcement filesystem, nuova build desktop in uso e prova modifica AI
   end-to-end. Obiettivo completo Unified/Optix/AI e gate di produzione ancora aperti.
 
+### 144. Servizio dati ricette persistente nel pannello esportato (2026-10-19)
+
+- Ripresa dal punto 143: il turno precedente ha prodotto evidenza nuova sul blocco AI.
+  CLI locale 0.163.0 e profilo confinato verificati, readiness Windows `updateRequired`;
+  spiegati all’utente gli effetti del setup. Nessuna autorizzazione umana al provisioning:
+  niente setup, UAC, richieste AI reali, agenti, riavvio o sostituzione dell’app in uso.
+- Revisione del codice e dei riferimenti Unified/Optix: le pagine ricette erano strutture,
+  non un motore di parameter set. Corrette le roadmap: controllo Runtime, apply/upload PLC,
+  confronto controller e schema object-aware non sono già implementati. Iniziato il servizio
+  dati reale, senza presentare un archivio scalare come parità completa o prodotto collaudato.
+- Catalogo Framecraft v1 rigoroso: schemi/campi/ricette con ID e nomi unici, booleani, interi
+  sicuri, numeri finiti e testi; limiti espliciti e validazione di tutti i valori. Nessuna
+  conversione, campo predefinito, indirizzo PLC o ricetta dimostrativa inventata. Nessun UDT
+  o mapping automatico ai tipi macchina; catalogo vuoto nel nuovo pannello standard.
+- Archivio su filesystem locale, CRUD/copia/rinomina, revisione SHA-256 del contenuto,
+  lock esclusivo senza retry e ultime 256 ricevute persistenti vincolate a comando e soggetto.
+  Marker e schema hash impediscono reinizializzazioni silenziose dopo perdita dei file o
+  cambio configurazione. Temporaneo esclusivo e flush prima della pubblicazione; esito
+  incerto dopo un errore di pubblicazione. Junction/symlink/hard link rifiutati; lock residui
+  conservati, mai dichiarati abbandonati per età o presenza di un PID. Le ACL del servizio,
+  backup coerente e recovery verificata restano requisiti di deployment, non garanzie implicite.
+- API HTTP reale sotto `/recipes`, protetta dal token/origine del gateway e da autorizzazione
+  applicativa separata per lettura e ogni azione. Soggetto restituito solo dal callback server;
+  niente privilegi/actor nel JSON, token di trasporto o PIN browser usati come identità.
+  Il launcher standard non simula un identity provider: nega le operazioni finché manca
+  l’integrazione applicativa. Guardia su arresto/disconnessione dopo l’autorizzazione;
+  le mutazioni già accettate sono attese durante lo stop. Diagnostica con codice e rimedio,
+  senza valori, segreti, percorsi o errori grezzi. Nessuna ricetta esposta nello snapshot PLC.
+- Il generatore distribuisce catalogo vuoto, parser/store JS e dichiarazioni TypeScript.
+  Avvio del servizio realmente esportato provato in sottoprocessi propri con dati sintetici:
+  persistenza presente, accesso negato senza autorizzazione, catalogo/archivio corrotti isolati
+  senza fermare il monitoraggio PLC o cancellare i dati. Ogni esito distingue salvataggio da
+  effetto macchina (`recipe-storage-only`, `plcConfirmed: false`); nessuna chiamata MQTT/OPC UA
+  dal servizio ricette. I test HTTP usano loopback; non costituiscono collaudo su un impianto.
+- Copia pubblica isolata `.hmi-preview/public-check-wriXNU/`: senza export standard, foto o
+  lavori trend/profili preesistenti; dipendenze locali collegate, non installazione pulita.
+  **42 test ricette/contratti** e **11 test gateway** passati. Aggiunta e verificata separatamente
+  una regressione su marker mancante e cartella non vuota. Coperti concorrenza tra istanze,
+  CAS, idempotenza dopo riapertura, guasti prima/dopo rename, corruzione, alias filesystem,
+  valori Unicode oltre 128 KiB, permessi e stop con salvataggio già accettato. Tipi e build
+  Vite passati nella copia pubblica, con avvisi già noti sugli import statici/dinamici.
+  Due precedenti deadline di avvio dei test in parallelo non si sono riprodotte nelle suite
+  eseguite separatamente; nessuna soglia ampliata o asserzione rimossa. Causa non accertata.
+- Nessuna UI ricette nuova: wizard/AI e form Runtime sono il prossimo collegamento da fare,
+  non pronti. Restano identità applicativa effettiva, database/backup industriale, migrazioni,
+  UDT/array, import/export vendor, audit regolamentato e handshake PLC. Le ricevute tecniche
+  non sono un audit immutabile né Undo. Skill di progettazione/revisione/documentazione usate
+  per esplicitare questi confini. Nessuna nuova dipendenza, codice/asset vendor o licenza;
+  gate di produzione e obiettivo generale Unified/Optix/AI ancora aperti.
+- Fonti ufficiali lette: parameter set Unified V21
+  https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-rt-unified/controlling-with-parameter-sets-rt-unified,
+  ricette Optix correnti
+  https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes.html,
+  flush Node 24 https://nodejs.org/docs/latest-v24.x/api/fs.html#filehandlesync.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

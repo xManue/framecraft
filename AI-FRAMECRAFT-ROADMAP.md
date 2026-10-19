@@ -39,7 +39,9 @@ report/documenti/integrazioni e pubblicazione/backup/collaudo. I dettagli facolt
 soltanto per funzioni richieste o pagine dedicate; ogni scelta può essere rimandata. Il riepilogo
 permette di correggere ogni area senza perdere risposte. Pagina iniziale e tempi dei trend sono
 applicati dal generatore; gli altri campi restano requisiti espliciti nel progetto, non
-configurazioni dichiarate pronte. Ricette, produzione, manutenzione e report hanno strutture
+configurazioni dichiarate pronte. Dal punto 144 esiste un servizio dati ricette persistente
+tipizzato con API protette, non ancora cablato a wizard/AI o editor Runtime. Le pagine di
+ricette, produzione, manutenzione e report hanno strutture
 di pagina chiaramente incomplete. PDF/documenti e file ricette non sono importati/interpretati
 dalle nuove domande; ne viene raccolta la disponibilità. Dettagli testuali tecnici soltanto
 locali, all’AI arrivano opzioni validate e presenza dei dettagli. Nessun segreto richiesto.

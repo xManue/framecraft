@@ -5,10 +5,11 @@ import { createOpcUaPlcConnection } from "./opcua-driver.mjs";
 import { validateConnectionCatalog } from "./connection-config.mjs";
 import { createAlarmEngine } from "./alarm-engine.mjs";
 import { ConnectionOperationError, connectionDiagnostic, createDiagnosticReporter, diagnosticText, safeNotify } from "./connection-diagnostics.mjs";
+import { RecipeStoreError, parseRecipeCommand, recipeActor } from "./recipe-catalog.mjs";
 
 const api = "/_framecraft/plc/v1";
 function failure(status, code = "GATEWAY_REQUEST") { return Object.assign(new ConnectionOperationError(connectionDiagnostic(code, { protocol: "gateway" })), { status }); }
-function body(request) {
+function body(request, maxBytes = 16_384) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
     const timeout = setTimeout(() => { cleanup(); request.resume(); reject(failure(408)); }, 5000);
@@ -17,7 +18,7 @@ function body(request) {
     const aborted = () => error();
     const data = (chunk) => {
       size += chunk.length;
-      if (size > 16_384) { cleanup(); request.resume(); reject(failure(413)); }
+      if (size > maxBytes) { cleanup(); request.resume(); reject(failure(413)); }
       else chunks.push(chunk);
     };
     const end = () => { cleanup(); try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch { reject(failure(400)); } };
@@ -34,7 +35,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
   try { token = (options.resolveSecret ?? ((name) => process.env[name]))(config.tokenEnv); } catch { throw new ConnectionOperationError(connectionDiagnostic("SECRET_MISSING", { protocol: "gateway" })); }
   if (typeof token !== "string" || !/^[A-Za-z0-9_\-+/=]{32,512}$/.test(token)) throw new ConnectionOperationError(connectionDiagnostic("SECRET_MISSING", { protocol: "gateway" }));
   const enabled = catalog.connections.filter((connection) => connection.enabled === true);
-  const owners = new Map(), states = new Map(), commands = new Map(), diagnostics = []; let stopping = false, port, active = 0, startTask, stopTask;
+  const owners = new Map(), states = new Map(), commands = new Map(), diagnostics = [], recipeTasks = new Set(); let stopping = false, port, active = 0, startTask, stopTask;
   const record = (event) => {
     const diagnostic = { ...event, id: randomUUID().replaceAll("-", "") };
     diagnostics.push(diagnostic); if (diagnostics.length > 100) diagnostics.shift();
@@ -80,6 +81,27 @@ export function createPlcGateway(catalog, variables, options = {}) {
       const actual = Buffer.from(typeof request.headers.authorization === "string" ? request.headers.authorization : ""); const expected = Buffer.from("Bearer " + token);
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw failure(401, "GATEWAY_AUTH");
       if (request.url === api + "/snapshot" && request.method === "GET") { respond(response, 200, snapshot()); return; }
+      if (request.url === api + "/recipes") {
+        if (!options.recipeStore) throw options.recipeUnavailable instanceof RecipeStoreError ? options.recipeUnavailable : new RecipeStoreError("RECIPE_STORAGE");
+        if (typeof options.authorizeRecipeAction !== "function") throw new RecipeStoreError("RECIPE_AUTH");
+        if (!["GET", "POST"].includes(request.method)) throw Object.assign(new RecipeStoreError("RECIPE_COMMAND"), { status: 405 });
+        if (active >= 32) throw failure(429, "GATEWAY_BUSY");
+        active++; accepted = true;
+        if (request.method === "POST" && (request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw Object.assign(new RecipeStoreError("RECIPE_COMMAND"), { status: 415 });
+        const command = request.method === "GET" ? { action: "read" } : parseRecipeCommand(await body(request, 524_288));
+        let actor, authorizationTimer;
+        try { actor = await Promise.race([options.authorizeRecipeAction(request, structuredClone(command)), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch { /* Never infer identity from gateway token or browser state. */ }
+        finally { clearTimeout(authorizationTimer); }
+        if (!recipeActor(actor) || actor === token || actor === "Bearer " + token) throw new RecipeStoreError("RECIPE_AUTH");
+        if (stopping || request.aborted || response.destroyed) throw new RecipeStoreError("RECIPE_STORAGE");
+        let task;
+        try {
+          task = request.method === "GET" ? Promise.resolve(options.recipeStore.snapshot()) : Promise.resolve(options.recipeStore.mutate(command, actor));
+          recipeTasks.add(task); respond(response, 200, await task);
+        } catch (error) { throw error instanceof RecipeStoreError ? error : new RecipeStoreError(request.method === "POST" ? "RECIPE_UNCERTAIN" : "RECIPE_STORAGE"); }
+        finally { if (task) recipeTasks.delete(task); }
+        return;
+      }
       if (request.url === api + "/alarm-action" && request.method === "POST") {
         if (!alarms || typeof options.authorizeAlarmAction !== "function") { respond(response, 403, { error: "Presa visione non abilitata: configura autenticazione e autorizzazioni nel servizio. Il PIN del browser non basta." }); return; }
         if ((request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw failure(415);
@@ -124,6 +146,11 @@ export function createPlcGateway(catalog, variables, options = {}) {
       }).finally(() => { entry.finished = true; });
       commands.set(command.id, entry); const result = await entry.result; respond(response, result.status, result.body);
     } catch (error) {
+      if (error instanceof RecipeStoreError) {
+        const diagnostic = { type: "recipe", code: error.code, error: error.message, remedy: error.remedy, ...(error.fieldId ? { fieldId: error.fieldId } : {}) };
+        safeNotify(options.onRecipeDiagnostic, diagnostic);
+        respond(response, error.status, { ...diagnostic, outcome: error.code === "RECIPE_UNCERTAIN" ? "uncertain" : "rejected", effect: "recipe-storage-only", plcConfirmed: false }); return;
+      }
       const diagnostic = report(error instanceof ConnectionOperationError ? error.diagnostic.code : "GATEWAY_REQUEST");
       respond(response, error.status ?? 500, { outcome: "rejected", error: diagnosticText(diagnostic), diagnostic });
     }
@@ -147,6 +174,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
       stopTask = (async () => {
         server.closeAllConnections();
         await Promise.allSettled(connections.map((driver) => driver.stop()));
+        await Promise.allSettled([...recipeTasks]);
         await startTask?.catch(() => {});
         const closed = server.listening ? new Promise((resolve) => server.close(resolve)) : Promise.resolve(); server.closeAllConnections();
         await closed; commands.clear();

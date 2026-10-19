@@ -280,6 +280,20 @@ Fit also reduces drawing controls: use natural size for larger operating targets
 This generator change does not overwrite or delete existing machine projects.
 Browser layout checks are not physical-device or live-PLC commissioning.
 
+## Recipe data service
+
+Generated panels include an empty `framecraft.recipes.json` and a Node recipe store with typed
+schemas, create/update/copy/rename/delete, persistent operation receipts and content-revision
+conflict checks. No sample machine values, automatic schema migrations or PLC writes are added.
+Gateway recipe operations require a separate server-side identity/authorization callback; the
+standard launcher deliberately denies access until that integration exists. A damaged recipe
+store does not stop unrelated PLC monitoring. See [runtime configuration and recovery](runtime/README.md#ricette-archivio-dati-server-non-trasferimento-plc).
+
+This is the data-service layer, not a finished recipe editor. Guided recipe pages remain
+structures; Runtime forms, AI/wizard wiring, controller comparison/apply handshake, vendor
+CSV/TSV compatibility, industrial database/backup and regulated audit still need implementation
+or commissioning. File persistence and passing loopback tests do not establish production readiness.
+
 ## Guided AI project creation
 
 Choose **Nuovo pannello → Con AI**. Framecraft asks for the machine/process, desktop/mobile,

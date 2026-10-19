@@ -125,7 +125,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-CTL-04 | Alarm indicator e alarm line | PARZIALE | Object model/eventi, proprietà complete, profili, timestamp di modifica/altri fusi e collaudo visivo/touch | Indicatori e righe 1–3 messaggi sul motore condiviso; filtri classe/zona/priorità/stato, contatori separati, qualità esplicita, dettaglio filtrato e route verificate, Inspector/undo, prova locale nella pagina e pipeline standard (LAVORO 107/109) |
 | WCU-CTL-05 | Trend control | PARZIALE | Stampa, profili utente, codici fuso vendor/object model completo e collaudo nativo/carico | Nove curve online/storiche in quattro aree, zoom rettangolare, sorgenti, qualità, assi/soglie, start/stop, righello e CSV; ponte cross-origin condiviso con lo standard (112); fusi IANA/UTC/device con offset/DST, media temporale a gradini e min/max per pixel, predecessore storico e CSV/righello originali (114) |
 | WCU-CTL-06 | Function trend control | PARZIALE | Stampa, profili utente, object model completo e limiti dei target Framecraft | Nove curve X/Y scalari/array online/storiche in quattro aree, sorgenti X/Y, zoom/pan, qualità, tolleranza timestamp, soglie, foreground, righello e intervallo; punto 112: prova cross-origin, CSV nel parent, stato/bozza conservati, listener unici e sorgenti di sessione corrette. Punto 138: nuova pagina guidata X/Y con due tag numerici scalari approvati per curva, revisione assi e modulo Runtime reale |
-| WCU-CTL-07 | Parameter set control | PARZIALE | Controllo generico e memoria ricette | Form generato dal tipo con validazione immediata |
+| WCU-CTL-07 | Parameter set control | DA FARE | Archivio server al punto 144, non ancora un controllo Runtime ricette | Form generato dal tipo con validazione immediata |
 | WCU-CTL-08 | Data grid/table control | PARZIALE | Binding, colonne, ordinamento e selezione | Colonne tipizzate e grandi dataset virtualizzati |
 | WCU-CTL-09 | Web control, HTML e PDF | PARZIALE | iframe reale, policy URL e toolbar | Diagnostica CSP/X-Frame e fallback chiaro |
 | WCU-CTL-10 | Custom web controls | PARZIALE | Manifest, proprietà, eventi e packaging | Componenti React installabili con sandbox e versioni |
@@ -151,12 +151,12 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | ID | Capacità WinCC Unified | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
 | WCU-PAR-01 | Tipi parameter set da tag o UDT | DA FARE | Definizione struttura e versioni | Generazione dal catalogo PLC con diff tipo |
-| WCU-PAR-02 | Creazione/modifica/eliminazione ricette | PARZIALE | Memoria generica di parameter set | Validazione campo per campo e undo |
-| WCU-PAR-03 | Trasferimento HMI-PLC | PARZIALE | Handshake, errori e trasferimento massivo | Anteprima delle differenze prima di scrivere |
+| WCU-PAR-02 | Creazione/modifica/eliminazione ricette | PARZIALE | Servizio scalare persistente, CRUD/copia/rinomina e revisione al punto 144; restano UI e autorizzazione applicativa effettiva | Validazione campo per campo e undo |
+| WCU-PAR-03 | Trasferimento HMI-PLC | DA FARE | Nessun trasferimento ricetta implementato: non basta la scrittura di singoli tag | Anteprima delle differenze prima di scrivere |
 | WCU-PAR-04 | Lettura ricetta dal PLC | DA FARE | Upload e salvataggio come nuovo set | Confronto live tra PLC, ricetta e modifiche operatore |
 | WCU-PAR-05 | Import/export TSV | DA FARE | Formato compatibile e gestione versioni | Import con mapping colonne e report errori |
 | WCU-PAR-06 | Array e strutture versionate | DA FARE | Migrazione UDT e valori | Migrazione assistita senza perdere campi |
-| WCU-PAR-07 | Maschere personalizzate | PARZIALE | Collegamento a un tipo parameter set reale | Form automatico ma completamente personalizzabile |
+| WCU-PAR-07 | Maschere personalizzate | DA FARE | Collegamento a un tipo parameter set reale; la pagina guidata è ancora struttura | Form automatico ma completamente personalizzabile |
 | WCU-PAR-08 | Audit delle operazioni ricetta | DA FARE | Trail e firme secondo licenza | Diff esatto dei valori prima/dopo |
 
 ## 9. Logging, trend, report e audit

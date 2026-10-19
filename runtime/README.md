@@ -464,6 +464,75 @@ Restano due revisioni esplicite: `precond@0.2.3` non dichiara license nel manife
 Client, certificate-manager e debug dichiarano MIT, ma questo non approva automaticamente
 l'intero grafo né sostituisce le notice. Il server SDK è soltanto una dipendenza di test.
 
+## Ricette: archivio dati server, non trasferimento PLC
+
+Il pannello esportato include `framecraft.recipes.json`, inizialmente `{ "version": 1,
+"schemas": [] }`, e i moduli `recipe-catalog.mjs` / `recipe-store.mjs` con i rispettivi tipi.
+Non sono inserite ricette dimostrative o parametri macchina. La pagina ricette guidata resta
+una struttura: editor visuale, import guidato e collegamento alla chat non sono ancora cablati
+a questo servizio. Non confondere l’archivio con l’applicazione della ricetta al PLC.
+
+Il formato Framecraft v1 contiene fino a 32 schemi `{ id, name, fields, records }`. Ogni campo
+ha `id`, `name` e `type` (`boolean`, `integer`, `number`, `string`), più `unit`, `minimum`,
+`maximum` o `maxLength` quando applicabili. Ogni ricetta è `{ id, name, values }`: tutti i
+campi devono essere presenti, senza extra, conversioni o valori iniziali presunti. Interi
+JavaScript sicuri, numeri finiti, massimo 64 campi e 500 ricette per schema; stringhe fino a
+1024 unità UTF-16 e catalogo fino a 2 MB. Nomi unici nello schema anche ignorando maiuscole
+e normalizzando Unicode. Questi tipi non sono mapping automatici a tipi/tag PLC o UDT.
+
+`openRecipeStore({ directory, catalog, onChange? })` apre un archivio dedicato su disco locale.
+La directory deve avere un genitore esistente e canonico; symlink/junction e hard link sono
+rifiutati. Il servizio standard usa `.framecraft-runtime/recipes/` solo se il gateway è
+abilitato e il catalogo contiene schemi. Un catalogo mancante resta vuoto. Catalogo o archivio
+guasti disabilitano le ricette con diagnostica, senza fermare il monitoraggio PLC.
+
+`store.id` identifica l’archivio; `recipes.json` contiene dati e ultime 256 ricevute operative.
+Il lock esclusivo `recipes.lock` riporta PID, istanza e data, ma non è una prova di liveness:
+non viene rimosso per età, timeout o semplice presenza di un PID. File mancanti dopo la prima
+inizializzazione, contenuto corrotto o schema cambiato richiedono recovery/migrazione esplicita;
+non vengono sostituiti con i valori iniziali. Fare backup coerente di entrambi i file a servizio
+fermo e verificare il ripristino. I temporanei di un’operazione fallita non sono backup.
+
+Il salvataggio usa file temporaneo esclusivo, flush, confronto della revisione e pubblicazione
+locale; dove supportato sincronizza anche la directory. Un solo writer, senza coda o retry
+automatici. La revisione SHA-256 identifica il contenuto, non firma né cifra i dati. Un errore
+dopo il tentativo di pubblicazione è incerto: rileggere stato e ricevuta, non reinviare con un
+nuovo ID. Un lock rimasto richiede verifica del processo/istanza e recovery da parte dell’IT.
+Limite archivio 4 MiB; nessun troncamento. Non è un database HA, storage condiviso/NFS, audit
+regolamentato o garanzia contro ogni perdita di alimentazione. Su Windows configurare ACL
+minime per l’account servizio: i mode Unix non sostituiscono le ACL. Anche su altri sistemi
+directory e backup devono essere protetti da modifiche esterne durante il servizio.
+
+API sotto `/_framecraft/plc/v1/recipes`, sempre con token/origine del gateway e ulteriore
+`authorizeRecipeAction(request, command)` del servizio. Il callback deve verificare una vera
+sessione/identità e il permesso dell’azione, poi restituire l’ID del soggetto, mai il token,
+il valore di un header non verificato o il PIN browser. Il CLI standard non inventa questa
+integrazione: senza callback nega l’accesso; il factory `createPlcGateway` consente di integrarla.
+
+- `GET`: snapshot con revisione, sequenza, schemi e ricette. Richiede azione `read` autorizzata.
+- `POST`: `id` univoco, `expectedRevision`, `action`, `schemaId`, `recordId`; `create`/`update`
+  richiedono `name` e tutti i `values`, `rename` solo `name`, `copy` `name` e `targetId`, `delete`
+  nessun campo extra. Corpo fino a 512 KiB. Un privilegio o un actor nel JSON non è accettato.
+- ID ripetuto con identico contenuto e soggetto, fra le ultime 256 mutazioni, restituisce la
+  ricevuta senza applicare ancora; contenuto/soggetto differente o revisione obsoleta è conflitto.
+  La deduplicazione persiste alla riapertura. Una vecchia ricevuta può uscire dalla finestra:
+  la revisione obsoleta resta rifiutata. Non è un invito al reinvio automatico.
+
+Gli esiti dicono `effect: recipe-storage-only` e `plcConfirmed: false`. `gateway.allowWrites`
+regola i comandi PLC, non concede permessi sulle ricette. Arrestare il gateway attende le
+mutazioni già accettate; autorizzazioni arrivate dopo l’arresto non avviano nuove operazioni.
+Diagnostica distinta con codice, conseguenza e rimedio, senza errori grezzi, percorsi, credenziali
+o valori ricetta. `onChange` notifica solo metadati tecnici; il registro locale delle ricevute
+contiene soggetto e data, non un audit immutabile con firme e valori prima/dopo.
+
+Restano editor Runtime e wizard, autorizzazioni applicative effettive, UDT/array, import/export
+CSV/TSV vendor, migrazione, database industriale, confronto PLC e handshake di apply/upload.
+Nessun metodo del servizio invia comandi MQTT/OPC UA. I riferimenti funzionali sono le
+[ricette Optix](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes.html)
+e i [parameter set Unified](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-rt-unified/controlling-with-parameter-sets-rt-unified),
+non una promessa di round-trip o parità vendor. Le garanzie di flush restano quelle di
+[Node e del dispositivo](https://nodejs.org/docs/latest-v24.x/api/fs.html#filehandlesync).
+
 ## Prima della produzione
 
 Usare Node LTS supportato (baseline di deployment: Node 24), servizio gestito, segreti protetti,

@@ -35,6 +35,10 @@ import connectionConfigSource from "../../runtime/connection-config.mjs?raw";
 import connectionConfigTypes from "../../runtime/connection-config.d.mts?raw";
 import gatewaySource from "../../runtime/gateway.mjs?raw";
 import gatewayTypes from "../../runtime/gateway.d.mts?raw";
+import recipeCatalogSource from "../../runtime/recipe-catalog.mjs?raw";
+import recipeCatalogTypes from "../../runtime/recipe-catalog.d.mts?raw";
+import recipeStoreSource from "../../runtime/recipe-store.mjs?raw";
+import recipeStoreTypes from "../../runtime/recipe-store.d.mts?raw";
 import gatewayStartSource from "../../runtime/start-gateway.mjs?raw";
 import gatewayProxySource from "../../runtime/vite-gateway.mjs?raw";
 import gatewayProxyTypes from "../../runtime/vite-gateway.d.mts?raw";
@@ -1787,6 +1791,11 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/mqtt-driver.d.mts", content: mqttDriverTypes },
     { path: "runtime/start-mqtt.mjs", content: mqttStartSource },
     { path: "runtime/gateway.mjs", content: gatewaySource },
+    { path: "runtime/recipe-catalog.mjs", content: recipeCatalogSource },
+    { path: "runtime/recipe-catalog.d.mts", content: recipeCatalogTypes },
+    { path: "runtime/recipe-store.mjs", content: recipeStoreSource },
+    { path: "runtime/recipe-store.d.mts", content: recipeStoreTypes },
+    { path: "framecraft.recipes.json", content: JSON.stringify({ version: 1, schemas: [] }, null, 2) + "\n" },
     { path: "runtime/alarm-labels.mjs", content: alarmLabelSource },
     { path: "runtime/alarm-labels.d.mts", content: alarmLabelTypes },
     { path: "runtime/alarm-engine.mjs", content: alarmEngineSource },

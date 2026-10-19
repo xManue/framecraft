@@ -141,12 +141,12 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 
 | ID | Capacità FactoryTalk Optix | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
-| FTX-RCP-01 | Recipe schema object-aware | PARZIALE | TargetNode, Item e DataItem Optix | Generazione dal tipo con diff tra revisioni |
+| FTX-RCP-01 | Recipe schema object-aware | DA FARE | Catalogo scalare Framecraft v1 al punto 144, non TargetNode/Item/DataItem o UDT | Generazione dal tipo con diff tra revisioni |
 | FTX-RCP-02 | Configurator e anteprima schema | DA FARE | Selezione sicura dei nodi e metadati | Impatto visibile prima di cambiare lo schema |
-| FTX-RCP-03 | Store, edit, delete e rename ricetta | PARZIALE | Metodi e persistenza Optix | Undo e validazione campo per campo |
-| FTX-RCP-04 | Load/apply da e verso controller | PARZIALE | Metodi Runtime, esiti e concorrenza | Confronto controller/ricetta/modifiche prima di applicare |
-| FTX-RCP-05 | Recipe editor e Recipe application example | PARZIALE | Widget Runtime e binding allo schema | Form generato ma completamente personalizzabile |
-| FTX-RCP-06 | Ricette concorrenti e metadati | DA FARE | Lock, timestamp, autore e conflitti | Merge guidato e storico delle revisioni |
+| FTX-RCP-03 | Store, edit, delete e rename ricetta | PARZIALE | Servizio persistente Framecraft al punto 144, non ancora editor Runtime completo | Undo e validazione campo per campo |
+| FTX-RCP-04 | Load/apply da e verso controller | DA FARE | Nessun trasferimento ricetta implementato, nessuna conferma PLC presunta | Confronto controller/ricetta/modifiche prima di applicare |
+| FTX-RCP-05 | Recipe editor e Recipe application example | DA FARE | Widget Runtime e binding allo schema; la pagina guidata è ancora struttura | Form generato ma completamente personalizzabile |
+| FTX-RCP-06 | Ricette concorrenti e metadati | PARZIALE | Revisione contenuto, lock esclusivo e ultime 256 ricevute persistenti con soggetto/data al punto 144 | Merge guidato e storico delle revisioni completo |
 | FTX-RCP-07 | Tabelle database delle ricette | DA FARE | Schema store e query | Migrazione dati testata insieme al progetto |
 | FTX-RCP-08 | Import/export delle ricette | DA FARE | Formati e compatibilità Optix | Mapping colonne, preview e report errori |
 
@@ -222,7 +222,7 @@ Queste capacità non sono semplice parità: rendono Framecraft più verificabile
 | FC-OPT-MORE-05 | Impact analysis controller tag -> link -> UI/logger/allarme/ricetta | DA FARE |
 | FC-OPT-MORE-06 | Test automatici generati con AutomationId stabili | DA FARE |
 | FC-OPT-MORE-07 | Static analysis e sandbox per Runtime/Design-time NetLogic | DA FARE |
-| FC-OPT-MORE-08 | Diff ricetta-controller prima di ogni apply | PARZIALE |
+| FC-OPT-MORE-08 | Diff ricetta-controller prima di ogni apply | DA FARE |
 | FC-OPT-MORE-09 | Playback sincronizzato di tag, allarmi, audit e sessioni | DA FARE |
 | FC-OPT-MORE-10 | Stima query, storage, retention e carico client | DA FARE |
 | FC-OPT-MORE-11 | Scadenza e trust di tutti i certificati in una sola vista | DA FARE |
