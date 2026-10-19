@@ -4,6 +4,7 @@ import { aiEditContext, aiPrompt, aiProposalSchema, aiPageProposalSchema, parseA
 import { interviewConfig, interviewPrompt, newAiInterview, sameInterviewAiContext, type AiInterview } from "../ai/aiInterview";
 import { delegationQuestions, resolveInterviewDelegation } from "../ai/aiDelegation";
 import { aiChatPrompt, type AiChatContext } from "../ai/aiChat";
+import { invalidateMissingGuidedNavigation } from "../core/guidedCommands";
 
 interface AiState {
   interview: AiInterview;
@@ -23,6 +24,7 @@ export const useEditorAi = create<AiState>((set, get) => ({
   interview: newAiInterview(), proposalUpdatedLocally: false,
   updateInterview(interview) {
     const current = get(); if (current.busy) return;
+    interview = { ...interview, spec: { ...interview.spec, pages: invalidateMissingGuidedNavigation(interview.spec.pages) } };
     const keys = new Set(delegationQuestions(interview).map(question => question.key));
     const next = { ...interview, delegated: interview.delegated?.filter(key => keys.has(key)) };
     if (current.mode === "create" && current.proposal?.mode === "create" && current.proposal.project && !current.proposal.questions.length && sameInterviewAiContext(current.interview, next)) {

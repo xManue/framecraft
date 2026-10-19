@@ -116,7 +116,7 @@ export function aiEditContext(snapshot: AiEditSnapshot, inspector?: ReturnType<t
   const seen = new Set<string>();
   while (current && !seen.has(current.id)) {
     seen.add(current.id); const id = current.props["data-hmi-template-id"];
-    if (typeof id === "string" && current.props["data-hmi-template-version"] === 1) { template = id.startsWith("guided:") ? guidedTemplateBehavior(id.slice(7)) : standardPageTemplates.find(item => item.behavior.id === id)?.behavior; break; }
+    if (typeof id === "string" && typeof current.props["data-hmi-template-version"] === "number") { const version = current.props["data-hmi-template-version"]; const known = id.startsWith("guided:") ? guidedTemplateBehavior(id.slice(7), version) : standardPageTemplates.find(item => item.behavior.id === id)?.behavior; if (known?.version === version) template = known; break; }
     current = current.parentId ? snapshot.document.nodes[current.parentId] : undefined;
   }
   const inspected = inspector ? inspector(node.source, styleNames) : inspectElementValues(snapshot.document.source, node.source, styleNames);

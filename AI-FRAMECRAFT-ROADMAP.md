@@ -102,6 +102,12 @@ dell’Inspector; tag e valori restano locali, il modello non li inventa o modif
 valore/evento/permesso o reimport del catalogo revocano la conferma; rinominare/cancellare/riordinare
 righe non sposta il mapping sul comando sbagliato. I gate utente restano fail-closed senza
 permesso; gateway disabilitato, autorizzazioni server, interlock e collaudo sono passi separati.
+Dal punto 141 i pulsanti della procedura possono anche aprire una pagina scelta nel piano,
+con evento, permesso e conferma espliciti, senza tag o scritture. Destinazione mai preselezionata,
+nessun URL/script libero. Rotta risolta dal generatore sull’ID stabile; rimozione o ambiguità
+bloccano la generazione e revocano la conferma. Navigazione ammessa nel solo monitoraggio,
+con desktop/mobile mantenuto. Recupero senza approvazione; scheda comandi v2 distinta dalla
+v1 dei vecchi progetti. Permesso del pulsante non equivale a protezione della pagina.
 Non sono comandi a uomo presente o funzioni di sicurezza: pressione/rilascio e watchdog PLC
 richiedono un contratto operativo e prove di guasto. Targhette e grafiche
 restano modificabili nel normale editor. Le risposte sopravvivono alla chiusura/riapertura della
@@ -267,7 +273,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-PLAN-01 | Valutazione della completezza degli input | PARZIALE | Validazione del questionario, rinvii e conflitti monitoraggio/comandi e ruoli/accesso; completezza industriale da verificare |
 | AI-PLAN-02 | Scelta motivata di template e famiglie pagina | PARZIALE | Famiglie scelte dall’utente con funzionamento noto nel contesto AI; scelta automatica motivata tra tutti i template da implementare |
 | AI-PLAN-03 | Piano pagine, navigazione e popup | PARZIALE | Pagine/categorie esplicite e pagina iniziale applicata; popup e oggetti ripetuti raccolti come requisiti da configurare |
-| AI-PLAN-04 | Piano binding e interazioni | PARZIALE | Letture e comandi singoli con tag, valore, evento e permessi espliciti; matrice operativa completa ancora da fare |
+| AI-PLAN-04 | Piano binding e interazioni | PARZIALE | Letture, scritture singole e destinazioni pagina con evento, permessi e conferma espliciti; matrice operativa completa ancora da fare |
 | AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, trend temporali e X/Y con sorgenti online o Data Log reali importati e approvati, requisiti ricette/archivio industriale; generazione operativa completa da implementare |
 | AI-PLAN-06 | Piano utenti e sicurezza | PARZIALE | Requisiti mirati su identità, ruoli, sessione e audit; implementazione server e matrice da approvare separatamente |
 | AI-PLAN-07 | Stima compatibilità target e licenze | DA FARE | Limiti funzionali Framecraft, licenze dipendenze/provider e diritti degli asset verificati prima di creare file; destinazione React autonoma OPC UA/MQTT, non licenze dei Runtime vendor |
@@ -281,7 +287,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-GEN-02 | Generazione di guscio, menu e pagine | PARZIALE | Solo template compatibili e copertura dichiarata |
 | AI-GEN-03 | Posizionamento di grafica macchina, hotspot e targhette | PARZIALE | Immagini e identificativi reali, niente macchina fittizia |
 | AI-GEN-04 | Binding tag e dinamizzazioni | PARZIALE | Mapping approvato, tipi compatibili e dipendenze verificabili |
-| AI-GEN-05 | Eventi, script e navigazione | PARZIALE | Scritture singole confermate compilate con la stessa IR dell’editor e gate di interazione; altri script/azioni/handshake ancora da fare |
+| AI-GEN-05 | Eventi, script e navigazione | PARZIALE | Scritture singole e cambio pagina del piano con conferma, stessa IR/Runtime dell’editor e gate di interazione; altri script/azioni/handshake ancora da fare |
 | AI-GEN-06 | Allarmi, trend, ricette e report | PARZIALE | Catalogo allarmi, trend temporali e X/Y reali, mapping tipizzati e Data Log locali importati; collector/query effettivi ma archivio industriale continuo ancora da fare. Ricette/report solo strutture esplicitamente incomplete e requisiti, non funzioni operative |
 | AI-GEN-07 | Testi e traduzioni | PARZIALE | Lingua Runtime, catalogo locale importato, chiavi esplicite per titoli/menu/testi statici supportati e revisione di originali/ripieghi; restano controlli, allarmi, nomi curve e copertura completa |
 | AI-GEN-08 | Utenti, ruoli e autorizzazioni | PARZIALE | Proposta separata ad alta attenzione e matrice revisionabile |

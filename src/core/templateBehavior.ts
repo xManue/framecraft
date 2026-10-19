@@ -4,7 +4,7 @@ import { defaultHmiFunctionTrendConfig } from "./hmiFunctionTrend";
 
 export interface TemplateInput { kind: "image" | "tags" | "alarms" | "commands" | "permissions" | "content" | "routing" | "service" | "recipes"; label: string }
 export interface TemplateBehavior {
-  version: 1; id: string; purpose: string; implementation: "configured-inputs" | "structure-only" | "standard-reference";
+  version: 1 | 2; id: string; purpose: string; implementation: "configured-inputs" | "structure-only" | "standard-reference";
   known: readonly string[]; inputs: readonly TemplateInput[]; limits: readonly string[];
   defaults: Readonly<Record<string, string>>;
 }
@@ -36,8 +36,10 @@ function buildGuidedTemplateBehaviors(): Record<string, TemplateBehavior> {
   };
 }
 const guidedBehaviors = buildGuidedTemplateBehaviors();
+const legacyCommands = guidedBehaviors.commands;
+guidedBehaviors.commands = { ...legacyCommands, version: 2, purpose: "Pulsanti per navigazione o comandi manuali con configurazione esplicita.", known: [...legacyCommands.known, "Aprire una pagina richiede una destinazione del piano, evento, permesso e conferma; non richiede tag PLC.", "Il cambio pagina mantiene la modalità desktop/mobile scelta nel pannello."], inputs: [...legacyCommands.inputs, input("routing", "Pagina di destinazione scelta esplicitamente fra quelle del piano.")], limits: [...legacyCommands.limits, "Un permesso sul pulsante non protegge la pagina da altri percorsi di accesso."] };
 export function guidedTemplateBehaviors(): Readonly<Record<string, TemplateBehavior>> { return guidedBehaviors; }
-export function guidedTemplateBehavior(kind: string): TemplateBehavior | undefined { return Object.hasOwn(guidedBehaviors, kind) ? guidedBehaviors[kind] : undefined; }
+export function guidedTemplateBehavior(kind: string, version?: number): TemplateBehavior | undefined { const current = Object.hasOwn(guidedBehaviors, kind) ? guidedBehaviors[kind] : undefined; return version === undefined || current?.version === version ? current : kind === "commands" && version === 1 ? legacyCommands : undefined; }
 export function inheritedTemplateAnswers(pageKinds: readonly string[]): Record<string, string> {
   if (!pageKinds.length) return {};
   return { "device.resolution": `${panelSize.width}x${panelSize.height}`, "device.theme": "standard", "navigation.menu": "categories", ...Object.assign({}, ...pageKinds.map(kind => guidedTemplateBehavior(kind)?.defaults ?? {})) };

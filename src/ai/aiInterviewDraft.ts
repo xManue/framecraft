@@ -20,7 +20,7 @@ const object = (value: unknown): value is Record<string, unknown> => !!value && 
 const shape = (fields: Record<string, Rule>, optional: string[] = []): Rule => value => object(value) && Object.keys(value).every(key => Object.hasOwn(fields, key)) && Object.entries(fields).every(([key, rule]) => value[key] === undefined && optional.includes(key) || rule(value[key]));
 const dictionary = (keys: readonly string[], rule: Rule): Rule => value => object(value) && Object.entries(value).every(([key, item]) => keys.includes(key) && rule(item));
 const tag = shape({ name: text(200), dataType: text(200), access: one(["read", "write", "read-write"]), address: text(), description: text(), table: text(), connection: text(), cycle: text(), detected: bool, usages: list(shape({ file: text(), line: value => Number.isSafeInteger(value) && Number(value) > 0, access: one(["read", "write", "read-write"]) }), 20000) }, ["table", "connection", "cycle", "detected", "usages"]);
-const command = shape({ event: one(guidedCommandEvents), value: text(512), permission: one(guidedCommandPermissions.map(item => item.id)), reviewed: bool });
+const command = shape({ event: one(guidedCommandEvents), value: text(512), permission: one(guidedCommandPermissions.map(item => item.id)), reviewed: bool, kind: one(["write", "navigate"]), targetPageId: text(80) }, ["kind", "targetPageId"]);
 const logged = shape({ logId: text(80), loggedTagId: text(80) });
 const dataLogs: Rule = value => { try { parseGuidedDataLogs(value); return true; } catch { return false; } };
 const resources: Rule = value => { try { parseGuidedResources(value); return true; } catch { return false; } };

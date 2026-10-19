@@ -3,7 +3,8 @@ import { standardPageSource, type StandardPagePlan } from "./hmiPages";
 import { emptyAlarmCatalog, parseAlarmCatalog, type AlarmCatalog } from "./hmiAlarms";
 import { isPlcVariableName, type PlcVariableDefinition } from "./plcVariables";
 import { defaultHmiTrendConfig, serializeHmiTrendConfig } from "./hmiTrend";
-import { guidedCommandAttributes, guidedCommandIssues, type GuidedCommandItem } from "./guidedCommands";
+import { guidedCommandAttributes, guidedCommandIssues, type GuidedCommandItem, type GuidedCommandTarget } from "./guidedCommands";
+import { guidedTemplateBehavior } from "./templateBehavior";
 import { panelRequirementsIssues, panelRequirementsPending, type PanelRequirements } from "./panelRequirements";
 import { panelHeaderIssues, panelHeaderFields, type PanelHeaderConfig } from "./panelHeader";
 import { guidedReadBindingIssues } from "./guidedReadBindings";
@@ -63,7 +64,7 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
   if (new Set(spec.pages.map(page => page.id)).size !== spec.pages.length) issues.push("Le pagine hanno identificativi duplicati.");
   if (spec.requirements) issues.push(...panelRequirementsIssues(spec.requirements, spec.pages));
   issues.push(...panelHeaderIssues(spec.header, spec.tagsMode === "import" ? spec.tags : []));
-  if (spec.requirements?.answers["operations.mode"] === "monitor" && spec.pages.some(page => page.items.some(item => item.command))) issues.push("Comandi e sequenze: hai scelto solo monitoraggio, ma ci sono comandi di scrittura configurati. Rimuovili o cambia il requisito.");
+  if (spec.requirements?.answers["operations.mode"] === "monitor" && spec.pages.some(page => page.items.some(item => item.command && item.command.kind !== "navigate"))) issues.push("Comandi e sequenze: hai scelto solo monitoraggio, ma ci sono comandi di scrittura configurati. Rimuovili o cambia il requisito.");
   if (spec.users === "roles-later" && spec.requirements?.answers["users.identity"] === "none") issues.push("Utenti, ruoli e audit: i ruoli richiesti non sono compatibili con la scelta senza accesso. Scegli come identificare gli utenti o rimanda la scelta.");
   const counts = new Map<string, number>();
   for (const page of spec.pages) {
@@ -77,7 +78,7 @@ export function guidedProjectIssues(spec: GuidedProjectSpec): string[] {
     else if (page.kind === "commands") {
       for (const item of page.items) {
         if (item.logged !== undefined || item.xLogged !== undefined) issues.push(`${page.title}: ${item.label} · i comandi non possono usare sorgenti archiviate.`);
-        issues.push(...guidedCommandIssues(item, spec.tagsMode === "import" ? spec.tags : []).map(issue => `${page.title}: ${item.label} · ${issue}`));
+        issues.push(...guidedCommandIssues(item, spec.tagsMode === "import" ? spec.tags : [], true, spec.pages).map(issue => `${page.title}: ${item.label} · ${issue}`));
         if (spec.users === "roles-later" && item.command && !item.command.permission) issues.push(`${page.title}: ${item.label} · hai richiesto ruoli separati: scegli il permesso che abilita il comando.`);
         if (spec.users === "later" && item.command && !item.command.permission) issues.push(`${page.title}: ${item.label} · accesso non ancora definito: scegli un permesso reale o lascia il comando disabilitato.`);
       }
@@ -99,8 +100,8 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
     ...page.items.filter(item => !item.tag && page.kind !== "commands").map(item => `${page.title} · ${item.label}: ${page.kind === "function-trend" ? "asse Y non collegato" : "tag non collegato"}.`),
     ...(page.kind === "function-trend" ? page.items.filter(item => !item.xTag).map(item => `${page.title} · ${item.label}: asse X non collegato.`) : []),
     ...(page.kind === "function-trend" ? [`${page.title}: campionamento X/Y nel Runtime, non acquisizione sincrona PLC. Qualità, aggiornamento, abbinamento dei campioni e tolleranza temporale da verificare sulla sorgente reale.`] : []),
-    ...(page.kind === "commands" ? page.items.length ? page.items.map(item => item.command && !guidedCommandIssues(item, spec.tagsMode === "import" ? spec.tags : []).length
-      ? `${page.title} · ${item.label}: mapping configurato; collegamento, interlock e collaudo da verificare.${item.command.permission ? " Account e permesso richiesto da configurare; senza permesso il comando resta bloccato." : ""}`
+    ...(page.kind === "commands" ? page.items.length ? page.items.map(item => item.command && !guidedCommandIssues(item, spec.tagsMode === "import" ? spec.tags : [], true, spec.pages).length
+      ? `${page.title} · ${item.label}: ${item.command.kind === "navigate" ? `apertura pagina ${spec.pages.find(page => page.id === item.command!.targetPageId)!.title} configurata; nessuna scrittura PLC` : "mapping configurato; collegamento, interlock e collaudo da verificare"}.${item.command.permission ? " Account e permesso richiesto da configurare; senza permesso il comando resta bloccato." : ""}`
       : `${page.title} · ${item.label}: comando disabilitato, da configurare e collaudare.`) : [`${page.title}: comandi disabilitati, da configurare e collaudare.`] : []),
   ]);
   if (spec.tagsMode !== "import") pending.push("Tag PLC e collegamenti da configurare: nessun tag inventato.");
@@ -120,7 +121,7 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
 }
 const literal = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
 function at(left: number, top: number, width: number, height: number) { return `position: "absolute", left: ${left}, top: ${top}, width: ${width}, height: ${height}`; }
-export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, componentName: string, imageUrl?: string, tags: readonly PlcVariableDefinition[] = [], requirements?: PanelRequirements, dataLogs?: HmiDataLogCatalog, resources?: HmiResourceCatalog): string {
+export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, componentName: string, imageUrl?: string, tags: readonly PlcVariableDefinition[] = [], requirements?: PanelRequirements, dataLogs?: HmiDataLogCatalog, resources?: HmiResourceCatalog, navigation: readonly GuidedCommandTarget[] = []): string {
   if (dataLogs) parseGuidedDataLogs(dataLogs, tags);
   if (resources) parseGuidedResources(resources);
   const textIssues = guidedPageTextIssues(page, resources); if (textIssues.length) throw new Error(`${page.title}: ${textIssues[0]}`);
@@ -152,7 +153,7 @@ export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, compo
   } else {
     page.items.forEach((item, index) => {
       const left = image ? 850 : 32 + index % 3 * 380, top = image ? 76 + index * 44 : 76 + Math.floor(index / 3) * 112;
-      if (page.kind === "commands") body += `      <button type="button"${guidedCommandAttributes(item, tags)} data-hmi-type="HmiButton" style={{ ${at(left, top, image ? 320 : 350, 44)}, border: "1px solid #A8A8A8", borderRadius: 5, background: "#DDD", color: "#555" }}>${item.textKey ? `<span data-hmi-type="HmiTextBox"${textAttribute(item.textKey)}>{${literal(item.label)}}</span>` : `{${literal(item.label)}}`}</button>\n`;
+      if (page.kind === "commands") body += `      <button type="button"${guidedCommandAttributes(item, tags, navigation)} data-hmi-type="HmiButton" style={{ ${at(left, top, image ? 320 : 350, 44)}, border: "1px solid #A8A8A8", borderRadius: 5, background: "#DDD", color: "#555" }}>${item.textKey ? `<span data-hmi-type="HmiTextBox"${textAttribute(item.textKey)}>{${literal(item.label)}}</span>` : `{${literal(item.label)}}`}</button>\n`;
       else {
         const width = image ? 320 : 350;
         body += `      <div data-hmi-type="HmiRectangle" style={{ ${at(left, top, width, 38)}, padding: 8, background: "white", border: "1px solid #A8A8A8" }}><span data-hmi-type="HmiTextBox"${textAttribute(item.textKey)}>{${literal(item.label)}}</span>${item.tag ? `: <span data-hmi-type="HmiTextBox" data-plc-variable=${literal(item.tag)} data-hmi-dynamizations={${literal(JSON.stringify([{ kind: "Tag", property: "Text", tag: item.tag }]))}}>—</span>` : ""}</div>\n`;
@@ -160,7 +161,7 @@ export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, compo
     });
   }
   const source = standardPageSource({ componentName, title: "Pagina guidata", plan, templateId: "blank" });
-  return source.replace('data-hmi-template-id="standard:blank"', `data-hmi-template-id="guided:${page.kind}"`).replace(/^.*data-plc-variable="Folder_Vis".*\r?\n/gm, "").replace("    </section>", `${body}    </section>`);
+  return source.replace('data-hmi-template-id="standard:blank"', `data-hmi-template-id="guided:${page.kind}"`).replace('data-hmi-template-version={1}', `data-hmi-template-version={${guidedTemplateBehavior(page.kind)!.version}}`).replace(/^.*data-plc-variable="Folder_Vis".*\r?\n/gm, "").replace("    </section>", `${body}    </section>`);
 }
 export function guidedAlarmCatalog(spec: GuidedProjectSpec): AlarmCatalog {
   return spec.alarmsMode === "import" && spec.alarms ? parseAlarmCatalog(spec.alarms, spec.tagsMode === "import" ? spec.tags : []) : emptyAlarmCatalog();

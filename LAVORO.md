@@ -4792,6 +4792,47 @@ Verifiche del 5 ottobre 2026:
   reale dei sorgenti. Obiettivo generale, traduzioni complete, capacità Unified/Optix residue,
   licenze, autorizzazioni server, distribuzione e commissioning non conclusi.
 
+### 141. Pulsanti di navigazione nella creazione guidata (2026-10-19)
+
+- Ripresa dal commit `527c925`: il turno precedente ha prodotto codice/test/documentazione
+  e push verificato, quindi progresso effettivo. Proseguita la priorità AI + app senza agenti;
+  non modificati i precedenti lavori profili/trend, ancora locali e fuori dal commit.
+- I pulsanti guidati possono aprire una pagina del piano oltre a scrivere un valore PLC.
+  Scelta distinta, destinazione non preselezionata, evento operatore, permesso e conferma;
+  campi PLC nascosti per navigazione, errori vicini al campo e riepilogo con Rivedi pulsante.
+  Cambio azione elimina il vecchio mapping preservando gli altri metadati dell’elemento.
+- Collegamento sull’ID pagina stabile, rotta interna risolta dal piano effettivamente generato.
+  Riordino/categoria non spostano la destinazione; pagina assente/duplicata, URL, rotta anomala,
+  evento automatico, script extra o mapping misto vengono rifiutati anche nel generatore diretto.
+  Rimozione revoca la conferma senza cancellare il riferimento: ricreare lo stesso ID non
+  ripristina l’approvazione. Nessuna nuova scrittura PLC, richiesta rete o dipendenza.
+- Navigazione consentita nei progetti di solo monitoraggio; le scritture restano bloccate.
+  Stessa IR e Runtime dell’Inspector; desktop/mobile mantenuto dalla scelta del guscio HMI,
+  non da un prefisso diverso della rotta: i due layout condividono gli stessi indirizzi.
+  Il permesso riguarda il pulsante, non protegge la pagina da altre navigazioni/accessi.
+  Import/reimport tag non revocano una navigazione indipendente; bozza conserva destinazione
+  ed evento ma revoca l’approvazione. All’AI tipo azione e ID pagina del piano già approvato,
+  non rotta generata/tag/indirizzi/valori. Contratto comandi v2; v1 conservato per vecchie pagine,
+  versioni sconosciute non interpretate come la base nuova. Nessuna migrazione automatica.
+- Verificati **127 test mirati in sette file**, tipi e build Vite nella copia pubblica
+  `.hmi-preview/guided-navigation-public-1792391084726/`. La prima copia non aveva ricevuto
+  l’unico aggancio del generatore: corretta la preparazione della copia, quindi ripetuto il
+  solo nuovo file (23 casi), non l’intera suite. Nessuna modifica backend/test nativo.
+- Edge a 375/768/1024/1440 px: scelta esplicita, revoca dopo cambio evento, revisione e
+  approvazione della creazione; App, pagine e Runtime realmente generati. Click singolo non
+  esegue il doppio click scelto; pulsante con permesso non concesso bloccato; navigazione
+  conserva layout e non riapre la scelta dispositivo. Nessun errore console o overflow del
+  dialogo, richiesta AI/PLC reale o upload tag. Provider/account, router, header e filesystem/
+  handoff sintetici: non è collaudo nativo, login reale, touch fisico o commissioning PLC.
+  Fixture corretta per includere i moduli runtime e il contenitore di apertura/chiusura;
+  verificato il blocco effettivo senza pretendere un attributo disabled o prefisso /mobile
+  non previsti dal contratto. Nessuna modifica al prodotto per adattarlo alle fixture.
+- Riferimento funzionale sul cambio schermata, non codice/asset vendor né parità completa:
+  https://docs.tia.siemens.cloud/r/en-us/v20/using-system-functions-rt-unified/system-functions-rt-unified/changescreen-rt-unified
+- Restano pipeline AI reale sui sorgenti (gate CLI del punto 135), ricette/report operativi,
+  autorizzazioni server/pagine, licensing/distribuzione e commissioning reale. Obiettivo
+  generale Unified/Optix/AI non concluso, nessun ampliamento dei permessi del provider.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

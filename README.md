@@ -436,7 +436,7 @@ Before and after AI planning, **Letture dati** lists each page/element, actual l
 whether it is configured, unmapped or invalid; **Rivedi** returns to its page. Configured means
 only a local binding, not a live connection, good quality or completed commissioning. The initial
 AI request still excludes the tag catalogue and addresses. Blank mappings stay blank.
-For each manual command, choose **Scrivere un
+For each machine-write button, choose **Scrivere un
 valore in un tag PLC**, an operator event (click/double-click/context click), a declared writable
 tag, a compatible scalar value and an optional user permission; explicitly confirm the mapping.
 The wizard compiles the same event IR as the Inspector. Deferred commands stay disabled; changing
@@ -447,6 +447,23 @@ browser UI rules, not server/PLC authentication. Connections, interlocks and com
 separate. These are single writes, not hold-to-run or safety functions; a PLC watchdog/lease and
 fault tests are necessary before implementing momentary machine commands. Transport receipt
 does not confirm PLC execution and uncertain/rejected commands are not automatically retried.
+
+Command pages also offer **Aprire una pagina del pannello**. Select a destination from the
+current page plan, an operator event and optional permission, then explicitly confirm the link.
+There is no default destination or free URL/script. Navigation uses the same event IR/Runtime
+as the Inspector and requires no PLC tags; it is valid in a monitor-only project and preserves
+the panel's selected desktop/mobile mode. The generator resolves stable page IDs into the current
+routes, including after page reordering or category changes. Removed/ambiguous destinations block
+creation and lose approval; recreating the same page ID does not restore that approval.
+
+Switching action clears the previous write/navigation mapping. Destination/event/permission
+changes revoke confirmation; importing PLC tags does not change an unrelated navigation link.
+The review shows the actual target title and **Rivedi pulsante**. Draft recovery preserves the
+configuration, never approval. AI sees action type and destination page ID already in its plan,
+not generated routes, tag names or write values. The command base is now version 2; version-1
+pages retain their original behaviour contract. A permission on a button is not page access
+control: protect sensitive pages/data separately on the server.
+
 MQTT/OPC UA choice and roles are recorded requirements, not automatic setup. The selected
 operator locale and explicitly mapped static translations are applied; complete English
 translation is not automatic.

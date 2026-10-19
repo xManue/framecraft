@@ -1759,7 +1759,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
   });
   const pageFiles = pages.map(({ page }) => ({
     path: `src/pages/${page.componentName}.tsx`,
-    content: page.guided ? guidedPageSource(page.guided, page.plan, page.componentName, pageImages.find(image => image.id === page.guided!.id)?.url, config.guided?.tagsMode === "import" ? config.guided.tags : [], config.guided?.requirements, config.guided?.dataLogs, config.guided?.resources) : withMachineImage(standardPageSource({ componentName: page.componentName, title: page.title, plan: page.plan, templateId: page.templateId, folderTab: page.folderTab, folderRoutes: page.folderRoutes }), photo?.url),
+    content: page.guided ? guidedPageSource(page.guided, page.plan, page.componentName, pageImages.find(image => image.id === page.guided!.id)?.url, config.guided?.tagsMode === "import" ? config.guided.tags : [], config.guided?.requirements, config.guided?.dataLogs, config.guided?.resources, pages.flatMap(({ page }) => page.guided ? [{ id: page.guided.id, title: page.title, route: page.route }] : [])) : withMachineImage(standardPageSource({ componentName: page.componentName, title: page.title, plan: page.plan, templateId: page.templateId, folderTab: page.folderTab, folderRoutes: page.folderRoutes }), photo?.url),
   }));
   const manifest = {
     id: slug(machineName), name: machineName, version: "1.0.0",
