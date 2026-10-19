@@ -471,7 +471,9 @@ Il pannello esportato include `framecraft.recipes.json`, inizialmente `{ "versio
 Non sono inserite ricette dimostrative o parametri macchina. In Framecraft, **Pannello → Ricette**
 configura schemi scalari e ricette iniziali senza AI: campi tipizzati, limiti, valori espliciti,
 copia/rimozione e import JSON Framecraft con approvazione della bozza prima del salvataggio.
-I form operatore Runtime, la pagina guidata e la chat non sono ancora cablati a questo servizio.
+La chat progetto può proporre modifiche al solo catalogo iniziale, dopo una lettura richiesta
+e con confronto dei valori, approvazione e backup. Non accede ai file operativi del servizio.
+I form operatore Runtime e la pagina del wizard iniziale non sono ancora cablati al servizio.
 Non confondere l’archivio con l’applicazione della ricetta al PLC.
 
 Il dialogo salva solo il catalogo iniziale, con snapshot della sessione e confronto del file
@@ -482,6 +484,16 @@ nel parser condiviso UI/servizio, non duplicata nel codice Rust. Una configurazi
 viene mostrata grezza o sostituita con un catalogo vuoto. Il salvataggio non riavvia servizi.
 Fermare il servizio prima di preparare la configurazione e coordinare avvii esterni: il check
 dei file non è una transazione distribuita con un altro processo che inizializza l’archivio.
+
+La pipeline AI mantiene i limiti propri: file fino a 300 kB, estratti fino a 30 kB per file,
+80 kB per passaggio e 180 kB complessivi. Il contratto ricette e un indice limitato degli schemi
+compaiono solo dopo una lettura del catalogo; non vengono aggiunti tutti i valori a ogni messaggio.
+La verifica dello stato operativo è ripetuta prima di applicare/ripristinare, anche nel nativo.
+Il backup della proposta non autorizza a riscrivere la configurazione dopo l’inizializzazione
+del servizio. Proposte multi-file non sono transazioni atomiche; eventuale recovery va verificata.
+Consenso della chat aggiornato per rendere espliciti schemi e valori iniziali condivisibili;
+autorizzazioni della sessione precedente non ampliate implicitamente. Nessuna chiamata AI reale
+o configurazione Windows è avviata dall’apertura dell’editor ricette.
 
 Il formato Framecraft v1 contiene fino a 32 schemi `{ id, name, fields, records }`. Ogni campo
 ha `id`, `name` e `type` (`boolean`, `integer`, `number`, `string`), più `unit`, `minimum`,

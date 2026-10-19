@@ -5,6 +5,8 @@ import { validateAiProjectReview } from "../ai/aiProjectEdits";
 import { useEditorAiChat } from "../state/editorAiChat";
 import { useEditorAi } from "../state/editorAi";
 import { useEditorStore } from "../state/editorStore";
+import { aiRecipeSummary } from "../ai/aiRecipeContext";
+import { recipeConfigurationFile } from "../core/recipeConfiguration";
 
 function changedLines(before: string | null, after: string) {
   const oldLines = (before ?? "").split(/\r?\n/), newLines = after.split(/\r?\n/);
@@ -48,12 +50,12 @@ export function AiProjectCodeReview({ message, latest }: { message: AiChatMessag
     <h3>Controlla le modifiche al progetto</h3>
     <p>{review.changes.length} file · {review.plan.variables.length} nuove variabili. Un’approvazione per l’insieme; backup prima del salvataggio. Non è una transazione atomica multi-file.</p>
     {!!review.plan.variables.length && <div className="ai-project-new-variables"><strong>Variabili nuove da collegare</strong><ul>{review.plan.variables.map(tag => <li key={tag.name}><strong>{tag.name}</strong> · {tag.dataType}<br />{tag.description}</li>)}</ul><p>Sola lettura, senza indirizzo PLC né connessione inventati. La dichiarazione non rende disponibile un segnale macchina: configura il mapping e collaudalo.</p></div>}
-    {review.changes.map(change => { const diff = changedLines(change.before, change.after); return <details className="ai-project-file-diff" key={change.path}>
+    {review.changes.map(change => { const diff = changedLines(change.before, change.after), recipe = change.path === recipeConfigurationFile ? aiRecipeSummary(change.before, change.after) : undefined; return <div key={change.path}>{recipe && <section className="ai-project-new-variables ai-project-recipe-summary" aria-label="Riepilogo ricette iniziali"><h4>Ricette iniziali del progetto</h4><p>Risultato proposto: {recipe.schemas} {recipe.schemas === 1 ? "schema" : "schemi"} · {recipe.records} {recipe.records === 1 ? "ricetta" : "ricette"}.</p><ul>{recipe.lines.map((line, index) => <li key={index}>{line}</li>)}</ul>{(recipe.omitted > 0 || recipe.abbreviated) && <p>Riepilogo abbreviato{recipe.omitted ? ` · altre ${recipe.omitted} differenze` : ""}. Controlla anche i valori completi nei dettagli del catalogo qui sotto.</p>}<p>Non modifica l’archivio operativo e non invia valori al PLC. Un archivio già inizializzato blocca applicazione e ripristino.</p></section>}<details className="ai-project-file-diff">
       <summary>{change.before === null ? "Crea" : "Aggiorna"} {change.path}</summary>
       <p>Parte modificata dalla riga {diff.line}. Il codice è mostrato come testo, non viene eseguito qui.</p>
       <strong>Prima</strong><pre aria-label={`Prima: ${change.path}`}>{change.before === null ? "File non presente" : diff.before || "Nessuna riga precedente"}</pre>
       <strong>Dopo</strong><pre aria-label={`Dopo: ${change.path}`}>{diff.after || "Righe rimosse"}</pre>
-    </details>; })}
+    </details></div>; })}
     <p className="ai-hint">Controllati sintassi, percorsi e import noti. Non sostituisce la compilazione completa del tuo pannello né il collaudo macchina.</p>
     <label className="ai-check"><input type="checkbox" checked={!!confirmed} disabled={blocked} onChange={event => setChoice({ target: expected, value: event.target.checked })} /><span>Ho controllato file e variabili e approvo queste modifiche al progetto.</span></label>
     {stale && <p className="ai-error">Il progetto è cambiato: questa proposta non viene applicata.</p>}

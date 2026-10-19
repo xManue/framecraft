@@ -25,16 +25,24 @@ fn snapshot(root: &str, state: &RuntimeState) -> Result<Snapshot, String> {
     let root = check_root(root, &opened)?;
     Ok(Snapshot { generation: state.project_generation.load(Ordering::SeqCst), source: read_one(root, NAME)?, initialized: initialized(root)? })
 }
+pub(super) fn require_initial(root: &Path) -> Result<(), String> {
+    if initialized(root)? { return Err("L’archivio operativo esiste già. Configurazione iniziale e ripristino AI bloccati: serve una migrazione con backup, non eliminare l’archivio.".into()); }
+    Ok(())
+}
+pub(super) fn validate_source(source: &str) -> Result<(), String> {
+    if source.len() > 2_000_000 { return Err("Catalogo ricette troppo grande (massimo 2 MB).".into()); }
+    let value: serde_json::Value = serde_json::from_str(source).map_err(|_| "JSON ricette non valido.")?;
+    let object = value.as_object().ok_or("Catalogo ricette non valido.")?;
+    if object.len() != 2 || value["version"] != 1 || !value["schemas"].as_array().is_some_and(|schemas| schemas.len() <= 32) { return Err("Formato ricette Framecraft v1 richiesto. Nessun file sovrascritto.".into()); }
+    Ok(())
+}
 fn save(root: &str, expected: Snapshot, source: String, state: &RuntimeState) -> Result<Snapshot, String> {
     let opened = state.project_root.lock().map_err(|_| "Progetto occupato.")?;
     let root = check_root(root, &opened)?;
     let generation = state.project_generation.load(Ordering::SeqCst);
     if generation != expected.generation { return Err("La sessione è cambiata. Riapri Ricette; nessun file sovrascritto.".into()); }
     if expected.initialized || initialized(root)? { return Err("L’archivio operativo esiste già. I valori iniziali non vengono riscritti: serve una migrazione con backup. Non eliminare l’archivio per sbloccare il salvataggio.".into()); }
-    if source.len() > 2_000_000 { return Err("Catalogo ricette troppo grande (massimo 2 MB).".into()); }
-    let value: serde_json::Value = serde_json::from_str(&source).map_err(|_| "JSON ricette non valido.")?;
-    let object = value.as_object().ok_or("Catalogo ricette non valido.")?;
-    if object.len() != 2 || value["version"] != 1 || !value["schemas"].as_array().is_some_and(|schemas| schemas.len() <= 32) { return Err("Formato ricette Framecraft v1 richiesto. Nessun file sovrascritto.".into()); }
+    validate_source(&source)?;
     let staged = stage(root, NAME, &source)?;
     if read_one(root, NAME)? != expected.source || initialized(root)? { return Err("Catalogo o archivio operativo cambiato. Rileggi prima di salvare; la bozza resta nella finestra.".into()); }
     persist(staged, &target(root, NAME)?)?;

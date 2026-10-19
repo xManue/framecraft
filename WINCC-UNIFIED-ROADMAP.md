@@ -151,7 +151,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | ID | Capacità WinCC Unified | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
 | WCU-PAR-01 | Tipi parameter set da tag o UDT | DA FARE | Definizione struttura e versioni | Generazione dal catalogo PLC con diff tipo |
-| WCU-PAR-02 | Creazione/modifica/eliminazione ricette | PARZIALE | Servizio persistente (144) ed editor iniziale scalare Pannello → Ricette (145); restano form Runtime, autorizzazione applicativa e Undo | Validazione campo per campo e undo |
+| WCU-PAR-02 | Creazione/modifica/eliminazione ricette | PARZIALE | Servizio persistente (144), editor iniziale scalare (145) e chat iniziale con confronto/backup (146); restano form Runtime, autorizzazione applicativa e Undo operativo | Validazione campo per campo e undo |
 | WCU-PAR-03 | Trasferimento HMI-PLC | DA FARE | Nessun trasferimento ricetta implementato: non basta la scrittura di singoli tag | Anteprima delle differenze prima di scrivere |
 | WCU-PAR-04 | Lettura ricetta dal PLC | DA FARE | Upload e salvataggio come nuovo set | Confronto live tra PLC, ricetta e modifiche operatore |
 | WCU-PAR-05 | Import/export TSV | DA FARE | Formato compatibile e gestione versioni | Import con mapping colonne e report errori |

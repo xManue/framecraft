@@ -2,6 +2,7 @@ import { parseAiProjectReceipt, validateAiProjectCode, validateAiProjectReview, 
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { joinProjectPath } from "../core/paths";
 import { useEditorStore } from "./editorStore";
+import { recipeConfigurationFile } from "../core/recipeConfiguration";
 
 export function assertAiProjectEditable(root: string) {
   const editor = useEditorStore.getState();
@@ -28,7 +29,13 @@ export async function applyAiProjectFiles(input: AiProjectReview, current: () =>
     for (const change of review.changes) {
       valid();
       if (document?.file.replaceAll("\\", "/") === joinProjectPath(review.root, change.path).replaceAll("\\", "/") && document.source !== change.before) throw new Error(`${change.path}: l’editor ha una versione diversa da quella della proposta.`);
-      const disk = await desktopBridge.readAiProjectFile(review.root, change.path); valid();
+      let disk: string | null;
+      if (change.path === recipeConfigurationFile) {
+        const configuration = await desktopBridge.readRecipeConfiguration(review.root); valid();
+        if (configuration.initialized) throw new Error("L’archivio operativo ricette esiste già. La proposta iniziale non viene applicata; serve una migrazione con backup.");
+        disk = configuration.source;
+      } else disk = await desktopBridge.readAiProjectFile(review.root, change.path);
+      valid();
       if (disk !== change.before) throw new Error(`${change.path} è cambiato dopo la proposta. Non viene sovrascritto.`);
       if (change.path !== "framecraft.plc.json") validateAiProjectCode(change.path, change.before, change.after, known).forEach(file => dependencies.add(file));
     }
@@ -44,6 +51,14 @@ export async function applyAiProjectFiles(input: AiProjectReview, current: () =>
 export async function restoreAiProjectFiles(input: AiProjectReceipt, current: () => boolean): Promise<AiProjectReceipt> {
   const receipt = parseAiProjectReceipt(input); assertAiProjectEditable(receipt.root);
   if (receipt.restored || !current()) throw new Error("Questo backup non è più ripristinabile da questa richiesta.");
+  if (receipt.files.includes(recipeConfigurationFile)) {
+    try {
+      const configuration = await desktopBridge.readRecipeConfiguration(receipt.root);
+      if (configuration.initialized) throw new Error("L’archivio operativo ricette esiste già: il ripristino iniziale richiede una migrazione con backup.");
+      if (!current()) throw new Error("Richiesta di ripristino superata. Nessun file scritto.");
+      assertAiProjectEditable(receipt.root);
+    } catch (error) { throw nativeError(error); }
+  }
   try { await desktopBridge.restoreAiProjectChanges(receipt.root, receipt.backup); }
   catch (error) { throw nativeError(error); }
   return { ...receipt, restored: true };

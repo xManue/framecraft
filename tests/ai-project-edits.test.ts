@@ -48,6 +48,10 @@ it("rifiuta errori sintattici e nuove dipendenze e controlla i nuovi import", ()
   expect(() => validateAiProjectCode("src/New.tsx", null, 'import {H} from "./Missing";export const X=()=> <H/>', new Set())).toThrow("non risolvibile");
   expect(() => validateAiProjectCode("src/New.tsx", null, 'import {H} from "./Header";export const X=()=> <H/>', new Set(["src/Header.tsx"]))).not.toThrow();
 });
+it("un import non può risalire oltre la radice neppure se il nome finale coincide con un file noto", () => {
+  for (const dependency of ["../../framecraft.recipes.json", "../../../src/Header.tsx"]) expect(() => validateAiProjectCode("src/App.tsx", "export const A=()=>null", `import data from "${dependency}";export const A=()=>null`, new Set(["framecraft.recipes.json", "src/Header.tsx"]))).toThrow("esce dal progetto");
+  expect(validateAiProjectCode("src/App.tsx", "export const A=()=>null", 'import data from "../framecraft.recipes.json";export const A=()=>null', new Set(["framecraft.recipes.json"]))).toEqual(["framecraft.recipes.json"]);
+});
 it.each(['plc.write("Motor",true)', 'hmi.setpoint("Speed",100)', 'fetch("https://example.invalid")', 'eval("x")', 'new WebSocket("ws://example.invalid")'])("segnala nuove chiamate operative note %s", call => {
   expect(() => validateAiProjectCode("src/App.tsx", "export const A=()=>null", `export const A=()=>{${call};return null}`, new Set())).toThrow();
 });

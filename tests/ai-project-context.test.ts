@@ -69,3 +69,7 @@ it("non invia contenuti di cartelle esterne al progetto", async () => {
   const { options, propose } = fixture(); options.files.push("C:/other-project/Private.tsx"); await runAiProject(options);
   expect(propose.mock.calls[0][0]).not.toContain("other-project");
 });
+it("non associa un import esterno a un omonimo interno né legge quel componente per errore", async () => {
+  const { options, read, propose } = fixture({ "src/App.tsx": 'import {HeaderValue} from "../../src/HeaderUi";export const Page=()=> <HeaderValue/>' }); options.selections[0].start = 0;
+  await runAiProject(options); expect(read).not.toHaveBeenCalledWith("src/HeaderUi.tsx"); expect(JSON.parse(propose.mock.calls[0][0]).files.some((file: { path: string }) => file.path === "src/HeaderUi.tsx")).toBe(false);
+});

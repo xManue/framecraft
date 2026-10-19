@@ -59,7 +59,7 @@ export interface ChatState {
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 function sessionKey() {
   const root = useEditorStore.getState().project?.root, ai = useEditorAi.getState();
-  return root && ai.account?.connected ? JSON.stringify([root, ai.provider.id, ai.account.email, useEditorAiChat.getState().projectAccess ? "project" : "selection"]) : undefined;
+  return root && ai.account?.connected ? JSON.stringify([root, ai.provider.id, ai.account.email, useEditorAiChat.getState().projectAccess ? "project-recipes-v1" : "selection"]) : undefined;
 }
 const filePaths = (entries: FileEntry[]): string[] => entries.flatMap(entry => entry.kind === "directory" ? filePaths(entry.children ?? []) : [entry.path]);
 const createChatState: StateCreator<ChatState> = (set, get) => ({
@@ -216,6 +216,7 @@ const createChatState: StateCreator<ChatState> = (set, get) => ({
         history: aiChatContext([], state.messages).history.map(({ role, text }) => ({ role, text })),
         files: [...listed, ...filePaths(project.files ?? [])], selections, current,
         read: path => desktopBridge.readAiProjectFile(project.root, path),
+        readRecipes: () => desktopBridge.readRecipeConfiguration(project.root),
         progress(projectProgress, input) {
           if (!current()) return;
           const inputBytes = new TextEncoder().encode(input + JSON.stringify(aiProjectSchema)).length;

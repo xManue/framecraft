@@ -379,6 +379,10 @@ code, kbd { font-family: "JetBrains Mono", Consolas, monospace; }
 .ai-project-file-diff summary { cursor: pointer; }
 .ai-project-file-diff pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; }
 .ai-project-new-variables { padding: 8px; border: 1px solid var(--border); border-radius: 5px; }
+.ai-project-recipe-summary { line-height: 1.55; }
+.ai-project-recipe-summary h4 { font-size: inherit; }
+.ai-project-recipe-summary + .ai-project-file-diff > summary { min-height: 44px; display: flex; align-items: center; }
+@media(max-width: 600px) { .ai-project-recipe-summary { font-size: 16px; } }
 .ai-project-busy-overlay { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; padding: 24px; background: var(--bg); color: var(--text); text-align: center; }
 .ai-chat-log { flex: 1; min-height: 100px; overflow: auto; overscroll-behavior: contain; padding: 12px; }
 .ai-chat-message { margin-bottom: 16px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }

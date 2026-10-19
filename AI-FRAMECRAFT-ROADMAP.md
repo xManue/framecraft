@@ -40,8 +40,11 @@ soltanto per funzioni richieste o pagine dedicate; ogni scelta può essere riman
 permette di correggere ogni area senza perdere risposte. Pagina iniziale e tempi dei trend sono
 applicati dal generatore; gli altri campi restano requisiti espliciti nel progetto, non
 configurazioni dichiarate pronte. Dal punto 144 esiste un servizio dati ricette persistente
-tipizzato con API protette; il punto 145 aggiunge l’editor manuale della configurazione iniziale,
-non ancora il collegamento a wizard/AI o editor Runtime. Le pagine di
+tipizzato con API protette; il punto 145 aggiunge l’editor manuale della configurazione iniziale
+e il 146 la modifica del catalogo iniziale via chat con confronto/backup e contesto su richiesta.
+Restano il collegamento al wizard di creazione e i form operatore Runtime. La prova reale Codex
+resta subordinata all’isolamento Windows autorizzato; le verifiche del 146 usano provider sintetici.
+Le pagine di
 ricette, produzione, manutenzione e report hanno strutture
 di pagina chiaramente incomplete. PDF/documenti e file ricette non sono importati/interpretati
 dalle nuove domande; ne viene raccolta la disponibilità. Dettagli testuali tecnici soltanto

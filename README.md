@@ -293,8 +293,13 @@ Use **Pannello → Ricette** to configure initial scalar schemas, fields and rec
 The dialog validates every value, supports copying/removing recipes and reviewing a Framecraft
 JSON import, and saves only after an explicit click. Existing operational archives make the
 initial configuration read-only: migration and backup are required, not archive deletion.
+Project chat can also request and propose edits to the initial `framecraft.recipes.json`.
+Recipe context is read only when requested, with typed validation, a human-readable value
+comparison, explicit approval and the existing project backup. Applying or restoring a recipe
+change is blocked if an operational archive is present. This is not live recipe editing:
+the real Codex/Windows isolation preflight remains required and has not been bypassed.
 This is not a finished Runtime operator editor. Guided recipe pages remain structures;
-Runtime forms, AI/wizard wiring, controller comparison/apply handshake, vendor
+Runtime forms, initial creation-wizard wiring, controller comparison/apply handshake, vendor
 CSV/TSV compatibility, industrial database/backup and regulated audit still need implementation
 or commissioning. File persistence and passing loopback tests do not establish production readiness.
 

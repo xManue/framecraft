@@ -36,6 +36,7 @@ beforeEach(() => {
   useEditorAiChat.getState().syncRoot(projectRoot); useEditorAiChat.getState().setAllowed(true);
   vi.spyOn(desktopBridge, "listProjectSourceFiles").mockResolvedValue([file]);
   vi.spyOn(desktopBridge, "readAiProjectFile").mockImplementation(async (_root, path) => files.get(path) ?? null);
+  vi.spyOn(desktopBridge, "readRecipeConfiguration").mockImplementation(async () => ({ generation: 1, source: files.get("framecraft.recipes.json") ?? null, initialized: false }));
   vi.spyOn(desktopBridge, "applyAiProjectChanges").mockImplementation(async (_root, changes) => { changes.forEach(change => files.set(change.path, change.after)); return "123-456"; });
   vi.spyOn(desktopBridge, "restoreAiProjectChanges").mockImplementation(async () => { files.set("src/App.tsx", source); files.set("framecraft.plc.json", null); });
   vi.spyOn(useEditorStore.getState(), "refreshAiProjectFiles").mockResolvedValue(undefined);
@@ -55,6 +56,26 @@ it("usa per default il progetto reale e lo stesso modello/ragionamento, senza ap
   expect(request.prompt).toBe(useEditorAiChat.getState().prepared?.prompt);
   expect(desktopBridge.applyAiProjectChanges).not.toHaveBeenCalled(); expect(files.get("src/App.tsx")).toBe(source);
 });
+it("la chat legge ricette su richiesta, mostra valori leggibili e salva solo la proposta approvata", async () => {
+  const path = "framecraft.recipes.json", before = '{"version":1,"schemas":[{"id":"s","name":"Formati","fields":[{"id":"p","name":"Parametro","type":"number"}],"records":[{"id":"r","name":"Formato A","values":{"p":10}}]}]}'; files.set(path, before);
+  let round = 0; vi.mocked(provider.propose).mockImplementation(async request => ({ requestId: request.requestId, text: JSON.stringify(plan(++round === 1 ? { reads: [{ path, find: "" }], edits: [], variables: [] } : { edits: [{ path, before: '"p":10', after: '"p":20' }], variables: [] })) }));
+  useEditorAiChat.getState().setDraft("Cambia da 10 a 20 il parametro iniziale della ricetta"); await useEditorAiChat.getState().send();
+  expect(useEditorAiChat.getState().error).toBeUndefined(); expect(desktopBridge.readRecipeConfiguration).toHaveBeenCalledOnce(); expect(desktopBridge.applyAiProjectChanges).not.toHaveBeenCalled();
+  const message = latest(), review = message.projectReview!; host = document.createElement("div"); document.body.append(host); reactRoot = createRoot(host);
+  await act(async () => reactRoot!.render(createElement(AiProjectCodeReview, { message, latest: true })));
+  expect(document.querySelector('[aria-label="Riepilogo ricette iniziali"]')?.textContent).toContain("Parametro: 10 → 20"); expect(document.body.textContent).toContain("non invia valori al PLC");
+  expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false);
+  await act(async () => useEditorAiChat.getState().applyProject(message.id, review)); expect(files.get(path)).toContain('"p":20'); expect(latest().projectReceipt?.files).toContain(path);
+  vi.mocked(desktopBridge.readRecipeConfiguration).mockResolvedValue({ generation: 1, source: files.get(path)!, initialized: true });
+  await act(async () => useEditorAiChat.getState().restoreProject(latest().id, latest().projectReceipt!)); expect(desktopBridge.restoreAiProjectChanges).not.toHaveBeenCalled(); expect(useEditorAiChat.getState().error).toContain("operativo"); expect(files.get(path)).toContain('"p":20');
+});
+it("una ricetta diventa non applicabile se l’archivio è inizializzato dopo la proposta", async () => {
+  const path = "framecraft.recipes.json", before = '{"version":1,"schemas":[]}'; files.set(path, before);
+  const value = plan({ edits: [{ path, before, after: '{"version":1,"schemas":[{"id":"s","name":"Schema","fields":[{"id":"p","name":"Parametro","type":"number"}],"records":[]}]}' }], variables: [] });
+  const input = { root: projectRoot, plan: value, changes: prepareAiProjectChanges(value, files, new Map([[path, [before]]]), [path]), bytes: 1000, rounds: 1 };
+  vi.mocked(desktopBridge.readRecipeConfiguration).mockResolvedValue({ generation: 1, source: before, initialized: true });
+  await expect(applyAiProjectFiles(input, () => true)).rejects.toThrow("operativo"); expect(desktopBridge.applyAiProjectChanges).not.toHaveBeenCalled(); expect(files.get(path)).toBe(before);
+});
 it.each(["account", "consent", "dirty"])("non legge o invia file senza precondizione: %s", async reason => {
   if (reason === "account") useEditorAi.setState({ account: undefined });
   if (reason === "consent") useEditorAiChat.getState().setAllowed(false);
@@ -65,6 +86,7 @@ it("cambiare ambito revoca il consenso, non la bozza", () => {
   useEditorAiChat.getState().setDraft("Da conservare"); useEditorAiChat.getState().setProjectAccess(false);
   expect(useEditorAiChat.getState().allowed()).toBe(false); expect(useEditorAiChat.getState().draft).toBe("Da conservare");
 });
+it("il consenso precedente al catalogo ricette non abilita la nuova capacità né cancella la bozza", () => { useEditorAiChat.setState({ authorizedFor: JSON.stringify([projectRoot, provider.id, "synthetic@example.invalid", "project"]), draft: "Da conservare" }); expect(useEditorAiChat.getState().allowed()).toBe(false); useEditorAiChat.getState().setAllowed(true); expect(useEditorAiChat.getState().allowed()).toBe(true); expect(useEditorAiChat.getState().draft).toBe("Da conservare"); });
 it("cancella una richiesta lenta senza accettare il risultato tardivo", async () => {
   let finish!: (value: { requestId: string; text: string }) => void;
   vi.mocked(provider.propose).mockImplementation(() => new Promise(resolve => { finish = resolve; }));

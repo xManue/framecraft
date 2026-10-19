@@ -5017,6 +5017,64 @@ Verifiche del 5 ottobre 2026:
   https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes/recipex-schemas.html.
   Il designer scalare non implementa TargetNode/Item/DataItem né un formato vendor.
 
+### 146. Ricette iniziali nella chat AI, contesto su richiesta e revisione leggibile (2026-10-19)
+
+- Turno precedente di progresso: `dd226de`, editor iniziale ricette, verifiche mirate e push
+  confermato. Proseguito sul collegamento reale alla chat di modifica progetto, non su un altro
+  template statico. Nessun agente, inferenza reale, provisioning Windows o riavvio dell’app.
+- La sola eccezione nuova alla lista file AI è `framecraft.recipes.json`. Connessioni, segreti,
+  file del servizio, `.framecraft-runtime` e archivi operativi restano esclusi. Il catalogo
+  compare nell’indice, ma contenuto e contratto ricette sono letti solo se richiesti dal modello.
+  Prima si verifica presenza/assenza; non si creano file alla cieca. Nessun accesso filesystem
+  o rete del CLI ampliato: provider, modello/ragionamento e preflight confinato restano invariati.
+- Contesto con numero schemi e indice massimo di 12, conteggi campi/ricette e limitazione
+  dichiarata, non tutti i valori operativi. Stato iniziale scrivibile/in sola lettura preso
+  dal nativo; senza metadata non viene presunta la disponibilità. Contratto scalare e regole
+  complete aggiunti solo dopo la lettura. Restano 300 kB per file AI, 30 kB di estratti per file,
+  80 kB a passaggio, 180 kB totali e massimo tre passaggi. Richiesta non troncata per rientrare.
+- Un JSON ricette attraversa il parser condiviso, non il parser JSX. Tipi reali, valori richiesti,
+  limiti, ID/nomi unici, assenza di proprietà operative extra e sorgente iniziale valida vengono
+  ricontrollati quando si prepara e rivalida il confronto. Le modifiche restano limitate a parti
+  lette e sostituzioni uniche. Nuovo schema senza valori espliciti può avere `records` vuoto;
+  nessuna unità, soglia, connessione o valore macchina presunto dalle istruzioni.
+- La chat usa il normale confronto/approvazione/backup. Prima di applicare e ripristinare legge
+  nuovamente il catalogo/stato operativo; controlla file atteso e progetto ancora corrente.
+  Il nativo ripete il blocco se esiste un archivio operativo, anche incompleto, nel preflight e
+  prima di scrivere ogni file, inclusi rollback e ripristini. JSON v1/involucro e dimensione
+  condivisi col dialogo manuale; validazione completa dei campi sempre nel parser UI/servizio,
+  non promessa come nuova validazione completa Rust. Nessun file operativo o lock cancellato.
+  Batch non atomico multi-file: backup e recovery restano da verificare in caso di guasto/race.
+- Riepilogo ricette con schemi, campi e valori prima/dopo, inclusi `0`/`false`, ricavato dai JSON
+  convalidati e non dal testo del modello. Massimo 16 righe e valori lunghi abbreviati dichiarati;
+  confronto tecnico completo ancora consultabile. Conferma non preselezionata e nessuna scrittura
+  al render. La skill UI/UX ha guidato testo mobile 16 px, wrapping, dettagli da 44 px e stile
+  coerente; nessun tema/font o asset esterno introdotto.
+- Consenso chat esplicito anche per schemi/valori iniziali richiesti, non dati operativi.
+  Versione dello scope cambiata: vecchio consenso non esteso implicitamente, bozza conservata,
+  nessuna conferma ripetuta a ogni messaggio. La revoca/annullamento impedisce letture e invii
+  successivi; recupero della chat non ripristina un’autorizzazione a inviare o applicare.
+- Revisione ha individuato una risalita `../` oltre la radice che poteva coincidere con un
+  nome interno noto: risoluzione condivisa per estrazione automatica e nuovi import, uscita
+  rifiutata prima di associare un file. I JSON ricette non vengono interpretati come moduli
+  con import JS. Regole sugli import esistenti e protezioni per i sorgenti restano conservative,
+  non una sandbox JavaScript o una garanzia generale di sicurezza macchina.
+- Copia pubblica `.hmi-preview/public-check-dPKLRi/`, dipendenze locali collegate, non installazione
+  pulita, dati macchina e lavori trend/profili non committati esclusi. **121 test in cinque file**
+  AI/ricette/recupero passati; dopo la correzione import ripetuti solo contesto/edits, **51 test**
+  con due regressioni nuove. **11 test Rust mirati** fra AI project e configurazione ricette.
+  Tipi/build Vite passati, avvisi import statici/dinamici già noti; nessuna suite globale PLC.
+- Edge headless 375/768/1024/1440 px: valori leggibili, nessun overflow, approvazione esplicita,
+  nessuna scrittura nativa, zero richieste esterne e zero errori console. Screenshot controllati.
+  Test chat con provider sintetico; test nativi su filesystem temporaneo. Non è collaudo IPC
+  completo dell’app aperta o richiesta reale Codex. Hash dell’eseguibile invariato; serve build
+  desktop aggiornata e isolamento Windows autorizzato per verificare il percorso reale.
+- Skill OpenAI Docs: letto il contratto `outputSchema` per turno in
+  https://learn.chatgpt.com/docs/app-server prima dell’implementazione; nessun cambio al protocollo
+  o installazione/login automatici. Progettazione/revisione/documentazione hanno distinto
+  configurazione iniziale, archivio operativo e comandi PLC. Nessuna nuova dipendenza/licenza.
+  Restano wizard iniziale ricette, form operatore Runtime, identità applicativa, UDT/migrazioni,
+  audit/DB industriali e apply/upload PLC. Obiettivo Unified/Optix/AI e gate produzione aperti.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

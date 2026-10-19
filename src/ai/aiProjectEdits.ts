@@ -1,6 +1,7 @@
 import { parse } from "@babel/parser";
 import traverseModule from "@babel/traverse";
 import { isPlcVariableName, parsePlcCatalog } from "../core/plcVariables";
+import { parseRecipeCatalog, recipeConfigurationFile } from "../core/recipeConfiguration";
 
 const traverse = (traverseModule as unknown as { default?: typeof traverseModule }).default ?? traverseModule;
 export interface AiProjectChange { path: string; before: string | null; after: string }
@@ -30,9 +31,18 @@ function text(value: unknown, max: number) {
 }
 export function aiProjectPath(path: string): boolean {
   if (!path || path.length > 240 || path.includes("\\") || /[^A-Za-z0-9_./ -]/.test(path) || path.split("/").some(part => !part || part.startsWith(".") || /[. ]$/.test(part) || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part) || /^(node_modules|dist|build|coverage|target|standard)$/i.test(part))) return false;
-  if (path === "framecraft.plc.json") return true;
+  if (path === "framecraft.plc.json" || path === recipeConfigurationFile) return true;
   if (!path.startsWith("src/") || !/\.(?:[jt]sx?|mjs|css)$/.test(path) || /(?:^|\/)(?:.*secret.*|.*credential.*|.*password.*|.*token.*|.*\.config)\.[^/]+$/i.test(path)) return false;
   return true;
+}
+export function aiProjectRelativeImport(file: string, dependency: string): string | undefined {
+  if (!aiProjectPath(file) || !dependency.startsWith(".")) return undefined;
+  const parts = file.split("/"); parts.pop();
+  for (const part of dependency.split("/")) {
+    if (part === "..") { if (!parts.length) return undefined; parts.pop(); }
+    else if (part !== ".") parts.push(part);
+  }
+  return parts.join("/");
 }
 export function parseAiProjectPlan(source: string): AiProjectPlan {
   const value = object(JSON.parse(text(source, 262_144)), Object.keys(aiProjectSchema.properties));
@@ -78,6 +88,11 @@ export function validateAiProjectCode(path: string, before: string | null, after
   const dependencies: string[] = [];
   if (!after.trim() || after.length > 300_000) throw new Error(`${path}: il risultato è vuoto o troppo grande.`);
   assertAiSourceShareable(after);
+  if (path === recipeConfigurationFile) {
+    if (before !== null) parseRecipeCatalog(before);
+    parseRecipeCatalog(after);
+    return dependencies;
+  }
   if (path.endsWith(".css")) {
     if (/url\s*\(\s*["']?(?:https?:|data:|javascript:|\/\/)|@import/i.test(after) && after !== before) throw new Error("L’AI non aggiunge import CSS o risorse di rete.");
     if ((after.match(/\{/g)?.length ?? 0) !== (after.match(/\}/g)?.length ?? 0)) throw new Error(`${path}: parentesi CSS non bilanciate.`);
@@ -89,9 +104,8 @@ export function validateAiProjectCode(path: string, before: string | null, after
     const dependency = (item.type === "ImportDeclaration" || item.type === "ExportNamedDeclaration" || item.type === "ExportAllDeclaration") && item.source?.value;
     if (!dependency || oldImports.has(dependency) || dependency === "react" || dependency === "react/jsx-runtime") continue;
     if (!dependency.startsWith(".")) throw new Error(`${path}: nessuna nuova dipendenza o import esterno (${dependency}).`);
-    const parts = path.split("/"); parts.pop();
-    for (const part of dependency.split("/")) { if (part === "..") parts.pop(); else if (part !== ".") parts.push(part); }
-    const relative = parts.join("/");
+    const relative = aiProjectRelativeImport(path, dependency);
+    if (relative === undefined) throw new Error(`${path}: il nuovo import esce dal progetto (${dependency}).`);
     const resolved = [relative, ...[".ts", ".tsx", ".js", ".jsx", ".mjs", ".css", "/index.ts", "/index.tsx"].map(ext => relative + ext)].find(file => aiProjectPath(file) && known.has(file));
     if (!resolved) throw new Error(`${path}: import non risolvibile nel progetto (${dependency}).`);
     dependencies.push(resolved);

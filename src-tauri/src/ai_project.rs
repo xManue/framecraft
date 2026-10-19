@@ -18,7 +18,7 @@ fn allowed(path: &str) -> bool {
         part.is_empty() || part.starts_with('.') || part.ends_with(['.', ' ']) || ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"].contains(&stem.as_str())
             || ["node_modules", "dist", "build", "coverage", "target", "standard"].contains(&part.to_ascii_lowercase().as_str())
     }) { return false; }
-    if path == "framecraft.plc.json" { return true; }
+    if path == "framecraft.plc.json" || path == "framecraft.recipes.json" { return true; }
     let lower = path.to_ascii_lowercase();
     let name = lower.rsplit('/').next().unwrap_or("");
     path.starts_with("src/") && [".js", ".jsx", ".ts", ".tsx", ".mjs", ".css"].iter().any(|ext| lower.ends_with(ext))
@@ -74,7 +74,15 @@ fn catalog(before: Option<&str>, after: &str) -> Result<(), String> {
     }
     Ok(())
 }
+fn recipe_change(root: &Path, change: &Change) -> Result<(), String> {
+    if change.path == "framecraft.recipes.json" {
+        crate::recipe_config::require_initial(root)?;
+        if let Some(source) = &change.after { crate::recipe_config::validate_source(source)?; }
+    }
+    Ok(())
+}
 fn write(root: &Path, change: &Change) -> Result<(), String> {
+    recipe_change(root, change)?;
     if read(root, &change.path)? != change.before { return Err(format!("{} è cambiato dopo la proposta. Nessuna sovrascrittura automatica.", change.path)); }
     let file = no_links(root, Path::new(&change.path))?;
     match &change.after {
@@ -93,6 +101,7 @@ fn apply(root: &Path, changes: &[Change], restore: bool) -> Result<String, Strin
     for change in changes {
         if paths.contains(&change.path.to_lowercase()) || !allowed(&change.path) || !restore && change.after.as_ref().is_none_or(|source| source.trim().is_empty()) { return Err("La proposta contiene file duplicati, protetti o cancellazioni non consentite.".into()); }
         paths.push(change.path.to_lowercase());
+        recipe_change(root, change)?;
         if change.after.as_ref().is_some_and(|source| source.len() > 300_000) || read(root, &change.path)? != change.before { return Err(format!("{} è cambiato o supera i limiti. Aggiorna la proposta.", change.path)); }
         if !restore && change.path == "framecraft.plc.json" { catalog(change.before.as_deref(), change.after.as_deref().ok_or("Catalogo non valido")?)?; }
     }
@@ -175,6 +184,24 @@ mod tests {
         assert!(apply(root, &changes, false).is_err());
         let reverse = vec![Change { path: "src/App.tsx".into(), before: Some("after".into()), after: Some("before".into()) }]; apply(root, &reverse, true).unwrap();
         assert_eq!(fs::read_to_string(root.join("src/App.tsx")).unwrap(), "before");
+    }
+    #[test] fn ai_recipe_catalog_has_backup_and_restores_only_before_operational_initialization() {
+        let temp = tempfile::tempdir().unwrap(); let root = fs::canonicalize(temp.path()).unwrap();
+        let change = Change { path: "framecraft.recipes.json".into(), before: None, after: Some("{\"version\":1,\"schemas\":[]}".into()) };
+        let id = apply(&root, &[change.clone()], false).unwrap(); assert!(root.join(format!(".framecraft/ai-backups/{id}.json")).is_file());
+        let reverse = restore_plan(&root, &[change.clone()]).unwrap(); apply(&root, &reverse, true).unwrap(); assert!(!root.join(&change.path).exists());
+        apply(&root, &[change.clone()], false).unwrap(); let reverse = restore_plan(&root, &[change.clone()]).unwrap();
+        fs::create_dir_all(root.join(".framecraft-runtime/recipes")).unwrap(); fs::write(root.join(".framecraft-runtime/recipes/recipes.json"), "PRIVATE_OPERATIONAL_VALUES").unwrap();
+        assert!(apply(&root, &reverse, true).unwrap_err().contains("operativo")); assert_eq!(fs::read_to_string(root.join(&change.path)).unwrap(), change.after.unwrap()); assert_eq!(fs::read_to_string(root.join(".framecraft-runtime/recipes/recipes.json")).unwrap(), "PRIVATE_OPERATIONAL_VALUES");
+    }
+    #[test] fn ai_recipe_preflight_blocks_the_entire_batch_for_an_operational_store_or_invalid_envelope() {
+        let temp = tempfile::tempdir().unwrap(); let root = fs::canonicalize(temp.path()).unwrap(); fs::create_dir(root.join("src")).unwrap(); fs::write(root.join("src/A.ts"), "before").unwrap();
+        let code = Change { path: "src/A.ts".into(), before: Some("before".into()), after: Some("after".into()) };
+        let mut recipe = Change { path: "framecraft.recipes.json".into(), before: None, after: Some("{\"version\":1,\"schemas\":[],\"PRIVATE_EXTRA\":true}".into()) };
+        assert!(apply(&root, &[code.clone(), recipe.clone()], false).is_err()); assert_eq!(fs::read_to_string(root.join("src/A.ts")).unwrap(), "before");
+        recipe.after = Some("{\"version\":1,\"schemas\":[]}".into()); fs::create_dir_all(root.join(".framecraft-runtime/recipes")).unwrap();
+        assert!(apply(&root, &[code, recipe], false).unwrap_err().contains("operativo")); assert!(!root.join("framecraft.recipes.json").exists()); assert_eq!(fs::read_to_string(root.join("src/A.ts")).unwrap(), "before"); assert!(!root.join(".framecraft/ai-backups").exists());
+        for path in [".framecraft-runtime/recipes/recipes.json", "framecraft.connections.json", "FRAMECRAFT.RECIPES.JSON"] { assert!(!allowed(path)); } assert!(allowed("framecraft.recipes.json"));
     }
     #[test] fn ai_project_does_not_partially_apply_on_preflight_failure() {
         let temp = tempfile::tempdir().unwrap(); fs::create_dir(temp.path().join("src")).unwrap(); fs::write(temp.path().join("src/A.ts"), "old").unwrap();
