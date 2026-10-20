@@ -5366,6 +5366,74 @@ Verifiche del 5 ottobre 2026:
   nessuna equivalenza vendor o prontezza industriale dichiarata. Lavori trend/profili e dati
   privati preservati, niente agenti, riapertura nativa o richieste AI reali.
 
+### 153. Gestione grafica degli account locali e sessioni (2026-10-20)
+
+- Proseguita la capacità utenti Unified/Optix: Pannello → Account del pannello apre la gestione
+  locale nell’editor, anche dagli accessi dell’ispettore. Creazione esplicita, dati/permessi,
+  cambio password e disabilitazione/riattivazione; nessun utente/capacità preselezionata,
+  recupero password o cancellazione automatica. Username/ID stabili. Ruolo descrittivo,
+  capacità server e ID dei permessi grafici separati. Riepilogo e conferma prima di scrivere.
+- Finestra ampia, etichette, focus/Tab/Esc e ritorno al trigger, comandi >=44 px, layout
+  verticale sotto 700 px. Percorso locale effettivo visibile anche in conferma: una copia
+  Framecraft non è l’archivio dell’originale o del server remoto. Nessun dialogo di password
+  esposto via HTTP dal Runtime; nessuna promessa di amministrare un servizio remoto.
+- Servizio e sessioni salva soltanto framecraft.auth.json con CAS e generazione progetto:
+  abilitazione, idle/assoluta ed eventuale HTTP loopback. Serve riavvio manuale del servizio,
+  oltre a origini/proxy/TLS corretti; lo stato del file non certifica il servizio attivo.
+  Configurazioni assenti/non compatibili non vengono inventate o sostituite. Vecchi progetti
+  richiedono aggiornamento esplicito del Runtime. Nessun restart/connessione/comando PLC.
+- PIN e regole grafiche precedenti sono una pagina di compatibilità distinta, con ritorno
+  agli account server e conferma prima di scartare la bozza. Non convertono o promuovono PIN.
+  Aprire la gestione server non legge più in parallelo il runtime PIN: evita I/O inutile e
+  la competizione sul progetto durante la lettura nativa. Caricamento PIN solo su scelta
+  esplicita; risposta di un progetto precedente non aggiorna quello nuovo.
+- Nuovo modulo operator-admin riusa schema/scrypt/lock/CAS del servizio. Lettura senza
+  provisioning; credenziali private, metadati senza hash/password. Account modificati solo
+  dopo confronto della revisione. Percorsi non regolari/symlink, campi extra e concessioni
+  ignote rifiutati; store corrotto mai rimpiazzato con utenti vuoti o predefiniti.
+- Tre IPC nativi limitati alla finestra principale, root autorizzata e generazione corrente.
+  Worker Node con codice incorporato nell’app (import data URL), non moduli del progetto,
+  Node di sistema risolto fuori dal progetto, NODE_OPTIONS/NODE_PATH rimossi, stdin per le
+  password, stdout tipizzato con soli metadati, stderr grezzo non esposto. Input/output
+  limitati, timeout e lavoro fuori dal thread UI; lock progetto durante l’operazione.
+  Node >=22.13 richiesto, raccomandato LTS 24; AUTH_NODE distinto e nessuna installazione
+  automatica. Nessuna dipendenza Cargo/npm o licenza aggiunta; binario Node non distribuito qui.
+- Password solo nello stato locale del modulo e nel canale del processo, rimosse dal modulo
+  dopo ogni invio; mai in argomenti/env/URL, checkpoint, sorgenti o contesto AI. Marker
+  sessionStorage con solo pending, indicizzato per namespace e percorso locale codificato;
+  distingue originale/copia anche con namespace uguale e normalizza il caso dei path Windows.
+  Memoria bloccata impedisce l’invio. Risposta incerta non viene ritentata: rilettura/confronto,
+  verifica login per password e consenso per chiudere l’avviso, non certificazione di esito.
+- Verificata esclusione delle credenziali dall’esportazione del codice: copia/esporta non è
+  un backup utenti. Il deployment deve predisporre esplicitamente gli account sul target;
+  GUI locale e CLI disponibili, non copia automatica dei segreti nel pacchetto pubblico.
+- Skill system-design applicata a confini editor/progetto/servizio/worker e scelta di riusare
+  la logica Node senza duplicare crypto; UI/UX a conferme, focus e target; documentazione a
+  procedura, errori, differenza copia/target e limiti in runtime/README. Consultate capacità
+  IPC Tauri e codice della versione installata: nessuna capability remota aggiunta; i limiti
+  iframe/piattaforma restano da collaudare, non aggirati con permessi più larghi.
+- Snapshot pubblico `.hmi-preview/public-check-KN3h6z`, senza export WinCC privati o modifiche
+  trend/profili: 64 test mirati JS in sei file, 7 test Rust del solo modulo nuovo, tsc -b e
+  build editor passati. Ultimi controlli su isolamento marker e apertura PIN su richiesta
+  nella copia `.hmi-preview/public-check-g5pzf8`: 45 test dei soli tre file coinvolti e nuova
+  build/tipi passati. Totale 66 test JS unici + 7 nativi, non suite generale. Avvisi preesistenti
+  di import statici/dinamici ancora presenti; dipendenze locali collegate, non clean install.
+- Test nativi: worker realmente eseguito, hash privati senza segreti nelle risposte, CAS,
+  progetto diverso e sessione stale rifiutati, config validata, finestra diversa negata,
+  moduli del progetto non eseguiti, export senza archivio privato. Nessuna app/finestra aperta.
+- Edge headless sulla finestra reale, con IPC di prova collegato al modello e a file sintetici:
+  creazione/permessi, hash/password verificati, disabilitazione, configurazione servizio,
+  mutazione applicata con risposta persa e reload senza replay, nessun segreto nei metadati.
+  Viewport 375/768/1024/1440, zero errori JS e overflow, pulsanti >=44 px; screenshot 375/1440
+  ispezionati. Fixture finale `public-check-g5pzf8/.hmi-preview/operator-ui-usoiAX`. API simulate
+  soltanto account/config e letture sessione/lista sorgenti per il recovery dell’editor; nessuna
+  chiamata AI, avvio servizio, preview, PLC o account reale. Non è collaudo IPC/WebView2 nativo.
+- Restano amministrazione remota/centralizzata, gruppi e ACL per risorsa, audit/firme, policy
+  password avanzate, backup/restore/ACL Windows, packaging/provisioning sul target, guasti e
+  collaudo produzione. Stato roadmap ancora PARZIALE: GUI locale non equivale a parità vendor
+  o rilascio industriale. Obiettivo complessivo invariato e attivo; dati privati e 18 modifiche
+  trend/profili preservati, niente agenti o inferenze AI reali.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

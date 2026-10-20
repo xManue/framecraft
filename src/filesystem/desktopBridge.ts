@@ -8,6 +8,7 @@ import type { AlarmConfigurationSnapshot } from "../core/hmiAlarms";
 import type { AiInterviewDraftSnapshot } from "../ai/aiInterviewDraft";
 import type { AiProjectChange } from "../ai/aiProjectEdits";
 import type { RecipeConfigurationSnapshot } from "../core/recipeConfiguration";
+import type { OperatorAccountsSnapshot, OperatorAdminCommand } from "../core/operatorAccounts";
 
 export const desktopAvailable = isTauri();
 
@@ -16,6 +17,12 @@ function requireDesktop() {
 }
 
 export const desktopBridge = {
+  async readOperatorAccounts(root: string): Promise<OperatorAccountsSnapshot> { requireDesktop(); return invoke("read_operator_accounts", { root }); },
+  async updateOperatorAccounts(root: string, expected: OperatorAccountsSnapshot, command: OperatorAdminCommand): Promise<OperatorAccountsSnapshot> { requireDesktop(); return invoke("update_operator_accounts", { root, generation: expected.generation, revision: expected.revision, command }); },
+  async saveOperatorConfiguration(root: string, expected: OperatorAccountsSnapshot, source: string): Promise<void> {
+    requireDesktop(); if (expected.configuration === null) throw new Error("AUTH_CONFIG");
+    return invoke("save_operator_configuration", { root, generation: expected.generation, expected: expected.configuration, source });
+  },
   async readRecipeConfiguration(root: string): Promise<RecipeConfigurationSnapshot> {
     requireDesktop(); return invoke("read_recipe_configuration", { root });
   },

@@ -5,7 +5,7 @@ import {
   Code2, Columns2, Compass, Database, Eye, FileCheck2, FolderOpen, Gauge, HardDriveDownload,
   HelpCircle, Languages, LayoutTemplate, Magnet, Maximize, Minus, MonitorCog,
   Pencil, Play, Plus, Redo2, RefreshCw, Save, Keyboard, Settings, Copy,
-  TerminalSquare, Trash2, Undo2, X, ZoomIn,
+  TerminalSquare, Trash2, Undo2, X, ZoomIn, ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { alignLabels, type AlignMode } from "../canvas/alignment";
@@ -59,6 +59,7 @@ export function TopBar() {
   const setMode = useEditorStore((state) => state.setViewMode);
   const previewUrl = useEditorStore((state) => state.previewUrl);
   const save = useEditorStore((state) => state.save);
+  const openUserAccess = useEditorStore((state) => state.openUserAccess);
   const duplicate = useEditorStore((state) => state.duplicateSelection);
   const setPaletteOpen = useEditorStore((state) => state.setPaletteOpen);
   const shortcutBindings = useEditorShortcuts((state) => state.bindings);
@@ -206,6 +207,7 @@ export function TopBar() {
               <div className="topbar-menu-separator" />
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("plc"))}><Gauge size={15} /><span><strong>Variabili PLC e valori di prova</strong><small>Catalogo e prova locale dell’HMI, senza collegare un PLC</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setConnectionsOpen(true))}><Cable size={15} /><span><strong>Connessioni PLC</strong><small>Broker MQTT, mapping tag e gateway del pannello</small></span></button>
+              <button role="menuitem" onClick={() => runAndClose(() => void openUserAccess())}><ShieldCheck size={15} /><span><strong>Account del pannello</strong><small>Utenti locali, password e permessi del servizio HMI</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setAlarmsOpen(true))}><FileCheck2 size={15} /><span><strong>Allarmi</strong><small>Segnali, soglie, presa visione e prova senza PLC</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setRecipesOpen(true))}><Database size={15} /><span><strong>Ricette</strong><small>Schemi, parametri e valori iniziali del progetto</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("resources"))}><Languages size={15} /><span><strong>Testi e grafiche</strong><small>Lingue, risorse e asset del progetto</small></span></button>

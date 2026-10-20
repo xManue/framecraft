@@ -336,7 +336,7 @@ export interface EditorState {
   cancelZonePicking: () => void;
   addPickedPoint: (x: number, y: number) => Promise<void>;
   finishZonePicking: () => Promise<void>;
-  openUserAccess: () => Promise<void>;
+  openUserAccess: (legacy?: boolean) => Promise<void>;
   closeUserAccess: () => void;
   saveUserAccess: (config: UserAccessConfig) => Promise<void>;
   removeAttribute: (name: string) => Promise<void>;
@@ -2131,14 +2131,18 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
       if (config) set({ userAccessConfig: config });
       return config;
     },
-    async openUserAccess() {
-      if (!get().project) return;
-      set({ userAccessOpen: true, userAccessBusy: true });
+    async openUserAccess(legacy = false) {
+      const project = get().project;
+      if (!project) return;
+      set({ userAccessOpen: true });
+      if (!legacy) return;
+      set({ userAccessBusy: true });
       try {
         const { defaultUserAccessConfig } = await import("../core/userAccess");
-        set({ userAccessConfig: await readUserAccessConfig() ?? get().userAccessConfig ?? defaultUserAccessConfig });
+        const config = await readUserAccessConfig();
+        if (get().project === project && get().userAccessOpen) set({ userAccessConfig: config ?? defaultUserAccessConfig });
       } catch (error) { reportError(error); }
-      finally { set({ userAccessBusy: false }); }
+      finally { if (get().project === project) set({ userAccessBusy: false }); }
     },
     closeUserAccess: () => set({ userAccessOpen: false }),
     /** Saving writes the whole runtime again: the accounts live inside the file the panel loads, so

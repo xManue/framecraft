@@ -638,8 +638,9 @@ Altri comandi: `npm run operators -- list`, `password`, `permissions`, `disable`
 Ogni modifica valida confronta la revisione su disco, usa lock esclusivo e pubblicazione atomica;
 un conflitto non sovrascrive. Non cancellare lock o file corrotti per sbloccare il servizio:
 verifica processo proprietario/backup con il responsabile. Non ci sono reset, riparazioni,
-migrazioni, cancellazione utenti o recupero password automatici. L’amministrazione è per ora
-da terminale sul server, non dal browser o dall’editor PIN; GUI amministrativa da completare.
+migrazioni, cancellazione utenti o recupero password automatici. Puoi usare il terminale sul
+server oppure la gestione locale nell’app Framecraft descritta sotto. Nessuna API amministrativa
+è esposta dal browser del pannello; il vecchio editor PIN è una funzione di compatibilità distinta.
 
 File privato: `.framecraft-runtime/security/operators.json`, fuori da Git, public e dist.
 Contiene hash scrypt con salt casuale, mai password in chiaro: N=131072/r=8/p=1, 128 MiB per
@@ -676,9 +677,59 @@ CSRF o valori PLC. Per ora sono output del servizio, non un audit persistente e 
 
 Questo è controllo per capacità dell’intero pannello, non ancora ACL per singolo tag, pagina,
 ricetta o gruppo allarmi. Lettura snapshot PLC resta del proxy/gateway, non segregata per utente.
-Niente UMC/SSO/MFA, UI di amministrazione, revoca distribuita o replica sessioni. Da verificare
+Niente UMC/SSO/MFA, amministrazione remota, revoca distribuita o replica sessioni. Da verificare
 proxy HTTPS/cookie reali, browser/device multipli, ACL/backup/recovery e carico sul target.
 Salvare ricette non trasferisce valori al PLC; consegna driver non significa conferma PLC.
+
+### Gestione grafica locale degli account
+
+Nell’app desktop apri **Pannello → Account del pannello**. La stessa finestra si apre
+dall’ispettore degli accessi. È amministrazione della cartella del progetto attualmente
+aperto, non login al Runtime e non amministrazione di un server remoto. Il dettaglio
+**Cartella degli account su questo PC** mostra il percorso preciso: se lavori su una copia
+Framecraft, non stai modificando l’archivio dell’originale o del server in esecuzione altrove.
+
+1. Rileggi account, poi Nuovo account: username univoco, nome, ruolo descrittivo, capacità
+   server esplicite e ID dei permessi grafici separati. Nessuna capacità preselezionata.
+   Password almeno 12 caratteri, ripetuta due volte. Rivedi modifica mostra il riepilogo,
+   mai la password; Conferma salvataggio è l’unico passaggio che scrive l’archivio privato.
+2. Per un account selezionato puoi modificare dati/permessi, cambiare password o
+   disabilitare/riattivare, sempre con conferma. Username e ID non vengono rinominati,
+   nessuna cancellazione o recupero automatico. Ogni cambiamento di contenuto revoca le
+   sessioni; un comando già accettato non viene annullato.
+3. In Servizio e sessioni abiliti l’accesso, scegli idle/durata massima ed eventualmente HTTP
+   di prova sul loopback. La configurazione pubblica usa confronto del file e della sessione
+   progetto. Si applica al prossimo avvio **manuale** del servizio: niente restart o comandi PLC
+   automatici. Configura separatamente proxy/origini/TLS in Connessioni PLC. Un progetto senza
+   framecraft.auth.json v1 compatibile richiede aggiornamento esplicito, non un reset degli archivi.
+4. Bozze e password restano nella memoria della finestra, non nei checkpoint o nel contesto AI.
+   Dopo ogni invio la password viene rimossa dal modulo. Prima di una mutazione viene conservato
+   in sessionStorage soltanto `pending`, indicizzato con namespace e percorso locale codificato
+   del progetto: una copia non può chiudere l’avviso dell’originale. Risposta persa,
+   timeout o errore non vengono ritentati: rileggi e confronta; per una password verifica
+   l’accesso al pannello, poi Ho verificato: continua chiude l’avviso. Non certifica un esito.
+   Il marker sopravvive al reload della finestra, non alla fine della sessione browser; non
+   cancellare i dati dell’app per risolvere un’incertezza. Storage bloccato impedisce l’invio.
+5. Permessi grafici e PIN precedenti apre l’editor di compatibilità, con ritorno agli account
+   server. I suoi PIN/timeout/etichette non cambiano password, sessioni o capacità del servizio.
+   Nessun account PIN viene convertito o promosso automaticamente.
+
+Implementazione: finestra → IPC della sola finestra principale → progetto autorizzato e
+generazione corrente → worker Node incorporato nell’app → archivio privato. Il worker riusa
+validazione/scrypt/lock/CAS del Runtime, non esegue moduli o binari Node del progetto. Richiede
+Node LTS installato nel PATH di sistema; nessuna nuova dipendenza o provider di credenziali.
+Password solo via stdin del processo, mai in argomenti/env/URL/output. Risposte IPC tipizzate
+con soli metadati; stderr grezzo non esposto. Il lavoro viene eseguito fuori dal thread UI,
+con soglie di input/output e timeout del processo. L’archivio non è accessibile da endpoint HTTP.
+L’accesso remoto IPC resta disabilitato nella configurazione Tauri; le relative
+[limitazioni di piattaforma](https://v2.tauri.app/security/capabilities/#remote-api-access)
+e il collaudo WebView2/nativo sul target sono gate di rilascio, non risolti dal solo test del worker.
+
+Copia di lavoro ed Esporta copia escludono `.framecraft-runtime`, compresi account, log e archivi:
+non è un backup degli utenti o una pubblicazione delle credenziali. Preparali esplicitamente sul
+target, con CLI o Framecraft aperto sulla cartella corretta. Firma/audit amministrativo,
+policy password avanzate, autorizzazione amministrativa centralizzata, provisioning nel futuro
+wizard Pubblica e backup/restore/ACL Windows verificati restano da completare.
 
 ## Prima della produzione
 

@@ -1,5 +1,6 @@
 export const operatorCapabilities = Object.freeze(["recipes.read", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "alarms.acknowledge", "alarms.confirm", "tags.write"]);
 const messages = {
+  AUTH_NODE: [503, "Node.js non disponibile per la gestione locale", "Installa una versione Node LTS supportata nel sistema, poi chiudi e riapri Framecraft. Gli eseguibili dentro al progetto non vengono usati per amministrare password e account."],
   AUTH_CONFIG: [503, "Accesso operatore non configurato", "Configura esplicitamente gli account locali e il trasporto protetto del servizio. Non usare il PIN browser o l’account ChatGPT."],
   AUTH_STORE: [503, "Archivio operatori non disponibile", "Controlla file, backup e permessi dell’account servizio. Non vengono creati utenti o sostituiti archivi automaticamente."],
   AUTH_BUSY: [429, "Servizio accessi occupato", "Attendi e riprova manualmente. Nessuna richiesta di accesso viene accodata."],

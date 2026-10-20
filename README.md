@@ -778,12 +778,15 @@ Run `npm test` for parser and transformation fixtures, and `npm run build` for t
 ## Local HMI operator accounts
 
 New panels include explicit server-side username/password login through the panel's user button,
-separate from ChatGPT/Codex and legacy browser PINs. Accounts are provisioned from the server
-terminal; no default users or grants. Session/capability checks protect recipe actions, alarm
+separate from ChatGPT/Codex and legacy browser PINs. Provision accounts explicitly from the server
+terminal or **Pannello → Account del pannello** in the desktop editor; no default users or grants.
+The editor manages its current local project folder, not a remote service. Private accounts are
+excluded from working/code exports and must be provisioned separately on the target.
+Session/capability checks protect recipe actions, alarm
 acknowledgements and tag writes, including duplicate requests. The proxy token alone no longer
 authorizes writes. See [setup, limits and recovery](runtime/README.md#account-operatore-locali-sul-server).
-Existing panels require an explicit runtime/configuration update. Per-object ACLs, administrative
-GUI, durable security audit, target/HTTPS/Windows ACL validation remain production gates.
+Existing panels require an explicit runtime/configuration update. Per-object ACLs, remote
+administration, durable security audit, target/HTTPS/Windows ACL validation remain production gates.
 
 ## Files, workspace and local test values
 

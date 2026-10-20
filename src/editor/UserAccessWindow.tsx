@@ -2,11 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { Clock, KeyRound, Plus, Save, ShieldCheck, Trash2, UserPlus, Users, X } from "lucide-react";
 import { useEditorStore } from "../state/editorStore";
 import { userAccessId, type UserAccessAccount, type UserAccessConfig, type UserAccessPermission } from "../core/userAccess";
+import { OperatorAccountsDialog } from "./OperatorAccountsDialog";
 
-/** Accounts and permissions are a job of their own: a panel has a handful of people on it, each with
- * a PIN and a different set of things they may press. That does not fit in the property sheet on the
- * side, so it gets a window that covers the editor while it is being sorted out. */
+/** Server accounts are primary; the old browser PIN editor remains explicitly separate. */
 export function UserAccessWindow() {
+  const [legacy, setLegacy] = useState(false);
+  const close = useEditorStore(state => state.closeUserAccess);
+  return legacy ? <LegacyUserAccessWindow onServer={() => setLegacy(false)} /> : <OperatorAccountsDialog onClose={close} onLegacy={() => { setLegacy(true); void useEditorStore.getState().openUserAccess(true); }} />;
+}
+
+function LegacyUserAccessWindow({ onServer }: { onServer(): void }) {
   const config = useEditorStore((state) => state.userAccessConfig);
   const busy = useEditorStore((state) => state.userAccessBusy);
   const close = useEditorStore((state) => state.closeUserAccess);
@@ -28,7 +33,7 @@ export function UserAccessWindow() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  if (!draft) return <div className="access-backdrop" role="presentation"><section className="access-window loading" role="dialog" aria-modal="true" aria-label="Accessi e permessi"><p>Lettura degli accessi del progetto…</p></section></div>;
+  if (!draft) return <div className="access-backdrop" role="presentation"><section className="access-window loading" role="dialog" aria-modal="true" aria-label="Accessi e permessi"><p>{busy ? "Lettura dei PIN precedenti…" : "Non riesco a leggere i PIN precedenti. Nessun account server è stato modificato."}</p><button type="button" disabled={busy} onClick={onServer}>Torna agli account server</button></section></div>;
 
   const account = draft.accounts[selected];
   const patchAccount = (values: Partial<UserAccessAccount>) => setDraft({ ...draft, accounts: draft.accounts.map((item, index) => index === selected ? { ...item, ...values } : item) });
@@ -74,7 +79,8 @@ export function UserAccessWindow() {
   return <div className="access-backdrop" role="presentation" onMouseDown={dismiss}>
     <section className="access-window" role="dialog" aria-modal="true" aria-label="Accessi e permessi" onMouseDown={(event) => event.stopPropagation()}>
       <header className="access-header">
-        <div><small>ACCESSO AL PANNELLO</small><h2>Account e permessi</h2></div>
+        <div><small>COMPATIBILITÀ · NON ACCOUNT SERVER</small><h2>Permessi grafici e PIN precedenti</h2></div>
+        <button type="button" disabled={busy} onClick={() => { if (!dirty || window.confirm("Scartare la bozza dei PIN e tornare agli account server?")) onServer(); }}>Account server HMI</button>
         <div className="access-tabs" role="tablist">
           <button role="tab" aria-selected={tab === "accounts"} className={tab === "accounts" ? "active" : ""} onClick={() => setTab("accounts")}><Users size={14} /> Account <em>{draft.accounts.length}</em></button>
           <button role="tab" aria-selected={tab === "permissions"} className={tab === "permissions" ? "active" : ""} onClick={() => setTab("permissions")}><KeyRound size={14} /> Permessi <em>{draft.permissions.length}</em></button>

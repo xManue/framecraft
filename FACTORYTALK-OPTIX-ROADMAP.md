@@ -176,7 +176,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-SEC-01 | Utenti, gruppi e ruoli | PARZIALE | Modello Optix, membership e riferimenti | Matrice persona -> ruolo -> nodo -> operazione |
 | FTX-SEC-02 | Permessi read, write e browse | PARZIALE | ACL sul modello informativo | Permessi effettivi e conflitti spiegati prima del Runtime |
 | FTX-SEC-03 | Visibilità e abilitazione per gruppo/ruolo | PARZIALE | Gruppi e modello Optix, ACL per oggetto | Permessi grafici dal profilo server, separati dalle capacità dei comandi (152) |
-| FTX-SEC-04 | Model authentication locale | PARZIALE | Modello Optix, GUI amministrativa, audit e collaudo target | Account locali Framecraft espliciti, scrypt, cookie/CSRF, scadenza e revoca senza PIN browser (152) |
+| FTX-SEC-04 | Model authentication locale | PARZIALE | Modello Optix, amministrazione remota, audit e collaudo target | Account locali Framecraft espliciti, CLI/GUI locale, scrypt, cookie/CSRF, scadenza e revoca senza PIN browser (152–153) |
 | FTX-SEC-05 | Domain authentication AD/LDAP | ESTERNO | Provider, mapping gruppi e target supportati | Verifica configurazione senza conservare credenziali |
 | FTX-SEC-06 | OAuth2 con PKCE | ESTERNO | Provider e flusso supportato | Checklist redirect, scope e scadenze token |
 | FTX-SEC-07 | Audit signing e firme operatore | DA FARE | Workflow, motivo e entitlement | Diff esatto prima/dopo e prova non ripudiabile |
