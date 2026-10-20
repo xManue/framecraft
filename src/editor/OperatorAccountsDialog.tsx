@@ -1,26 +1,28 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RefreshCw, ShieldCheck, UserPlus, X } from "lucide-react";
-import { parseOperatorAuthConfig, operatorCapabilities } from "../../runtime/operator-policy.mjs";
+import { parseOperatorAuthConfig, operatorCapabilities, defaultOperatorResources, operatorResourceKinds, type OperatorResources } from "../../runtime/operator-policy.mjs";
 import { operatorAccountIssues, operatorAdminError, operatorAdminJournalKey, operatorCapabilityLabels, type OperatorAccountsSnapshot, type OperatorAdminCommand, type OperatorAuthConfig, type OperatorCapability } from "../core/operatorAccounts";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
 import { useRecipeDialog } from "./useRecipeDialog";
+import { OperatorResourcesEditor, operatorResourceLabels } from "./OperatorResourcesEditor";
 import "./operator-accounts.css";
 
 export function OperatorAccountsDialog({ onClose, onLegacy }: { onClose(): void; onLegacy(): void }) {
   const project = useEditorStore(state => state.project), [initial] = useState(project);
   const [snapshot, setSnapshot] = useState<OperatorAccountsSnapshot>(), [config, setConfig] = useState<OperatorAuthConfig>();
   const [phase, setPhase] = useState<"loading" | "ready" | "error" | "saving">("loading"), [error, setError] = useState(""), [message, setMessage] = useState("");
-  const [selected, setSelected] = useState(""), [mode, setMode] = useState<"account" | "add" | "password" | "service">("account");
+  const [selected, setSelected] = useState(""), [mode, setMode] = useState<"account" | "add" | "password" | "service" | "resources">("account");
   const [username, setUsername] = useState(""), [name, setName] = useState(""), [role, setRole] = useState(""), [capabilities, setCapabilities] = useState<OperatorCapability[]>([]), [permissions, setPermissions] = useState("");
+  const [limits, setLimits] = useState<OperatorResources>(defaultOperatorResources());
   const [password, setPassword] = useState(""), [repeat, setRepeat] = useState(""), [review, setReview] = useState<"account" | "disable" | "service">(), [confirmClose, setConfirmClose] = useState(false);
   const [uncertain, setUncertain] = useState(false), [reviewed, setReviewed] = useState(false), [journalError, setJournalError] = useState(false);
   const mounted = useRef(true), generation = useRef(0), title = useId(), journalKey = useRef<string | undefined>(undefined);
   const account = snapshot?.accounts.find(item => item.id === selected), saving = phase === "saving";
   const base = account ? JSON.stringify({ username: account.username, name: account.name, role: account.role, capabilities: account.capabilities, permissions: account.permissions.join(", ") }) : "";
   const changed = mode === "service" ? !!snapshot && !!config && JSON.stringify(config) !== (() => { try { return JSON.stringify(parseOperatorAuthConfig(JSON.parse(snapshot.configuration!))); } catch { return ""; } })()
-    : mode === "add" ? !!(username || name || role || password || capabilities.length || permissions) : mode === "password" ? !!password || !!repeat : !!account && JSON.stringify({ username, name, role, capabilities, permissions }) !== base;
+    : mode === "resources" ? JSON.stringify(limits) !== JSON.stringify(snapshot?.resourceRules.find(rule => rule.accountId === selected)?.limits ?? defaultOperatorResources(true)) : mode === "add" ? !!(username || name || role || password || capabilities.length || permissions) : mode === "password" ? !!password || !!repeat : !!account && JSON.stringify({ username, name, role, capabilities, permissions }) !== base;
   const current = () => mounted.current && useEditorStore.getState().project === initial;
   const clearPassword = () => { setPassword(""); setRepeat(""); };
   const close = () => { if (saving) return; if (changed) setConfirmClose(true); else onClose(); };
@@ -28,7 +30,8 @@ export function OperatorAccountsDialog({ onClose, onLegacy }: { onClose(): void;
   const choose = (id: string, next: typeof mode = "account", force = false) => {
     if (saving || !force && changed && !window.confirm("Scartare la bozza degli account? Nessuna modifica sarà salvata.")) return;
     if (mode === "service" && snapshot?.configuration) { try { setConfig(parseOperatorAuthConfig(JSON.parse(snapshot.configuration))); } catch { setConfig(undefined); } }
-    clearPassword(); setSelected(id); setMode(next); setReview(undefined); setError(""); setConfirmClose(false);
+    setLimits(snapshot?.resourceRules.find(rule => rule.accountId === id)?.limits ?? defaultOperatorResources(true));
+    clearPassword(); setSelected(id); setMode(next); setReview(undefined); setError(""); setMessage(""); setConfirmClose(false);
     const item = snapshot?.accounts.find(account => account.id === id); setUsername(next === "add" ? "" : item?.username ?? ""); setName(next === "add" ? "" : item?.name ?? ""); setRole(next === "add" ? "" : item?.role ?? ""); setCapabilities(next === "add" ? [] : item?.capabilities ?? []); setPermissions(next === "add" ? "" : item?.permissions.join(", ") ?? "");
   };
   const read = async (discard = false) => {
@@ -46,7 +49,7 @@ export function OperatorAccountsDialog({ onClose, onLegacy }: { onClose(): void;
   useEffect(() => { if (project !== initial) onClose(); }, [project, initial, onClose]);
   const editable = phase === "ready" && !!config && !uncertain && !journalError;
   const command = (): OperatorAdminCommand | undefined => mode === "add" ? { action: "add", username, name, role, capabilities, permissions: permissions ? permissions.split(",").map(id => id.trim()) : [], password }
-    : account && mode === "password" ? { action: "password", id: account.id, password } : account ? { action: "update", id: account.id, name, role, capabilities, permissions: permissions ? permissions.split(",").map(id => id.trim()) : [] } : undefined;
+    : account && mode === "resources" ? { action: "resources", id: account.id, limits } : account && mode === "password" ? { action: "password", id: account.id, password } : account ? { action: "update", id: account.id, name, role, capabilities, permissions: permissions ? permissions.split(",").map(id => id.trim()) : [] } : undefined;
   const preview = () => {
     if (!editable || !snapshot) return;
     if (mode === "service") { try { parseOperatorAuthConfig(config); setError(""); setReview("service"); } catch { setError("Controlla timeout e configurazione del servizio."); } return; }
@@ -59,7 +62,7 @@ export function OperatorAccountsDialog({ onClose, onLegacy }: { onClose(): void;
     const next = review === "disable" && account ? { action: "disable" as const, id: account.id, disabled: !account.disabled } : command();
     try { sessionStorage.setItem(journalKey.current, "pending"); if (sessionStorage.getItem(journalKey.current) !== "pending") throw new Error(); }
     catch { setJournalError(true); setError("Memoria di recupero non disponibile: nessuna richiesta inviata. Usa la gestione da terminale o ripristina la memoria dell’app."); clearPassword(); return; }
-    setPhase("saving"); setError(""); const action = review;
+    setPhase("saving"); setError(""); setMessage(""); const action = review;
     try {
       let fresh: OperatorAccountsSnapshot;
       if (action === "service") { const source = JSON.stringify(parseOperatorAuthConfig(config), null, 2) + "\n"; await desktopBridge.saveOperatorConfiguration(initial.root, snapshot, source); fresh = { ...snapshot, configuration: source }; }
@@ -67,7 +70,7 @@ export function OperatorAccountsDialog({ onClose, onLegacy }: { onClose(): void;
       try { sessionStorage.removeItem(journalKey.current); if (sessionStorage.getItem(journalKey.current) !== null) throw new Error(); }
       catch { throw new Error("AUTH_UNCERTAIN"); }
       if (!current()) return;
-      setMessage(action === "service" ? "Configurazione salvata. Riavvia manualmente il servizio HMI per applicarla; nessun collegamento o comando PLC avviato." : "Account aggiornati; le sessioni attive verranno revocate. Nessun comando PLC inviato.");
+      setMessage(next?.action === "add" && fresh.version === 2 ? "Account creato senza risorse utilizzabili. Selezionalo e apri Risorse consentite per assegnarle esplicitamente." : action === "service" ? "Configurazione salvata. Riavvia manualmente il servizio HMI per applicarla; nessun collegamento o comando PLC avviato." : "Account aggiornati; le sessioni attive verranno revocate. Nessun comando PLC inviato.");
       setPhase("ready"); setReview(undefined); setSelected(""); setMode("account");
       if (current()) { setSnapshot(fresh); try { setConfig(fresh.configuration ? parseOperatorAuthConfig(JSON.parse(fresh.configuration)) : undefined); } catch { setConfig(undefined); } }
     } catch (caught) {
@@ -89,9 +92,11 @@ export function OperatorAccountsDialog({ onClose, onLegacy }: { onClose(): void;
       {config && !config.enabled && <p className="operator-notice">Accesso disabilitato nella configurazione locale. Puoi preparare gli account, poi abilitalo in Servizio e sessioni e riavvia manualmente il servizio. Questo stato non verifica il servizio attualmente in esecuzione.</p>}
       {journalError && <p role="alert">Memoria di recupero non disponibile. Modifiche bloccate; usa la gestione da terminale.</p>}
       {uncertain && <section className="operator-notice"><h3>Ultima operazione da verificare</h3><p>Non reinviare alla cieca. Rileggi e confronta gli account; se riguardava una password, verifica l’accesso al pannello. Nessuna password è conservata per riprovare.</p><button type="button" disabled={saving} onClick={() => void read(true)}>Rileggi per verificare</button><button type="button" disabled={saving || !reviewed} onClick={acknowledge}>Ho verificato: continua</button></section>}
-      {review ? <section className="operator-review"><h3>Conferma {review === "service" ? "configurazione del servizio" : review === "disable" ? account?.disabled ? "riattivazione account" : "disabilitazione account" : mode === "add" ? "nuovo account" : mode === "password" ? "cambio password" : "modifica account"}</h3>
+      {review ? <section className="operator-review"><h3>Conferma {review === "service" ? "configurazione del servizio" : review === "disable" ? account?.disabled ? "riattivazione account" : "disabilitazione account" : mode === "resources" ? "risorse consentite" : mode === "add" ? "nuovo account" : mode === "password" ? "cambio password" : "modifica account"}</h3>
         <p>Cartella interessata: <code>{initial?.root}</code></p>
         {review === "service" ? <p>Accesso {config?.enabled ? "abilitato" : "disabilitato"}, inattività {config?.idleMinutes} minuti, durata massima {config?.absoluteMinutes} minuti. HTTP locale {config?.allowHttpLoopback ? "consentito solo sul loopback" : "non consentito: HTTPS richiesto"}. La modifica vale al prossimo avvio manuale del servizio.</p> : <><p>Utente: {username || account?.username}. Nome: {name || account?.name}. Ruolo: {role || account?.role}.</p><p>{mode === "password" ? "La nuova password sarà protetta sul servizio, non mostrata né registrata." : review === "disable" ? "Nessun account verrà cancellato." : "Capacità: " + (capabilities.map(id => operatorCapabilityLabels[id]).join(", ") || "nessuna") + ". Permessi grafici: " + (permissions || "nessuno") + "."}</p><p>Il cambio degli account revoca tutte le sessioni attive. Un comando PLC già accettato può terminare comunque.</p></>}
+        {mode === "resources" && <><ul>{operatorResourceKinds.map(kind => <li key={kind}>{operatorResourceLabels[kind]}: {limits[kind].mode === "all" ? "tutte, anche future" : limits[kind].ids.join(", ") || "nessuna"}</li>)}</ul>{snapshot?.version === 1 && <p className="operator-notice">Confermi anche l’aggiornamento esplicito dell’archivio al formato 2. Gli altri account conservano le risorse attualmente consentite; quelli creati dopo partiranno da nessuna risorsa. Verrà conservato un backup privato operators-v1-REVISIONE.json. Serve il Runtime aggiornato: i Runtime precedenti rifiutano il nuovo archivio. Password, ID e capacità restano invariati.</p>}</>}
+        {mode === "add" && snapshot?.version === 2 && <p>Il nuovo account partirà senza risorse utilizzabili, anche se selezioni capacità generali. Assegnale poi in Risorse consentite.</p>}
         <button type="button" disabled={saving} onClick={() => void save()}>{saving ? "Salvataggio…" : "Conferma salvataggio"}</button><button type="button" disabled={saving} onClick={() => setReview(undefined)}>Torna alla bozza</button>
       </section> : mode === "service" && config ? <fieldset disabled={!editable}><legend>Servizio di accesso</legend>
         <label className="operator-check"><input type="checkbox" checked={config.enabled} onChange={event => setConfig({ ...config, enabled: event.target.checked })} /> Abilita accesso operatore sul server</label>
@@ -99,14 +104,14 @@ export function OperatorAccountsDialog({ onClose, onLegacy }: { onClose(): void;
         <label>Durata massima sessione (minuti)<input type="number" min={config.idleMinutes} max={480} value={config.absoluteMinutes} onChange={event => setConfig({ ...config, absoluteMinutes: Number(event.target.value) })} /></label>
         <label className="operator-check"><input type="checkbox" checked={config.allowHttpLoopback} onChange={event => setConfig({ ...config, allowHttpLoopback: event.target.checked })} /> Consenti HTTP solo per prove sul PC locale</label>
         <p>In produzione usa HTTPS. Configura anche le origini esatte e il proxy in Connessioni PLC. Nessun servizio viene riavviato da questa finestra.</p><button type="button" disabled={!changed} onClick={preview}>Rivedi configurazione</button>
-      </fieldset> : <div className="operator-columns"><aside aria-label="Account locali">{snapshot?.accounts.map(item => <button type="button" disabled={saving} key={item.id} aria-pressed={item.id === selected} onClick={() => choose(item.id)}><strong>{item.name}</strong><span>{item.username} · {item.disabled ? "Disabilitato" : "Attivo"}</span></button>)}{!snapshot?.accounts.length && <p>Nessun account. Aggiungine uno esplicitamente: non esiste un amministratore predefinito.</p>}</aside>
+      </fieldset> : mode === "resources" && account ? <fieldset disabled={!editable}><legend>Risorse consentite · {account.name}</legend><OperatorResourcesEditor value={limits} onChange={setLimits} root={initial!.root} generation={snapshot!.generation} /><button type="button" disabled={!changed} onClick={preview}>Rivedi limiti risorse</button><button type="button" onClick={() => choose(account.id)}>Torna ai dati account</button></fieldset> : <div className="operator-columns"><aside aria-label="Account locali">{snapshot?.accounts.map(item => <button type="button" disabled={saving} key={item.id} aria-pressed={item.id === selected} onClick={() => choose(item.id)}><strong>{item.name}</strong><span>{item.username} · {item.disabled ? "Disabilitato" : "Attivo"}</span></button>)}{!snapshot?.accounts.length && <p>Nessun account. Aggiungine uno esplicitamente: non esiste un amministratore predefinito.</p>}</aside>
         {mode === "add" || account ? <fieldset disabled={!editable}><legend>{mode === "add" ? "Nuovo account" : mode === "password" ? "Nuova password" : "Dati e permessi dell’account"}</legend>
           {mode !== "password" && <><label>Nome utente<input value={username} disabled={mode !== "add"} autoComplete="off" maxLength={64} onChange={event => setUsername(event.target.value)} /></label><label>Nome visualizzato<input value={name} autoComplete="off" maxLength={160} onChange={event => setName(event.target.value)} /></label><label>Etichetta ruolo<input value={role} autoComplete="off" maxLength={80} onChange={event => setRole(event.target.value)} /></label><p>Il ruolo è un’etichetta: scegli qui sotto ogni capacità. Nessuna autorizzazione è implicita.</p>
           <fieldset><legend>Operazioni autorizzate dal server</legend>{operatorCapabilities.map(id => <label className="operator-check" key={id}><input type="checkbox" checked={capabilities.includes(id)} onChange={event => setCapabilities(event.target.checked ? [...capabilities, id] : capabilities.filter(value => value !== id))} />{operatorCapabilityLabels[id]}</label>)}</fieldset>
           <label>ID permessi grafici (separati da virgola)<input value={permissions} onChange={event => setPermissions(event.target.value)} autoComplete="off" placeholder="comandi, parametri, manutenzione" /></label><p>Gestiscono visibilità e reazioni degli elementi; non concedono permessi al server. Lascia vuoto per nessuno.</p></>}
           {(mode === "add" || mode === "password") && <><label>Nuova password<input type="password" value={password} maxLength={256} autoComplete="new-password" onChange={event => setPassword(event.target.value)} /></label><label>Ripeti password<input type="password" value={repeat} maxLength={256} autoComplete="new-password" onChange={event => setRepeat(event.target.value)} /></label><p>Almeno 12 caratteri. Non verrà mostrata nel riepilogo né conservata dopo l’invio.</p></>}
           <button type="button" disabled={!changed} onClick={preview}>Rivedi modifica</button>
-          {account && mode === "account" && <><button type="button" onClick={() => choose(account.id, "password")}>Cambia password</button><button type="button" disabled={changed} title={changed ? "Salva o scarta prima la bozza dell’account" : undefined} onClick={() => { setReview("disable"); clearPassword(); }}>{account.disabled ? "Riattiva account" : "Disabilita account"}</button></>}
+          {account && mode === "account" && <><button type="button" onClick={() => choose(account.id, "resources")}>Risorse consentite</button><button type="button" onClick={() => choose(account.id, "password")}>Cambia password</button><button type="button" disabled={changed} title={changed ? "Salva o scarta prima la bozza dell’account" : undefined} onClick={() => { setReview("disable"); clearPassword(); }}>{account.disabled ? "Riattiva account" : "Disabilita account"}</button></>}
         </fieldset> : <p>Seleziona un account oppure premi Nuovo account. Le password esistenti non sono mai leggibili.</p>}
       </div>}
     </>}

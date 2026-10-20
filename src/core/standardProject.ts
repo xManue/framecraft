@@ -44,6 +44,8 @@ import operatorStoreSource from "../../runtime/operator-store.mjs?raw";
 import operatorStoreTypes from "../../runtime/operator-store.d.mts?raw";
 import operatorAuthSource from "../../runtime/operator-auth.mjs?raw";
 import operatorAuthTypes from "../../runtime/operator-auth.d.mts?raw";
+import operatorAdminSource from "../../runtime/operator-admin.mjs?raw";
+import operatorAdminTypes from "../../runtime/operator-admin.d.mts?raw";
 import operatorCliSource from "../../runtime/manage-operators.mjs?raw";
 import operatorSessionSource from "./hmiOperatorSession.ts?raw";
 import recipeCatalogSource from "../../runtime/recipe-catalog.mjs?raw";
@@ -1820,6 +1822,8 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/operator-store.d.mts", content: operatorStoreTypes },
     { path: "runtime/operator-auth.mjs", content: operatorAuthSource },
     { path: "runtime/operator-auth.d.mts", content: operatorAuthTypes },
+    { path: "runtime/operator-admin.mjs", content: operatorAdminSource },
+    { path: "runtime/operator-admin.d.mts", content: operatorAdminTypes },
     { path: "runtime/manage-operators.mjs", content: operatorCliSource },
     { path: "framecraft.auth.json", content: JSON.stringify({ version: 1, enabled: false, namespace: crypto.randomUUID(), allowHttpLoopback: false, idleMinutes: 15, absoluteMinutes: 480 }, null, 2) + "\n" },
     { path: "src/framecraftOperatorSession.ts", content: operatorSessionSource.replaceAll('"../../runtime/', '"../runtime/') },

@@ -65,7 +65,7 @@ export function installHmiOperatorSession(options: { path?: string; enabled: boo
     modal.setAttribute("aria-busy", String(busy)); modal.querySelector("[data-notice]")!.textContent = notice;
     const section = modal.querySelector("section")!;
     if (session.user) {
-      section.innerHTML = `<h2></h2><p data-role></p><p>Capacità autorizzate dal server:</p><ul></ul><p>La sessione scade per inattività o alla durata massima prevista. Le modifiche agli account revocano gli accessi attivi.</p><button type="button" data-logout>Esci / cambia utente</button>`;
+      section.innerHTML = `<h2></h2><p data-role></p><p>Capacità generali autorizzate dal server (le risorse consentite possono limitarle):</p><ul></ul><p>La sessione scade per inattività o alla durata massima prevista. Le modifiche agli account revocano gli accessi attivi.</p><button type="button" data-logout>Esci / cambia utente</button>`;
       section.querySelector("h2")!.textContent = session.user.name; section.querySelector("[data-role]")!.textContent = session.user.role;
       for (const capability of session.user.capabilities.length ? session.user.capabilities : ["Nessuna: comandi protetti bloccati"]) { const item = document.createElement("li"); item.textContent = capability; section.querySelector("ul")!.append(item); }
       section.querySelector("[data-logout]")!.addEventListener("click", () => void perform("logout", {}));

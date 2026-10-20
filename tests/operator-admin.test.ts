@@ -8,7 +8,7 @@ async function fixture() { const base = path.resolve(".hmi-preview"); await mkdi
 const add = (root: string) => ({ root, action: "add" as const, expectedRevision: null, username: "synthetic", name: "Operatore sintetico", role: "Etichetta", capabilities: ["recipes.read" as const], permissions: [], password });
 describe("amministrazione locale account", () => {
   it("lettura senza provisioning, creazione esplicita e nessuna credenziale nelle risposte", async () => {
-    const root = await fixture(); expect(await manageLocalOperators({ root, action: "read" })).toEqual({ revision: null, storeId: null, accounts: [] }); await expect(stat(path.join(root, ".framecraft-runtime"))).rejects.toMatchObject({ code: "ENOENT" });
+    const root = await fixture(); expect(await manageLocalOperators({ root, action: "read" })).toEqual({ version: null, resourceRules: [], revision: null, storeId: null, accounts: [] }); await expect(stat(path.join(root, ".framecraft-runtime"))).rejects.toMatchObject({ code: "ENOENT" });
     const result = await manageLocalOperators(add(root)); expect(result.accounts).toMatchObject([{ username: "synthetic", capabilities: ["recipes.read"], permissions: [] }]);
     const text = JSON.stringify(result); expect(text).not.toMatch(/password|scrypt|salt|key/); expect(text).not.toContain(password);
     const current = await readOperatorStore(path.join(root, ".framecraft-runtime/security/operators.json")); expect(await verifyOperatorPassword(password, current!.store.accounts[0].password)).toBe(true);

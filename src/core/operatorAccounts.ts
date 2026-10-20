@@ -1,7 +1,7 @@
-import { OperatorAuthError, operatorCapabilities, operatorText, operatorUsername, type OperatorAuthConfig, type OperatorCapability } from "../../runtime/operator-policy.mjs";
+import { OperatorAuthError, operatorCapabilities, operatorText, operatorUsername, parseOperatorResources, type OperatorAuthConfig, type OperatorCapability, type OperatorResourceRule } from "../../runtime/operator-policy.mjs";
 import type { OperatorAdminCommand, OperatorAccountSummary } from "../../runtime/operator-admin.mjs";
 export type { OperatorAdminCommand, OperatorAccountSummary, OperatorAuthConfig, OperatorCapability };
-export interface OperatorAccountsSnapshot { generation: number; configuration: string | null; revision: string | null; accounts: OperatorAccountSummary[] }
+export interface OperatorAccountsSnapshot { generation: number; configuration: string | null; version: 1 | 2 | null; resourceRules: OperatorResourceRule[]; revision: string | null; accounts: OperatorAccountSummary[] }
 export function operatorAdminJournalKey(namespace: string, root: string): string {
   let path = root.replaceAll("\\", "/").replace(/\/+$/, "");
   if (/^[A-Za-z]:\//.test(path) || path.startsWith("//")) path = path.toLowerCase();
@@ -14,6 +14,7 @@ export const operatorCapabilityLabels: Record<OperatorCapability, string> = {
 export function operatorAccountIssues(command: OperatorAdminCommand, existing: readonly OperatorAccountSummary[]): string[] {
   if (command.action === "disable") return [];
   const issues: string[] = [];
+  if (command.action === "resources") { try { parseOperatorResources(command.limits); } catch { issues.push("Risorse: inserisci al massimo 256 ID univoci per gruppo, uno per riga, senza righe vuote o spazi iniziali/finali; massimo 200 caratteri per ID."); } return issues; }
   if (command.action === "add" && (!operatorUsername(command.username) || existing.some(item => item.username === command.username))) issues.push("Scegli un nome utente univoco: minuscole, numeri, punto, trattino o underscore; massimo 64 caratteri.");
   if (command.action === "add" || command.action === "update") {
     if (!operatorText(command.name)) issues.push("Nome visualizzato obbligatorio, senza spazi iniziali/finali o caratteri di controllo; massimo 160 caratteri.");

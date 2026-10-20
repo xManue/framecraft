@@ -10,11 +10,20 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Account { id: String, username: String, name: String, role: String, disabled: bool, capabilities: Vec<String>, permissions: Vec<String> }
 #[derive(Deserialize, Serialize)]
+#[serde(tag = "mode", rename_all = "lowercase", deny_unknown_fields)]
+pub enum ResourceFilter { All, Selected { ids: Vec<String> } }
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Metadata { revision: Option<String>, store_id: Option<String>, accounts: Vec<Account> }
+pub struct ResourceLimits { tag_writes: ResourceFilter, alarm_actions: ResourceFilter, recipe_changes: ResourceFilter }
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResourceRule { account_id: String, limits: ResourceLimits }
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Metadata { version: Option<u8>, resource_rules: Vec<ResourceRule>, revision: Option<String>, store_id: Option<String>, accounts: Vec<Account> }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Snapshot { generation: u64, configuration: Option<String>, revision: Option<String>, accounts: Vec<Account> }
+pub struct Snapshot { generation: u64, configuration: Option<String>, version: Option<u8>, resource_rules: Vec<ResourceRule>, revision: Option<String>, accounts: Vec<Account> }
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Update {
@@ -22,6 +31,7 @@ pub enum Update {
     Update { id: String, name: String, role: String, capabilities: Vec<String>, permissions: Vec<String> },
     Password { id: String, password: String },
     Disable { id: String, disabled: bool },
+    Resources { id: String, limits: ResourceLimits },
 }
 // Explicit serialization avoids Debug/error formatting of password-bearing commands.
 impl Update {
@@ -30,6 +40,7 @@ impl Update {
         Self::Update { id, name, role, capabilities, permissions } => json!({"action":"update","id":id,"name":name,"role":role,"capabilities":capabilities,"permissions":permissions}),
         Self::Password { id, password } => json!({"action":"password","id":id,"password":password}),
         Self::Disable { id, disabled } => json!({"action":"disable","id":id,"disabled":disabled}),
+        Self::Resources { id, limits } => json!({"action":"resources","id":id,"limits":limits}),
     } }
 }
 fn error(code: &str) -> String {
@@ -58,9 +69,7 @@ fn script() -> String {
     format!(r#"
 let read=false;
 try {{
-  let chunks=[],size=0;
-  for await(const chunk of process.stdin) {{ size+=chunk.length;if(size>32768)throw Object.assign(new Error(),{{code:'AUTH_INPUT'}});chunks.push(chunk); }}
-  const input=JSON.parse(new TextDecoder('utf-8',{{fatal:true}}).decode(Buffer.concat(chunks)));read=input.action==='read';
+  const input=globalThis.__fcOperatorInput;delete globalThis.__fcOperatorInput;read=input.action==='read';
   const version=process.versions.node.split('.').map(Number);
   if(version[0]<22||version[0]===22&&version[1]<13)throw Object.assign(new Error(),{{code:'AUTH_NODE'}});
   const url=s=>'data:text/javascript,'+encodeURIComponent(s);
@@ -71,12 +80,16 @@ try {{
 }} catch(e) {{ process.stdout.write(JSON.stringify({{ok:false,code:typeof e.code==='string'&&e.code.startsWith('AUTH_')?e.code:read?'AUTH_STORE':'AUTH_UNCERTAIN'}}));process.exitCode=1; }}
 "#)
 }
+// Program bytes come exclusively from include_str! above, never from a renderer command.
+// Stdin avoids Windows argv limits and keeps credentials out of the process command line.
+const BOOTSTRAP: &str = "let chunks=[],size=0;for await(const c of process.stdin){size+=c.length;if(size>131072)process.exit(1);chunks.push(c)}const envelope=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));globalThis.__fcOperatorInput=envelope.input;await import('data:text/javascript,'+encodeURIComponent(envelope.program));";
 fn run(root: &Path, mut input: Value) -> Result<Metadata, String> {
     input.as_object_mut().ok_or_else(|| error("AUTH_INPUT"))?.insert("root".into(), Value::String(crate::path_string(root)));
     let read = input["action"] == "read"; let failed = || error(if read { "AUTH_STORE" } else { "AUTH_UNCERTAIN" });
-    let bytes = serde_json::to_vec(&input).map_err(|_| error("AUTH_INPUT"))?; if bytes.len() > 32768 { return Err(error("AUTH_INPUT")); }
-    let script = script(); if script.encode_utf16().count() > 28000 { return Err(error("AUTH_CONFIG")); }
-    let mut child = crate::background_command(system_node(root)?).args(["--input-type=module", "--eval", &script])
+    if serde_json::to_vec(&input).map_err(|_| error("AUTH_INPUT"))?.len() > 32768 { return Err(error("AUTH_INPUT")); }
+    let bytes = serde_json::to_vec(&json!({"input":input,"program":script()})).map_err(|_| error("AUTH_INPUT"))?;
+    if bytes.len() > 131072 { return Err(error("AUTH_CONFIG")); }
+    let mut child = crate::background_command(system_node(root)?).args(["--input-type=module", "--eval", BOOTSTRAP])
         .current_dir(std::env::temp_dir()).env_remove("NODE_OPTIONS").env_remove("NODE_PATH").env("NODE_NO_WARNINGS", "1")
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|_| error("AUTH_NODE"))?;
     let mut stdin = child.stdin.take().unwrap(); let stdout = child.stdout.take().unwrap();
@@ -97,7 +110,7 @@ fn run(root: &Path, mut input: Value) -> Result<Metadata, String> {
     if !status.unwrap().success() { return Err(failed()); } reply.data.ok_or_else(failed)
 }
 fn snapshot(root: &Path, state: &RuntimeState, data: Metadata) -> Result<Snapshot, String> {
-    Ok(Snapshot { generation: state.project_generation.load(Ordering::SeqCst), configuration: read_one(root, CONFIG).map_err(|_| error("AUTH_STORE"))?, revision: data.revision, accounts: data.accounts })
+    Ok(Snapshot { generation: state.project_generation.load(Ordering::SeqCst), configuration: read_one(root, CONFIG).map_err(|_| error("AUTH_STORE"))?, version: data.version, resource_rules: data.resource_rules, revision: data.revision, accounts: data.accounts })
 }
 fn read(requested: &str, state: &RuntimeState) -> Result<Snapshot, String> {
     let opened = state.project_root.try_lock().map_err(|_| error("AUTH_BUSY"))?; let root = root(requested, &opened)?;
@@ -139,7 +152,7 @@ pub async fn save_operator_configuration(root: String, generation: u64, expected
 mod tests {
     use super::*;
     #[test] fn only_the_main_editor_can_administer_accounts() { assert!(only_editor("main").is_ok()); for label in ["", "panel", "preview", "main-child"] { assert_eq!(only_editor(label).err().as_deref(), Some("AUTH_PERMISSION")); } }
-    #[test] fn bridge_is_embedded_without_secrets_and_bounded_for_windows() { let code = script(); assert!(code.encode_utf16().count() < 28000); assert!(code.contains("data:text/javascript,")); assert!(!code.contains("SYNTHETIC-password")); }
+    #[test] fn bridge_is_embedded_without_secrets_and_bounded_for_windows() { let code = script(); assert!(code.len() < 96000); assert!(BOOTSTRAP.encode_utf16().count() < 1000); assert!(code.contains("data:text/javascript,")); assert!(!code.contains("SYNTHETIC-password")); }
     #[test] fn configuration_validation_and_cas_are_session_scoped() {
         let dir = tempfile::tempdir().unwrap(); let root = fs::canonicalize(dir.path()).unwrap(); let state = RuntimeState::default(); crate::set_project_root(&state, root.clone()).unwrap(); let name = crate::path_string(&root);
         let source = r#"{"version":1,"enabled":false,"namespace":"06a94107-d8cd-4b6b-a00e-1c508721cf1c","allowHttpLoopback":false,"idleMinutes":15,"absoluteMinutes":480}"#;
@@ -162,6 +175,11 @@ mod tests {
         let file = root.join(".framecraft-runtime/security/operators.json"); let before = fs::read_to_string(&file).unwrap(); assert!(!before.contains(password)); assert!(before.contains("scrypt"));
         assert_eq!(update(&name, generation, None, Update::Disable { id: result.accounts[0].id.clone(), disabled: true }, &state).err().as_deref(), Some("AUTH_CONFLICT")); assert_eq!(fs::read_to_string(&file).unwrap(), before);
         let changed = update(&name, generation, result.revision, Update::Disable { id: result.accounts[0].id.clone(), disabled: true }, &state).unwrap(); assert!(changed.accounts[0].disabled);
+        let migrated = update(&name, generation, changed.revision.clone(), Update::Resources { id: changed.accounts[0].id.clone(), limits: ResourceLimits { tag_writes: ResourceFilter::Selected { ids: vec!["Speed".into()] }, alarm_actions: ResourceFilter::Selected { ids: vec![] }, recipe_changes: ResourceFilter::All } }, &state).unwrap();
+        assert_eq!(migrated.version, Some(2)); assert_eq!(migrated.resource_rules.len(), 1);
+        let old: Value = serde_json::from_str(&before).unwrap(); let new: Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap(); assert_eq!(old["accounts"][0]["password"], new["accounts"][0]["password"]);
+        let backup = root.join(format!(".framecraft-runtime/security/operators-v1-{}.json", changed.revision.unwrap())); assert!(backup.is_file());
+        let safe = serde_json::to_string(&migrated).unwrap(); assert!(!safe.contains("scrypt")); assert!(safe.contains("Speed"));
     }
     #[test] fn project_runtime_code_is_never_executed_by_administration() {
         let dir = tempfile::tempdir().unwrap(); let root = fs::canonicalize(dir.path()).unwrap(); fs::create_dir(root.join("runtime")).unwrap(); fs::write(root.join("runtime/operator-admin.mjs"), "throw new Error('UNTRUSTED_PROJECT_MODULE');").unwrap();

@@ -2,7 +2,7 @@ import { randomBytes, randomUUID, scrypt, timingSafeEqual, createHash } from "no
 import { open, lstat, realpath, rename, link, unlink } from "node:fs/promises";
 import path from "node:path";
 
-import { operatorCapabilities, OperatorAuthError, operatorKeys, operatorText, operatorUsername } from "./operator-policy.mjs";
+import { operatorCapabilities, OperatorAuthError, operatorKeys, operatorText, operatorUsername, parseOperatorResources } from "./operator-policy.mjs";
 export { operatorCapabilities, OperatorAuthError, operatorObject, operatorKeys, operatorText, operatorUsername } from "./operator-policy.mjs";
 const fail = code => { throw new OperatorAuthError(code); };
 const uuid = value => typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
@@ -22,7 +22,7 @@ export async function verifyOperatorPassword(password, raw) {
 }
 export function parseOperatorStore(input) {
   let value; try { const source = typeof input === "string" ? input : JSON.stringify(input); if (Buffer.byteLength(source, "utf8") > 131072) fail("AUTH_STORE"); value = JSON.parse(source); } catch { fail("AUTH_STORE"); }
-  if (!operatorKeys(value, ["version", "id", "accounts"]) || value.version !== 1 || !uuid(value.id) || !Array.isArray(value.accounts) || value.accounts.length > 64) fail("AUTH_STORE");
+  if (!value || ![1, 2].includes(value.version) || !operatorKeys(value, value.version === 1 ? ["version", "id", "accounts"] : ["version", "id", "accounts", "resourceRules"]) || !uuid(value.id) || !Array.isArray(value.accounts) || value.accounts.length > 64) fail("AUTH_STORE");
   const ids = new Set(), usernames = new Set();
   const accounts = value.accounts.map(account => {
     if (!operatorKeys(account, ["id", "username", "name", "role", "disabled", "capabilities", "permissions", "password"]) || !uuid(account.id) || ids.has(account.id) || !operatorUsername(account.username) || usernames.has(account.username) || !operatorText(account.name) || !operatorText(account.role, 80) || typeof account.disabled !== "boolean") fail("AUTH_STORE");
@@ -30,11 +30,32 @@ export function parseOperatorStore(input) {
     if (!Array.isArray(account.permissions) || account.permissions.length > 64 || new Set(account.permissions).size !== account.permissions.length || account.permissions.some(id => typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(id))) fail("AUTH_STORE");
     ids.add(account.id); usernames.add(account.username); return { id: account.id, username: account.username, name: account.name, role: account.role, disabled: account.disabled, capabilities: [...account.capabilities], permissions: [...account.permissions], password: passwordHash(account.password) };
   });
-  return { version: 1, id: value.id, accounts };
+  if (value.version === 1) return { version: 1, id: value.id, accounts };
+  if (!Array.isArray(value.resourceRules) || value.resourceRules.length !== accounts.length) fail("AUTH_STORE");
+  const rules = new Set();
+  const resourceRules = value.resourceRules.map(rule => {
+    if (!operatorKeys(rule, ["accountId", "limits"]) || !ids.has(rule.accountId) || rules.has(rule.accountId)) fail("AUTH_STORE"); rules.add(rule.accountId);
+    try { return { accountId: rule.accountId, limits: parseOperatorResources(rule.limits) }; } catch { fail("AUTH_STORE"); }
+  });
+  return { version: 2, id: value.id, accounts, resourceRules };
 }
 const digest = value => createHash("sha256").update(value).digest("hex");
 const same = (a, b) => a.dev === b.dev && a.ino === b.ino && a.isFile() && b.isFile() && a.nlink === 1 && b.nlink === 1;
 const comparable = value => process.platform === "win32" ? value.toLowerCase() : value;
+async function migrationBackup(directory, current) {
+  const file = path.join(directory, "operators-v1-" + current.revision + ".json"), source = JSON.stringify(current.store, null, 2) + "\n";
+  let handle;
+  try { handle = await open(file, "wx", 0o600); await handle.writeFile(source, "utf8"); await handle.sync(); }
+  catch (error) {
+    if (error.code !== "EEXIST") fail("AUTH_STORE");
+    const before = await lstat(file); if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size !== Buffer.byteLength(source)) fail("AUTH_STORE");
+    handle = await open(file, "r"); if (!same(before, await handle.stat())) fail("AUTH_STORE");
+    const bytes = Buffer.alloc(before.size + 1); let size = 0;
+    while (size < bytes.length) { const read = await handle.read(bytes, size, bytes.length - size, size); if (!read.bytesRead) break; size += read.bytesRead; }
+    const after = await lstat(file);
+    if (size !== before.size || bytes.subarray(0, size).toString("utf8") !== source || !same(before, after) || before.mtimeMs !== after.mtimeMs) fail("AUTH_STORE");
+  } finally { await handle?.close().catch(() => {}); }
+}
 async function directoryFor(file) {
   if (typeof file !== "string" || !path.isAbsolute(file) || path.basename(file) !== "operators.json") fail("AUTH_STORE");
   const directory = path.dirname(file), stat = await lstat(directory); if (!stat.isDirectory() || stat.isSymbolicLink() || comparable(await realpath(directory)) !== comparable(path.resolve(directory))) fail("AUTH_STORE"); return directory;
@@ -61,6 +82,8 @@ export async function writeOperatorStore(file, input, expectedRevision) {
     try { lock = await open(lockFile, "wx", 0o600); } catch (error) { if (error.code === "EEXIST") fail("AUTH_BUSY"); throw error; }
     lockStat = await lock.stat(); await lock.writeFile(JSON.stringify({ pid: process.pid, id: randomUUID(), at: new Date().toISOString() })); await lock.sync();
     const current = await readOperatorStore(file); if (current?.revision !== expectedRevision) fail("AUTH_CONFLICT");
+    if (current?.store.version === 2 && store.version !== 2) fail("AUTH_INPUT");
+    if (current?.store.version === 1 && store.version === 2) await migrationBackup(directory, current);
     temporary = path.join(directory, ".operators-" + randomUUID() + ".tmp"); output = await open(temporary, "wx", 0o600); created = true; await output.writeFile(source, "utf8"); await output.sync(); await output.close(); output = undefined;
     await directoryFor(file); if ((await readOperatorStore(file))?.revision !== expectedRevision) fail("AUTH_CONFLICT");
     publishing = true; if (expectedRevision === undefined) { await link(temporary, file); await unlink(temporary); } else await rename(temporary, file); created = false;

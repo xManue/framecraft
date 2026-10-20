@@ -4,10 +4,11 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import readline from "node:readline";
 import { hashOperatorPassword, readOperatorStore, writeOperatorStore } from "./operator-store.mjs";
-import { operatorCapabilities, operatorUsername, OperatorAuthError } from "./operator-policy.mjs";
+import { operatorCapabilities, operatorUsername, OperatorAuthError, defaultOperatorResources, parseOperatorResources } from "./operator-policy.mjs";
+import { manageLocalOperators } from "./operator-admin.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url)), file = path.join(root, ".framecraft-runtime", "security", "operators.json");
-const usage = "Account locali HMI (non ChatGPT).\nUso: npm run operators -- list|add|password|permissions|disable|enable\nPassword richieste nel terminale, mai come argomenti. Nessun utente o permesso predefinito.\n";
+const usage = "Account locali HMI (non ChatGPT).\nUso: npm run operators -- list|add|password|permissions|resources|disable|enable\nPassword richieste nel terminale, mai come argomenti. Nessun utente o permesso predefinito.\n";
 const ask = question => new Promise(resolve => { const prompt = readline.createInterface({ input: process.stdin, output: process.stdout }); prompt.question(question, answer => { prompt.close(); resolve(answer.trim()); }); });
 function password(question) {
   return new Promise((resolve, reject) => {
@@ -49,15 +50,30 @@ async function newPassword() {
 async function main() {
   const args = process.argv.slice(2), command = args[0];
   if (!command || args.length !== 1 || ["--help", "-h"].includes(command)) { process.stdout.write(usage); if (args.length > 1) process.exitCode = 1; return; }
-  if (!["list", "add", "password", "permissions", "disable", "enable"].includes(command) || !process.stdin.isTTY || !process.stdout.isTTY) throw new OperatorAuthError("AUTH_INPUT");
+  if (!["list", "add", "password", "permissions", "resources", "disable", "enable"].includes(command) || !process.stdin.isTTY || !process.stdout.isTTY) throw new OperatorAuthError("AUTH_INPUT");
   await directories(); const current = await readOperatorStore(file);
   const store = current?.store ?? { version: 1, id: randomUUID(), accounts: [] };
-  if (command === "list") { for (const account of store.accounts) process.stdout.write(JSON.stringify({ username: account.username, name: account.name, role: account.role, disabled: account.disabled, capabilities: account.capabilities, permissions: account.permissions }) + "\n"); if (!store.accounts.length) process.stdout.write("Nessun account configurato. Usa add per crearne uno esplicitamente.\n"); return; }
+  if (command === "list") { for (const account of store.accounts) process.stdout.write(JSON.stringify({ username: account.username, name: account.name, role: account.role, disabled: account.disabled, capabilities: account.capabilities, permissions: account.permissions, resources: store.version === 2 ? store.resourceRules.find(rule => rule.accountId === account.id).limits : "Tutte le risorse ammesse dalle capacità (formato 1)" }) + "\n"); if (!store.accounts.length) process.stdout.write("Nessun account configurato. Usa add per crearne uno esplicitamente.\n"); return; }
   const username = await ask("Nome utente (minuscole, numeri, punto, trattino o underscore): "); if (!operatorUsername(username)) throw new OperatorAuthError("AUTH_INPUT");
   let account = store.accounts.find(item => item.username === username);
+  if (command === "resources") {
+    if (!account) throw new OperatorAuthError("AUTH_INPUT");
+    const limits = {};
+    for (const [kind, label] of [["tagWrites", "Scritture tag"], ["alarmActions", "Azioni allarmi"], ["recipeChanges", "Modifiche schemi ricetta"]]) {
+      const mode = await ask(label + ": tutte, nessuna oppure elenco? ");
+      if (!["tutte", "nessuna", "elenco"].includes(mode)) throw new OperatorAuthError("AUTH_INPUT");
+      const ids = []; if (mode === "elenco") { process.stdout.write("Un ID esatto per riga; riga vuota per terminare. Nessun jolly.\n"); for (;;) { const id = await ask("ID: "); if (!id) break; ids.push(id); if (ids.length > 256) throw new OperatorAuthError("AUTH_INPUT"); } }
+      limits[kind] = mode === "tutte" ? { mode: "all" } : { mode: "selected", ids };
+    }
+    parseOperatorResources(limits); process.stdout.write(JSON.stringify(limits) + "\nNon filtra letture/monitoraggio. Capacità generali sempre necessarie. Revoca tutte le sessioni.\n");
+    if (store.version === 1) process.stdout.write("Aggiornamento esplicito al formato 2 con backup privato operators-v1-REVISIONE.json. Altri account invariati; nuovi account senza risorse. Richiede Runtime aggiornato, le versioni precedenti rifiutano l’archivio.\n");
+    if (await ask("Scrivi SALVA per confermare: ") !== "SALVA") return;
+    await manageLocalOperators({ root, action: "resources", expectedRevision: current.revision, id: account.id, limits }); process.stdout.write("Limiti risorse salvati. Nessun comando PLC inviato.\n"); return;
+  }
   if (command === "add") {
     if (account) throw new OperatorAuthError("AUTH_INPUT");
     account = { id: randomUUID(), username, name: await ask("Nome visualizzato: "), role: await ask("Etichetta ruolo (non assegna permessi): "), disabled: false, ...await grants(), password: await newPassword() }; store.accounts.push(account);
+    if (store.version === 2) { store.resourceRules.push({ accountId: account.id, limits: defaultOperatorResources() }); process.stdout.write("Nuovo account senza risorse utilizzabili: assegnale poi con resources.\n"); }
   } else {
     if (!account) throw new OperatorAuthError("AUTH_INPUT");
     if (command === "password") account.password = await newPassword();

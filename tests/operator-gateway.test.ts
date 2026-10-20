@@ -6,6 +6,7 @@ import { createPlcGateway } from "../runtime/gateway.mjs";
 import { createLocalOperatorAuth } from "../runtime/operator-auth.mjs";
 import { hashOperatorPassword, readOperatorStore, writeOperatorStore, type OperatorStore, type OperatorPassword } from "../runtime/operator-store.mjs";
 import { openRecipeStore } from "../runtime/recipe-store.mjs";
+import { defaultOperatorResources } from "../runtime/operator-policy.mjs";
 
 const writes = vi.hoisted(() => vi.fn(async (tag: string) => ({ tag, delivery: "broker-ack", plcConfirmed: false })));
 vi.mock("../runtime/mqtt-driver.mjs", async importOriginal => ({ ...await importOriginal<typeof import("../runtime/mqtt-driver.mjs")>(), createMqttPlcConnection: () => ({ state: "connected", start: async () => {}, stop: async () => {}, read: () => undefined, write: writes }) }));
@@ -18,13 +19,27 @@ async function fixture(enabled = true) {
   await writeOperatorStore(file, store, undefined);
   const auth = createLocalOperatorAuth({ file, config: { version: 1, enabled: true, namespace: randomUUID(), allowHttpLoopback: true, idleMinutes: 1, absoluteMinutes: 2 }, allowedOrigins: [origin] });
   const recipes = await openRecipeStore({ directory: path.join(directory, "recipes"), catalog: { version: 1, schemas: [{ id: "s", name: "Schema", fields: [{ id: "speed", name: "Velocità", type: "number" }], records: [{ id: "r", name: "Ricetta", values: { speed: 1 } }] }] } });
-  const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "SYNTHETIC_TOKEN", allowedOrigins: [origin], allowWrites: true }, connections: [{ id: "synthetic", protocol: "mqtt", url: "mqtt://127.0.0.1:1883", enabled: true, allowInsecure: true, allowWrites: true, bindings: [{ tag: "Speed", topic: "speed", writeTopic: "speed-command" }] }] }, [{ name: "Speed", dataType: "Real", access: "read-write" }], { resolveSecret: () => token, recipeStore: recipes, ...(enabled ? { operatorAuth: auth } : {}) });
+  const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "SYNTHETIC_TOKEN", allowedOrigins: [origin], allowWrites: true }, connections: [{ id: "synthetic", protocol: "mqtt", url: "mqtt://127.0.0.1:1883", enabled: true, allowInsecure: true, allowWrites: true, bindings: [{ tag: "Speed", topic: "speed", writeTopic: "speed-command" }] }] }, [{ name: "Speed", dataType: "Real", access: "read-write" }], { resolveSecret: () => token, recipeStore: recipes, alarmCatalog: { version: 1, classes: [], alarms: [], maxHistory: 100 }, ...(enabled ? { operatorAuth: auth } : {}) });
   await gateway.start();
   const request = (route: string, input?: unknown, headers: Record<string, string> = {}) => fetch(gateway.address + "/_framecraft/plc/v1/" + route, { method: input === undefined ? "GET" : "POST", headers: { Authorization: "Bearer " + token, Origin: origin, ...(input === undefined ? {} : { "Content-Type": "application/json" }), ...headers }, ...(input === undefined ? {} : { body: JSON.stringify(input) }) });
   const login = async () => { const response = await request("session/login", { username: "operator", password }); expect(response.status).toBe(200); const body = await response.json(); return { Cookie: response.headers.get("set-cookie")!.split(";")[0], "X-Framecraft-CSRF": body.csrfToken as string }; };
   return { request, login, file, store, recipes, async close() { await gateway.stop(); auth.close(); } };
 }
 describe("sessioni locali nel gateway HTTP, nessun PLC reale", () => {
+  it("limiti HTTP prima di driver, archivio ricette e deduplicazione; revoca immediata", async () => {
+    const test = await fixture(); try {
+      const old = (await readOperatorStore(test.file))!, store: OperatorStore = { ...test.store, version: 2, resourceRules: [{ accountId: test.store.accounts[0].id, limits: defaultOperatorResources() }] };
+      let saved = await writeOperatorStore(test.file, store, old.revision), headers = await test.login();
+      const write = { id: "synthetic_resource_00001", tag: "Speed", value: 2 }, recipe = { id: "synthetic_recipe_scope01", action: "update", expectedRevision: (await test.recipes.snapshot()).revision, schemaId: "s", recordId: "r", name: "Ricetta", values: { speed: 3 } };
+      for (const [route, command] of [["write", write], ["recipes", recipe]] as const) { const response = await test.request(route, command, headers); expect(response.status).toBe(403); expect(await response.json()).toMatchObject({ code: "AUTH_RESOURCE", outcome: "rejected", plcConfirmed: false }); }
+      expect(writes).not.toHaveBeenCalled(); expect((await test.recipes.snapshot()).sequence).toBe(0);
+      const alarm = await test.request("alarm-action", { alarmId: "synthetic-alarm", occurrence: "synthetic-occurrence", revision: 1, action: "acknowledge" }, headers); expect(alarm.status).toBe(403); expect(await alarm.json()).toMatchObject({ code: "AUTH_RESOURCE" });
+      store.resourceRules[0].limits = { ...defaultOperatorResources(), tagWrites: { mode: "selected", ids: ["Speed"] }, recipeChanges: { mode: "selected", ids: ["s"] } }; saved = await writeOperatorStore(test.file, store, saved.revision); headers = await test.login();
+      expect((await test.request("write", write, headers)).status).toBe(200); expect((await test.request("recipes", recipe, headers)).status).toBe(200); expect(writes).toHaveBeenCalledTimes(1);
+      store.resourceRules[0].limits = defaultOperatorResources(); await writeOperatorStore(test.file, store, saved.revision); headers = await test.login();
+      const replay = await test.request("write", write, headers); expect(replay.status).toBe(403); expect(await replay.json()).toMatchObject({ code: "AUTH_RESOURCE" }); expect(writes).toHaveBeenCalledTimes(1);
+    } finally { await test.close(); }
+  }, 15000);
   it("token di trasporto non basta per scrivere, anche con tutti i consensi PLC abilitati", async () => {
     const test = await fixture(false); try {
       expect((await test.request("snapshot")).status).toBe(200);

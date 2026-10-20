@@ -2,7 +2,7 @@
 import { act, createElement, StrictMode, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-vi.mock("../src/filesystem/desktopBridge", () => ({ desktopAvailable: true, desktopBridge: { readFile: vi.fn(), readOperatorAccounts: vi.fn(), updateOperatorAccounts: vi.fn(), saveOperatorConfiguration: vi.fn() } }));
+vi.mock("../src/filesystem/desktopBridge", () => ({ desktopAvailable: true, desktopBridge: { readFile: vi.fn(), readOperatorAccounts: vi.fn(), updateOperatorAccounts: vi.fn(), saveOperatorConfiguration: vi.fn(), readConnectionConfiguration: vi.fn(), readAlarmConfiguration: vi.fn(), readRecipeConfiguration: vi.fn() } }));
 import { desktopBridge } from "../src/filesystem/desktopBridge";
 import { OperatorAccountsDialog } from "../src/editor/OperatorAccountsDialog";
 import { TopBar } from "../src/editor/TopBar";
@@ -10,8 +10,8 @@ import { useEditorStore } from "../src/state/editorStore";
 import { operatorAccountIssues, operatorAdminJournalKey, type OperatorAccountsSnapshot } from "../src/core/operatorAccounts";
 const project = { root: "C:/operator-test", name: "Account sintetici", framework: "vite" as const, language: "typescript" as const, packageManager: "npm" as const, entryFiles: [], files: [], scripts: {}, dependencies: [], hasNodeModules: true, missingDependencies: [] };
 const config = { version: 1, enabled: false, namespace: "06a94107-d8cd-4b6b-a00e-1c508721cf1c", allowHttpLoopback: false, idleMinutes: 15, absoluteMinutes: 480 };
-const initial = (): OperatorAccountsSnapshot => ({ generation: 8, configuration: JSON.stringify(config), revision: null, accounts: [] });
-const one = (): OperatorAccountsSnapshot => ({ ...initial(), revision: "a".repeat(64), accounts: [{ id: "synthetic-id", username: "synthetic", name: "Operatore sintetico", role: "Etichetta", capabilities: ["recipes.read"], permissions: [], disabled: false }] });
+const initial = (): OperatorAccountsSnapshot => ({ generation: 8, configuration: JSON.stringify(config), version: null, resourceRules: [], revision: null, accounts: [] });
+const one = (): OperatorAccountsSnapshot => ({ ...initial(), version: 1, revision: "a".repeat(64), accounts: [{ id: "synthetic-id", username: "synthetic", name: "Operatore sintetico", role: "Etichetta", capabilities: ["recipes.read"], permissions: [], disabled: false }] });
 let root: Root, host: HTMLElement; const close = vi.fn(), legacy = vi.fn();
 const button = (name: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent?.trim() === name)!;
 const field = (name: string) => [...document.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent?.trim() === name)!.querySelector<HTMLInputElement>("input")!;
@@ -22,6 +22,24 @@ async function draft() { await click("Nuovo account"); await change("Nome utente
 beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); sessionStorage.clear(); useEditorStore.setState({ project }); vi.mocked(desktopBridge.readOperatorAccounts).mockResolvedValue(initial()); vi.mocked(desktopBridge.updateOperatorAccounts).mockResolvedValue(one()); vi.mocked(desktopBridge.saveOperatorConfiguration).mockResolvedValue(); });
 afterEach(async () => { if (root) await act(async () => root.unmount()); host?.remove(); vi.restoreAllMocks(); });
 describe("account locali nell’editor", () => {
+  it("sceglie tag dal catalogo locale e invia solo limiti, mantenendo distinti ID e descrizioni", async () => {
+    const base = one(); base.version = 2; base.resourceRules = [{ accountId: base.accounts[0].id, limits: { tagWrites: { mode: "selected", ids: [] }, alarmActions: { mode: "selected", ids: [] }, recipeChanges: { mode: "selected", ids: [] } } }];
+    vi.mocked(desktopBridge.readOperatorAccounts).mockResolvedValue(base);
+    vi.mocked(desktopBridge.readConnectionConfiguration).mockResolvedValue({ generation: 8, files: { plc: JSON.stringify({ variables: [{ name: "Speed", dataType: "Real", access: "read-write", description: "Velocità" }] }), connections: null, runtime: null } });
+    vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue({ generation: 8, source: null, plc: null }); vi.mocked(desktopBridge.readRecipeConfiguration).mockResolvedValue({ generation: 8, source: null, initialized: false });
+    await mount(); await act(async () => document.querySelector<HTMLButtonElement>("aside button")!.click()); await click("Risorse consentite");
+    const picker = document.querySelectorAll<HTMLSelectElement>("select")[1]; expect(picker.disabled).toBe(false); expect(picker.textContent).toContain("Velocità · Speed");
+    await act(async () => { picker.value = "Speed"; picker.dispatchEvent(new Event("change", { bubbles: true })); }); expect(document.querySelector("textarea")!.value).toBe("Speed");
+    await click("Rivedi limiti risorse"); expect(document.body.textContent).not.toContain("aggiornamento esplicito"); await click("Conferma salvataggio"); expect(vi.mocked(desktopBridge.updateOperatorAccounts).mock.calls[0][2]).toMatchObject({ action: "resources", limits: { tagWrites: { mode: "selected", ids: ["Speed"] } } });
+  });
+  it("limiti risorse espliciti con revisione e avviso migrazione, senza cambiare capacità", async () => {
+    vi.mocked(desktopBridge.readOperatorAccounts).mockResolvedValue(one()); await mount();
+    const accountButton = [...document.querySelectorAll<HTMLButtonElement>("aside button")][0]; await act(async () => accountButton.click()); await click("Risorse consentite");
+    const selects = [...document.querySelectorAll<HTMLSelectElement>("select")]; expect(selects.map(item => item.value)).toEqual(["all", "all", "all"]);
+    await act(async () => { selects[0].value = "none"; selects[0].dispatchEvent(new Event("change", { bubbles: true })); }); await click("Rivedi limiti risorse");
+    expect(document.body.textContent).toContain("formato 2"); expect(document.body.textContent).toContain("backup privato"); expect(desktopBridge.updateOperatorAccounts).not.toHaveBeenCalled();
+    await click("Conferma salvataggio"); expect(vi.mocked(desktopBridge.updateOperatorAccounts).mock.calls[0][2]).toEqual({ action: "resources", id: "synthetic-id", limits: { tagWrites: { mode: "selected", ids: [] }, alarmActions: { mode: "all" }, recipeChanges: { mode: "all" } } });
+  });
   it("aprire gli account server non legge o inizializza in parallelo i vecchi PIN", async () => { useEditorStore.setState({ userAccessOpen: false, userAccessBusy: false, userAccessConfig: undefined }); await useEditorStore.getState().openUserAccess(); expect(useEditorStore.getState().userAccessOpen).toBe(true); expect(useEditorStore.getState().userAccessConfig).toBeUndefined(); expect(desktopBridge.readFile).not.toHaveBeenCalled(); });
   it("si raggiunge dal menu Pannello senza avviare il servizio o aprire l’account AI", async () => { const open = vi.spyOn(useEditorStore.getState(), "openUserAccess").mockResolvedValue(); await mount(createElement(TopBar)); await click("Pannello"); const menu = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(node => node.querySelector("strong")?.textContent === "Account del pannello")!; await act(async () => menu.click()); expect(open).toHaveBeenCalledOnce(); expect(desktopBridge.updateOperatorAccounts).not.toHaveBeenCalled(); });
   it("apre senza creare utenti o concedere capacità e tiene separati PIN e ChatGPT", async () => { await mount(); expect(document.body.textContent).toContain("NON ACCOUNT CHATGPT"); expect(document.body.textContent).toContain("non esiste un amministratore predefinito"); expect(desktopBridge.updateOperatorAccounts).not.toHaveBeenCalled(); await click("Nuovo account"); expect(document.querySelectorAll('input[type="checkbox"]:checked')).toHaveLength(0); expect(field("Nome utente").value).toBe(""); });

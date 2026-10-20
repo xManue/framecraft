@@ -9,3 +9,12 @@ export function operatorKeys(value: unknown, keys: string[]): boolean;
 export function operatorText(value: unknown, max?: number): value is string;
 export function operatorUsername(value: unknown): value is string;
 export function parseOperatorAuthConfig(value: unknown): OperatorAuthConfig;
+export type OperatorResourceKind = "tagWrites" | "alarmActions" | "recipeChanges";
+export type OperatorResourceFilter = { mode: "all" } | { mode: "selected"; ids: string[] };
+export type OperatorResources = Record<OperatorResourceKind, OperatorResourceFilter>;
+export interface OperatorResourceRule { accountId: string; limits: OperatorResources }
+export type OperatorResourceContext = { tag: string } | { alarmId: string } | { schemaId: string };
+export const operatorResourceKinds: readonly OperatorResourceKind[];
+export function defaultOperatorResources(all?: boolean): OperatorResources;
+export function parseOperatorResources(value: unknown): OperatorResources;
+export function operatorResourceAllowed(store: { version: 1 } | { version: 2; resourceRules: OperatorResourceRule[] }, accountId: string, capability: OperatorCapability, context?: OperatorResourceContext): boolean;

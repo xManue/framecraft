@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { readOperatorStore, verifyOperatorPassword } from "./operator-store.mjs";
-import { OperatorAuthError, operatorKeys, operatorUsername, operatorCapabilities, parseOperatorAuthConfig } from "./operator-policy.mjs";
+import { OperatorAuthError, operatorKeys, operatorUsername, operatorCapabilities, parseOperatorAuthConfig, operatorResourceAllowed } from "./operator-policy.mjs";
 
 const digest = value => createHash("sha256").update(value).digest("hex");
 const secret = () => randomBytes(32).toString("base64url");
@@ -56,7 +56,7 @@ export function createLocalOperatorAuth(options) {
     const account = current.store.accounts.find(item => item.id === session.accountId && !item.disabled);
     if (!account) { sessions.delete(key); fail("AUTH_REQUIRED"); }
     if (mutation && !equal(session.csrf, request.headers["x-framecraft-csrf"])) fail("AUTH_CSRF");
-    return { key, session, account };
+    return { key, session, account, store: current.store };
   };
   const profile = (session, account) => ({ user: { id: account.id, name: account.name, role: account.role, permissions: [...account.permissions], capabilities: [...account.capabilities] }, csrfToken: session.csrf, expiresInMs: Math.max(0, Math.min(session.idle, session.absolute) - now()) });
   return {
@@ -94,10 +94,11 @@ export function createLocalOperatorAuth(options) {
       const { key, session } = await active(request, true); sessions.delete(key); event("AUTH_LOGOUT", session.actor);
       return { body: { user: null, csrfToken: null, expiresInMs: 0 }, cookie: cookie("", 0) };
     },
-    async authorize(request, capability, mutation = true) {
+    async authorize(request, capability, mutation = true, context) {
       if (!operatorCapabilities.includes(capability)) fail("AUTH_PERMISSION");
-      const { session, account } = await active(request, mutation);
+      const { session, account, store } = await active(request, mutation);
       if (!account.capabilities.includes(capability)) { event("AUTH_PERMISSION", session.actor); fail("AUTH_PERMISSION"); }
+      if (!operatorResourceAllowed(store, account.id, capability, context)) { event("AUTH_RESOURCE", session.actor); fail("AUTH_RESOURCE"); }
       if (mutation) session.idle = Math.min(session.absolute, now() + config.idleMinutes * 60000);
       return session.actor;
     },

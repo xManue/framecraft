@@ -102,7 +102,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (request.method === "POST" && (request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw Object.assign(new RecipeStoreError("RECIPE_COMMAND"), { status: 415 });
         const command = request.method === "GET" ? { action: "read" } : parseRecipeCommand(await body(request, 524_288));
         let actor, authorizationTimer;
-        try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "recipes." + command.action, request.method === "POST") : options.authorizeRecipeAction(request, structuredClone(command)), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }
+        try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "recipes." + command.action, request.method === "POST", request.method === "POST" ? { schemaId: command.schemaId } : undefined) : options.authorizeRecipeAction(request, structuredClone(command)), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }
         finally { clearTimeout(authorizationTimer); }
         if (!recipeActor(actor) || actor === token || actor === "Bearer " + token) throw new RecipeStoreError("RECIPE_AUTH");
         if (stopping || request.aborted || response.destroyed) throw new RecipeStoreError("RECIPE_STORAGE");
@@ -123,7 +123,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (!command || typeof command.alarmId !== "string" || typeof command.occurrence !== "string" || !Number.isSafeInteger(command.revision) || !["acknowledge", "confirm"].includes(command.action)
           || Object.keys(command).some((key) => !["alarmId", "occurrence", "revision", "action"].includes(key))) throw failure(400);
         let actor, authorizationTimer;
-        try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "alarms." + command.action) : options.authorizeAlarmAction(request, { ...command }), new Promise((resolve) => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }
+        try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "alarms." + command.action, true, { alarmId: command.alarmId }) : options.authorizeAlarmAction(request, { ...command }), new Promise((resolve) => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }
         finally { clearTimeout(authorizationTimer); }
         if (stopping) throw failure(503, "GATEWAY_OFFLINE");
         if (typeof actor !== "string" || !actor.trim() || actor.length > 200 || /[\x00-\x1f]/.test(actor)) { respond(response, 403, { error: "Operatore non autorizzato alla presa visione o alla conferma di questo allarme." }); return; }
@@ -142,7 +142,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
       const owner = owners.get(command.tag); if (!owner?.writable) throw failure(403, "WRITE_DENIED");
       try { normalizeMqttTagValue(command.value, owner.dataType); } catch { throw failure(400, "WRITE_INVALID"); }
       let actor, authorizationTimer;
-      try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "tags.write") : options.authorizeTagWrite?.(request, { ...command }), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); }
+      try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "tags.write", true, { tag: command.tag }) : options.authorizeTagWrite?.(request, { ...command }), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); }
       catch (error) { if (error instanceof OperatorAuthError) throw error; }
       finally { clearTimeout(authorizationTimer); }
       if (!recipeActor(actor) || actor === token || actor === "Bearer " + token) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");

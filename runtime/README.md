@@ -681,6 +681,53 @@ Niente UMC/SSO/MFA, amministrazione remota, revoca distribuita o replica session
 proxy HTTPS/cookie reali, browser/device multipli, ACL/backup/recovery e carico sul target.
 Salvare ricette non trasferisce valori al PLC; consegna driver non significa conferma PLC.
 
+### Risorse consentite per account
+
+Apri **Pannello → Account del pannello**, seleziona un account e premi **Risorse consentite**.
+Per ogni gruppo scegli nessuna, solo gli ID indicati, oppure tutte (comprese le future).
+Puoi aggiungere dal catalogo locale del progetto o scrivere un ID esatto per riga.
+La configurazione non si collega a PLC/server remoti e non prova l’esistenza della risorsa
+sul target. Cataloghi non leggibili non concedono permessi né cancellano gli ID già assegnati.
+
+- Scritture tag: nome esatto della variabile, fino a 200 caratteri.
+- Azioni allarmi: ID dell’allarme; vale per presa visione e conferma.
+- Modifiche ricette: ID dello **schema**, vale per create/update/copy/rename/delete.
+  Non distingue singoli record e non filtra letture/cataloghi/monitoraggio.
+
+Sono limiti aggiuntivi: la capacità generale resta necessaria, così come tutti i consensi
+di scrittura PLC. Permessi grafici, ruolo descrittivo e account ChatGPT non concedono accesso.
+Confronto case-sensitive, nessun jolly o prefisso; massimo 256 ID univoci per gruppo e limite
+complessivo di 128 KiB dell’archivio. Nessuna regola valida mancante può diventare “tutte”.
+
+```text
+Comando validato → sessione server + CSRF → capacità generale → risorsa esatta
+  → deduplicazione → archivio ricette / stato allarme / driver PLC
+```
+
+`AUTH_RESOURCE` (403) significa risorsa non consentita. Il comando è rifiutato, nessun invio
+automatico. Il log accessi registra codice/attore/ora, non password, valore o nome risorsa.
+Il server deriva la risorsa dal comando validato, non da header o permessi dichiarati dal client.
+Anche una ripetizione con lo stesso ID viene autorizzata di nuovo prima della deduplicazione.
+
+Il primo salvataggio risorse su un archivio v1 richiede conferma esplicita e passa a v2:
+mantiene UUID archivio/account, hash/password, disabilitazioni, capacità e permessi grafici;
+gli altri account mantengono tutte le risorse già consentite dalle loro capacità. Gli account
+aggiunti dopo partono senza risorse utilizzabili: assegnarle separatamente non crea una finestra
+di accesso globale. La sola lettura/login non migra nulla. Ogni cambio revoca tutte le sessioni.
+
+Prima del passaggio viene creata nella stessa cartella privata una copia v1
+`operators-v1-<revisione-sha256>.json`, esclusiva e sincronizzata prima della pubblicazione.
+Un file preesistente diverso/non regolare blocca la migrazione; non viene sovrascritto.
+Conserva il backup come una credenziale, fuori da public/dist/Git/AI. In Windows il mode POSIX
+non sostituisce ACL dell’account servizio: proteggi esplicitamente tutta la cartella security.
+Serve il Runtime aggiornato: quello precedente rifiuta v2, senza concedere accessi. Non esiste
+downgrade automatico. Per un rollback arresta il servizio e fai verificare archivio e backup
+dal responsabile: non ripristinare alla cieca il v1, che non contiene i nuovi limiti.
+
+Alternativa sul PC del servizio: `npm run operators -- resources`, con scelta interattiva
+e conferma SALVA. La CLI generata include il medesimo modello amministrativo e validatore.
+Questa fase non realizza gruppi/ereditarietà, ACL di lettura/per-record o amministrazione remota.
+
 ### Gestione grafica locale degli account
 
 Nell’app desktop apri **Pannello → Account del pannello**. La stessa finestra si apre

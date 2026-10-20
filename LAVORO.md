@@ -5434,9 +5434,39 @@ Verifiche del 5 ottobre 2026:
   o rilascio industriale. Obiettivo complessivo invariato e attivo; dati privati e 18 modifiche
   trend/profili preservati, niente agenti o inferenze AI reali.
 
+### 154. Limiti server per risorsa degli account locali (2026-10-20)
+
+- Account locali, non ChatGPT: capacità generali più limiti esatti per scritture tag,
+  azioni allarmi e modifiche agli schemi ricetta. Check prima di driver/archivio/deduplica;
+  errore AUTH_RESOURCE con rimedio, niente reinvii automatici, log senza valori/risorse.
+- Archivio v2 chiuso: una regola per account, nessun jolly/ereditarietà/fallback permissivo.
+  Lettura/login v1 invariati; migrazione solo su conferma Risorse consentite/resources,
+  backup privato v1 prima di pubblicare con lock/CAS. Nessuna modifica a hash/password/UUID.
+  Altri account mantengono i limiti precedenti; nuovi account v2 partono da nessuna risorsa.
+- GUI con cataloghi locali tag/allarmi/schemi e ID manuali, riepilogo, avviso compatibilità,
+  stessi fence di progetto/recupero senza replay. Bridge nativo tipizzato e worker incorporato:
+  programma fidato e input via stdin limitato, non argv Windows né moduli del progetto.
+  CLI e pipeline standard generano gli stessi file e applicano gli stessi controlli.
+- Verifiche mirate: 48 test pubblici account/sessioni/gateway/GUI/generazione/ricette superati
+  in sequenza (8 file); 7 test Rust del solo modulo operator_admin, inclusa migrazione reale
+  del worker, superati. TypeScript pubblico e build Vite riusciti, con avvisi chunk già noti.
+  Il primo giro parallelo aveva scadenze di test crypto/avvio sotto carico: rieseguito senza
+  alzare timeout né indebolire i controlli. Nessuna intera suite rieseguita.
+- Browser con GUI React reale e archivio privato sintetico: creazione, selezione tag da catalogo,
+  migrazione con hash invariato, disabilitazione, configurazione, risposta persa/reload senza
+  replay. IPC browser simulato; worker nativo verificato separatamente, non una prova WebView2.
+  Viewport 375/768/1024/1440 senza errori JS/overflow e pulsanti >=44 px. Screenshot ispezionati:
+  footer mobile corretto dopo verifica visiva, messaggio di salvataggio precedente non riutilizzato.
+  Sorgenti finali pubbliche: public-check-W2UWhD, fixture operator-ui-SXeHBq; nessun dato privato
+  tracciato, dipendenze tramite junction locale (non installazione pulita). Le 18 modifiche
+  preesistenti a trend/profili restano fuori dall’indice di questo intervento.
+- Non equivale a sicurezza completa: restano ACL di lettura/per-record, gruppi, audit persistente,
+  policy password, ACL Windows/restore collaudato, provisioning e test sul target reale.
+  Nessuna connessione/comando PLC reale, avvio app o inferenza AI effettuati per questa fase.
+
 ## Da fare, dopo
 
-- **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.
+- **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit persistente server.
   I permessi/PIN nel browser non sostituiscono un confine sicuro né interblocchi PLC.
 - **Mobile**: collaudo su dispositivi touch fisici e sui nuovi progetti reali; nessuna migrazione
   dei vecchi pannelli richiesta dall'utente. Le verifiche browser non sostituiscono il collaudo macchina.

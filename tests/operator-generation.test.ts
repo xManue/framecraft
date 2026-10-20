@@ -14,11 +14,12 @@ describe("account locali nei nuovi pannelli", () => {
     expect(source("src/framecraftHmiRuntime.ts")).toContain("operatorSession.dispose()"); expect(source("src/App.tsx")).toContain('data-fc-user-access=""');
     for (const file of ["src/framecraftHmiRecipeClient.ts", "src/framecraftGateway.ts"]) expect(source(file)).toContain('"./framecraftOperatorSession"');
     expect(source("src/framecraftOperatorSession.ts")).not.toMatch(/node:crypto|operator-store/);
+    expect(source("runtime/operator-admin.mjs")).toContain('resources: ["id", "limits"]'); expect(source("runtime/operator-policy.mjs")).toContain("AUTH_RESOURCE");
     expect(source("vite.config.ts")).toContain('"**/.framecraft-runtime/**"'); expect(JSON.parse(source("runtime/package.json")).scripts.operators).toBe("node manage-operators.mjs");
   });
   it("CLI distribuito mostra la guida senza provisioning o password in argomenti", async () => {
     const base = path.resolve(".hmi-preview"); await mkdir(base, { recursive: true }); const root = await mkdtemp(path.join(base, "operator-cli-"));
-    for (const file of standardProjectFiles({ machineName: "CLI", layout: "desktop", sections: ["main"] }).filter(file => /^runtime\/(manage-operators|operator-(policy|store))\.(mjs|d.mts)$/.test(file.path))) {
+    for (const file of standardProjectFiles({ machineName: "CLI", layout: "desktop", sections: ["main"] }).filter(file => /^runtime\/(manage-operators|operator-(policy|store|admin))\.(mjs|d.mts)$/.test(file.path))) {
       await mkdir(path.dirname(path.join(root, file.path)), { recursive: true }); await writeFile(path.join(root, file.path), file.content);
     }
     const output = execFileSync(process.execPath, [path.join(root, "runtime/manage-operators.mjs"), "--help"], { cwd: root, encoding: "utf8", windowsHide: true }); expect(output).toContain("mai come argomenti"); expect(output).toContain("Nessun utente o permesso predefinito");

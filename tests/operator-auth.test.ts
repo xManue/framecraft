@@ -5,7 +5,7 @@ import type { IncomingMessage } from "node:http";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createLocalOperatorAuth } from "../runtime/operator-auth.mjs";
 import { hashOperatorPassword, parseOperatorStore, readOperatorStore, verifyOperatorPassword, writeOperatorStore, type OperatorStore, type OperatorPassword } from "../runtime/operator-store.mjs";
-import { parseOperatorAuthConfig, type OperatorAuthConfig } from "../runtime/operator-policy.mjs";
+import { parseOperatorAuthConfig, defaultOperatorResources, type OperatorAuthConfig } from "../runtime/operator-policy.mjs";
 
 const origin = "http://127.0.0.1:4173", password = "SYNTHETIC-password-012345";
 let hash: OperatorPassword;
@@ -24,6 +24,24 @@ async function login(test: Awaited<ReturnType<typeof fixture>>) {
   const cookie = result.cookie.split(";")[0]; return { result, headers: { cookie, "x-framecraft-csrf": result.body.csrfToken! } };
 }
 describe("account locali server", () => {
+  it("limiti risorse effettivi per tag, allarmi e schemi; capacità e contesto sempre necessari", async () => {
+    const test = await fixture(); try {
+      const limits = { tagWrites: { mode: "selected" as const, ids: ["Speed"] }, alarmActions: { mode: "selected" as const, ids: ["a1"] }, recipeChanges: { mode: "selected" as const, ids: ["s1"] } };
+      const current = (await readOperatorStore(test.file))!;
+      const store: OperatorStore = { ...test.store, version: 2, accounts: [{ ...test.store.accounts[0], capabilities: ["tags.write", "alarms.acknowledge", "alarms.confirm", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.read"] }], resourceRules: [{ accountId: test.store.accounts[0].id, limits }] };
+      await writeOperatorStore(test.file, store, current.revision); const signed = await login(test), req = request(signed.headers);
+      for (const [capability, allowed, denied] of [["tags.write", { tag: "Speed" }, { tag: "speed" }], ["alarms.acknowledge", { alarmId: "a1" }, { alarmId: "a2" }], ["alarms.confirm", { alarmId: "a1" }, { alarmId: "a2" }], ...["create", "update", "copy", "rename", "delete"].map(action => ["recipes." + action, { schemaId: "s1" }, { schemaId: "s2" }])] as const) {
+        await expect(test.auth.authorize(req, capability as never, true, allowed as never)).resolves.toMatch(/^local:/);
+        await expect(test.auth.authorize(req, capability as never, true, denied as never)).rejects.toMatchObject({ code: "AUTH_RESOURCE" });
+        await expect(test.auth.authorize(req, capability as never)).rejects.toMatchObject({ code: "AUTH_RESOURCE" });
+      }
+      await expect(test.auth.authorize(req, "recipes.read", false)).resolves.toMatch(/^local:/);
+      const next = (await readOperatorStore(test.file))!; store.accounts[0].capabilities = ["recipes.read"]; store.resourceRules[0].limits = defaultOperatorResources(true); await writeOperatorStore(test.file, store, next.revision);
+      await expect(test.auth.authorize(req, "tags.write", true, { tag: "Speed" })).rejects.toMatchObject({ code: "AUTH_REQUIRED" }); const fresh = await login(test);
+      await expect(test.auth.authorize(request(fresh.headers), "tags.write", true, { tag: "Speed" })).rejects.toMatchObject({ code: "AUTH_PERMISSION" });
+      expect(JSON.stringify(test.events)).toContain("AUTH_RESOURCE"); expect(JSON.stringify(test.events)).not.toContain("Speed"); expect(JSON.stringify(test.events)).not.toContain(password);
+    } finally { test.auth.close(); }
+  }, 15000);
   it("usa salt casuale, scrypt e password lunghe, senza PIN o privilegi impliciti", async () => {
     const second = await hashOperatorPassword(password); expect(hash.salt).not.toBe(second.salt);
     expect(hash).toMatchObject({ N: 131072, r: 8, p: 1, algorithm: "scrypt" });
