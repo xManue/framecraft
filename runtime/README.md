@@ -41,7 +41,7 @@ e [presa visione](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-
 
 `start-gateway.mjs` integra gli account locali descritti sotto quando configurati esplicitamente;
 senza identità server gli allarmi sono consultabili ma presa visione/conferma sono bloccate.
-Un embedding con identità esterna può fornire `createPlcGateway(..., { alarmCatalog, authorizeAlarmAction })`:
+Un embedding con identità esterna può fornire `createPlcGateway(..., { alarmCatalog, authorizeAlarmAction, audit })`:
 il callback riceve la richiesta HTTP e il comando, verifica sessione, ruolo,
 allarme e azione e restituisce l'identificativo dell'operatore **verificato dal server**,
 oppure rifiuta. Non autorizzare restituendo un nome fisso, accettando `actor` dal
@@ -680,6 +680,98 @@ ricetta o gruppo allarmi. Lettura snapshot PLC resta del proxy/gateway, non segr
 Niente UMC/SSO/MFA, amministrazione remota, revoca distribuita o replica sessioni. Da verificare
 proxy HTTPS/cookie reali, browser/device multipli, ACL/backup/recovery e carico sul target.
 Salvare ricette non trasferisce valori al PLC; consegna driver non significa conferma PLC.
+
+### Registro persistente delle operazioni Runtime
+
+Il servizio distribuito attiva il registro quando configuri e abiliti gli account locali.
+Scrive in `.framecraft-runtime/audit/audit.sqlite`, con `identity.json` associato al namespace
+di `framecraft.auth.json`. Non registra password, cookie, CSRF, token gateway, valori PLC o
+valori delle ricette. Conserva ID dell’operatore verificato, risorsa, ID comando, traccia,
+ora UTC del server, fase ed esito. Un’identità non verificata resta anonima, non viene
+dedotta da username dichiarati o header del browser.
+
+Registra accessi/uscite, richieste di modifica valide instradate dal gateway e rifiuti di
+autorizzazione su quelle operazioni. Tag: nome esatto; allarmi: ID; ricette: schema, record e
+destinazione della copia. Non registra polling, letture, tutti i tentativi scartati dal
+trasporto prima dell’instradamento o modifiche amministrative locali agli account.
+
+```text
+Comando validato → identità e autorizzazione server → richiesta registrata e sincronizzata
+  → effetto → esito registrato e sincronizzato → risposta HTTP
+```
+
+- `applied` conferma una modifica all’archivio ricette o allo stato locale degli allarmi.
+  Non è una scrittura PLC.
+- `delivered` distingue broker ACK, servizio OPC UA e solo trasporto tramite il codice.
+  Non conferma l’applicazione nel programma macchina: `plcConfirmed` non viene inventato.
+- `duplicate` è una consultazione dell’esito già noto, non un nuovo invio. Anche un esito
+  duplicato può essere incerto; leggi il codice, non dedurre successo dal solo duplicato.
+- `uncertain` o una richiesta senza esito terminale richiedono verifica sullo stato reale.
+  Un arresto tra le due registrazioni non è prova di mancato invio. Il registro non è una
+  coda di comandi: nessun replay all’avvio, al ripristino del disco o alla riapertura del lettore.
+
+Se il registro manca dove era già inizializzato, è incoerente, bloccato o pieno, il servizio
+non avvia nuovi comandi. `AUTH_AUDIT`, `AUTH_AUDIT_BUSY` e `AUTH_AUDIT_LIMIT` hanno rimedi statici,
+senza errori grezzi del filesystem. Dopo un effetto non registrabile, `AUTH_AUDIT_UNCERTAIN`
+resta incerto anche nei client browser/ricette; il checkpoint non viene cancellato come se
+fosse un rifiuto. Il logout revoca la sessione anche se non riesce a registrare l’uscita.
+Il monitoraggio resta disponibile. Gli embedder del gateway devono fornire `audit.append`;
+assenza/errore non diventano consenso e nessun callback viene ritentato automaticamente.
+
+Per il responsabile, dal progetto sul PC del servizio:
+
+```powershell
+npm --prefix runtime run audit -- --limit=100
+npm --prefix runtime run audit -- --limit=100 --before=250
+npm --prefix runtime run audit -- --json
+npm --prefix runtime run operators -- list
+```
+
+Il lettore verifica la catena completa, mostra gli ultimi eventi con paginazione e conta
+separatamente richieste senza esito ed eventi incerti. È di sola lettura: non inizializza,
+tronca o ripara file, non contatta PLC o AI. La lista operatori espone ID archivio/account per
+interpretare `local:<ID archivio>:<ID account>`; non restituisce hash o password. La lettura
+è riservata ai permessi del sistema operativo, non è un endpoint HTTP né un Viewer HMI pubblico.
+
+Architettura: SQLite incorporato in Node, nessuna nuova dipendenza npm. Transazioni
+`BEGIN IMMEDIATE`/`COMMIT`, `synchronous=FULL`, WAL, estensioni disabilitate e query
+parametrizzate. Sequenza e catena SHA-256 legate all’ID del registro; verifica completa
+all’apertura/lettura e quando cambia un altro writer, ancora in memoria per il writer corrente.
+Percorsi canonici, file regolari, nessun hard link/symlink accettato; database/sidecar sotto
+cartella privata. Il servizio aspetta effetti/audit già avviati prima di chiudere il registro,
+non autorizzazioni esterne tardive: dopo l’arresto non possono avviare operazioni né usare il writer chiuso.
+WAL evita che il lettore del registro trattenga i comandi; checkpoint automatico a 1000 pagine
+e journal-size target 8 MiB. Anche un lettore read-only può usare/creare i sidecar di coordinamento
+SQLite: non modifica eventi e non inizializza un nuovo archivio. I sidecar fanno parte dello
+stato persistente: non separarli dal database per una copia a caldo. Solo filesystem locale,
+nessun percorso UNC; unità mappate/NFS e cartelle sincronizzate richiedono verifica sul target.
+
+Limiti: 64 MiB e 100.000 eventi, senza cancellazione o rotazione distruttiva automatica.
+L’embedder può abbassare `recordLimit`, non superare il massimo. Al raggiungimento serve
+archiviazione/manutenzione verificata dal responsabile, a servizio fermo; questa versione
+non offre ancora una procedura automatica di archiviazione/restore. Non eliminare database,
+identity o journal; non cambiare namespace per sbloccare il servizio. Backup coerenti e ACL
+Windows devono coprire l’intera cartella privata. Se entrambi i file vengono rimossi da chi
+può modificare il filesystem, non esiste un’ancora esterna per provare la perdita della storia.
+
+La catena rileva incoerenze, **non è una firma digitale né una certificazione antimanomissione**.
+Un amministratore OS può riscrivere file e checksum. Restano firme/motivi, conservazione
+immutabile/remota, audit amministrazione/trasporto, Viewer con permessi, archiviazione,
+clock/NTP, guasti reali e prove di carico/power-loss sul target. L’API Node SQLite è disponibile
+da Node 22.13 senza flag ma ancora sperimentale in quella linea; in Node 24.15+ è Release
+Candidate. I collaudi qui usano Node 24.19, non certificano altre versioni o un impianto.
+È verificata anche la versione SQLite effettiva, prima di toccare i file: almeno 3.51.3,
+oppure i rami corretti 3.50.7+ / 3.44.6+. Versioni vulnerabili al WAL-reset sono rifiutate
+con `AUTH_AUDIT_NODE`, senza fallback o disattivazione dell’audit. Il database ha limite 64 MiB;
+un WAL trattenuto da lettori prolungati è sorvegliato separatamente (65 MiB), non cresce senza
+controllo. Target e archiviazione devono considerare anche i file accessori.
+
+Riferimenti primari: [WinCC Unified Audit V21](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-audit-rt-unified/basics-rt-unified/audit-option-rt-unified?contentId=tjOBGUNlLkF_l5CRmzhULQ),
+[Optix Event logger](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/logger/event-logger.html),
+[Node SQLite 22.13.1](https://nodejs.org/download/release/v22.13.1/docs/api/sqlite.html),
+[Node SQLite LTS 24](https://nodejs.org/download/release/latest-v24.x/docs/api/sqlite.html).
+[SQLite WAL, backup e WAL-reset](https://sqlite.org/wal.html).
+Firme e conformità dei vendor non sono equivalenze già ottenute da Framecraft.
 
 ### Risorse consentite per account
 

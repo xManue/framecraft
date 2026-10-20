@@ -71,8 +71,8 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
       let raw: unknown; try { raw = JSON.parse(text); } catch { throw localError("response"); }
       if (!response.ok) {
         const value = raw as Record<string, unknown>;
-        if (value?.type === "operator" && typeof value.code === "string" && new OperatorAuthError(value.code).code === value.code && value.outcome === "rejected" && value.plcConfirmed === false) {
-          const error = new OperatorAuthError(value.code); throw new HmiRecipeError(error.code, error.message, error.remedy, false);
+        if (value?.type === "operator" && typeof value.code === "string" && new OperatorAuthError(value.code).code === value.code && value.outcome === new OperatorAuthError(value.code).outcome && value.plcConfirmed === false) {
+          const error = new OperatorAuthError(value.code); throw new HmiRecipeError(error.code, error.message, error.remedy, error.outcome === "uncertain");
         }
         if (value && value.type === "recipe" && typeof value.code === "string" && new RecipeStoreError(value.code).code === value.code && ["uncertain", "rejected"].includes(value.outcome as string) && value.effect === "recipe-storage-only" && value.plcConfirmed === false) {
           const error = new RecipeStoreError(value.code, typeof value.fieldId === "string" ? value.fieldId : undefined);

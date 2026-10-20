@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createPlcGateway } from "../runtime/gateway.mjs";
 import { createLocalOperatorAuth } from "../runtime/operator-auth.mjs";
 import { hashOperatorPassword, readOperatorStore, writeOperatorStore, type OperatorStore, type OperatorPassword } from "../runtime/operator-store.mjs";
+import { openRuntimeAudit, type RuntimeAudit } from "../runtime/audit-store.mjs";
 import { openRecipeStore } from "../runtime/recipe-store.mjs";
 import { defaultOperatorResources } from "../runtime/operator-policy.mjs";
 
@@ -17,15 +18,54 @@ async function fixture(enabled = true) {
   writes.mockClear(); const base = path.resolve(".hmi-preview"); await mkdir(base, { recursive: true }); const directory = await mkdtemp(path.join(base, "operator-gateway-")), file = path.join(directory, "operators.json");
   const store: OperatorStore = { version: 1, id: randomUUID(), accounts: [{ id: randomUUID(), username: "operator", name: "Operatore sintetico", role: "Operatore", disabled: false, capabilities: ["recipes.read", "recipes.update", "tags.write", "alarms.acknowledge"], permissions: ["parametri"], password: hash }] };
   await writeOperatorStore(file, store, undefined);
-  const auth = createLocalOperatorAuth({ file, config: { version: 1, enabled: true, namespace: randomUUID(), allowHttpLoopback: true, idleMinutes: 1, absoluteMinutes: 2 }, allowedOrigins: [origin] });
+  const namespace = randomUUID(), audit = openRuntimeAudit({ root: directory, namespace }), auditing: RuntimeAudit = { append: event => audit.append(event) };
+  const auth = createLocalOperatorAuth({ file, config: { version: 1, enabled: true, namespace, allowHttpLoopback: true, idleMinutes: 1, absoluteMinutes: 2 }, allowedOrigins: [origin], audit: auditing });
   const recipes = await openRecipeStore({ directory: path.join(directory, "recipes"), catalog: { version: 1, schemas: [{ id: "s", name: "Schema", fields: [{ id: "speed", name: "Velocità", type: "number" }], records: [{ id: "r", name: "Ricetta", values: { speed: 1 } }] }] } });
-  const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "SYNTHETIC_TOKEN", allowedOrigins: [origin], allowWrites: true }, connections: [{ id: "synthetic", protocol: "mqtt", url: "mqtt://127.0.0.1:1883", enabled: true, allowInsecure: true, allowWrites: true, bindings: [{ tag: "Speed", topic: "speed", writeTopic: "speed-command" }] }] }, [{ name: "Speed", dataType: "Real", access: "read-write" }], { resolveSecret: () => token, recipeStore: recipes, alarmCatalog: { version: 1, classes: [], alarms: [], maxHistory: 100 }, ...(enabled ? { operatorAuth: auth } : {}) });
+  const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "SYNTHETIC_TOKEN", allowedOrigins: [origin], allowWrites: true }, connections: [{ id: "synthetic", protocol: "mqtt", url: "mqtt://127.0.0.1:1883", enabled: true, allowInsecure: true, allowWrites: true, bindings: [{ tag: "Speed", topic: "speed", writeTopic: "speed-command" }] }] }, [{ name: "Speed", dataType: "Real", access: "read-write" }], { resolveSecret: () => token, audit: auditing, recipeStore: recipes, alarmCatalog: { version: 1, classes: [], alarms: [], maxHistory: 100 }, ...(enabled ? { operatorAuth: auth } : {}) });
   await gateway.start();
   const request = (route: string, input?: unknown, headers: Record<string, string> = {}) => fetch(gateway.address + "/_framecraft/plc/v1/" + route, { method: input === undefined ? "GET" : "POST", headers: { Authorization: "Bearer " + token, Origin: origin, ...(input === undefined ? {} : { "Content-Type": "application/json" }), ...headers }, ...(input === undefined ? {} : { body: JSON.stringify(input) }) });
   const login = async () => { const response = await request("session/login", { username: "operator", password }); expect(response.status).toBe(200); const body = await response.json(); return { Cookie: response.headers.get("set-cookie")!.split(";")[0], "X-Framecraft-CSRF": body.csrfToken as string }; };
-  return { request, login, file, store, recipes, async close() { await gateway.stop(); auth.close(); } };
+  return { request, login, file, store, recipes, audit, auditing, async close() { await gateway.stop(); auth.close(); audit.close(); } };
 }
 describe("sessioni locali nel gateway HTTP, nessun PLC reale", () => {
+  it("ID risorsa malformati sono errori di input, non un falso guasto del registro", async () => {
+    const test = await fixture(); try { const headers = await test.login(), count = test.audit.read().sequence;
+      expect((await test.request("write", { id: "synthetic_audit_bad_tag01", tag: "", value: 2 }, headers)).status).toBe(400);
+      expect((await test.request("alarm-action", { alarmId: "\n", occurrence: "synthetic", revision: 1, action: "acknowledge" }, headers)).status).toBe(400); expect(test.audit.read().sequence).toBe(count); expect(writes).not.toHaveBeenCalled();
+    } finally { await test.close(); }
+  }, 15000);
+  it("arresto attende anche la registrazione finale di un’azione allarme", async () => {
+    const test = await fixture(); let release!: () => void, began!: () => void, stored = false;
+    const ready = new Promise<void>(resolve => { began = resolve; }), gate = new Promise<void>(resolve => { release = resolve; });
+    try { const headers = await test.login(); test.auditing.append = async row => { if (row.operation === "alarms.acknowledge" && row.outcome === "rejected") { began(); await gate; stored = true; } return test.audit.append(row); };
+      const request = test.request("alarm-action", { alarmId: "synthetic-alarm", occurrence: "synthetic-occurrence", revision: 1, action: "acknowledge" }, headers).catch(() => undefined);
+      await ready; const closing = test.close(); expect(await Promise.race([closing.then(() => "closed"), new Promise(resolve => setTimeout(() => resolve("pending"), 30))])).toBe("pending"); release(); await closing; await request; expect(stored).toBe(true);
+    } finally { release(); await test.close(); }
+  }, 15000);
+  it("errore sincrono inatteso del driver rimane incerto anche nel registro", async () => {
+    const test = await fixture(); try { const headers = await test.login(); writes.mockImplementationOnce(() => { throw new Error("SYNTHETIC_PRIVATE_DRIVER_ERROR"); });
+      const result = await test.request("write", { id: "synthetic_audit_sync_001", tag: "Speed", value: 2 }, headers); expect(result.status).toBe(502); const body = await result.json(); expect(body).toMatchObject({ outcome: "uncertain", plcConfirmed: false }); expect(JSON.stringify(body)).not.toContain("SYNTHETIC_PRIVATE_DRIVER_ERROR"); expect(test.audit.read().events.filter(row => row.operation === "tags.write").map(row => row.outcome).reverse()).toEqual(["requested", "uncertain"]);
+    } finally { await test.close(); }
+  }, 15000);
+  it("audit persistente con identità server, risorse e duplicati, senza valori o credenziali", async () => {
+    const test = await fixture(); try {
+      const headers = await test.login(), command = { id: "synthetic_audit_command01", tag: "Speed", value: 2 };
+      expect((await test.request("write", command, headers)).status).toBe(200); expect((await test.request("write", command, headers)).status).toBe(200);
+      const snapshot = test.audit.read(), rows = snapshot.events.filter(row => row.operation === "tags.write"); expect(rows.map(row => row.outcome).reverse()).toEqual(["requested", "delivered", "requested", "duplicate"]); expect(rows.every(row => row.actor?.startsWith("local:"))).toBe(true); expect(writes).toHaveBeenCalledTimes(1);
+      const logs = JSON.stringify(snapshot); for (const secret of [password, token, headers.Cookie, headers["X-Framecraft-CSRF"]]) expect(logs).not.toContain(secret); expect(logs).not.toMatch(/"(?:value|values|password|csrfToken|cookie)":/); expect(snapshot.unresolvedCount).toBe(0);
+    } finally { await test.close(); }
+  }, 15000);
+  it("guasto audit prima del driver: rifiuto esplicito, monitoraggio disponibile e zero scritture", async () => {
+    const test = await fixture(); try { const headers = await test.login(); test.auditing.append = () => { throw new Error("SYNTHETIC_PRIVATE_STORAGE_ERROR"); };
+      const result = await test.request("write", { id: "synthetic_audit_command02", tag: "Speed", value: 2 }, headers); expect(result.status).toBe(503); const body = await result.json(); expect(body).toMatchObject({ code: "AUTH_AUDIT", outcome: "rejected", plcConfirmed: false }); expect(JSON.stringify(body)).not.toContain("SYNTHETIC_PRIVATE_STORAGE_ERROR"); expect(writes).not.toHaveBeenCalled(); expect((await test.request("snapshot")).status).toBe(200);
+    } finally { await test.close(); }
+  }, 15000);
+  it("guasto audit dopo il driver: esito incerto e nessun secondo invio dello stesso comando", async () => {
+    const test = await fixture(); try { const headers = await test.login(); test.auditing.append = row => { if (row.outcome === "delivered") throw new Error(); return test.audit.append(row); };
+      const command = { id: "synthetic_audit_command03", tag: "Speed", value: 2 }, result = await test.request("write", command, headers); expect(result.status).toBe(503); expect(await result.json()).toMatchObject({ code: "AUTH_AUDIT_UNCERTAIN", outcome: "uncertain", plcConfirmed: false }); expect(writes).toHaveBeenCalledTimes(1); expect(test.audit.read().unresolvedCount).toBe(1);
+      expect((await test.request("write", command, headers)).status).toBe(503); expect(writes).toHaveBeenCalledTimes(1);
+    } finally { await test.close(); }
+  }, 15000);
   it("limiti HTTP prima di driver, archivio ricette e deduplicazione; revoca immediata", async () => {
     const test = await fixture(); try {
       const old = (await readOperatorStore(test.file))!, store: OperatorStore = { ...test.store, version: 2, resourceRules: [{ accountId: test.store.accounts[0].id, limits: defaultOperatorResources() }] };

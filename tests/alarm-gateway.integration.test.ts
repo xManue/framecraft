@@ -15,7 +15,7 @@ async function fixture(authorize?: (command: AlarmCommand) => string | undefined
   const variables = [{ name: "Signal", dataType: "Bool", access: "read" as const }];
   const alarms = { ...emptyAlarmCatalog(), alarms: [{ id: "a", name: "Motor", text: "Controlla motore", tag: "Signal", className: "Alarm_CTH", priority: 3, enabled: true, trigger: { kind: "bit" as const, bit: 0, activeWhen: "set" as const } }] };
   const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "ALARM_TEST_TOKEN", allowedOrigins: [origin], allowWrites: false }, connections: [{ id: "plc", protocol: "mqtt", enabled: true, url, clientId: "alarm-service", allowInsecure: true, allowWrites: false, timeoutMs: 3000, bindings: [{ tag: "Signal", topic: "signal", valuePath: "/value", qualityPath: "/quality" }] }] }, variables,
-    { alarmCatalog: alarms, resolveSecret: () => token, ...(authorize ? { authorizeAlarmAction: (_request, command) => authorize(command) } : {}) });
+    { audit: { append: () => {} }, alarmCatalog: alarms, resolveSecret: () => token, ...(authorize ? { authorizeAlarmAction: (_request, command) => authorize(command) } : {}) });
   await gateway.start();
   const request = (suffix: string, init: RequestInit = {}) => fetch(gateway.address + api + suffix, { ...init, headers: { Authorization: "Bearer " + token, Origin: origin, ...init.headers } });
   const sample = async (value: boolean, quality = 192) => { await publisher.publishAsync("signal", JSON.stringify({ value, quality }), { qos: 1 }); await vi.waitFor(() => expect(gateway.snapshot().samples[0]?.qualityCode).toBe(quality)); };

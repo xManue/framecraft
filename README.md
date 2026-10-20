@@ -786,7 +786,14 @@ Session/capability checks protect recipe actions, alarm
 acknowledgements and tag writes, including duplicate requests. The proxy token alone no longer
 authorizes writes. See [setup, limits and recovery](runtime/README.md#account-operatore-locali-sul-server).
 Existing panels require an explicit runtime/configuration update. Per-object ACLs, remote
-administration, durable security audit, target/HTTPS/Windows ACL validation remain production gates.
+administration, complete/signed audit, target/HTTPS/Windows ACL validation remain production gates.
+
+The exported service now persists Runtime command intent/outcomes and login/logout in a private
+SQLite audit journal, without tag/recipe values or credentials. Missing audit prevents new commands;
+failure after execution remains uncertain. A read-only CLI verifies and pages the journal, never
+replaying it. This is not an electronic signature or regulated-release certification: archiving,
+restore, full security/admin coverage and a graphical Viewer remain open. See
+[Runtime audit setup and limits](runtime/README.md#registro-persistente-delle-operazioni-runtime).
 
 ## Files, workspace and local test values
 

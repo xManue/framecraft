@@ -5464,9 +5464,45 @@ Verifiche del 5 ottobre 2026:
   policy password, ACL Windows/restore collaudato, provisioning e test sul target reale.
   Nessuna connessione/comando PLC reale, avvio app o inferenza AI effettuati per questa fase.
 
+### 155. Audit persistente dei comandi e accessi Runtime (2026-10-20)
+
+- Documentazione primaria Unified Audit V21 / Optix Event logger ricontrollata: richiesta,
+  identità ed esito non equivalgono a firma elettronica, conformità GMP o conferma PLC.
+- Registro privato SQLite incorporato in Node; nessuna dipendenza npm. Due fasi per comandi,
+  identità server, risorse esatte (anche record/destinazione ricetta), tracce e deduplica.
+  Niente valori PLC/ricette, password, token o cookie. Accessi/uscite e rifiuti instradati;
+  polling/letture, amministrazione locale e tutti i rifiuti a monte restano fuori da questa fase.
+- Prima del comando: log guasto/occupato/pieno blocca l’effetto. Dopo: esito incerto mantenuto
+  anche dal browser/cliente ricette, senza replay o cancellazione del checkpoint. Logout
+  sempre revocato. Arresto del gateway attende effetti/audit avviati, non autorizzazioni tardive,
+  prima della chiusura del registro. Regressione di arresto individuata e corretta senza alzare timeout.
+- Transazioni FULL/WAL, catena SHA-256, identità legata al namespace, controlli percorsi/file
+  e sidecar, nessuna riparazione/reset/rotazione distruttiva. Limiti 64 MiB/100.000 eventi:
+  archiviazione/restore, ACL Windows, firma/ancora esterna e carico/power-loss restano gate.
+- CLI di lettura/verifica/pagine e contatori separati pendenti/incerti; ID account nella lista
+  amministrativa per interpretare l’attore. File inclusi nella pipeline Nuovo pannello standard
+  e servizio esportato; lettore non inizializza archivi e non comanda PLC (SQLite può creare
+  sidecar di coordinamento). Viewer grafico ancora da fare.
+- Review concorrenza: lettore con snapshot aperto non blocca il writer. Controllo versione
+  SQLite effettiva contro WAL-reset, senza aggiornare/installare software globali; qui
+  Node 24.19 / SQLite 3.53.3. Checkpoint e limiti DB/WAL, nessun fallback insicuro, niente UNC.
+- Evidenza pubblica: 104 test mirati in 11 file più 11 integrazioni gateway TCP/MQTT su broker
+  Aedes locale superati. Ultima guardia ID risorsa malformato: aggiunto un caso e rieseguiti
+  gateway HTTP (11) e integrazioni (11); 116 casi distinti verificati, non l’intera suite.
+  Verificati anche i 13 test audit sul Node di sistema 26.1 / SQLite 3.53.0 senza installazioni.
+- TypeScript e build Vite superati sulla sorgente pubblica finale public-check-0itQiv; soli avvisi
+  static/dynamic import già noti. Servizio realmente esportato con login, mutazione ricetta,
+  logout, lettore CLI eseguibile e riservatezza; fault injection prima/dopo effetto, duplicati,
+  errore sincrono driver, shutdown e reader/writer WAL. Fake driver per fault HTTP; broker locale
+  reale per trasporto, nessun PLC reale o AI esterna. Nessuna compilazione/riapertura nativa
+  dell’app in uso; 18 modifiche trend/profili preesistenti escluse dall’indice.
+- Snapshot pubblico con dipendenze locali tramite junction, non installazione pulita. Restano
+  Viewer HMI, firme, audit amministrativo/trasporto completo, archiviazione e restore, policy
+  operative, validazione ACL/clock/guasti/carico sul target. Obiettivo complessivo ancora attivo.
+
 ## Da fare, dopo
 
-- **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit persistente server.
+- **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.
   I permessi/PIN nel browser non sostituiscono un confine sicuro né interblocchi PLC.
 - **Mobile**: collaudo su dispositivi touch fisici e sui nuovi progetti reali; nessuna migrazione
   dei vecchi pannelli richiesta dall'utente. Le verifiche browser non sostituiscono il collaudo macchina.

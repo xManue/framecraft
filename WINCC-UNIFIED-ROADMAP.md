@@ -186,7 +186,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-SEC-05 | Sessioni e client multipli | PARZIALE | Collaudo multi-device e revoca distribuita | Limiti, idle/assoluta, polling senza rinnovo, revoca al cambio account o riavvio (152) |
 | WCU-SEC-06 | Conferma operatore e commento | DA FARE | Dialoghi protetti e audit | Regole per rischio invece di flag sparsi |
 | WCU-SEC-07 | Comunicazione protetta e certificati | DA FARE | HTTPS, trust e rinnovo | Stato certificati e scadenze nel progetto |
-| WCU-SEC-08 | Hardening e security events | DA FARE | Configurazione e monitoraggio | Checklist automatica per target |
+| WCU-SEC-08 | Hardening e security events | PARZIALE | Audit amministrativo/trasporto, Viewer, firme, archivio e target | Registro Runtime persistente con richieste/esiti e accessi, CLI verifica, nessun replay o valore/credenziale registrato (155) |
 
 ## 11. Connettività e architettura Runtime
 

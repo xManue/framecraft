@@ -13,7 +13,7 @@ afterEach(async () => { for (const stop of cleanup.splice(0).reverse()) await st
 async function fixture(authorized = true) {
   const base = path.resolve(".hmi-preview"); await mkdir(base, { recursive: true }); const directory = await mkdtemp(path.join(base, "recipe-client-")), store = await openRecipeStore({ directory, catalog });
   const token = "recipe_client_test_token_01234567890123456789", origin = "http://127.0.0.1:4173";
-  const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "RECIPE_TEST_TOKEN", allowedOrigins: [origin], allowWrites: false }, connections: [] }, [], { resolveSecret: () => token, recipeStore: store, ...(authorized ? { authorizeRecipeAction: () => "synthetic:verified-actor" } : {}) });
+  const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "RECIPE_TEST_TOKEN", allowedOrigins: [origin], allowWrites: false }, connections: [] }, [], { resolveSecret: () => token, audit: { append: () => {} }, recipeStore: store, ...(authorized ? { authorizeRecipeAction: () => "synthetic:verified-actor" } : {}) });
   await gateway.start(); cleanup.push(() => gateway.stop());
   const transport = vi.fn<typeof fetch>((url, init) => fetch(gateway.address! + url, { ...init, headers: { ...init?.headers, Authorization: "Bearer " + token, Origin: origin } }));
   const recovery = journal(), report = vi.fn(), client = createHmiRecipeClient({ scope: "test", request: transport, journal: recovery, report }); cleanup.push(() => client.dispose());
@@ -21,6 +21,10 @@ async function fixture(authorized = true) {
   return { client, store, recovery, transport, command, report };
 }
 describe("browser recipe client with real loopback gateway and filesystem", () => {
+  it("audit dopo il salvataggio mantiene checkpoint e incertezza, senza finto rifiuto o reinvio", async () => {
+    const test = await fixture(), command = await test.command(), request = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ type: "operator", code: "AUTH_AUDIT_UNCERTAIN", outcome: "uncertain", plcConfirmed: false, error: "PRIVATE_SQL_ERROR" }), { status: 503 }));
+    const client = createHmiRecipeClient({ scope: "audit-failure", request, journal: test.recovery }); cleanup.push(() => client.dispose()); const error = await client.send(command).catch(error => error); expect(error).toMatchObject({ code: "AUTH_AUDIT_UNCERTAIN", uncertain: true }); expect(error.message).not.toContain("PRIVATE_SQL_ERROR"); expect(client.pending?.id).toBe(command.id); expect(request).toHaveBeenCalledTimes(1); expect(JSON.stringify([...test.recovery.values.values()])).not.toContain("SYNTHETIC_VALUE");
+  });
   it("performs no implicit request; reads and saves exact typed values without a PLC connection", async () => {
     const test = await fixture(); expect(test.transport).not.toHaveBeenCalled(); expect((await test.client.read()).sequence).toBe(0);
     const result = await test.client.send(await test.command()); expect(result).toMatchObject({ effect: "recipe-storage-only", plcConfirmed: false, duplicate: false });

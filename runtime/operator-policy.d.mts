@@ -3,7 +3,7 @@ export interface OperatorAuthConfig { version: 1; enabled: boolean; namespace: s
 export interface OperatorProfile { id: string; name: string; role: string; permissions: string[]; capabilities: OperatorCapability[] }
 export interface OperatorSession { user: OperatorProfile | null; csrfToken: string | null; expiresInMs: number }
 export const operatorCapabilities: readonly OperatorCapability[];
-export class OperatorAuthError extends Error { readonly code: string; readonly status: number; readonly remedy: string; constructor(code: string) }
+export class OperatorAuthError extends Error { readonly code: string; readonly status: number; readonly remedy: string; readonly outcome: "rejected" | "uncertain"; readonly actor?: string; constructor(code: string) }
 export function operatorObject(value: unknown): value is Record<string, unknown>;
 export function operatorKeys(value: unknown, keys: string[]): boolean;
 export function operatorText(value: unknown, max?: number): value is string;

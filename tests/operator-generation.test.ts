@@ -15,6 +15,7 @@ describe("account locali nei nuovi pannelli", () => {
     for (const file of ["src/framecraftHmiRecipeClient.ts", "src/framecraftGateway.ts"]) expect(source(file)).toContain('"./framecraftOperatorSession"');
     expect(source("src/framecraftOperatorSession.ts")).not.toMatch(/node:crypto|operator-store/);
     expect(source("runtime/operator-admin.mjs")).toContain('resources: ["id", "limits"]'); expect(source("runtime/operator-policy.mjs")).toContain("AUTH_RESOURCE");
+    expect(source("runtime/audit-store.mjs")).toContain('"node:sqlite"'); expect(source("runtime/audit-operation.mjs")).toContain("runAudited"); expect(source("runtime/read-audit.mjs")).toContain("readOnly: true"); expect(JSON.parse(source("runtime/package.json")).scripts.audit).toBe("node read-audit.mjs"); expect(files.some(file => file.path.startsWith(".framecraft-runtime/"))).toBe(false);
     expect(source("vite.config.ts")).toContain('"**/.framecraft-runtime/**"'); expect(JSON.parse(source("runtime/package.json")).scripts.operators).toBe("node manage-operators.mjs");
   });
   it("CLI distribuito mostra la guida senza provisioning o password in argomenti", async () => {

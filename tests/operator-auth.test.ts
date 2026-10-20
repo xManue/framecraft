@@ -16,7 +16,7 @@ async function fixture(options: Partial<OperatorAuthConfig> = {}) {
   const store: OperatorStore = { version: 1, id: randomUUID(), accounts: [{ id: randomUUID(), username: "operator", name: "Operatore sintetico", role: "Etichetta non privilegiata", disabled: false, capabilities: ["recipes.read", "recipes.create"], permissions: ["parametri"], password: hash }] };
   await writeOperatorStore(file, store, undefined); let time = 0;
   const config: OperatorAuthConfig = { version: 1, namespace: randomUUID(), enabled: true, allowHttpLoopback: true, idleMinutes: 1, absoluteMinutes: 2, ...options };
-  const events: unknown[] = [], auth = createLocalOperatorAuth({ file, config, allowedOrigins: [origin], now: () => time, onEvent: event => events.push(event) });
+  const events: unknown[] = [], auth = createLocalOperatorAuth({ file, config, allowedOrigins: [origin], audit: { append: () => {} }, now: () => time, onEvent: event => events.push(event) });
   return { auth, file, store, config, events, tick: (ms: number) => { time += ms; } };
 }
 async function login(test: Awaited<ReturnType<typeof fixture>>) {
@@ -24,6 +24,14 @@ async function login(test: Awaited<ReturnType<typeof fixture>>) {
   const cookie = result.cookie.split(";")[0]; return { result, headers: { cookie, "x-framecraft-csrf": result.body.csrfToken! } };
 }
 describe("account locali server", () => {
+  it("nessuna sessione utilizzabile senza audit; il logout revoca anche se il registro fallisce", async () => {
+    const test = await fixture(); try {
+      const audit = { append: () => { throw new Error("SYNTHETIC_PRIVATE_SQL_ERROR"); } }, blocked = createLocalOperatorAuth({ file: test.file, config: test.config, allowedOrigins: [origin], audit });
+      try { await expect(blocked.login(request(), { username: "operator", password })).rejects.toMatchObject({ code: "AUTH_AUDIT" }); expect((await blocked.status(request())).user).toBeNull(); } finally { blocked.close(); }
+      const toggle = { append: (_event: unknown) => {} }, auth = createLocalOperatorAuth({ file: test.file, config: test.config, allowedOrigins: [origin], audit: toggle });
+      try { const signed = await auth.login(request(), { username: "operator", password }), headers = { cookie: signed.cookie.split(";")[0], "x-framecraft-csrf": signed.body.csrfToken! }; toggle.append = () => { throw new Error(); }; await expect(auth.logout(request(headers))).rejects.toMatchObject({ code: "AUTH_AUDIT_UNCERTAIN" }); expect((await auth.status(request(headers))).user).toBeNull(); } finally { auth.close(); }
+    } finally { test.auth.close(); }
+  }, 15000);
   it("limiti risorse effettivi per tag, allarmi e schemi; capacità e contesto sempre necessari", async () => {
     const test = await fixture(); try {
       const limits = { tagWrites: { mode: "selected" as const, ids: ["Speed"] }, alarmActions: { mode: "selected" as const, ids: ["a1"] }, recipeChanges: { mode: "selected" as const, ids: ["s1"] } };
@@ -78,7 +86,7 @@ describe("account locali server", () => {
       const first = await login(test), second = await test.auth.login(request(first.headers), { username: "operator", password });
       await expect(test.auth.authorize(request(first.headers), "recipes.read", false)).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
       const cookie = second.cookie.split(";")[0]; expect((await test.auth.status(request({ cookie }))).user?.name).toBe("Operatore sintetico"); expect((await test.auth.status(request({ cookie: cookie + "; " + cookie }))).user).toBeNull();
-      const secure = createLocalOperatorAuth({ file: test.file, config: { ...test.config, allowHttpLoopback: false }, allowedOrigins: ["https://panel.example"] });
+      const secure = createLocalOperatorAuth({ file: test.file, config: { ...test.config, allowHttpLoopback: false }, allowedOrigins: ["https://panel.example"], audit: { append: () => {} } });
       try { const result = await secure.login(request({ origin: "https://panel.example" }), { username: "operator", password }); expect(result.cookie).toMatch(/^__Secure-/); expect(result.cookie).toContain("; Secure"); }
       finally { secure.close(); }
     } finally { test.auth.close(); }

@@ -11,12 +11,18 @@ const messages = {
   AUTH_REQUIRED: [401, "Accesso operatore richiesto", "Accedi al pannello con un account autorizzato. Il PIN locale e il token del gateway non sostituiscono la sessione server."],
   AUTH_PERMISSION: [403, "Operazione non autorizzata", "L’account attivo non ha il permesso richiesto. Chiedi al responsabile, senza cambiare i permessi nel browser."],
   AUTH_RESOURCE: [403, "Risorsa non autorizzata per questo account", "Il responsabile deve verificare sia la capacità generale sia le risorse consentite all’operatore. Nessun comando è stato inviato; non viene ripetuto automaticamente."],
+  AUTH_AUDIT: [503, "Registro delle operazioni non disponibile", "Nessun nuovo comando viene avviato. Fai verificare spazio, integrità e permessi della cartella audit dal responsabile. Non cancellare il registro o i suoi file come rimedio."],
+  AUTH_AUDIT_NODE: [503, "Node.js richiede un aggiornamento per il registro", "Usa una versione Node LTS con SQLite corretto per WAL-reset: almeno 3.51.3, oppure i backport 3.50.7 o 3.44.6. Node 24.19 è stato collaudato qui. Fai aggiornare il Runtime dal responsabile; non cancellare archivi o disattivare l’audit."],
+  AUTH_AUDIT_PATH: [503, "Percorso del registro non supportato", "Usa una cartella su disco locale del PC del servizio, non un percorso UNC o di rete. Fai verificare anche unità mappate e cartelle sincronizzate dal responsabile; non spostare o cancellare archivi mentre il servizio è aperto."],
+  AUTH_AUDIT_LIMIT: [503, "Registro delle operazioni pieno", "Il limite del registro è raggiunto. Fai predisporre archiviazione verificata e manutenzione dal responsabile, a servizio fermo. Non cancellare eventi per sbloccare la macchina: nessun comando viene reinviato automaticamente."],
+  AUTH_AUDIT_BUSY: [503, "Registro delle operazioni occupato", "Nessun nuovo comando viene avviato. Fai verificare se un altro processo sta usando il registro; non eliminare file o lock. Dopo la verifica riavvia manualmente il servizio e controlla lo stato prima di impartire altri comandi."],
+  AUTH_AUDIT_UNCERTAIN: [503, "Operazione da verificare: esito non registrato", "Il comando può essere già avvenuto, ma il registro non ha confermato il suo esito. Controlla lo stato reale e il registro con il responsabile; non ripetere alla cieca. Nessun reinvio automatico."],
   AUTH_CSRF: [403, "Sessione operatore da verificare", "Rileggi lo stato dell’accesso e riprova solo l’operazione confermata. Nessun comando viene reinviato automaticamente."],
   AUTH_ORIGIN: [403, "Origine dell’accesso non consentita", "Controlla HTTPS, origine pubblica e proxy del pannello. HTTP è ammesso solo sul loopback di sviluppo esplicitamente configurato."],
   AUTH_THROTTLED: [429, "Troppi tentativi di accesso", "Attendi almeno un minuto prima di riprovare. Se il problema continua, contatta il responsabile del servizio."],
 };
 export class OperatorAuthError extends Error {
-  constructor(code) { const known = Object.hasOwn(messages, code) ? code : "AUTH_STORE", [status, message, remedy] = messages[known]; super(message); this.name = "OperatorAuthError"; this.code = known; this.status = status; this.remedy = remedy; }
+  constructor(code) { const known = Object.hasOwn(messages, code) ? code : "AUTH_STORE", [status, message, remedy] = messages[known]; super(message); this.name = "OperatorAuthError"; this.code = known; this.status = status; this.remedy = remedy; this.outcome = known === "AUTH_AUDIT_UNCERTAIN" ? "uncertain" : "rejected"; }
 }
 export const operatorObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 export const operatorKeys = (value, keys) => operatorObject(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));

@@ -7,6 +7,10 @@ const snapshot: HmiGatewaySnapshot = { version: 1, allowWrites: true, connection
 const response = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 
 describe("client gateway del Runtime browser", () => {
+  it("esito audit incerto resta incerto nel browser, senza mostrare errori grezzi né reinviare", async () => {
+    const request = vi.fn(async (url: RequestInfo | URL) => String(url).endsWith("/snapshot") ? response(snapshot) : response({ type: "operator", code: "AUTH_AUDIT_UNCERTAIN", outcome: "uncertain", plcConfirmed: false, error: "PRIVATE_SQL_ERROR" }, 503));
+    const client = createHmiGatewayClient({ request, pollMs: 60000 }); try { client.start(); await vi.waitFor(() => expect(client.state).toBe("connected")); const error = await client.write("Speed", 2).catch(error => error); expect(error).toMatchObject({ outcome: "uncertain" }); expect(error.message).toContain("può essere già avvenuto"); expect(error.message).not.toContain("PRIVATE_SQL_ERROR"); expect(request.mock.calls.filter(([url]) => String(url).endsWith("/write"))).toHaveLength(1); } finally { client.stop(); }
+  });
   it.each(["connecting", "connected", "diagnostic"])("stop dall'observer %s non acquisisce dopo l'arresto né lascia polling", async (point) => {
     const onSnapshot = vi.fn(), request = vi.fn(async () => response({ ...snapshot, diagnostics: [{ ...connectionDiagnostic("CONNECTED"), id: "observer_event_0123456789" }] }));
     const client = createHmiGatewayClient({ pollMs: 100, request, onSnapshot, onState: (state) => { if (state === point) client.stop(); }, onDiagnostic: () => { if (point === "diagnostic") client.stop(); } });

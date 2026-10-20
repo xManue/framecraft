@@ -25,7 +25,7 @@ async function fixture(allowWrites = true) {
     id: "mqtt-test", protocol: "mqtt" as const, enabled: true, url, clientId: "gateway-test", allowInsecure: true, allowWrites: true, reconnectMs: 250, timeoutMs: 3_000,
     bindings: [{ tag: "Motor.Speed", topic: "speed", valuePath: "/value", qualityPath: "/quality", timestampPath: "/time", writeTopic: "command" }, { tag: "Motor.On", topic: "on", encoding: "text" as const }],
   }] };
-  const gateway = createMqttGateway(catalog, variables, { resolveSecret: () => token, authorizeTagWrite: () => "synthetic:verified-operator" }); await gateway.start();
+  const gateway = createMqttGateway(catalog, variables, { resolveSecret: () => token, audit: { append: () => {} }, authorizeTagWrite: () => "synthetic:verified-operator" }); await gateway.start();
   const request = (route: string, init: RequestInit = {}) => fetch(gateway.address + api + route, { ...init, headers: { Authorization: "Bearer " + token, Origin: origin, ...init.headers } });
   return { broker, publisher, clients, gateway, request, catalog, async close() {
     await gateway.stop(); await publisher.endAsync(true); await new Promise<void>((resolve) => broker.close(resolve)); await new Promise<void>((resolve) => tcp.close(() => resolve()));

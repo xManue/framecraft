@@ -181,7 +181,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-SEC-06 | OAuth2 con PKCE | ESTERNO | Provider e flusso supportato | Checklist redirect, scope e scadenze token |
 | FTX-SEC-07 | Audit signing e firme operatore | DA FARE | Workflow, motivo e entitlement | Diff esatto prima/dopo e prova non ripudiabile |
 | FTX-SEC-08 | Document signature e file verification | DA FARE | Certificati, firme e Runtime | Catena di fiducia e scadenze visibili |
-| FTX-SEC-09 | Security events e tentativi accesso | DA FARE | Logging e visualizzazione | Correlazione con sessione, nodo e operazione negata |
+| FTX-SEC-09 | Security events e tentativi accesso | PARZIALE | Copertura amministrazione/trasporto, Viewer, firme e conservazione target | Audit SQLite Runtime e accessi, identità server, risorsa/traccia/esito, CLI di verifica e rifiuto prima del comando se il log non è disponibile (155) |
 | FTX-SEC-10 | Segreti e certificati | DA FARE | Store sicuro e deploy | Nessun segreto nel repository, rotazione guidata |
 
 ## 12. OPC UA, MQTT, FTP e IoT

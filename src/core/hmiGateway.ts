@@ -184,7 +184,7 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
         const data = result.data as Record<string, unknown>;
         if (!data || typeof data !== "object") throw new Error("Risposta comando non valida.");
         if (!result.ok) {
-          if (data.type === "operator" && typeof data.code === "string" && new OperatorAuthError(data.code).code === data.code && data.outcome === "rejected" && data.plcConfirmed === false) { const error = new OperatorAuthError(data.code); throw new HmiGatewayCommandError(error.message + ". " + error.remedy, "rejected"); }
+          if (data.type === "operator" && typeof data.code === "string" && new OperatorAuthError(data.code).code === data.code && data.outcome === new OperatorAuthError(data.code).outcome && data.plcConfirmed === false) { const error = new OperatorAuthError(data.code); throw new HmiGatewayCommandError(error.message + ". " + error.remedy, error.outcome); }
           const outcome = data.outcome === "rejected" ? "rejected" : "uncertain";
           const event = data.diagnostic !== undefined ? parseDiagnostic(data.diagnostic) : connectionDiagnostic(outcome === "uncertain" ? "WRITE_UNCERTAIN" : httpCode(result.status), { protocol: "gateway", tag });
           safeNotify(options.onDiagnostic, event);

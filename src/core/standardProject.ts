@@ -47,6 +47,11 @@ import operatorAuthTypes from "../../runtime/operator-auth.d.mts?raw";
 import operatorAdminSource from "../../runtime/operator-admin.mjs?raw";
 import operatorAdminTypes from "../../runtime/operator-admin.d.mts?raw";
 import operatorCliSource from "../../runtime/manage-operators.mjs?raw";
+import auditStoreSource from "../../runtime/audit-store.mjs?raw";
+import auditStoreTypes from "../../runtime/audit-store.d.mts?raw";
+import auditOperationSource from "../../runtime/audit-operation.mjs?raw";
+import auditOperationTypes from "../../runtime/audit-operation.d.mts?raw";
+import auditReadSource from "../../runtime/read-audit.mjs?raw";
 import operatorSessionSource from "./hmiOperatorSession.ts?raw";
 import recipeCatalogSource from "../../runtime/recipe-catalog.mjs?raw";
 import recipeCatalogTypes from "../../runtime/recipe-catalog.d.mts?raw";
@@ -1825,6 +1830,11 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/operator-admin.mjs", content: operatorAdminSource },
     { path: "runtime/operator-admin.d.mts", content: operatorAdminTypes },
     { path: "runtime/manage-operators.mjs", content: operatorCliSource },
+    { path: "runtime/audit-store.mjs", content: auditStoreSource },
+    { path: "runtime/audit-store.d.mts", content: auditStoreTypes },
+    { path: "runtime/audit-operation.mjs", content: auditOperationSource },
+    { path: "runtime/audit-operation.d.mts", content: auditOperationTypes },
+    { path: "runtime/read-audit.mjs", content: auditReadSource },
     { path: "framecraft.auth.json", content: JSON.stringify({ version: 1, enabled: false, namespace: crypto.randomUUID(), allowHttpLoopback: false, idleMinutes: 15, absoluteMinutes: 480 }, null, 2) + "\n" },
     { path: "src/framecraftOperatorSession.ts", content: operatorSessionSource.replaceAll('"../../runtime/', '"../runtime/') },
     { path: "src/framecraftOperatorAccess.js", content: serializeUserAccessRuntime({ permissions: defaultUserAccessConfig.permissions, accounts: [], autoLogoutMinutes: 0 }) },
@@ -1849,7 +1859,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/vite-gateway.mjs", content: gatewayProxySource },
     { path: "runtime/vite-gateway.d.mts", content: gatewayProxyTypes },
     { path: "runtime/README.md", content: mqttReadmeSource },
-    { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs", operators: "node manage-operators.mjs" }, dependencies: { mqtt: "5.16.0", "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } }, null, 2) + "\n" },
+    { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs", operators: "node manage-operators.mjs", audit: "node read-audit.mjs" }, dependencies: { mqtt: "5.16.0", "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } }, null, 2) + "\n" },
     { path: "framecraft.connections.json", content: JSON.stringify({ version: 1, connections: [] }, null, 2) + "\n" },
     { path: "framecraft.templates.json", content: JSON.stringify({ version: 1, scope: "bundled-template-base-contracts", templates: [...standardPageTemplates.map(template => template.behavior), ...Object.values(guidedTemplateBehaviors())] }, null, 2) + "\n" },
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },

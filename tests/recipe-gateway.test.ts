@@ -12,7 +12,7 @@ async function fixture(authorize: Authorize | null = request => request.headers[
   const base = path.resolve(".hmi-preview"); await mkdir(base, { recursive: true }); const directory = await mkdtemp(path.join(base, "recipe-http-"));
   const catalog: RecipeCatalog = customCatalog ?? { version: 1, schemas: [{ id: "s1", name: "Schema sintetico", fields: [{ id: "speed", name: "Velocità", type: "number", minimum: 0, maximum: 100 }], records: [{ id: "r1", name: "Formato A", values: { speed: 10 } }] }] };
   const store = await openRecipeStore({ directory, catalog }), diagnostics: unknown[] = [];
-  const gateway = createPlcGateway({ version: 1, connections: [], gateway: { enabled: true, port: 0, tokenEnv: "TEST_RECIPE_TOKEN", allowedOrigins: [origin], allowWrites: false } }, [], { resolveSecret: () => token, recipeStore: store, ...(authorize ? { authorizeRecipeAction: authorize } : {}), onRecipeDiagnostic: event => diagnostics.push(event) });
+  const gateway = createPlcGateway({ version: 1, connections: [], gateway: { enabled: true, port: 0, tokenEnv: "TEST_RECIPE_TOKEN", allowedOrigins: [origin], allowWrites: false } }, [], { resolveSecret: () => token, audit: { append: () => {} }, recipeStore: store, ...(authorize ? { authorizeRecipeAction: authorize } : {}), onRecipeDiagnostic: event => diagnostics.push(event) });
   await gateway.start();
   const request = (init: RequestInit = {}) => fetch(gateway.address + api, { ...init, headers: { Authorization: "Bearer " + token, Origin: origin, "X-Test-Actor": "operator", ...init.headers } });
   const snapshot = () => store.snapshot();
@@ -86,7 +86,7 @@ describe("API ricette sul gateway HTTP reale senza PLC", () => {
     const store = await openRecipeStore({ directory, catalog }), snapshot = await store.snapshot(); let release!: () => void, started!: () => void, stopped = false;
     const began = new Promise<void>(resolve => { started = resolve; }), gate = new Promise<void>(resolve => { release = resolve; });
     const wrapped = { snapshot: store.snapshot, mutate: async (command: RecipeCommand, actor: string) => { started(); await gate; return store.mutate(command, actor); } };
-    const gateway = createPlcGateway({ version: 1, connections: [], gateway: { enabled: true, port: 0, tokenEnv: "TEST_RECIPE_TOKEN", allowedOrigins: [origin] } }, [], { resolveSecret: () => token, recipeStore: wrapped, authorizeRecipeAction: () => "subject:operator" });
+    const gateway = createPlcGateway({ version: 1, connections: [], gateway: { enabled: true, port: 0, tokenEnv: "TEST_RECIPE_TOKEN", allowedOrigins: [origin] } }, [], { resolveSecret: () => token, audit: { append: () => {} }, recipeStore: wrapped, authorizeRecipeAction: () => "subject:operator" });
     await gateway.start(); const command: RecipeCommand = { id: "stop_recipe_command_001", expectedRevision: snapshot.revision, action: "rename", schemaId: "s", recordId: "r", name: "Nuovo" };
     const request = fetch(gateway.address + api, { method: "POST", headers: { Authorization: "Bearer " + token, Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(command) }).catch(() => undefined);
     try {

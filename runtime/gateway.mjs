@@ -6,7 +6,8 @@ import { validateConnectionCatalog } from "./connection-config.mjs";
 import { createAlarmEngine } from "./alarm-engine.mjs";
 import { ConnectionOperationError, connectionDiagnostic, createDiagnosticReporter, diagnosticText, safeNotify } from "./connection-diagnostics.mjs";
 import { RecipeStoreError, parseRecipeCommand, recipeActor } from "./recipe-catalog.mjs";
-import { OperatorAuthError } from "./operator-policy.mjs";
+import { OperatorAuthError, operatorText } from "./operator-policy.mjs";
+import { auditContext, appendAudit as persistAuditEvent, runAudited as auditOperation } from "./audit-operation.mjs";
 
 const api = "/_framecraft/plc/v1";
 function failure(status, code = "GATEWAY_REQUEST") { return Object.assign(new ConnectionOperationError(connectionDiagnostic(code, { protocol: "gateway" })), { status }); }
@@ -36,7 +37,10 @@ export function createPlcGateway(catalog, variables, options = {}) {
   try { token = (options.resolveSecret ?? ((name) => process.env[name]))(config.tokenEnv); } catch { throw new ConnectionOperationError(connectionDiagnostic("SECRET_MISSING", { protocol: "gateway" })); }
   if (typeof token !== "string" || !/^[A-Za-z0-9_\-+/=]{32,512}$/.test(token)) throw new ConnectionOperationError(connectionDiagnostic("SECRET_MISSING", { protocol: "gateway" }));
   const enabled = catalog.connections.filter((connection) => connection.enabled === true);
-  const owners = new Map(), states = new Map(), commands = new Map(), diagnostics = [], recipeTasks = new Set(); let stopping = false, port, active = 0, startTask, stopTask;
+  const owners = new Map(), states = new Map(), commands = new Map(), diagnostics = [], recipeTasks = new Set(), auditTasks = new Set(); let stopping = false, port, active = 0, startTask, stopTask;
+  const trackAudit = task => { auditTasks.add(task); task.then(() => auditTasks.delete(task), () => auditTasks.delete(task)); return task; };
+  const appendAudit = (...args) => trackAudit(persistAuditEvent(...args));
+  const runAudited = (...args) => trackAudit(auditOperation(...args));
   const record = (event) => {
     const diagnostic = { ...event, id: randomUUID().replaceAll("-", "") };
     diagnostics.push(diagnostic); if (diagnostics.length > 100) diagnostics.shift();
@@ -74,7 +78,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
   };
   const server = createServer({ requestTimeout: 5_000, headersTimeout: 5_000, maxHeaderSize: 8_192 }, async (request, response) => {
     request.on("error", () => {});
-    let accepted = false;
+    let accepted = false, auditScope, auditStarted = false;
     try {
       if (stopping) throw failure(503, "GATEWAY_OFFLINE");
       if (!["127.0.0.1:" + port, "localhost:" + port].includes(request.headers.host)) throw failure(403, "GATEWAY_ORIGIN");
@@ -88,6 +92,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (request.url === api + "/session" && request.method === "GET") { respond(response, 200, await options.operatorAuth.status(request)); return; }
         if (request.method !== "POST" || request.url === api + "/session" || (request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw new OperatorAuthError("AUTH_INPUT");
         const input = await body(request, 4096);
+        auditScope = auditContext(request.url.endsWith("/login") ? "session.login" : "session.logout", null);
         if (request.url.endsWith("/logout") && (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length)) throw new OperatorAuthError("AUTH_INPUT");
         const result = request.url.endsWith("/login") ? await options.operatorAuth.login(request, input) : await options.operatorAuth.logout(request);
         if (stopping || request.aborted || response.destroyed) throw new OperatorAuthError("AUTH_CONFIG");
@@ -101,16 +106,19 @@ export function createPlcGateway(catalog, variables, options = {}) {
         active++; accepted = true;
         if (request.method === "POST" && (request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw Object.assign(new RecipeStoreError("RECIPE_COMMAND"), { status: 415 });
         const command = request.method === "GET" ? { action: "read" } : parseRecipeCommand(await body(request, 524_288));
+        if (request.method === "POST") auditScope = auditContext("recipes." + command.action, { kind: "recipe-schema", id: command.schemaId, recordId: command.recordId, targetId: command.targetId ?? null }, command.id);
         let actor, authorizationTimer;
         try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "recipes." + command.action, request.method === "POST", request.method === "POST" ? { schemaId: command.schemaId } : undefined) : options.authorizeRecipeAction(request, structuredClone(command)), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }
         finally { clearTimeout(authorizationTimer); }
         if (!recipeActor(actor) || actor === token || actor === "Bearer " + token) throw new RecipeStoreError("RECIPE_AUTH");
+        if (auditScope) auditScope.actor = actor;
         if (stopping || request.aborted || response.destroyed) throw new RecipeStoreError("RECIPE_STORAGE");
         let task;
         try {
-          task = request.method === "GET" ? Promise.resolve(options.recipeStore.snapshot()) : Promise.resolve(options.recipeStore.mutate(command, actor));
+          if (request.method === "POST") auditStarted = true;
+          task = request.method === "GET" ? Promise.resolve(options.recipeStore.snapshot()) : runAudited(options.audit, auditScope, () => options.recipeStore.mutate(command, actor), result => ({ outcome: result.duplicate ? "duplicate" : "applied", code: result.duplicate ? "RECIPE_DUPLICATE" : "RECIPE_APPLIED" }), () => !stopping && !request.aborted && !response.destroyed);
           recipeTasks.add(task); respond(response, 200, await task);
-        } catch (error) { throw error instanceof RecipeStoreError ? error : new RecipeStoreError(request.method === "POST" ? "RECIPE_UNCERTAIN" : "RECIPE_STORAGE"); }
+        } catch (error) { throw error instanceof RecipeStoreError || error instanceof OperatorAuthError ? error : new RecipeStoreError(request.method === "POST" ? "RECIPE_UNCERTAIN" : "RECIPE_STORAGE"); }
         finally { if (task) recipeTasks.delete(task); }
         return;
       }
@@ -120,15 +128,20 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (active >= 32) throw failure(429, "GATEWAY_BUSY");
         active++; accepted = true;
         const command = await body(request);
-        if (!command || typeof command.alarmId !== "string" || typeof command.occurrence !== "string" || !Number.isSafeInteger(command.revision) || !["acknowledge", "confirm"].includes(command.action)
+        if (!command || !operatorText(command.alarmId, 200) || typeof command.occurrence !== "string" || !Number.isSafeInteger(command.revision) || !["acknowledge", "confirm"].includes(command.action)
           || Object.keys(command).some((key) => !["alarmId", "occurrence", "revision", "action"].includes(key))) throw failure(400);
+        auditScope = auditContext("alarms." + command.action, { kind: "alarm", id: command.alarmId });
         let actor, authorizationTimer;
         try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "alarms." + command.action, true, { alarmId: command.alarmId }) : options.authorizeAlarmAction(request, { ...command }), new Promise((resolve) => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }
         finally { clearTimeout(authorizationTimer); }
         if (stopping) throw failure(503, "GATEWAY_OFFLINE");
-        if (typeof actor !== "string" || !actor.trim() || actor.length > 200 || /[\x00-\x1f]/.test(actor)) { respond(response, 403, { error: "Operatore non autorizzato alla presa visione o alla conferma di questo allarme." }); return; }
-        try { respond(response, 200, { alarms: { ...alarms.action(command, actor), actionsEnabled: true } }); }
-        catch (error) { respond(response, 409, { error: error.message }); }
+        if (!recipeActor(actor) || actor === token || actor === "Bearer " + token) throw new OperatorAuthError("AUTH_PERMISSION");
+        auditScope.actor = actor; auditStarted = true;
+        const result = await runAudited(options.audit, auditScope, () => {
+          try { return { status: 200, body: { alarms: { ...alarms.action(command, actor), actionsEnabled: true } } }; }
+          catch (error) { return { status: 409, body: { error: error.message } }; }
+        }, result => ({ outcome: result.status === 200 ? "applied" : "rejected", code: result.status === 200 ? "ALARM_APPLIED" : "ALARM_CONFLICT" }), () => !stopping && !request.aborted && !response.destroyed);
+        respond(response, result.status, result.body);
         return;
       }
       if (request.url !== api + "/write" || request.method !== "POST") throw failure(404);
@@ -139,6 +152,8 @@ export function createPlcGateway(catalog, variables, options = {}) {
       if (!command || typeof command !== "object" || Array.isArray(command) || typeof command.id !== "string" || !/^[A-Za-z0-9_-]{16,80}$/.test(command.id)
         || typeof command.tag !== "string" || !["string", "number", "boolean"].includes(typeof command.value) || typeof command.value === "number" && !Number.isFinite(command.value)
         || Object.keys(command).some((key) => !["id", "tag", "value"].includes(key))) throw failure(400);
+      if (!operatorText(command.tag, 200)) throw failure(400);
+      auditScope = auditContext("tags.write", { kind: "tag", id: command.tag }, command.id);
       const owner = owners.get(command.tag); if (!owner?.writable) throw failure(403, "WRITE_DENIED");
       try { normalizeMqttTagValue(command.value, owner.dataType); } catch { throw failure(400, "WRITE_INVALID"); }
       let actor, authorizationTimer;
@@ -146,25 +161,35 @@ export function createPlcGateway(catalog, variables, options = {}) {
       catch (error) { if (error instanceof OperatorAuthError) throw error; }
       finally { clearTimeout(authorizationTimer); }
       if (!recipeActor(actor) || actor === token || actor === "Bearer " + token) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
+      auditScope.actor = actor;
       if (stopping || request.aborted || response.destroyed) throw failure(503, "GATEWAY_OFFLINE");
       const fingerprint = JSON.stringify([actor, command.tag, command.value]); const known = commands.get(command.id);
       if (known) {
         if (known.fingerprint !== fingerprint) throw failure(409, "GATEWAY_CONFLICT");
-        const result = await known.result; respond(response, result.status, result.body); return;
+        auditStarted = true;
+        const result = await runAudited(options.audit, auditScope, () => known.result, result => ({ outcome: "duplicate", code: result.body.outcome === "delivered" ? "WRITE_DUPLICATE" : "WRITE_DUPLICATE_UNCERTAIN" }), () => !stopping && !request.aborted && !response.destroyed); respond(response, result.status, result.body); return;
       }
       if (owner.driver.state !== "connected") throw failure(503, "WRITE_OFFLINE");
       const now = Date.now(); for (const [id, entry] of commands) if (entry.expires <= now && entry.finished) commands.delete(id);
       if (commands.size >= 1_000) throw failure(429, "GATEWAY_BUSY");
       const entry = { fingerprint, expires: now + 300_000, finished: false, result: undefined };
       // L'id resta registrato anche se il chiamante interrompe HTTP: nessun replay del comando.
-      entry.result = owner.driver.write(command.tag, command.value).then((delivery) => ({ status: 200, body: { id: command.id, outcome: "delivered", ...delivery } }), (error) => {
+      auditStarted = true;
+      entry.result = runAudited(options.audit, auditScope, async () => {
+        try { const delivery = await owner.driver.write(command.tag, command.value); return { status: 200, body: { id: command.id, outcome: "delivered", ...delivery } }; } catch (error) {
         const rejected = error instanceof ConnectionOperationError && error.outcome === "rejected";
         const diagnostic = error instanceof ConnectionOperationError ? error.diagnostic : connectionDiagnostic("WRITE_UNCERTAIN", { protocol: owner.protocol, connectionId: owner.connectionId, tag: command.tag });
         return { status: rejected ? diagnostic.code === "WRITE_OFFLINE" ? 503 : 422 : 502, body: { id: command.id, tag: command.tag, outcome: rejected ? "rejected" : "uncertain", plcConfirmed: false, error: diagnosticText(diagnostic), diagnostic } };
-      }).finally(() => { entry.finished = true; });
+        }
+      }, result => ({ outcome: result.body.outcome, code: result.body.outcome === "delivered" ? result.body.delivery === "broker-ack" ? "WRITE_BROKER_ACK" : result.body.delivery === "opcua-service" ? "WRITE_OPCUA_SERVICE" : "WRITE_TRANSPORT" : result.body.diagnostic.code }), () => !stopping && !request.aborted && !response.destroyed).finally(() => { entry.finished = true; });
       commands.set(command.id, entry); const result = await entry.result; respond(response, result.status, result.body);
     } catch (error) {
-      if (error instanceof OperatorAuthError) { respond(response, error.status, { type: "operator", code: error.code, error: error.message, remedy: error.remedy, outcome: "rejected", plcConfirmed: false }); return; }
+      if (!stopping && auditScope && !auditStarted && !(error instanceof OperatorAuthError && error.code.startsWith("AUTH_AUDIT"))) {
+        if (error instanceof OperatorAuthError && recipeActor(error.actor)) auditScope.actor = error.actor;
+        const code = error instanceof OperatorAuthError || error instanceof RecipeStoreError ? error.code : error instanceof ConnectionOperationError ? error.diagnostic.code : "REQUEST_REJECTED";
+        try { await appendAudit(options.audit, auditScope, "rejected", code); } catch (auditError) { error = auditError; }
+      }
+      if (error instanceof OperatorAuthError) { respond(response, error.status, { type: "operator", code: error.code, error: error.message, remedy: error.remedy, outcome: error.outcome, plcConfirmed: false }); return; }
       if (error instanceof RecipeStoreError) {
         const diagnostic = { type: "recipe", code: error.code, error: error.message, remedy: error.remedy, ...(error.fieldId ? { fieldId: error.fieldId } : {}) };
         safeNotify(options.onRecipeDiagnostic, diagnostic);
@@ -194,6 +219,8 @@ export function createPlcGateway(catalog, variables, options = {}) {
         server.closeAllConnections();
         await Promise.allSettled(connections.map((driver) => driver.stop()));
         await Promise.allSettled([...recipeTasks]);
+        await Promise.allSettled([...commands.values()].map(entry => entry.result));
+        await Promise.allSettled([...auditTasks]);
         await startTask?.catch(() => {});
         const closed = server.listening ? new Promise((resolve) => server.close(resolve)) : Promise.resolve(); server.closeAllConnections();
         await closed; commands.clear();

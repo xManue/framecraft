@@ -6,6 +6,8 @@ import { standardProjectFiles } from "../src/core/standardProject";
 import { interviewConfig, newAiInterview, newGuidedPage } from "../src/ai/aiInterview";
 import { openRecipeStore } from "../runtime/recipe-store.mjs";
 import { hashOperatorPassword, writeOperatorStore } from "../runtime/operator-store.mjs";
+import { openRuntimeAudit } from "../runtime/audit-store.mjs";
+import { execFileSync } from "node:child_process";
 import type { RecipeCatalog } from "../runtime/recipe-catalog.mjs";
 import { componentRegistry } from "../src/components/registry";
 import { parseSource } from "../src/source-parser/parseSource";
@@ -78,6 +80,9 @@ describe("ricette nel servizio realmente esportato", () => {
       expect((await test.request("session/logout", { method: "POST", headers, body: "{}" })).status).toBe(200); expect((await test.request("recipes", { headers })).status).toBe(401);
       const output = test.output() + test.errors(); for (const value of [token, "SYNTHETIC-launcher-password-012345", marker, session.csrfToken]) expect(output).not.toContain(value);
       expect(output).toContain("AUTH_LOGIN"); expect(output).toContain("AUTH_LOGOUT");
+      const auth = JSON.parse(await readFile(path.join(test.root, "framecraft.auth.json"), "utf8")), audit = openRuntimeAudit({ root: test.root, namespace: auth.namespace, readOnly: true });
+      try { const rows = audit.read().events; expect(rows.some(row => row.operation === "recipes.update" && row.outcome === "applied" && row.resource?.kind === "recipe-schema" && row.resource.recordId === "r1")).toBe(true); expect(rows.some(row => row.code === "AUTH_LOGIN")).toBe(true); expect(rows.some(row => row.code === "AUTH_LOGOUT")).toBe(true); for (const secret of [token, "SYNTHETIC-launcher-password-012345", marker, "SYNTHETIC_CHANGED", session.csrfToken]) expect(JSON.stringify(rows)).not.toContain(secret); } finally { audit.close(); }
+      const report = JSON.parse(execFileSync(process.execPath, [path.join(test.root, "runtime/read-audit.mjs"), "--json", "--limit=3"], { cwd: test.root, encoding: "utf8", windowsHide: true })); expect(report).toMatchObject({ verified: true, unresolvedCount: 0 }); expect(report.events).toHaveLength(3);
     } finally { await test.close(); }
   }, 15000);
   it.each(["invalid", "corrupt"] as const)("un archivio %s non ferma il monitoraggio o cancella dati per ripartire", async mode => {

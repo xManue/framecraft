@@ -8,6 +8,7 @@ import type { RecipeCommand, RecipeStoreError } from "./recipe-catalog.mjs";
 import type { RecipeStore } from "./recipe-store.mjs";
 import type { LocalOperatorAuth } from "./operator-auth.mjs";
 import type { OperatorAuthError } from "./operator-policy.mjs";
+import type { RuntimeAudit } from "./audit-store.mjs";
 export interface GatewayConfig {
   enabled: boolean; host?: "127.0.0.1"; port: number; tokenEnv: string; allowedOrigins: string[]; allowWrites?: boolean;
 }
@@ -24,6 +25,7 @@ export function createPlcGateway(
   variables: readonly { name: string; dataType: string; access: "read" | "write" | "read-write" }[],
   options?: Pick<MqttConnectionCallbacks, "resolveSecret" | "onState" | "onError" | "onDiagnostic"> & { alarmCatalog?: AlarmCatalog; onAlarmEvent?: (event: AlarmEvent) => void; authorizeAlarmAction?: (request: IncomingMessage, command: AlarmCommand) => string | undefined | Promise<string | undefined>;
     recipeStore?: RecipeStore;
+    audit?: RuntimeAudit;
     operatorAuth?: LocalOperatorAuth;
     operatorUnavailable?: OperatorAuthError;
     authorizeTagWrite?: (request: IncomingMessage, command: { id: string; tag: string; value: string | number | boolean }) => string | undefined | Promise<string | undefined>;

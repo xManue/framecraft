@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type { OperatorAuthConfig, OperatorCapability, OperatorSession, OperatorResourceContext } from "./operator-policy.mjs";
+import type { RuntimeAudit } from "./audit-store.mjs";
 export interface LocalOperatorAuth {
   status(request: IncomingMessage): Promise<OperatorSession>;
   login(request: IncomingMessage, input: unknown): Promise<{ body: OperatorSession; cookie: string }>;
@@ -7,4 +8,4 @@ export interface LocalOperatorAuth {
   authorize(request: IncomingMessage, capability: OperatorCapability, mutation?: boolean, context?: OperatorResourceContext): Promise<string>;
   close(): void;
 }
-export function createLocalOperatorAuth(options: { file: string; config: OperatorAuthConfig; allowedOrigins: string[]; now?: () => number; onEvent?: (event: { type: "operator"; code: string; actor?: string; timestamp: string }) => void }): LocalOperatorAuth;
+export function createLocalOperatorAuth(options: { file: string; config: OperatorAuthConfig; allowedOrigins: string[]; audit?: RuntimeAudit; now?: () => number; onEvent?: (event: { type: "operator"; code: string; actor?: string; timestamp: string }) => void }): LocalOperatorAuth;
