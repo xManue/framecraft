@@ -10,6 +10,8 @@
 .recipe-notice { border: 1px solid #d4ad68; padding: 14px; border-radius: 8px; margin: 14px 0; }
 .recipe-notice button + button { margin-left: 8px; }
 .recipe-id { overflow-wrap: anywhere; }
+.recipe-value { min-width: 0; }
+.recipe-value > button { margin-top: 8px; }
 .recipe-dialog .alarm-error { overflow-wrap: anywhere; }
 .recipe-dialog footer { position: sticky; bottom: -20px; background: #181e28; padding-bottom: 8px; }
 @media(max-width: 600px) { .recipe-dialog > header { top: -12px; }.recipe-dialog footer { bottom: -12px; }.recipe-toolbar > button { flex: 1 1 150px; }.recipe-notice button { margin: 4px 0; }.recipe-notice button + button { margin-left: 0; } }

@@ -40,6 +40,8 @@ export function AiAssistant() {
     const previous = globalThis.document.activeElement as HTMLElement | null;
     panel.current?.focus();
     const keydown = (event: KeyboardEvent) => {
+      const activeDialog = globalThis.document.activeElement?.closest('[role="dialog"][aria-modal="true"]');
+      if (activeDialog && activeDialog !== panel.current) return;
       if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); useEditorAi.getState().close(); }
       if (event.key !== "Tab") return;
       const nodes = [...(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), details > summary') ?? [])]

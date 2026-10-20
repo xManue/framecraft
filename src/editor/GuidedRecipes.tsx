@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { parseRecipeCatalog, type RecipeCatalog, type RecipeSchema } from "../core/recipeConfiguration";
+import { RecipeCatalogDraftDialog } from "./RecipeCatalogDraftDialog";
 
 function SchemaReview({ schema }: { schema: RecipeSchema }) {
   const [selected, setSelected] = useState("");
@@ -30,12 +31,13 @@ export function GuidedRecipesReview({ catalog, file, onEdit, disabled = false }:
 }
 export function GuidedRecipesInput({ catalog, file, onChange, onBusyChange }: { catalog?: RecipeCatalog; file?: string; onChange(catalog?: RecipeCatalog, file?: string): void; onBusyChange(busy: boolean): void }) {
   const [pending, setPending] = useState<{ catalog: RecipeCatalog; file: string }>(), [error, setError] = useState("");
-  const [reading, setReading] = useState(false), mounted = useRef(true), sequence = useRef(0);
+  const [reading, setReading] = useState(false), [editing, setEditing] = useState(false), mounted = useRef(true), sequence = useRef(0);
+  const returnFocus = useRef<HTMLElement | null>(null);
   const current = useRef({ catalog, onChange, onBusyChange }); current.current = { catalog, onChange, onBusyChange };
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; sequence.current++; current.current.onBusyChange(false); }; }, []);
   useEffect(() => { setPending(undefined); }, [catalog]);
   async function choose(selected?: File) {
-    if (!selected || reading) return;
+    if (!selected || reading || editing) return;
     const request = ++sequence.current, before = catalog;
     setReading(true); onBusyChange(true); setError(""); setPending(undefined);
     try {
@@ -49,9 +51,10 @@ export function GuidedRecipesInput({ catalog, file, onChange, onBusyChange }: { 
     }
   }
   return <section className="ai-import ai-recipes" aria-label="Importa le ricette iniziali">
-    <h4>Hai già gli schemi e i valori iniziali delle ricette?</h4>
-    <p>Importazione facoltativa del solo catalogo Framecraft. Non caricare l’archivio operativo del servizio: contiene anche revisioni e ricevute. CSV, database ed export WinCC/Optix richiedono un adattatore e non vengono interpretati automaticamente.</p>
-    <label>Inserisci framecraft.recipes.json (facoltativo)<input type="file" accept=".json,application/json" disabled={reading} onChange={event => { void choose(event.target.files?.[0]); event.target.value = ""; }} /></label>
+    <h4>Come vuoi preparare le ricette iniziali?</h4>
+    <p>Puoi creare schemi e valori qui, importare un catalogo Framecraft oppure saltare il passaggio. Non caricare l’archivio operativo del servizio: contiene anche revisioni e ricevute. CSV, database ed export WinCC/Optix richiedono un adattatore e non vengono interpretati automaticamente.</p>
+    <button type="button" disabled={reading || editing} onClick={event => { returnFocus.current = event.currentTarget; setPending(undefined); setError(""); setEditing(true); onBusyChange(true); }}>{catalog ? "Modifica schemi e ricette" : "Crea schemi e ricette qui"}</button>
+    <label>Inserisci framecraft.recipes.json (facoltativo)<input type="file" accept=".json,application/json" disabled={reading || editing} onChange={event => { void choose(event.target.files?.[0]); event.target.value = ""; }} /></label>
     {reading && <p role="status">Controllo locale di schemi e valori ricette…</p>}
     {error && <p className="ai-error" role="alert">{error}</p>}
     {pending && <section className="ai-recipes-pending" aria-label="Controlla l’importazione ricette">
@@ -62,6 +65,7 @@ export function GuidedRecipesInput({ catalog, file, onChange, onBusyChange }: { 
     </section>}
     <GuidedRecipesReview catalog={catalog} file={file} />
     {catalog && <button type="button" onClick={() => { if (window.confirm("Rimuovere gli schemi e i valori iniziali dal questionario? Nessun file o archivio esistente verrà cancellato.")) current.current.onChange(); }}>Rimuovi ricette dal nuovo progetto</button>}
-    <p>Non hai un catalogo? Puoi saltare questo passaggio e prepararlo dopo da Pannello → Ricette, anche senza AI. Le domande su parametri e conferma PLC restano requisiti: non cambiano i valori del file importato.</p>
+    <p>Puoi anche preparare o modificare il catalogo dopo, da Pannello → Ricette, senza AI. Le domande su parametri e conferma PLC restano requisiti: non cambiano i valori scelti qui.</p>
+    {editing && <RecipeCatalogDraftDialog catalog={catalog} returnFocus={returnFocus.current} onClose={() => { setEditing(false); current.current.onBusyChange(false); }} onApply={(next, changed) => { current.current.onChange(next, changed ? undefined : file); setEditing(false); current.current.onBusyChange(false); }} />}
   </section>;
 }

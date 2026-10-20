@@ -1,6 +1,6 @@
 # AI facoltativa in Framecraft
 
-Aggiornato al 16 ottobre 2026.
+Aggiornato al 20 ottobre 2026.
 
 L'obiettivo finale è accompagnare l'intero ciclo di costruzione dell'HMI senza rendere l'AI un
 requisito. Priorità aggiornata dall’utente: completare adesso la pipeline AI + app,
@@ -43,8 +43,10 @@ configurazioni dichiarate pronte. Dal punto 144 esiste un servizio dati ricette 
 tipizzato con API protette; il punto 145 aggiunge l’editor manuale della configurazione iniziale
 e il 146 la modifica del catalogo iniziale via chat con confronto/backup e contesto su richiesta.
 Il punto 147 collega l’importazione del catalogo iniziale Framecraft al wizard, recupero e
-generatore, con revisione locale esplicita e soli conteggi inviati all’AI. Restano creazione
-diretta degli schemi nel wizard, form operatore Runtime e adattatori CSV/vendor/DB. La prova
+generatore, con revisione locale esplicita e soli conteggi inviati all’AI. Il punto 150 aggiunge
+creazione/modifica diretta degli schemi e delle ricette iniziali nel wizard, con lo stesso editor
+manuale e applicazione esplicita al questionario. Restano form operatore Runtime e adattatori
+CSV/vendor/DB. La prova
 reale Codex resta subordinata all’isolamento Windows autorizzato; queste verifiche usano provider sintetici.
 Le pagine di
 ricette, produzione, manutenzione e report hanno strutture
@@ -282,7 +284,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-IN-03 | PDF/schema elettrico e documenti macchina | DA FARE | Estrazione con riferimenti alla pagina e richiesta di conferma |
 | AI-IN-04 | Descrizione funzionale e sequenze | PARZIALE | Domande mirate su modalità, consensi, feedback e sequenze conservate localmente; interpretazione operativa e contratto PLC da completare |
 | AI-IN-05 | Immagini o layout della macchina | PARZIALE | Usare asset reali; targhette e hotspot restano configurabili |
-| AI-IN-06 | Lista allarmi, ricette, utenti e permessi | PARZIALE | Nessuna semantica viene dedotta soltanto dal nome di un tag |
+| AI-IN-06 | Lista allarmi, ricette, utenti e permessi | PARZIALE | Ricette scalari Framecraft importate o create localmente nel wizard (147/150); utenti e permessi server da completare. Nessuna semantica viene dedotta soltanto dal nome di un tag |
 | AI-IN-07 | Progetto HMI precedente o di riferimento | DA FARE | Importare, confrontare e dichiarare ciò che viene riusato |
 | AI-IN-08 | Mapping macchina-PLC-HMI approvato | PARZIALE | Letture e scritture singole da tag importati con valore/evento/permesso e approvazione; sequenze, comandi a uomo presente, handshake PLC e mapping connessioni ancora da completare |
 
@@ -294,7 +296,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-PLAN-02 | Scelta motivata di template e famiglie pagina | PARZIALE | Famiglie scelte dall’utente con funzionamento noto nel contesto AI; scelta automatica motivata tra tutti i template da implementare |
 | AI-PLAN-03 | Piano pagine, navigazione e popup | PARZIALE | Pagine/categorie esplicite e pagina iniziale applicata; popup e oggetti ripetuti raccolti come requisiti da configurare |
 | AI-PLAN-04 | Piano binding e interazioni | PARZIALE | Letture, scritture singole e destinazioni pagina con evento, permessi e conferma espliciti; matrice operativa completa ancora da fare |
-| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, trend temporali e X/Y con sorgenti online o Data Log reali importati e approvati, catalogo ricette iniziale Framecraft importato (147); form ricette e archivio industriale da completare |
+| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, trend temporali e X/Y con sorgenti online o Data Log reali importati e approvati, catalogo ricette iniziale Framecraft importato o preparato nella procedura (147/150); form ricette e archivio industriale da completare |
 | AI-PLAN-06 | Piano utenti e sicurezza | PARZIALE | Requisiti mirati su identità, ruoli, sessione e audit; implementazione server e matrice da approvare separatamente |
 | AI-PLAN-07 | Stima compatibilità target e licenze | DA FARE | Limiti funzionali Framecraft, licenze dipendenze/provider e diritti degli asset verificati prima di creare file; destinazione React autonoma OPC UA/MQTT, non licenze dei Runtime vendor |
 | AI-PLAN-08 | Revisione e approvazione del piano | DA FARE | L'utente può correggere singole decisioni o procedere manualmente |

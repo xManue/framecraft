@@ -3,6 +3,9 @@
 Aggiornato al 24 settembre 2026. Baseline funzionale: documentazione ufficiale FactoryTalk Optix
 1.7.x e pagine `current` di Rockwell Automation.
 
+Aggiornamento implementativo 20 ottobre 2026: schemi ricetta riletti nella guida `current`, che
+ora si presenta come 1.8.0. L’inventario restante non è stato rivalutato integralmente per 1.8.0.
+
 Questa roadmap registra fin da ora tutto ciò che Framecraft dovrà coprire dopo la roadmap WinCC
 Unified. I contratti Rockwell restano separati da quelli Siemens: il nucleo comune viene riusato
 solo quando il comportamento è realmente equivalente. Un componente React simile a un oggetto
@@ -142,8 +145,8 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | ID | Capacità FactoryTalk Optix | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
 | FTX-RCP-01 | Recipe schema object-aware | DA FARE | Catalogo scalare Framecraft v1 al punto 144, non TargetNode/Item/DataItem o UDT | Generazione dal tipo con diff tra revisioni |
-| FTX-RCP-02 | Configurator e anteprima schema | PARZIALE | Editor iniziale scalare Framecraft (145), non selezione TargetNode/Item/DataItem Optix | Impatto visibile prima di cambiare lo schema |
-| FTX-RCP-03 | Store, edit, delete e rename ricetta | PARZIALE | Servizio (144), editor iniziale (145), chat con confronto/backup (146) e catalogo iniziale Framecraft nel wizard (147), non ancora editor operatore Runtime | Undo e validazione campo per campo |
+| FTX-RCP-02 | Configurator e anteprima schema | PARZIALE | Editor iniziale scalare condiviso tra progetto e wizard (145/150), con bozza e approvazione; non selezione TargetNode/Item/DataItem Optix | Impatto visibile prima di cambiare lo schema |
+| FTX-RCP-03 | Store, edit, delete e rename ricetta | PARZIALE | Servizio (144), editor iniziale (145), chat con confronto/backup (146), import nel wizard (147) e creazione locale dal wizard (150), non ancora editor operatore Runtime | Undo e validazione campo per campo |
 | FTX-RCP-04 | Load/apply da e verso controller | DA FARE | Nessun trasferimento ricetta implementato, nessuna conferma PLC presunta | Confronto controller/ricetta/modifiche prima di applicare |
 | FTX-RCP-05 | Recipe editor e Recipe application example | DA FARE | Widget Runtime e binding allo schema; la pagina guidata è ancora struttura | Form generato ma completamente personalizzabile |
 | FTX-RCP-06 | Ricette concorrenti e metadati | PARZIALE | Revisione contenuto, lock esclusivo e ultime 256 ricevute persistenti con soggetto/data al punto 144 | Merge guidato e storico delle revisioni completo |

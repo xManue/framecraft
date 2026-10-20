@@ -5207,6 +5207,50 @@ Verifiche del 5 ottobre 2026:
   preparing-for-mobile/configuration. Nessuna nuova dipendenza, licenza o risorsa vendor.
   La riduzione dei simboli cambia l’esperienza del debugger, non i permessi dell’app o del PLC.
 
+### 150. Creazione degli schemi ricetta nella procedura iniziale (2026-10-20)
+
+- Ripresa la priorità AI + app dopo gli interventi di avvio. Il passo dati ora permette di creare
+  e modificare schemi e ricette iniziali senza preparare JSON, oppure importare o rimandare come
+  prima. Non serve collegare l’account per compilare questi dati locali; il percorso manuale
+  Pannello → Ricette resta indipendente dall’AI e dal questionario.
+- Estratto l’editor scalare in `RecipeCatalogEditor`: stessi tipi, limiti, campi, valori, copia e
+  rimozioni confermate per progetto e wizard. Nessuna scelta automatica di valori; zero e false
+  vanno inseriti esplicitamente. Il testo vuoto ha un pulsante esplicito, distinto da dato mancante.
+- La nuova finestra conserva una bozza separata; Usa queste ricette nel progetto applica soltanto
+  un catalogo valido al questionario. Annulla/Escape chiedono conferma quando serve e non cambiano
+  il catalogo approvato. Un aggiornamento esterno del catalogo lascia la bozza visibile ma blocca
+  la sovrascrittura obsoleta. Modificare un import non continua ad attribuire i dati al vecchio
+  filename. Recupero persistente solo dopo Usa; il guard beforeunload non è un backup della bozza
+  ancora invalida/non approvata e il comportamento alla chiusura nativa resta da collaudare.
+- Focus, Tab/Escape e ritorno al controllo precedente condivisi con il dialogo manuale. L’assistente
+  lascia gli eventi alla finestra figlia: Escape non chiude l’intera procedura. Etichette esplicite
+  dei select. Skill UI/UX applicata a conferme, focus, target da 44 px, leggibilità mobile e tema
+  esistente; nessun font, asset, dipendenza o licenza nuova. Nessun agente utilizzato.
+- Il catalogo approvato usa i percorsi già esistenti: recupero dell’intervista, riepilogo, validazione
+  e `framecraft.recipes.json` generato. L’AI riceve ancora solo i conteggi: nomi, limiti, valori e file
+  restano locali. Nessuna inferenza, scrittura nativa, connessione PLC o richiesta esterna implicita.
+- Snapshot pubblico iniziale `.hmi-preview/public-check-24N97L`: 49 test mirati in quattro file
+  passati (bozza, dialogo manuale, pipeline guidata e configurazione), tipi e build passati.
+  Snapshot finale `.hmi-preview/public-check-A4kcEw`: 18 test dei due dialoghi, inclusa una nuova
+  regressione sulla provenienza dell’import, per 50 test unici. Tipi/build e browser ricontrollati
+  sul codice finale; nessuna suite generale o test Rust. Corretto anche il ritorno del focus al
+  pulsante apri-ricette, perso quando il fieldset sottostante viene disabilitato.
+  Export privati e lavori trend/profili preesistenti esclusi; dipendenze locali collegate, non
+  installazione pulita. Il codice nativo e l’eseguibile non sono cambiati.
+- Edge headless sulla procedura reale con dati sintetici, a 375/768/1024/1440 px: creazione campi,
+  limiti, zero/false/testo vuoto, rifiuto fuori limite senza perdere input, conferma/annullamento,
+  tastiera nella finestra figlia e catalogo generato identico. Zero errori JS, inferenze o scritture
+  native/richieste esterne; screenshot mobile e desktop ispezionati. Non è un collaudo IPC Tauri,
+  touch fisico o impianto. Prova con account Codex reale ancora subordinata al preflight Windows.
+- Consultata la guida ufficiale Optix current 1.8.0 sugli schemi: configurazione intermedia e Apply
+  tenuti distinti dalla gestione Runtime. Framecraft usa il proprio catalogo scalare, non implementa
+  ancora TargetNode/Item/DataItem, UDT o un formato vendor. Riferimento:
+  https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes/recipex-schemas.html.
+- Restano form operatore e collegamento alla pagina Ricette, identità e permessi server, mapping e
+  confronto/handshake PLC, migrazioni e backup industriali, adattatori CSV/vendor/DB e audit.
+  La pagina guidata Ricette resta esplicitamente struttura. Nessuna parità Unified/Optix o prontezza
+  produzione dichiarata; roadmap AI e Optix aggiornate senza cancellare l’obiettivo complessivo.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

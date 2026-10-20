@@ -303,15 +303,20 @@ Runtime forms, controller comparison/apply handshake, vendor
 CSV/TSV compatibility, industrial database/backup and regulated audit still need implementation
 or commissioning. File persistence and passing loopback tests do not establish production readiness.
 
-In **Nuovo pannello → Con AI**, the data step optionally imports an initial Framecraft v1 recipe
-catalog. Review fields, types, limits and each recipe's values, then select **Usa questo catalogo**.
-Only that explicit selection becomes part of the questionnaire, recovery draft and generated
-project; invalid imports leave previous answers intact. Zero, false and empty text stay typed.
+In **Nuovo pannello → Con AI**, the data step can create/edit an initial recipe catalog directly,
+import a Framecraft v1 catalog, or skip recipes. **Crea schemi e ricette qui** opens the same field
+editor used by the manual project dialog; an account is not required to prepare these local data.
+Only **Usa queste ricette nel progetto** includes the draft in the questionnaire; cancelling leaves
+the approved catalog intact. Changed questionnaire data blocks an obsolete draft. Invalid/missing
+values prevent approval, and empty text has an explicit choice instead of a silent default.
+Imports still need **Usa questo catalogo**. Approved data join the recovery draft and generated
+project; unapproved local edits are guarded on close/reload but are not a durable recovery copy.
+Zero, false and empty text stay typed. AI remains optional for the normal manual editor.
 Only aggregate counts reach the creation AI, not recipe names, fields, values or filenames.
 Changing local values can refresh an existing plan without another model call when its context
 is unchanged; inspect the updated local review before approving creation. No operational archive,
-service identity or controller mapping is imported. CSV/vendor/DB adapters and creating a recipe
-catalog directly inside the wizard are still pending; the manual editor remains available after creation.
+service identity or controller mapping is imported. CSV/vendor/DB adapters and the Runtime
+operator form are still pending; the manual editor remains available after creation.
 
 ## Guided AI project creation
 
