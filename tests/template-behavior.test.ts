@@ -38,7 +38,7 @@ describe("funzionamento dichiarato dei template", () => {
     expect(guidedTemplateBehavior("values")!.known.join(" ")).toContain("non campi che scrivono");
     expect(guidedTemplateBehavior("commands")!.known.join(" ")).toContain("disabilitati");
     expect(guidedTemplateBehavior("commands")!.limits.join(" ")).toContain("non significa conferma PLC");
-    expect(guidedTemplateBehavior("recipes")!.implementation).toBe("structure-only");
+    expect(guidedTemplateBehavior("recipes")).toMatchObject({ version: 2, implementation: "configured-inputs" });
     expect(guidedTemplateBehavior("__proto__")).toBeUndefined(); expect(guidedTemplateBehavior("not-known")).toBeUndefined();
   });
   it("invia all’AI solo le schede scelte una volta, con regole contro le domande ridondanti", () => {

@@ -548,13 +548,54 @@ Diagnostica distinta con codice, conseguenza e rimedio, senza errori grezzi, per
 o valori ricetta. `onChange` notifica solo metadati tecnici; il registro locale delle ricevute
 contiene soggetto e data, non un audit immutabile con firme e valori prima/dopo.
 
-Restano editor Runtime e wizard, autorizzazioni applicative effettive, UDT/array, import/export
+Il wizard e l’editor iniziale preparano il catalogo; il form operatore è descritto sotto.
+Restano autorizzazioni applicative effettive, UDT/array, import/export
 CSV/TSV vendor, migrazione, database industriale, confronto PLC e handshake di apply/upload.
 Nessun metodo del servizio invia comandi MQTT/OPC UA. I riferimenti funzionali sono le
 [ricette Optix](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes.html)
 e i [parameter set Unified](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-rt-unified/controlling-with-parameter-sets-rt-unified),
 non una promessa di round-trip o parità vendor. Le garanzie di flush restano quelle di
 [Node e del dispositivo](https://nodejs.org/docs/latest-v24.x/api/fs.html#filehandlesync).
+
+## Form operatore ricette
+
+Nei nuovi progetti, la pagina guidata **Ricette e formati** contiene `HmiRecipeControl`.
+Lo stesso elemento è in Aggiungi → HMI e PLC → Archivio ricette. I vecchi progetti richiedono
+un aggiornamento esplicito del Runtime; inserire il div da solo non aggiorna il servizio.
+In Modifica resta un segnaposto, senza letture o scritture. In Prova pannello/Runtime:
+
+1. Configura catalogo, gateway/proxy e un’identità verificata nel callback server già descritto.
+   Il launcher standard continua a negare l’accesso senza questa integrazione; non togliere il
+   controllo e non usare token, header dichiarati dal browser o PIN locali come identità.
+2. Premi **Rileggi archivio**. Ogni richiesta usa la stessa origine e le credenziali di sessione;
+   il segreto del gateway resta nel proxy. Non esistono lettura automatica o polling delle ricette.
+3. Seleziona schema e ricetta, poi Nuova/Modifica/Copia/Rinomina/Elimina. Compila tutti i campi:
+   zero e falso sono scelte esplicite; Usa testo vuoto è distinto da campo mai compilato.
+   Decimali con punto o virgola, senza separatori delle migliaia; tipi e limiti restano quelli
+   dello schema. **Verifica operazione** mostra prima/dopo; **Conferma salvataggio** invia una
+   sola richiesta all’archivio. Non è un apply, download/upload o consenso macchina.
+4. Se un altro operatore cambia l’archivio, la bozza resta visibile. Rileggi, confronta i valori
+   attuali e scegli esplicitamente se usare la nuova revisione per la bozza. Nessun merge o
+   sovrascrittura automatica, anche se due controlli sono sulla stessa pagina.
+5. Se manca una risposta dopo POST, non creare un altro ID: il form blocca nuove modifiche.
+   **Verifica ripetendo la stessa richiesta** usa lo stesso ID/corpo ed è disponibile soltanto
+   finché quel corpo resta in memoria; la conferma avvisa che, se non era arrivato, potrebbe
+   essere salvato adesso. Dopo un reload resta soltanto l’ID: rileggi e confronta l’archivio,
+   poi **Ho confrontato l’archivio: continua** chiude l’avviso senza certificare un esito.
+
+Il marker in sessionStorage è separato per progetto (`framecraft.recipes-ui.json`) e percorso.
+Contiene solo l’ID, mai valori/nomi/credenziali; i payload non sono registrati nella diagnostica.
+Storage assente/quota/bloccato impedisce un nuovo POST, senza togliere la lettura. Marker non
+leggibile resta da verificare, non viene riparato/cancellato automaticamente. Il marker non è
+una ricevuta server né un backup: non chiudere la sessione browser o cancellarne i dati prima
+della verifica; per assistenza conserva l’ID riportato nel messaggio/registro.
+
+Le bozze non sono persistenti. Menu e cambio dispositivo chiedono conferma prima di scartarle,
+e durante la richiesta il cambio pagina è bloccato. Beforeunload è solo un avviso quando il
+browser lo consente: crash, Back/history SPA, chiusura nativa, multi-tab, touch fisico e proxy
+HTTPS/SSO reali restano da collaudare. La pagina guidata ha form mobile fluido, senza ridurre
+i comandi; un widget inserito in una pagina personalizzata non riscrive il layout circostante.
+Permessi visivi/disabilitazione sono rispettati dal controllo ma non sostituiscono il server.
 
 ## Prima della produzione
 

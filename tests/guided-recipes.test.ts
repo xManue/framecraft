@@ -41,7 +41,7 @@ describe("ricette iniziali nella pipeline guidata", () => {
     expect(files.filter(file => file.path.startsWith("src/pages/"))).toHaveLength(1); expect(files.some(file => file.path.startsWith(".framecraft-runtime/"))).toBe(false);
     expect(JSON.parse(files.find(file => file.path === "framecraft.runtime.json")!.content).gateway.enabled).toBe(false);
     expect(JSON.parse(files.find(file => file.path === "framecraft.connections.json")!.content).connections).toEqual([]);
-    expect(guidedProjectPending(config.guided!).join(" ")).toContain("Form operatore"); expect(guidedProjectPending(config.guided!).join(" ")).toContain("soltanto la struttura");
+    expect(guidedProjectPending(config.guided!).join(" ")).toContain("form operatore richiede servizio"); expect(guidedProjectPending(config.guided!).join(" ")).toContain("Nessun trasferimento");
   });
   it("non modifica il catalogo in base ai requisiti testuali o alle scelte delegate", () => {
     const interview = fixture(); interview.delegated = ["req.recipes.fields"]; interview.spec.requirements!.enabled.recipes = "yes";
@@ -71,7 +71,7 @@ describe("ricette iniziali nella pipeline guidata", () => {
   });
   it("l’AI riceve solo conteggi e limiti, non schema, valori, nome file o identificativi", () => {
     const interview = fixture(), prompt = interviewPrompt(interview); expect(prompt).not.toContain("SYNTHETIC_"); expect(prompt).not.toContain("test/s");
-    expect(interviewContext(interview).recipes).toEqual({ scope: "initial-configuration-only", schemaCount: 1, fieldCount: 3, recordCount: 2, valuesShared: false, runtimeForm: false, plcTransfer: false });
+    expect(interviewContext(interview).recipes).toEqual({ scope: "initial-configuration-only", schemaCount: 1, fieldCount: 3, recordCount: 2, valuesShared: false, runtimeForm: "server-authorized-storage-only", plcTransfer: false });
   });
   it("un cambio di valori locali aggiorna il piano senza pagare un’altra richiesta AI, ma un catalogo non valido revoca la proposta", () => {
     const interview = fixture(), send = vi.fn(); useEditorAi.setState({ interview, mode: "create", proposal: { version: 1, mode: "create", summary: "Piano", project: interviewConfig(interview), questions: [], warnings: [], provenance: [], operations: [], decisions: [] }, resolvedInterview: interview, propose: send });

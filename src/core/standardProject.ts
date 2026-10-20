@@ -45,6 +45,8 @@ import gatewayStartSource from "../../runtime/start-gateway.mjs?raw";
 import gatewayProxySource from "../../runtime/vite-gateway.mjs?raw";
 import gatewayProxyTypes from "../../runtime/vite-gateway.d.mts?raw";
 import gatewayClientSource from "./hmiGateway.ts?raw";
+import recipeClientSource from "./hmiRecipeClient.ts?raw";
+import recipeControlSource from "./hmiRecipeControl.ts?raw";
 import hmiTagBindingSource from "./hmiTagBinding.ts?raw";
 import hmiExpressionSource from "./hmiExpression.ts?raw";
 import { emptyAlarmCatalog } from "./hmiAlarms";
@@ -282,6 +284,9 @@ import alarmCatalogJson from "../framecraft.alarms.json";
 import { createAlarmEngine, type AlarmSnapshot, type AlarmCommand } from "../runtime/alarm-engine.mjs";
 import { createHmiAlarmControl } from "./framecraftHmiAlarmControl";
 import { createHmiAlarmSummary } from "./framecraftHmiAlarmSummary";
+import { createHmiRecipeClient } from "./framecraftHmiRecipeClient";
+import { createHmiRecipeControl } from "./framecraftHmiRecipeControl";
+import recipeUiConfig from "../framecraft.recipes-ui.json";
 import plcCatalogJson from "../framecraft.plc.json";
 import runtimeCatalogJson from "../framecraft.runtime.json";
 import { createHmiGatewayClient, HmiGatewayCommandError, type HmiGatewaySample, type HmiGatewaySnapshot } from "./framecraftGateway";
@@ -527,6 +532,17 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   let alarmCursor: { instanceId: string; sequence: number } | undefined;
   const alarmControls = new Map<HTMLElement, ReturnType<typeof createHmiAlarmControl>>();
   const alarmSummaries = new Map<HTMLElement, ReturnType<typeof createHmiAlarmSummary>>();
+  const recipeControls = new Map<HTMLElement, ReturnType<typeof createHmiRecipeControl>>();
+  let recipeClient: ReturnType<typeof createHmiRecipeClient> | undefined;
+  if (gatewayConfig.enabled) try {
+    recipeClient = createHmiRecipeClient({ path: gatewayConfig.path, timeoutMs: gatewayConfig.timeoutMs, scope: recipeUiConfig.namespace,
+      report: (event) => (options.error ?? console.error)("[HMI RICETTE] " + event.code + (event.requestId ? " · richiesta " + event.requestId : "") + (event.uncertain ? " · esito incerto; non ripetere con nuovo ID" : "")),
+    });
+  } catch { (options.error ?? console.error)("[HMI RICETTE] RECIPE_CLIENT_CONFIG: controlla percorso, timeout e namespace in framecraft.recipes-ui.json. Archivio disabilitato; gli altri controlli restano disponibili."); }
+  const renderRecipeControls = () => {
+    for (const [host, control] of recipeControls) if (!host.isConnected) { control.dispose(); recipeControls.delete(host); }
+    for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiRecipeControl"]')) if (!recipeControls.has(host)) recipeControls.set(host, createHmiRecipeControl(host, { client: recipeClient }));
+  };
   const alarmClearButtons = new Map<HTMLButtonElement, { disabled: boolean; title: string }>();
   const performAlarmAction = async (command: AlarmCommand) => {
     if (!runtimeActive) throw new Error("Sessione pannello interrotta.");
@@ -906,7 +922,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       (options.error ?? console.error)(\`[HMI \${eventType}] \${error instanceof Error ? error.message : String(error)}\`);
     });
   };
-  const target = (event: Event) => event.target instanceof Element && !event.target.closest("[data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-faceplate-interface-trigger], [data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-time-zone], [data-hmi-trend-aggregation], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]") ? event.target.closest("[data-hmi-events]") : null;
+  const target = (event: Event) => event.target instanceof Element && !event.target.closest("[data-hmi-recipe-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-faceplate-interface-trigger], [data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-time-zone], [data-hmi-trend-aggregation], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]") ? event.target.closest("[data-hmi-events]") : null;
   const down = (event: Event) => run(target(event), "Down");
   const up = (event: Event) => run(target(event), "Up");
   const tapped = (event: Event) => run(target(event), "Tapped");
@@ -1094,12 +1110,13 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   const observer = new MutationObserver((records) => {
     const interactionAttributes = ["disabled", "hidden", "inert", "aria-disabled", "style", "class", "data-fc-reacts", "data-fc-user-requires", "data-fc-user-granted", "data-fc-user-visible-requires", "data-fc-user-visible-granted"];
     if (records.every((record) => record.type === "attributes" && interactionAttributes.includes(record.attributeName ?? ""))) {
-      const hosts = [...alarmControls.keys(), ...alarmSummaries.keys()];
+      const hosts = [...alarmControls.keys(), ...alarmSummaries.keys(), ...recipeControls.keys()];
       if (records.some((record) => record.target instanceof Element && hosts.some((host) => record.target.contains(host)))) renderAlarmControls();
+      for (const [host, control] of recipeControls) if (records.some(record => record.target instanceof Element && record.target.contains(host))) control.refresh();
       return;
     }
-    if (records.every((record) => record.attributeName !== "data-hmi-alarm-summary" && record.target instanceof Element && record.target.closest("[data-hmi-trend-root], [data-hmi-function-trend-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root]"))) return;
-    scanLoaded(); syncCycles(); requestRefresh(); renderRuntimeFaceplates(); renderTrendControls(); renderGatewayStatus(gatewayClient?.state ?? "stopped"); renderAlarmControls();
+    if (records.every((record) => record.attributeName !== "data-hmi-alarm-summary" && record.target instanceof Element && record.target.closest("[data-hmi-trend-root], [data-hmi-function-trend-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-recipe-root]"))) return;
+    scanLoaded(); syncCycles(); requestRefresh(); renderRuntimeFaceplates(); renderTrendControls(); renderGatewayStatus(gatewayClient?.state ?? "stopped"); renderAlarmControls(); renderRecipeControls();
   });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-hmi-events", "data-hmi-dynamizations", "data-hmi-faceplate", "data-hmi-trend", "data-hmi-function-trend", "data-hmi-alarm-summary", "disabled", "hidden", "inert", "aria-disabled", "style", "class", "data-fc-reacts", "data-fc-user-requires", "data-fc-user-granted", "data-fc-user-visible-requires", "data-fc-user-visible-granted"] });
   if (!gatewayConfig.enabled) for (const error of scriptContexts.initialize(scriptCatalog, undefined, "scheduler", values, { tagStatus })) (options.error ?? console.error)("[HMI SCRIPT scheduler] " + error);
@@ -1107,12 +1124,15 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   syncCycles();
   installScheduledTasks();
   renderAlarmControls();
+  renderRecipeControls();
   renderRuntimeFaceplates();
   renderTrendControls();
   const trendTimer = setInterval(renderTrendControls, 250);
   requestRefresh();
   return () => {
     scriptAbort.abort();
+    recipeClient?.dispose();
+    for (const control of recipeControls.values()) control.dispose(); recipeControls.clear();
     stopAlarmSubscription?.();
     for (const control of alarmControls.values()) control.dispose(); alarmControls.clear();
     for (const control of alarmSummaries.values()) control.dispose(); alarmSummaries.clear();
@@ -1228,11 +1248,12 @@ function appSource(machineName: string, planned: readonly PlannedSection[], mobi
   );
 ` : "";
 
-  return `import { useEffect, useRef, useState } from "react";
+  return `import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import resourceCatalogJson from "../framecraft.resources.json";
 import { installFramecraftHmiRuntime } from "./framecraftHmiRuntime";
+import { allowHmiRecipeNavigation } from "./framecraftHmiRecipeControl";
 import { HeaderValue, HeaderGauge, HeaderUser } from "./framecraftPanelHeaderUi";
 import { newPanelHeader, panelHeaderIssues, panelClockText, type PanelHeaderConfig } from "./framecraftPanelHeader";
 import headerCatalogJson from "../framecraft.header.json";
@@ -1300,6 +1321,7 @@ export function App() {
     setLayoutMode(value);
   };
   const returnToDeviceChoice = () => {
+    if (!allowHmiRecipeNavigation()) return;
     try { sessionStorage.removeItem(layoutPreferenceKey); } catch { /* The in-memory return still works. */ }
     setLayoutMode(null);
   };
@@ -1320,7 +1342,8 @@ function Panel({ layoutMode, returnToDeviceChoice }: { layoutMode: PanelLayoutMo
   useEffect(() => { const timer = window.setInterval(() => setClock(new Date()), 1000); return () => window.clearInterval(timer); }, []);
   const localizedTexts = useRef(new Map<Element, string | null>());
   const location = useLocation();
-  const navigate = useNavigate();
+  const routerNavigate = useNavigate();
+  const navigate = useCallback((target: string) => { if (allowHmiRecipeNavigation()) routerNavigate(target); }, [routerNavigate]);
   const current = panelSections.find((section) => section.pages.includes(location.pathname)) ?? panelSections[0];
   const openSection = panelSections.find((section) => section.id === openMenu) ?? null;
 
@@ -1803,6 +1826,9 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "framecraft.templates.json", content: JSON.stringify({ version: 1, scope: "bundled-template-base-contracts", templates: [...standardPageTemplates.map(template => template.behavior), ...Object.values(guidedTemplateBehaviors())] }, null, 2) + "\n" },
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },
     { path: "src/framecraftGateway.ts", content: gatewayClientSource.replaceAll('"../../runtime/', '"../runtime/') },
+    { path: "src/framecraftHmiRecipeClient.ts", content: recipeClientSource.replaceAll('"../../runtime/', '"../runtime/') },
+    { path: "src/framecraftHmiRecipeControl.ts", content: recipeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
+    { path: "framecraft.recipes-ui.json", content: JSON.stringify({ version: 1, namespace: crypto.randomUUID() }, null, 2) + "\n" },
     { path: "vite.config.ts", content: panelViteConfigSource },
     { path: "src/framecraftScriptRuntime.ts", content: hmiScriptRuntimeModuleSource() },
     { path: "src/framecraftHmiFlashing.ts", content: hmiFlashingRuntimeSource() },

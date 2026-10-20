@@ -45,11 +45,13 @@ e il 146 la modifica del catalogo iniziale via chat con confronto/backup e conte
 Il punto 147 collega l’importazione del catalogo iniziale Framecraft al wizard, recupero e
 generatore, con revisione locale esplicita e soli conteggi inviati all’AI. Il punto 150 aggiunge
 creazione/modifica diretta degli schemi e delle ricette iniziali nel wizard, con lo stesso editor
-manuale e applicazione esplicita al questionario. Restano form operatore Runtime e adattatori
-CSV/vendor/DB. La prova
+manuale e applicazione esplicita al questionario. Il punto 151 collega il form archivio Runtime
+alla pagina e alla palette, con conferme, conflitti ed esiti incerti; richiede identità server
+reale e non applica ricette al PLC. Restano integrazione identità, adattatori CSV/vendor/DB e
+collaudo industriale. La prova
 reale Codex resta subordinata all’isolamento Windows autorizzato; queste verifiche usano provider sintetici.
 Le pagine di
-ricette, produzione, manutenzione e report hanno strutture
+produzione, manutenzione e report hanno strutture
 di pagina chiaramente incomplete. PDF/documenti e ricette non Framecraft non sono interpretati
 dalle domande; ne viene raccolta la disponibilità. Dettagli testuali tecnici soltanto
 locali, all’AI arrivano opzioni validate e presenza dei dettagli. Nessun segreto richiesto.
@@ -296,7 +298,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-PLAN-02 | Scelta motivata di template e famiglie pagina | PARZIALE | Famiglie scelte dall’utente con funzionamento noto nel contesto AI; scelta automatica motivata tra tutti i template da implementare |
 | AI-PLAN-03 | Piano pagine, navigazione e popup | PARZIALE | Pagine/categorie esplicite e pagina iniziale applicata; popup e oggetti ripetuti raccolti come requisiti da configurare |
 | AI-PLAN-04 | Piano binding e interazioni | PARZIALE | Letture, scritture singole e destinazioni pagina con evento, permessi e conferma espliciti; matrice operativa completa ancora da fare |
-| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, trend temporali e X/Y con sorgenti online o Data Log reali importati e approvati, catalogo ricette iniziale Framecraft importato o preparato nella procedura (147/150); form ricette e archivio industriale da completare |
+| AI-PLAN-05 | Piano allarmi, trend, ricette e diagnostica | PARZIALE | Catalogo allarmi locale, trend temporali/X-Y e Data Log importati, catalogo ricette iniziale (147/150) e pagina form archivio (151); identità server, mapping/handshake PLC e archivio industriale da completare |
 | AI-PLAN-06 | Piano utenti e sicurezza | PARZIALE | Requisiti mirati su identità, ruoli, sessione e audit; implementazione server e matrice da approvare separatamente |
 | AI-PLAN-07 | Stima compatibilità target e licenze | DA FARE | Limiti funzionali Framecraft, licenze dipendenze/provider e diritti degli asset verificati prima di creare file; destinazione React autonoma OPC UA/MQTT, non licenze dei Runtime vendor |
 | AI-PLAN-08 | Revisione e approvazione del piano | DA FARE | L'utente può correggere singole decisioni o procedere manualmente |
@@ -310,7 +312,7 @@ e collaudo della connessione restano possibili senza AI.
 | AI-GEN-03 | Posizionamento di grafica macchina, hotspot e targhette | PARZIALE | Immagini e identificativi reali, niente macchina fittizia |
 | AI-GEN-04 | Binding tag e dinamizzazioni | PARZIALE | Mapping approvato, tipi compatibili e dipendenze verificabili |
 | AI-GEN-05 | Eventi, script e navigazione | PARZIALE | Scritture singole e cambio pagina del piano con conferma, stessa IR/Runtime dell’editor e gate di interazione; altri script/azioni/handshake ancora da fare |
-| AI-GEN-06 | Allarmi, trend, ricette e report | PARZIALE | Catalogo allarmi, trend temporali e X/Y reali, mapping tipizzati, Data Log e catalogo ricette iniziale Framecraft importati; collector/query effettivi ma archivio industriale continuo ancora da fare. Pagine ricette/report ancora strutture, non form operatore o trasferimenti PLC |
+| AI-GEN-06 | Allarmi, trend, ricette e report | PARZIALE | Catalogo allarmi, trend temporali/X-Y, Data Log e ricette iniziali importati; form archivio ricette collegato alla pagina e palette (151), senza identità server presunta o trasferimenti PLC. Report e archivio industriale continuo ancora da completare |
 | AI-GEN-07 | Testi e traduzioni | PARZIALE | Lingua Runtime, catalogo locale importato, chiavi esplicite per titoli/menu/testi statici supportati e revisione di originali/ripieghi; restano controlli, allarmi, nomi curve e copertura completa |
 | AI-GEN-08 | Utenti, ruoli e autorizzazioni | PARZIALE | Proposta separata ad alta attenzione e matrice revisionabile |
 | AI-GEN-09 | Validazione e test del progetto generato | PARZIALE | Report completo prima di dichiarare pronta la prima versione |

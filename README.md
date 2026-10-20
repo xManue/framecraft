@@ -298,10 +298,19 @@ Recipe context is read only when requested, with typed validation, a human-reada
 comparison, explicit approval and the existing project backup. Applying or restoring a recipe
 change is blocked if an operational archive is present. This is not live recipe editing:
 the real Codex/Windows isolation preflight remains required and has not been bypassed.
-This is not a finished Runtime operator editor. Guided recipe pages remain structures;
-Runtime forms, controller comparison/apply handshake, vendor
-CSV/TSV compatibility, industrial database/backup and regulated audit still need implementation
-or commissioning. File persistence and passing loopback tests do not establish production readiness.
+New guided **Ricette e formati** pages now contain the Runtime archive form, also available as
+**Aggiungi → HMI e PLC → Archivio ricette**. In Modifica it stays a selectable placeholder;
+Prova pannello or the standalone Runtime mounts the form. Older panels need an explicit Runtime
+update, not just a new element. **Rileggi archivio** is explicit; schemas and typed fields come
+from the authorized service. New/edit/copy/rename/delete require review and a second confirmation.
+Concurrent changes retain the draft and require rereading, comparison and explicit rebasing.
+Unknown POST outcomes block new changes: the browser session stores only the request ID, not
+recipe values. Exact-ID retry is available only while the original request is still in memory;
+after reload the operator must read and compare the archive before explicitly closing the warning.
+Draft fields are not durable, and browser Back/history or a crash still need recovery commissioning.
+Server identity integration, controller comparison/apply handshake, vendor CSV/TSV compatibility,
+industrial database/backup and regulated audit remain unfinished. File persistence and passing
+loopback/browser tests do not establish production readiness. See the [operator procedure](runtime/README.md#form-operatore-ricette).
 
 In **Nuovo pannello → Con AI**, the data step can create/edit an initial recipe catalog directly,
 import a Framecraft v1 catalog, or skip recipes. **Crea schemi e ricette qui** opens the same field
@@ -315,8 +324,8 @@ Zero, false and empty text stay typed. AI remains optional for the normal manual
 Only aggregate counts reach the creation AI, not recipe names, fields, values or filenames.
 Changing local values can refresh an existing plan without another model call when its context
 is unchanged; inspect the updated local review before approving creation. No operational archive,
-service identity or controller mapping is imported. CSV/vendor/DB adapters and the Runtime
-operator form are still pending; the manual editor remains available after creation.
+service identity or controller mapping is imported. CSV/vendor/DB adapters and production identity
+remain pending; the manual initial editor and the service-authorized Runtime form are separate.
 
 ## Guided AI project creation
 

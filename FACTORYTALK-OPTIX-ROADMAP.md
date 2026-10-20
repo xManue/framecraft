@@ -146,9 +146,9 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 |---|---|---|---|---|
 | FTX-RCP-01 | Recipe schema object-aware | DA FARE | Catalogo scalare Framecraft v1 al punto 144, non TargetNode/Item/DataItem o UDT | Generazione dal tipo con diff tra revisioni |
 | FTX-RCP-02 | Configurator e anteprima schema | PARZIALE | Editor iniziale scalare condiviso tra progetto e wizard (145/150), con bozza e approvazione; non selezione TargetNode/Item/DataItem Optix | Impatto visibile prima di cambiare lo schema |
-| FTX-RCP-03 | Store, edit, delete e rename ricetta | PARZIALE | Servizio (144), editor iniziale (145), chat con confronto/backup (146), import nel wizard (147) e creazione locale dal wizard (150), non ancora editor operatore Runtime | Undo e validazione campo per campo |
+| FTX-RCP-03 | Store, edit, delete e rename ricetta | PARZIALE | Servizio e configurazione iniziale (144–150), form Runtime scalare (151) con conferme, conflitti e marker degli esiti incerti; identità server e collaudo produzione restano gate | Undo e validazione campo per campo |
 | FTX-RCP-04 | Load/apply da e verso controller | DA FARE | Nessun trasferimento ricetta implementato, nessuna conferma PLC presunta | Confronto controller/ricetta/modifiche prima di applicare |
-| FTX-RCP-05 | Recipe editor e Recipe application example | DA FARE | Widget Runtime e binding allo schema; la pagina guidata è ancora struttura | Form generato ma completamente personalizzabile |
+| FTX-RCP-05 | Recipe editor e Recipe application example | PARZIALE | Widget archivio dagli schemi, pagina guidata e palette (151); launcher nega senza identità server, nessun TargetNode/Item/DataItem o trasferimento PLC | Form generato ma completamente personalizzabile |
 | FTX-RCP-06 | Ricette concorrenti e metadati | PARZIALE | Revisione contenuto, lock esclusivo e ultime 256 ricevute persistenti con soggetto/data al punto 144 | Merge guidato e storico delle revisioni completo |
 | FTX-RCP-07 | Tabelle database delle ricette | DA FARE | Schema store e query | Migrazione dati testata insieme al progetto |
 | FTX-RCP-08 | Import/export delle ricette | DA FARE | Formati e compatibilità Optix | Mapping colonne, preview e report errori |

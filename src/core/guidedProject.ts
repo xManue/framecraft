@@ -25,7 +25,7 @@ export const guidedPageKinds = [
   { id: "history", label: "Storico allarmi", section: "alarms", image: "", items: "" },
   { id: "trend", label: "Grafico dei valori nel tempo", section: "statistics", image: "", items: "Nomi delle curve da mostrare" },
   { id: "function-trend", label: "Grafico X/Y · un valore in funzione di un altro", section: "statistics", image: "", items: "Nomi delle curve X/Y da mostrare" },
-  { id: "recipes", label: "Ricette e formati · struttura da configurare", section: "formats", image: "", items: "" },
+  { id: "recipes", label: "Ricette e formati · archivio del servizio", section: "formats", image: "", items: "" },
   { id: "production", label: "Produzione e KPI · struttura da configurare", section: "statistics", image: "", items: "" },
   { id: "maintenance", label: "Manutenzione · struttura da configurare", section: "diagnostic", image: "Schema del gruppo da manutenere", items: "" },
   { id: "reports", label: "Report e documenti · struttura da configurare", section: "statistics", image: "", items: "" },
@@ -99,7 +99,8 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
   const pending = spec.pages.flatMap(page => [
     ...(page.imageNeed !== "none" && !page.image ? [`${page.title}: immagine da inserire.`] : []),
     ...(page.itemsDeferred && !page.items.length ? [`${page.title}: elementi da definire.`] : []),
-    ...(["recipes", "production", "maintenance", "reports"].includes(page.kind) ? [`${page.title}: creata soltanto la struttura; dati, funzioni e collegamenti da implementare e collaudare.`] : []),
+    ...(["production", "maintenance", "reports"].includes(page.kind) ? [`${page.title}: creata soltanto la struttura; dati, funzioni e collegamenti da implementare e collaudare.`] : []),
+    ...(page.kind === "recipes" ? [`${page.title}: form archivio disponibile; configura servizio, identità e permessi server. Nessun trasferimento o handshake PLC implementato.`] : []),
     ...page.items.filter(item => !item.tag && page.kind !== "commands").map(item => `${page.title} · ${item.label}: ${page.kind === "function-trend" ? "asse Y non collegato" : "tag non collegato"}.`),
     ...(page.kind === "function-trend" ? page.items.filter(item => !item.xTag).map(item => `${page.title} · ${item.label}: asse X non collegato.`) : []),
     ...(page.kind === "function-trend" ? [`${page.title}: campionamento X/Y nel Runtime, non acquisizione sincrona PLC. Qualità, aggiornamento, abbinamento dei campioni e tolleranza temporale da verificare sulla sorgente reale.`] : []),
@@ -116,7 +117,7 @@ export function guidedProjectPending(spec: GuidedProjectSpec): string[] {
   if (spec.language === "en") pending.push("Lingua Runtime inglese impostata; testi senza dizionario, nomi curve, messaggi allarmi e controlli di sistema mantengono i testi originali. La traduzione completa dell’HMI resta da verificare, non è inventata dall’AI.");
   if (spec.resources) pending.push("Catalogo multilingua conservato localmente. Le grafiche eventualmente riferite nelle liste non vengono importate come immagini e vanno verificate; nessuna traduzione automatica o modifica degli identificativi PLC.");
   if (spec.dataLogs?.logs.length) pending.push("Data Log importati: configurazioni, non campioni precedenti. Acquisizione solo mentre il pannello è aperto; memoria/browser locali, non archivio industriale centralizzato. Quote, cancellazione, conservazione e backup da collaudare.");
-  if (spec.recipes?.schemas.length) pending.push("Ricette iniziali conservate in framecraft.recipes.json: schemi e valori approvati, non un archivio operativo importato. Form operatore, identità e permessi server, collegamenti e conferma PLC restano da completare; generare non avvia servizi o scritture.");
+  if (spec.recipes?.schemas.length) pending.push("Ricette iniziali conservate in framecraft.recipes.json: schemi e valori approvati, non un archivio operativo importato. Il form operatore richiede servizio, identità e permessi server; collegamenti e conferma PLC restano da completare. Generare non avvia servizi o scritture.");
   const missingHeader = panelHeaderFields.filter(field => !spec.header?.tags[field.id]).map(field => field.label);
   if (missingHeader.length) pending.push(`Barra superiore: ${missingHeader.join(", ")} da collegare; nessun valore macchina inventato.`);
   if (spec.header?.tags.speed && (!spec.header.speedMin || !spec.header.speedMax)) pending.push("Barra superiore: limiti reali della velocità da configurare, nessuna scala presunta.");
@@ -133,7 +134,7 @@ export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, compo
   const textAttribute = (key?: string) => key ? ` data-hmi-text={${literal(key)}}` : "";
   let body = `      <h1 data-hmi-type="HmiTextBox"${textAttribute(page.titleTextKey)} style={{ ${at(32, 20, 1150, 40)}, margin: 0, fontSize: 26 }}>{${literal(page.title)}}</h1>\n`;
   const image = page.imageNeed !== "none" && !["alarms", "history", "trend", "function-trend"].includes(page.kind);
-  if (image) body += `      <img data-hmi-type="HmiGraphicView" data-image-role="part" src=${literal(imageUrl ?? "/placeholder.svg")} alt=${literal(kindOf(page).image)} style={{ ${at(32, 76, 790, 530)}, objectFit: "contain", border: "1px dashed #A8A8A8" }} />\n`;
+  if (image) body += `      <img data-hmi-type="HmiGraphicView" data-image-role="part" src=${literal(imageUrl ?? "/placeholder.svg")} alt=${literal(kindOf(page).image || page.title)} style={{ ${at(32, 76, 790, 530)}, objectFit: "contain", border: "1px dashed #A8A8A8" }} />\n`;
   if (["alarms", "history"].includes(page.kind)) body += `      <div data-hmi-type="HmiAlarmControl" data-hmi-alarm-source=${literal(page.kind === "history" ? "history" : "active")} data-hmi-alarm-filter="" style={{ ${at(32, 76, 1140, 530)}, overflow: "auto", background: "white" }}>Nessun dato allarmi disponibile: configura catalogo e collegamento PLC.</div>\n`;
   else if (page.kind === "trend") {
     const config = defaultHmiTrendConfig();
@@ -152,7 +153,9 @@ export function guidedPageSource(page: GuidedPage, plan: StandardPagePlan, compo
       x: guidedTrendSource(item.xTag ?? "", item.xLogged), y: guidedTrendSource(item.tag, item.logged), range: { ...base.range } }));
     if (["60000", "600000", "3600000", "28800000", "86400000"].includes(range ?? "")) for (const curve of config.trends) curve.range.durationMs = Number(range);
     body += `      <div data-hmi-type="HmiFunctionTrendControl" data-hmi-function-trend={${literal(serializeHmiFunctionTrendConfig(config))}} style={{ ${at(32, 76, 1140, 530)}, background: "#F7F8F9" }}>Configura le sorgenti X e Y e il collegamento PLC dall’Inspector.</div>\n`;
-  } else if (["recipes", "production", "maintenance", "reports"].includes(page.kind)) {
+  } else if (page.kind === "recipes") {
+    body += `      <div data-hmi-type="HmiRecipeControl" style={{ ${at(image ? 850 : 32, 76, image ? 320 : 1140, 530)}, overflow: "auto", background: "#F7F8FA", color: "#172331" }}>Archivio ricette del servizio: creazione, modifica, copia, rinomina ed eliminazione con conferma. Configura gateway e identità operatore sul server. Nessun trasferimento al PLC. In Modifica questo è un segnaposto; usa Prova pannello per il form.</div>\n`;
+  } else if (["production", "maintenance", "reports"].includes(page.kind)) {
     body += `      <p data-hmi-type="HmiTextBox" style={{ ${at(image ? 850 : 32, 92, image ? 320 : 1100, 160)}, padding: 16, background: "white", border: "1px dashed #A8A8A8" }}>Struttura da completare: questa funzione non è ancora configurata. Consulta i requisiti raccolti e aggiungi dati, controlli e collegamenti nell’editor. Nessun comando o dato macchina inventato.</p>\n`;
   } else {
     page.items.forEach((item, index) => {

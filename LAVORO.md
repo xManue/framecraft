@@ -5251,6 +5251,60 @@ Verifiche del 5 ottobre 2026:
   La pagina guidata Ricette resta esplicitamente struttura. Nessuna parità Unified/Optix o prontezza
   produzione dichiarata; roadmap AI e Optix aggiornate senza cancellare l’obiettivo complessivo.
 
+### 151. Form archivio ricette nel pannello generato (2026-10-20)
+
+- Proseguita la pipeline app + AI sul form operatore: la pagina guidata Ricette e formati v2
+  contiene `HmiRecipeControl`, non più il solo avviso di struttura incompleta. Lo stesso
+  controllo è in Aggiungi → HMI e PLC → Archivio ricette, indipendentemente dall’AI.
+  I vecchi progetti richiedono un aggiornamento esplicito del Runtime. Nessuna migrazione
+  automatica dei pannelli o dei loro archivi; immagini eventualmente scelte restano presenti.
+- Lettura solo su Rileggi archivio; form da schemi scalari del servizio, campi obbligatori,
+  limiti, zero/falso/testo vuoto espliciti, decimali con punto o virgola senza separatori
+  delle migliaia. Nuova/modifica/copia/rinomina/elimina con confronto e conferma separata.
+  Dati inseriti con textContent, mai HTML eseguito; nessun nome, tag o valore macchina inventato.
+- Revisioni attese e bozze conservate sui conflitti. Rileggere non aggiorna automaticamente
+  la base: serve confronto e consenso. Il confronto dopo rebase usa la sorgente corrente,
+  anche per una copia; non mostra valori vecchi mentre il servizio copierebbe quelli nuovi.
+- Client HTTP stessa origine, timeout/abort, risposta limitata e validata, nessun token browser
+  e nessuna coda/ripetizione automatica. Un POST con risposta persa/non valida resta incerto:
+  blocca nuove operazioni e conserva solo l’ID in sessionStorage, separato per progetto/percorso.
+  Ripetizione esatta ID/corpo solo in memoria e con conferma esplicita; dopo reload soltanto
+  rilettura/confronto e chiusura manuale dell’avviso. Storage non disponibile blocca il POST.
+  Diagnostica con codice e ID, senza payload, nomi, credenziali o dettagli grezzi del trasporto.
+- Identità e permessi restano del server, verificati a ogni richiesta; il launcher standard
+  continua a negare l’accesso senza integrazione reale. PIN e permessi visivi non sono identità.
+  Nessun apply/upload/download, mapping o handshake PLC: salvare nell’archivio non comanda
+  la macchina. Namespace client invalido disabilita solo le ricette, non gli altri controlli.
+- In Modifica il controllo è segnaposto, senza richieste al servizio. Menu e cambio dispositivo
+  avvisano della bozza e non lasciano la pagina durante una richiesta; beforeunload è soltanto
+  un avviso. Bozze non persistenti, Back/history SPA, crash, chiusura nativa, multi-tab e sessione
+  browser terminata restano gate di recovery. Dispose cancella listener/guard e interrompe le
+  richieste locali senza fingere l’annullamento di un salvataggio già accettato dal server.
+- Skill UI/UX applicata a etichette, focus, conferme e layout mobile della pagina guidata:
+  controlli da 48 px (45 px dopo scala desktop), senza overflow orizzontale. Il widget aggiunto
+  a una pagina personalizzata non ne riscrive il layout. Skill documentazione applicata alla
+  procedura operatore e agli esiti incerti in runtime/README.md; aggiornati README e roadmap.
+- Snapshot pubblico iniziale `.hmi-preview/public-check-aA0py0`: 74 test mirati in sei file,
+  tipi e build editor passati. `.hmi-preview/public-check-l1xxzB`: 29 test dei tre moduli cambiati
+  e due controlli mirati palette passati; tipi/build ricontrollati. Ultima correzione copia/rebase
+  nella copia `.hmi-preview/public-check-15Ec3g`: 10 test form, tipi dei moduli/test interessati
+  e build editor passati. Totale 81 test unici, senza suite generale o test Rust. Restano gli
+  avvisi preesistenti di import statici/dinamici. Dati privati e lavori trend/profili esclusi.
+- Edge headless sul progetto realmente generato: accesso negato e poi autorizzato dal callback
+  sintetico server, salvataggio su file, risposta POST persa e reload senza replay, Modifica senza
+  chiamate ricette, namespace invalido isolato e bundle generato senza token. Form a
+  375/768/1024/1440 px, target effettivi >=44 px, screenshot ispezionati, zero errori JS e nessun
+  PLC. Build produzione del pannello passata; non è un collaudo completo del tsconfig/scaffold
+  nativo, dell’IPC o dell’installer. Fixture in `public-check-l1xxzB/.hmi-preview/recipe-browser-tDzdCd`;
+  l’ultima variazione al rebase è verificata dai test mirati del form. Dipendenze editor locali
+  collegate; router della fixture da cache npm offline, senza script d’installazione o audit.
+- Consultata la guida ufficiale Optix current 1.8.0: editor archivio e trasferimento controller
+  restano capacità distinte. Nessun codice/asset vendor, nuova dipendenza o licenza aggiunta:
+  https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes.html.
+  Restano identità/ACL server integrate, recupero industriale, UDT/array, DB e backup, audit,
+  confronto/handshake PLC e collaudo reale. Nessuna parità Unified/Optix o prontezza produzione
+  dichiarata, nessuna inferenza AI, provisioning Windows o riapertura dell’app utente.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

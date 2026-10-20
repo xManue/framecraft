@@ -6,6 +6,8 @@ import { standardProjectFiles } from "../src/core/standardProject";
 import { interviewConfig, newAiInterview, newGuidedPage } from "../src/ai/aiInterview";
 import { openRecipeStore } from "../runtime/recipe-store.mjs";
 import type { RecipeCatalog } from "../runtime/recipe-catalog.mjs";
+import { componentRegistry } from "../src/components/registry";
+import { parseSource } from "../src/source-parser/parseSource";
 const token = "recipe_generated_test_token_01234567890123456789", origin = "http://127.0.0.1:4173", marker = "SYNTHETIC_PRIVATE_RECIPE_VALUE";
 const catalog: RecipeCatalog = { version: 1, schemas: [{ id: "s1", name: "Schema test", fields: [{ id: "label", name: "Etichetta", type: "string" }], records: [{ id: "r1", name: "Ricetta test", values: { label: marker } }] }] };
 async function generated(mode: "valid" | "invalid" | "corrupt") {
@@ -33,6 +35,20 @@ async function generated(mode: "valid" | "invalid" | "corrupt") {
   return { root, request, close, output: () => output, errors: () => errors };
 }
 describe("ricette nel servizio realmente esportato", () => {
+  it("genera il controllo della pagina, il client e una chiave di recupero distinta per progetto, senza avviare il servizio", () => {
+    const interview = newAiInterview(); interview.machineName = "Form ricette"; interview.spec.purpose = "Archivio"; interview.spec.pages = [{ ...newGuidedPage(0), title: "Ricette", kind: "recipes", section: "formats", imageNeed: "none" }]; interview.spec.recipes = catalog;
+    const files = standardProjectFiles(interviewConfig(interview)), read = (path: string) => files.find(file => file.path === path)!.content;
+    expect(read("src/pages/GuidedPage1.tsx")).toContain('data-hmi-type="HmiRecipeControl"'); expect(read("src/pages/GuidedPage1.tsx")).toContain('data-hmi-template-version={2}');
+    expect(read("src/framecraftHmiRecipeClient.ts")).toContain('"../runtime/recipe-catalog.mjs"'); expect(read("src/framecraftHmiRecipeControl.ts")).toContain('"./framecraftHmiRecipeClient"');
+    const runtime = read("src/framecraftHmiRuntime.ts"); expect(runtime.indexOf("__framecraftEditorPreview")).toBeLessThan(runtime.indexOf("recipeClient = createHmiRecipeClient")); expect(runtime).toContain("recipeClient?.dispose()"); expect(runtime).toContain('[data-hmi-recipe-root], [data-hmi-alarm-root]'); expect(runtime).toContain("RECIPE_CLIENT_CONFIG: controlla percorso");
+    expect(read("src/App.tsx")).toContain("if (!allowHmiRecipeNavigation()) return;"); expect(JSON.parse(read("framecraft.runtime.json")).gateway.enabled).toBe(false);
+    const namespace = JSON.parse(read("framecraft.recipes-ui.json")).namespace; expect(namespace).toMatch(/^[a-f0-9-]{36}$/); expect(JSON.parse(standardProjectFiles(interviewConfig(interview)).find(file => file.path === "framecraft.recipes-ui.json")!.content).namespace).not.toBe(namespace);
+    const jsx = componentRegistry.get("hmi-recipe-control")!.createJsx(); const document = parseSource("Recipe.tsx", `export function Recipe(){return (${jsx});}`); expect(Object.values(document.nodes).some(node => node.props["data-hmi-type"] === "HmiRecipeControl")).toBe(true); expect(jsx).not.toContain("data-plc-variable");
+    interview.spec.pages[0].imageNeed = "optional"; interview.spec.pages[0].image = "C:/synthetic/part.svg";
+    const illustrated = standardProjectFiles(interviewConfig(interview)).find(file => file.path === "src/pages/GuidedPage1.tsx")!.content;
+    const nodes = Object.values(parseSource("GuidedPage1.tsx", illustrated).nodes);
+    expect(nodes.find(node => node.props["data-hmi-type"] === "HmiRecipeControl")?.styles).toMatchObject({ left: 850, width: 320 }); expect(nodes.some(node => node.type === "img")).toBe(true);
+  });
   it("distribuisce i moduli e un catalogo vuoto, mai ricette o connessioni inventate", () => {
     const files = standardProjectFiles({ machineName: "Nuovo", layout: "desktop", sections: ["main"] }), byPath = new Map(files.map(file => [file.path, file.content]));
     for (const name of ["recipe-catalog.mjs", "recipe-catalog.d.mts", "recipe-store.mjs", "recipe-store.d.mts"]) expect(byPath.has("runtime/" + name)).toBe(true);

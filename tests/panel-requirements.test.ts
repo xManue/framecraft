@@ -102,11 +102,11 @@ describe("requisiti completi nella procedura AI", () => {
     const config = parseHmiTrendConfig(node.props["data-hmi-trend"]);
     expect(config).toMatchObject({ timeRangeMs: 3600000, sampleIntervalMs: 5000, trends: [{ tag: "Weight", source: "online" }] });
   });
-  it("genera soltanto strutture dichiarate incomplete per ricette, produzione, manutenzione e report", () => {
+  it("genera il form ricette e strutture dichiarate incomplete per produzione, manutenzione e report", () => {
     const interview = filled(); interview.spec.pages = ["recipes", "production", "maintenance", "reports"].map((kind, index) => ({ ...newGuidedPage(index), title: `Pagina ${kind}`, kind: kind as typeof interview.spec.pages[number]["kind"], imageNeed: "none", itemsDeferred: true }));
     const files = standardProjectFiles(interviewConfig(interview)), pages = files.filter(file => file.path.startsWith("src/pages/"));
     expect(pages).toHaveLength(4);
-    for (const page of pages) { expect(page.content).toContain("Struttura da completare"); expect(Object.values(parseSource(page.path, page.content).nodes).some(node => node.props["data-hmi-events"])).toBe(false); parse(page.content, { sourceType: "module", plugins: ["jsx", "typescript"] }); }
+    for (const [index, page] of pages.entries()) { expect(page.content).toContain(index ? "Struttura da completare" : 'data-hmi-type="HmiRecipeControl"'); expect(Object.values(parseSource(page.path, page.content).nodes).some(node => node.props["data-hmi-events"])).toBe(false); parse(page.content, { sourceType: "module", plugins: ["jsx", "typescript"] }); }
   });
   it("i vecchi piani senza nuovi requisiti rimangono validi", () => {
     const interview = filled(); delete interview.spec.requirements;
