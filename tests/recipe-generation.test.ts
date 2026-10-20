@@ -5,23 +5,29 @@ import { describe, expect, it, vi } from "vitest";
 import { standardProjectFiles } from "../src/core/standardProject";
 import { interviewConfig, newAiInterview, newGuidedPage } from "../src/ai/aiInterview";
 import { openRecipeStore } from "../runtime/recipe-store.mjs";
+import { hashOperatorPassword, writeOperatorStore } from "../runtime/operator-store.mjs";
 import type { RecipeCatalog } from "../runtime/recipe-catalog.mjs";
 import { componentRegistry } from "../src/components/registry";
 import { parseSource } from "../src/source-parser/parseSource";
 const token = "recipe_generated_test_token_01234567890123456789", origin = "http://127.0.0.1:4173", marker = "SYNTHETIC_PRIVATE_RECIPE_VALUE";
 const catalog: RecipeCatalog = { version: 1, schemas: [{ id: "s1", name: "Schema test", fields: [{ id: "label", name: "Etichetta", type: "string" }], records: [{ id: "r1", name: "Ricetta test", values: { label: marker } }] }] };
-async function generated(mode: "valid" | "invalid" | "corrupt") {
+async function generated(mode: "valid" | "invalid" | "corrupt", localAccount = false) {
   const base = path.resolve(".hmi-preview"); await mkdir(base, { recursive: true }); const root = await mkdtemp(path.join(base, "recipe-generated-"));
   if (path.dirname(await realpath(root)) !== await realpath(base)) throw new Error("Fixture fuori directory");
   const interview = newAiInterview(); interview.machineName = "Ricette sintetiche"; interview.spec.purpose = "Catalogo iniziale approvato";
   interview.spec.pages = [{ ...newGuidedPage(0), title: "Ricette", kind: "recipes", section: "formats", imageNeed: "none" }]; interview.spec.recipes = catalog;
   const files = standardProjectFiles(interviewConfig(interview));
-  for (const file of files.filter(file => file.path.startsWith("runtime/") || ["framecraft.connections.json", "framecraft.plc.json", "framecraft.alarms.json", "framecraft.recipes.json"].includes(file.path))) {
+  for (const file of files.filter(file => file.path.startsWith("runtime/") || ["framecraft.auth.json", "framecraft.connections.json", "framecraft.plc.json", "framecraft.alarms.json", "framecraft.recipes.json"].includes(file.path))) {
     const target = path.resolve(root, file.path); if (path.relative(root, target).startsWith("..")) throw new Error("File fixture esterno");
     await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, file.content);
   }
   await symlink(path.resolve("node_modules"), path.join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
   await writeFile(path.join(root, "framecraft.connections.json"), JSON.stringify({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "FRAMECRAFT_RECIPE_TEST_TOKEN", allowedOrigins: [origin], allowWrites: false }, connections: [] }));
+  if (localAccount) {
+    const config = JSON.parse(files.find(file => file.path === "framecraft.auth.json")!.content); await writeFile(path.join(root, "framecraft.auth.json"), JSON.stringify({ ...config, enabled: true, allowHttpLoopback: true }));
+    const directory = path.join(root, ".framecraft-runtime/security"); await mkdir(directory, { recursive: true });
+    await writeOperatorStore(path.join(directory, "operators.json"), { version: 1, id: crypto.randomUUID(), accounts: [{ id: crypto.randomUUID(), username: "synthetic", name: "Operatore sintetico", role: "Operatore", disabled: false, permissions: ["parametri"], capabilities: ["recipes.read", "recipes.update"], password: await hashOperatorPassword("SYNTHETIC-launcher-password-012345") }] }, undefined);
+  }
   if (mode === "invalid") await writeFile(path.join(root, "framecraft.recipes.json"), JSON.stringify({ ...catalog, version: 99 }));
   if (mode === "corrupt") { await mkdir(path.join(root, ".framecraft-runtime")); await openRecipeStore({ directory: path.join(root, ".framecraft-runtime/recipes"), catalog }); await writeFile(path.join(root, ".framecraft-runtime/recipes/recipes.json"), "PRIVATE_BROKEN_STORE"); }
   let output = "", errors = ""; const child: ChildProcess = spawn(process.execPath, [path.join(root, "runtime/start-gateway.mjs"), "--json"], { cwd: root, windowsHide: true, env: { ...process.env, FRAMECRAFT_RECIPE_TEST_TOKEN: token }, stdio: ["pipe", "pipe", "pipe"] });
@@ -31,7 +37,7 @@ async function generated(mode: "valid" | "invalid" | "corrupt") {
   try { await vi.waitFor(() => expect(output).toContain('"type":"gateway"'), { timeout: 10_000 }); }
   catch (error) { await close(); throw error; }
   const address = output.split("\n").filter(Boolean).map(line => JSON.parse(line)).find(item => item.type === "gateway")?.address as string;
-  const request = (route: string) => fetch(address + "/_framecraft/plc/v1/" + route, { headers: { Authorization: "Bearer " + token, Origin: origin } });
+  const request = (route: string, init: RequestInit = {}) => fetch(address + "/_framecraft/plc/v1/" + route, { ...init, headers: { Authorization: "Bearer " + token, Origin: origin, ...init.headers } });
   return { root, request, close, output: () => output, errors: () => errors };
 }
 describe("ricette nel servizio realmente esportato", () => {
@@ -61,6 +67,19 @@ describe("ricette nel servizio realmente esportato", () => {
       expect((await test.request("snapshot")).status).toBe(200); expect(test.output()).not.toContain(marker); expect(test.errors()).not.toContain(marker); expect(test.output() + test.errors()).not.toContain(token);
     } finally { await test.close(); }
   }, 15_000);
+  it("il launcher distribuito autentica account locali e autorizza le ricette senza callback esterni", async () => {
+    const test = await generated("valid", true); try {
+      expect((await test.request("recipes")).status).toBe(401);
+      const login = await test.request("session/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "synthetic", password: "SYNTHETIC-launcher-password-012345" }) });
+      expect(login.status).toBe(200); const session = await login.json(), headers = { Cookie: login.headers.get("set-cookie")!.split(";")[0], "X-Framecraft-CSRF": session.csrfToken, "Content-Type": "application/json" };
+      const current = await test.request("recipes", { headers }); expect(current.status).toBe(200); const snapshot = await current.json();
+      const saved = await test.request("recipes", { method: "POST", headers, body: JSON.stringify({ id: "synthetic_launcher_recipe_01", expectedRevision: snapshot.revision, action: "update", schemaId: "s1", recordId: "r1", name: "Ricetta test", values: { label: "SYNTHETIC_CHANGED" } }) });
+      expect(saved.status).toBe(200); expect(await saved.json()).toMatchObject({ effect: "recipe-storage-only", plcConfirmed: false, snapshot: { sequence: 1 } });
+      expect((await test.request("session/logout", { method: "POST", headers, body: "{}" })).status).toBe(200); expect((await test.request("recipes", { headers })).status).toBe(401);
+      const output = test.output() + test.errors(); for (const value of [token, "SYNTHETIC-launcher-password-012345", marker, session.csrfToken]) expect(output).not.toContain(value);
+      expect(output).toContain("AUTH_LOGIN"); expect(output).toContain("AUTH_LOGOUT");
+    } finally { await test.close(); }
+  }, 15000);
   it.each(["invalid", "corrupt"] as const)("un archivio %s non ferma il monitoraggio o cancella dati per ripartire", async mode => {
     const test = await generated(mode); try {
       const plc = await test.request("snapshot"); expect(plc.status).toBe(200); expect((await plc.json()).connections).toEqual([]);

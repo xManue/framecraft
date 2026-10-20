@@ -6,6 +6,7 @@ import { validateConnectionCatalog } from "./connection-config.mjs";
 import { createAlarmEngine } from "./alarm-engine.mjs";
 import { ConnectionOperationError, connectionDiagnostic, createDiagnosticReporter, diagnosticText, safeNotify } from "./connection-diagnostics.mjs";
 import { RecipeStoreError, parseRecipeCommand, recipeActor } from "./recipe-catalog.mjs";
+import { OperatorAuthError } from "./operator-policy.mjs";
 
 const api = "/_framecraft/plc/v1";
 function failure(status, code = "GATEWAY_REQUEST") { return Object.assign(new ConnectionOperationError(connectionDiagnostic(code, { protocol: "gateway" })), { status }); }
@@ -60,7 +61,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
     states.set(connection.id, { id: connection.id, state: "stopped" }); return driver;
   });
   const snapshot = () => ({ version: 1, allowWrites: config.allowWrites === true,
-    ...(alarms ? { alarms: { ...alarms.snapshot(), actionsEnabled: typeof options.authorizeAlarmAction === "function" } } : {}),
+    ...(alarms ? { alarms: { ...alarms.snapshot(), actionsEnabled: !!options.operatorAuth || typeof options.authorizeAlarmAction === "function" } } : {}),
     diagnostics: diagnostics.map((event) => ({ ...event })),
     connections: [...states.values()].map((state) => ({ ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) })),
     tags: [...owners.values()].map(({ name, dataType, access, connectionId, writable }) => ({ name, dataType, access, connectionId, writable })),
@@ -81,16 +82,27 @@ export function createPlcGateway(catalog, variables, options = {}) {
       const actual = Buffer.from(typeof request.headers.authorization === "string" ? request.headers.authorization : ""); const expected = Buffer.from("Bearer " + token);
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw failure(401, "GATEWAY_AUTH");
       if (request.url === api + "/snapshot" && request.method === "GET") { respond(response, 200, snapshot()); return; }
+      if ([api + "/session", api + "/session/login", api + "/session/logout"].includes(request.url)) {
+        if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_CONFIG");
+        if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;
+        if (request.url === api + "/session" && request.method === "GET") { respond(response, 200, await options.operatorAuth.status(request)); return; }
+        if (request.method !== "POST" || request.url === api + "/session" || (request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw new OperatorAuthError("AUTH_INPUT");
+        const input = await body(request, 4096);
+        if (request.url.endsWith("/logout") && (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length)) throw new OperatorAuthError("AUTH_INPUT");
+        const result = request.url.endsWith("/login") ? await options.operatorAuth.login(request, input) : await options.operatorAuth.logout(request);
+        if (stopping || request.aborted || response.destroyed) throw new OperatorAuthError("AUTH_CONFIG");
+        response.setHeader("Set-Cookie", result.cookie); respond(response, 200, result.body); return;
+      }
       if (request.url === api + "/recipes") {
         if (!options.recipeStore) throw options.recipeUnavailable instanceof RecipeStoreError ? options.recipeUnavailable : new RecipeStoreError("RECIPE_STORAGE");
-        if (typeof options.authorizeRecipeAction !== "function") throw new RecipeStoreError("RECIPE_AUTH");
+        if (!options.operatorAuth && typeof options.authorizeRecipeAction !== "function") throw options.operatorUnavailable ?? new RecipeStoreError("RECIPE_AUTH");
         if (!["GET", "POST"].includes(request.method)) throw Object.assign(new RecipeStoreError("RECIPE_COMMAND"), { status: 405 });
         if (active >= 32) throw failure(429, "GATEWAY_BUSY");
         active++; accepted = true;
         if (request.method === "POST" && (request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw Object.assign(new RecipeStoreError("RECIPE_COMMAND"), { status: 415 });
         const command = request.method === "GET" ? { action: "read" } : parseRecipeCommand(await body(request, 524_288));
         let actor, authorizationTimer;
-        try { actor = await Promise.race([options.authorizeRecipeAction(request, structuredClone(command)), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch { /* Never infer identity from gateway token or browser state. */ }
+        try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "recipes." + command.action, request.method === "POST") : options.authorizeRecipeAction(request, structuredClone(command)), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }
         finally { clearTimeout(authorizationTimer); }
         if (!recipeActor(actor) || actor === token || actor === "Bearer " + token) throw new RecipeStoreError("RECIPE_AUTH");
         if (stopping || request.aborted || response.destroyed) throw new RecipeStoreError("RECIPE_STORAGE");
@@ -103,7 +115,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         return;
       }
       if (request.url === api + "/alarm-action" && request.method === "POST") {
-        if (!alarms || typeof options.authorizeAlarmAction !== "function") { respond(response, 403, { error: "Presa visione non abilitata: configura autenticazione e autorizzazioni nel servizio. Il PIN del browser non basta." }); return; }
+        if (!alarms || !options.operatorAuth && typeof options.authorizeAlarmAction !== "function") { if (options.operatorUnavailable) throw options.operatorUnavailable; respond(response, 403, { error: "Presa visione non abilitata: configura autenticazione e autorizzazioni nel servizio. Il PIN del browser non basta." }); return; }
         if ((request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw failure(415);
         if (active >= 32) throw failure(429, "GATEWAY_BUSY");
         active++; accepted = true;
@@ -111,7 +123,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (!command || typeof command.alarmId !== "string" || typeof command.occurrence !== "string" || !Number.isSafeInteger(command.revision) || !["acknowledge", "confirm"].includes(command.action)
           || Object.keys(command).some((key) => !["alarmId", "occurrence", "revision", "action"].includes(key))) throw failure(400);
         let actor, authorizationTimer;
-        try { actor = await Promise.race([options.authorizeAlarmAction(request, { ...command }), new Promise((resolve) => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch { /* Identity failures never authorize an alarm action. */ }
+        try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "alarms." + command.action) : options.authorizeAlarmAction(request, { ...command }), new Promise((resolve) => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }
         finally { clearTimeout(authorizationTimer); }
         if (stopping) throw failure(503, "GATEWAY_OFFLINE");
         if (typeof actor !== "string" || !actor.trim() || actor.length > 200 || /[\x00-\x1f]/.test(actor)) { respond(response, 403, { error: "Operatore non autorizzato alla presa visione o alla conferma di questo allarme." }); return; }
@@ -129,7 +141,13 @@ export function createPlcGateway(catalog, variables, options = {}) {
         || Object.keys(command).some((key) => !["id", "tag", "value"].includes(key))) throw failure(400);
       const owner = owners.get(command.tag); if (!owner?.writable) throw failure(403, "WRITE_DENIED");
       try { normalizeMqttTagValue(command.value, owner.dataType); } catch { throw failure(400, "WRITE_INVALID"); }
-      const fingerprint = JSON.stringify([command.tag, command.value]); const known = commands.get(command.id);
+      let actor, authorizationTimer;
+      try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "tags.write") : options.authorizeTagWrite?.(request, { ...command }), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); }
+      catch (error) { if (error instanceof OperatorAuthError) throw error; }
+      finally { clearTimeout(authorizationTimer); }
+      if (!recipeActor(actor) || actor === token || actor === "Bearer " + token) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
+      if (stopping || request.aborted || response.destroyed) throw failure(503, "GATEWAY_OFFLINE");
+      const fingerprint = JSON.stringify([actor, command.tag, command.value]); const known = commands.get(command.id);
       if (known) {
         if (known.fingerprint !== fingerprint) throw failure(409, "GATEWAY_CONFLICT");
         const result = await known.result; respond(response, result.status, result.body); return;
@@ -146,6 +164,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
       }).finally(() => { entry.finished = true; });
       commands.set(command.id, entry); const result = await entry.result; respond(response, result.status, result.body);
     } catch (error) {
+      if (error instanceof OperatorAuthError) { respond(response, error.status, { type: "operator", code: error.code, error: error.message, remedy: error.remedy, outcome: "rejected", plcConfirmed: false }); return; }
       if (error instanceof RecipeStoreError) {
         const diagnostic = { type: "recipe", code: error.code, error: error.message, remedy: error.remedy, ...(error.fieldId ? { fieldId: error.fieldId } : {}) };
         safeNotify(options.onRecipeDiagnostic, diagnostic);
@@ -170,7 +189,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
       return startTask;
     },
     stop() {
-      if (stopTask) return stopTask; stopping = true;
+      if (stopTask) return stopTask; stopping = true; options.operatorAuth?.close();
       stopTask = (async () => {
         server.closeAllConnections();
         await Promise.allSettled(connections.map((driver) => driver.stop()));

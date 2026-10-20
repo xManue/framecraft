@@ -6,6 +6,8 @@ import type { AlarmCatalog, AlarmSnapshot, AlarmEvent, AlarmCommand } from "./al
 import type { IncomingMessage } from "node:http";
 import type { RecipeCommand, RecipeStoreError } from "./recipe-catalog.mjs";
 import type { RecipeStore } from "./recipe-store.mjs";
+import type { LocalOperatorAuth } from "./operator-auth.mjs";
+import type { OperatorAuthError } from "./operator-policy.mjs";
 export interface GatewayConfig {
   enabled: boolean; host?: "127.0.0.1"; port: number; tokenEnv: string; allowedOrigins: string[]; allowWrites?: boolean;
 }
@@ -22,6 +24,9 @@ export function createPlcGateway(
   variables: readonly { name: string; dataType: string; access: "read" | "write" | "read-write" }[],
   options?: Pick<MqttConnectionCallbacks, "resolveSecret" | "onState" | "onError" | "onDiagnostic"> & { alarmCatalog?: AlarmCatalog; onAlarmEvent?: (event: AlarmEvent) => void; authorizeAlarmAction?: (request: IncomingMessage, command: AlarmCommand) => string | undefined | Promise<string | undefined>;
     recipeStore?: RecipeStore;
+    operatorAuth?: LocalOperatorAuth;
+    operatorUnavailable?: OperatorAuthError;
+    authorizeTagWrite?: (request: IncomingMessage, command: { id: string; tag: string; value: string | number | boolean }) => string | undefined | Promise<string | undefined>;
     recipeUnavailable?: RecipeStoreError;
     authorizeRecipeAction?: (request: IncomingMessage, command: RecipeCommand | { action: "read" }) => string | undefined | Promise<string | undefined>;
     onRecipeDiagnostic?: (event: { type: "recipe"; code: string; error: string; remedy: string; fieldId?: string }) => void;

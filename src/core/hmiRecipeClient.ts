@@ -1,5 +1,7 @@
 import { parseRecipeCatalog, parseRecipeCommand, recipeKeys, RecipeStoreError, type RecipeCommand } from "../../runtime/recipe-catalog.mjs";
 import type { RecipeMutationResult, RecipeSnapshot } from "../../runtime/recipe-store.mjs";
+import { OperatorAuthError } from "../../runtime/operator-policy.mjs";
+import { operatorSessionHeaders } from "./hmiOperatorSession";
 
 export class HmiRecipeError extends Error {
   constructor(public readonly code: string, message: string, public readonly remedy: string, public readonly uncertain = false, public readonly fieldId?: string) { super(message); this.name = "HmiRecipeError"; }
@@ -57,7 +59,7 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
     try {
       const response = await (options.request ?? fetch)(path + "/recipes", {
         method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal,
-        ...(command ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) } : {}),
+        ...(command ? { headers: { "Content-Type": "application/json", ...operatorSessionHeaders() }, body: JSON.stringify(command) } : {}),
       });
       const reader = response.body?.getReader(); let text = "";
       if (reader) {
@@ -69,6 +71,9 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
       let raw: unknown; try { raw = JSON.parse(text); } catch { throw localError("response"); }
       if (!response.ok) {
         const value = raw as Record<string, unknown>;
+        if (value?.type === "operator" && typeof value.code === "string" && new OperatorAuthError(value.code).code === value.code && value.outcome === "rejected" && value.plcConfirmed === false) {
+          const error = new OperatorAuthError(value.code); throw new HmiRecipeError(error.code, error.message, error.remedy, false);
+        }
         if (value && value.type === "recipe" && typeof value.code === "string" && new RecipeStoreError(value.code).code === value.code && ["uncertain", "rejected"].includes(value.outcome as string) && value.effect === "recipe-storage-only" && value.plcConfirmed === false) {
           const error = new RecipeStoreError(value.code, typeof value.fieldId === "string" ? value.fieldId : undefined);
           throw new HmiRecipeError(error.code, error.message, error.remedy, value.outcome === "uncertain", error.fieldId);

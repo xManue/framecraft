@@ -4,6 +4,7 @@ import { guidedTemplateBehaviors } from "./templateBehavior";
 import { newPanelHeader } from "./panelHeader";
 import { standardProjectSectionChoices } from "./standardProjectChoices";
 import { emptyRecipeCatalog, parseRecipeCatalog } from "./recipeConfiguration";
+import { defaultUserAccessConfig, serializeUserAccessRuntime } from "./userAccess";
 import panelHeaderSource from "./panelHeader.ts?raw";
 import panelHeaderUiSource from "../../templates/panel-header.tsx?raw";
 import panelViteConfigSource from "../../templates/panel-vite.config.ts?raw";
@@ -37,6 +38,14 @@ import connectionConfigSource from "../../runtime/connection-config.mjs?raw";
 import connectionConfigTypes from "../../runtime/connection-config.d.mts?raw";
 import gatewaySource from "../../runtime/gateway.mjs?raw";
 import gatewayTypes from "../../runtime/gateway.d.mts?raw";
+import operatorPolicySource from "../../runtime/operator-policy.mjs?raw";
+import operatorPolicyTypes from "../../runtime/operator-policy.d.mts?raw";
+import operatorStoreSource from "../../runtime/operator-store.mjs?raw";
+import operatorStoreTypes from "../../runtime/operator-store.d.mts?raw";
+import operatorAuthSource from "../../runtime/operator-auth.mjs?raw";
+import operatorAuthTypes from "../../runtime/operator-auth.d.mts?raw";
+import operatorCliSource from "../../runtime/manage-operators.mjs?raw";
+import operatorSessionSource from "./hmiOperatorSession.ts?raw";
 import recipeCatalogSource from "../../runtime/recipe-catalog.mjs?raw";
 import recipeCatalogTypes from "../../runtime/recipe-catalog.d.mts?raw";
 import recipeStoreSource from "../../runtime/recipe-store.mjs?raw";
@@ -285,7 +294,10 @@ import { createAlarmEngine, type AlarmSnapshot, type AlarmCommand } from "../run
 import { createHmiAlarmControl } from "./framecraftHmiAlarmControl";
 import { createHmiAlarmSummary } from "./framecraftHmiAlarmSummary";
 import { createHmiRecipeClient } from "./framecraftHmiRecipeClient";
-import { createHmiRecipeControl } from "./framecraftHmiRecipeControl";
+import { createHmiRecipeControl, allowHmiRecipeNavigation } from "./framecraftHmiRecipeControl";
+import { installHmiOperatorSession } from "./framecraftOperatorSession";
+import "./framecraftOperatorAccess.js";
+import operatorConfig from "../framecraft.auth.json";
 import recipeUiConfig from "../framecraft.recipes-ui.json";
 import plcCatalogJson from "../framecraft.plc.json";
 import runtimeCatalogJson from "../framecraft.runtime.json";
@@ -525,6 +537,7 @@ function applyDynamicValue(element: Element, property: string, value: string): b
 
 export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void {
   if ((window as Window & { __framecraftEditorPreview?: boolean }).__framecraftEditorPreview) return () => undefined;
+  const operatorSession = installHmiOperatorSession({ path: gatewayConfig.path, enabled: gatewayConfig.enabled && operatorConfig.enabled === true, canSwitch: allowHmiRecipeNavigation });
   let runtimeActive = true;
   const scriptAbort = new AbortController();
   let localAlarms: ReturnType<typeof createAlarmEngine> | undefined;
@@ -931,7 +944,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   const activated = (event: Event) => run(target(event), "Activated");
   const deactivated = (event: Event) => run(target(event), "Deactivated");
   const contextTapped = (event: Event) => run(target(event), "ContextTapped");
-  const keyDown = (event: KeyboardEvent) => { const owner = target(event); run(owner, "KeyDown", { key: event.key }); run(owner, "HotKey", { key: event.key }); };
+  const keyDown = (event: KeyboardEvent) => { if (event.target instanceof Element && event.target.closest("[data-fc-operator-root]")) return; const owner = target(event); run(owner, "KeyDown", { key: event.key }); run(owner, "HotKey", { key: event.key }); };
   const keyUp = (event: KeyboardEvent) => run(target(event), "KeyUp", { key: event.key });
   const interfaceEvent = (event: Event) => { const detail = (event as CustomEvent<unknown>).detail; run(target(event), "InterfaceEvent", { interfaceEvent: typeof detail === "string" ? detail : "InterfaceEvent" }); };
   const faceplateEvent = (event: Event) => {
@@ -1132,6 +1145,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   return () => {
     scriptAbort.abort();
     recipeClient?.dispose();
+    operatorSession.dispose();
     for (const control of recipeControls.values()) control.dispose(); recipeControls.clear();
     stopAlarmSubscription?.();
     for (const control of alarmControls.values()) control.dispose(); alarmControls.clear();
@@ -1484,7 +1498,7 @@ function Panel({ layoutMode, returnToDeviceChoice }: { layoutMode: PanelLayoutMo
         <img className="hmi-logo" src="/placeholder.svg" alt="Logo del costruttore" />
 
         {/* Seconda fila: utente, linea e formato, OMAC, velocita'. */}
-        <section className="hmi-card hmi-user" data-hmi-type="HmiRectangle">
+        <section className="hmi-card hmi-user" data-hmi-type="HmiRectangle" data-fc-user-access="" role="button" tabIndex={0} aria-label="Accesso al pannello" onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.currentTarget.click(); } }}>
           <span>User LogIn</span>
           <span className="hmi-avatar" aria-hidden="true" />
           <HeaderUser />
@@ -1800,6 +1814,16 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/mqtt-driver.d.mts", content: mqttDriverTypes },
     { path: "runtime/start-mqtt.mjs", content: mqttStartSource },
     { path: "runtime/gateway.mjs", content: gatewaySource },
+    { path: "runtime/operator-policy.mjs", content: operatorPolicySource },
+    { path: "runtime/operator-policy.d.mts", content: operatorPolicyTypes },
+    { path: "runtime/operator-store.mjs", content: operatorStoreSource },
+    { path: "runtime/operator-store.d.mts", content: operatorStoreTypes },
+    { path: "runtime/operator-auth.mjs", content: operatorAuthSource },
+    { path: "runtime/operator-auth.d.mts", content: operatorAuthTypes },
+    { path: "runtime/manage-operators.mjs", content: operatorCliSource },
+    { path: "framecraft.auth.json", content: JSON.stringify({ version: 1, enabled: false, namespace: crypto.randomUUID(), allowHttpLoopback: false, idleMinutes: 15, absoluteMinutes: 480 }, null, 2) + "\n" },
+    { path: "src/framecraftOperatorSession.ts", content: operatorSessionSource.replaceAll('"../../runtime/', '"../runtime/') },
+    { path: "src/framecraftOperatorAccess.js", content: serializeUserAccessRuntime({ permissions: defaultUserAccessConfig.permissions, accounts: [], autoLogoutMinutes: 0 }) },
     { path: "runtime/recipe-catalog.mjs", content: recipeCatalogSource },
     { path: "runtime/recipe-catalog.d.mts", content: recipeCatalogTypes },
     { path: "runtime/recipe-store.mjs", content: recipeStoreSource },
@@ -1821,12 +1845,12 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/vite-gateway.mjs", content: gatewayProxySource },
     { path: "runtime/vite-gateway.d.mts", content: gatewayProxyTypes },
     { path: "runtime/README.md", content: mqttReadmeSource },
-    { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs" }, dependencies: { mqtt: "5.16.0", "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } }, null, 2) + "\n" },
+    { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs", operators: "node manage-operators.mjs" }, dependencies: { mqtt: "5.16.0", "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } }, null, 2) + "\n" },
     { path: "framecraft.connections.json", content: JSON.stringify({ version: 1, connections: [] }, null, 2) + "\n" },
     { path: "framecraft.templates.json", content: JSON.stringify({ version: 1, scope: "bundled-template-base-contracts", templates: [...standardPageTemplates.map(template => template.behavior), ...Object.values(guidedTemplateBehaviors())] }, null, 2) + "\n" },
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },
-    { path: "src/framecraftGateway.ts", content: gatewayClientSource.replaceAll('"../../runtime/', '"../runtime/') },
-    { path: "src/framecraftHmiRecipeClient.ts", content: recipeClientSource.replaceAll('"../../runtime/', '"../runtime/') },
+    { path: "src/framecraftGateway.ts", content: gatewayClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
+    { path: "src/framecraftHmiRecipeClient.ts", content: recipeClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiRecipeControl.ts", content: recipeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
     { path: "framecraft.recipes-ui.json", content: JSON.stringify({ version: 1, namespace: crypto.randomUUID() }, null, 2) + "\n" },
     { path: "vite.config.ts", content: panelViteConfigSource },

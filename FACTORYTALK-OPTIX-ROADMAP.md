@@ -146,9 +146,9 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 |---|---|---|---|---|
 | FTX-RCP-01 | Recipe schema object-aware | DA FARE | Catalogo scalare Framecraft v1 al punto 144, non TargetNode/Item/DataItem o UDT | Generazione dal tipo con diff tra revisioni |
 | FTX-RCP-02 | Configurator e anteprima schema | PARZIALE | Editor iniziale scalare condiviso tra progetto e wizard (145/150), con bozza e approvazione; non selezione TargetNode/Item/DataItem Optix | Impatto visibile prima di cambiare lo schema |
-| FTX-RCP-03 | Store, edit, delete e rename ricetta | PARZIALE | Servizio e configurazione iniziale (144–150), form Runtime scalare (151) con conferme, conflitti e marker degli esiti incerti; identità server e collaudo produzione restano gate | Undo e validazione campo per campo |
+| FTX-RCP-03 | Store, edit, delete e rename ricetta | PARZIALE | Servizio e configurazione iniziale (144–150), form Runtime scalare (151) con conferme, conflitti e marker; account locali server (152), ACL per ricetta e collaudo produzione restano gate | Undo e validazione campo per campo |
 | FTX-RCP-04 | Load/apply da e verso controller | DA FARE | Nessun trasferimento ricetta implementato, nessuna conferma PLC presunta | Confronto controller/ricetta/modifiche prima di applicare |
-| FTX-RCP-05 | Recipe editor e Recipe application example | PARZIALE | Widget archivio dagli schemi, pagina guidata e palette (151); launcher nega senza identità server, nessun TargetNode/Item/DataItem o trasferimento PLC | Form generato ma completamente personalizzabile |
+| FTX-RCP-05 | Recipe editor e Recipe application example | PARZIALE | Widget archivio dagli schemi, pagina guidata e palette (151), login server locale nel launcher (152); nessun TargetNode/Item/DataItem o trasferimento PLC | Form generato ma completamente personalizzabile |
 | FTX-RCP-06 | Ricette concorrenti e metadati | PARZIALE | Revisione contenuto, lock esclusivo e ultime 256 ricevute persistenti con soggetto/data al punto 144 | Merge guidato e storico delle revisioni completo |
 | FTX-RCP-07 | Tabelle database delle ricette | DA FARE | Schema store e query | Migrazione dati testata insieme al progetto |
 | FTX-RCP-08 | Import/export delle ricette | DA FARE | Formati e compatibilità Optix | Mapping colonne, preview e report errori |
@@ -175,8 +175,8 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 |---|---|---|---|---|
 | FTX-SEC-01 | Utenti, gruppi e ruoli | PARZIALE | Modello Optix, membership e riferimenti | Matrice persona -> ruolo -> nodo -> operazione |
 | FTX-SEC-02 | Permessi read, write e browse | PARZIALE | ACL sul modello informativo | Permessi effettivi e conflitti spiegati prima del Runtime |
-| FTX-SEC-03 | Visibilità e abilitazione per gruppo/ruolo | PARZIALE | Binding alla sessione autenticata | Simulazione di ogni ruolo sulla pagina corrente |
-| FTX-SEC-04 | Model authentication locale | PARZIALE | Password policy, login e sessione Optix | Test policy e account dimostrativi separati dai dati reali |
+| FTX-SEC-03 | Visibilità e abilitazione per gruppo/ruolo | PARZIALE | Gruppi e modello Optix, ACL per oggetto | Permessi grafici dal profilo server, separati dalle capacità dei comandi (152) |
+| FTX-SEC-04 | Model authentication locale | PARZIALE | Modello Optix, GUI amministrativa, audit e collaudo target | Account locali Framecraft espliciti, scrypt, cookie/CSRF, scadenza e revoca senza PIN browser (152) |
 | FTX-SEC-05 | Domain authentication AD/LDAP | ESTERNO | Provider, mapping gruppi e target supportati | Verifica configurazione senza conservare credenziali |
 | FTX-SEC-06 | OAuth2 con PKCE | ESTERNO | Provider e flusso supportato | Checklist redirect, scope e scadenze token |
 | FTX-SEC-07 | Audit signing e firme operatore | DA FARE | Workflow, motivo e entitlement | Diff esatto prima/dopo e prova non ripudiabile |

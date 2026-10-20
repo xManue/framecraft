@@ -179,11 +179,11 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 
 | ID | Capacità WinCC Unified | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
-| WCU-SEC-01 | Login, logout e utente corrente | PARZIALE | Runtime reale e scadenza sessione | Simulazione ruolo/utente senza password reali |
-| WCU-SEC-02 | Utenti e gruppi locali | PARZIALE | CRUD, policy password e import/export | Controllo permessi effettivi prima del deploy |
+| WCU-SEC-01 | Login, logout e utente corrente | PARZIALE | Collaudo HTTPS/target, modello Unified e audit | Account server Framecraft espliciti, cookie HttpOnly/CSRF, scadenza e revoca (152), separati dai PIN browser e da ChatGPT |
+| WCU-SEC-02 | Utenti e gruppi locali | PARZIALE | GUI amministrativa, gruppi, policy avanzate e import/export | CLI esplicito per account/password/capacità/disabilitazione, hash scrypt e nessun utente predefinito (152) |
 | WCU-SEC-03 | UMC/UMAC centralizzato | ESTERNO | Connessione e mapping gruppi | Diagnostica separata tra rete, identità e autorizzazione |
-| WCU-SEC-04 | Ruoli e autorizzazioni oggetto | PARZIALE | Applicazione uniforme a eventi e proprietà | Matrice pagina-azione-ruolo generata automaticamente |
-| WCU-SEC-05 | Sessioni e client multipli | PARZIALE | Runtime multi-client e limiti device | Stato sessioni leggibile e testabile |
+| WCU-SEC-04 | Ruoli e autorizzazioni oggetto | PARZIALE | ACL per tag/ricetta/allarme/pagina e applicazione uniforme | Capacità server separate dai permessi grafici; identità verificata per ricette, allarmi e write anche duplicate (152) |
+| WCU-SEC-05 | Sessioni e client multipli | PARZIALE | Collaudo multi-device e revoca distribuita | Limiti, idle/assoluta, polling senza rinnovo, revoca al cambio account o riavvio (152) |
 | WCU-SEC-06 | Conferma operatore e commento | DA FARE | Dialoghi protetti e audit | Regole per rischio invece di flag sparsi |
 | WCU-SEC-07 | Comunicazione protetta e certificati | DA FARE | HTTPS, trust e rinnovo | Stato certificati e scadenze nel progetto |
 | WCU-SEC-08 | Hardening e security events | DA FARE | Configurazione e monitoraggio | Checklist automatica per target |

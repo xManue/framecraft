@@ -5,7 +5,7 @@ import { framecraftGatewayProxy } from "./runtime/vite-gateway.mjs";
 const proxy = framecraftGatewayProxy();
 export default defineConfig({
   plugins: [react()],
-  server: { host: "127.0.0.1", proxy },
+  server: { host: "127.0.0.1", proxy, fs: { deny: ["**/.framecraft-runtime/**", "**/.env", "**/.env.*", "**/*.{crt,pem,key,pfx,p12,cer,der}", "**/.npmrc", "**/.yarnrc.yml", "**/.git/**"] } },
   preview: { host: "127.0.0.1", proxy },
   build: {
     license: { fileName: "THIRD_PARTY_NOTICES.md" },

@@ -27,8 +27,9 @@ export function HeaderGauge({ config }: { config: PanelHeaderConfig }) {
 }
 export function HeaderUser() {
   const read = () => {
-    const access = (globalThis as typeof globalThis & { __framecraftUserAccess?: { currentUser(): { name: string } | null } }).__framecraftUserAccess;
-    try { return access?.currentUser()?.name || "Nessun utente"; } catch { return "Accesso non disponibile"; }
+    const scope = globalThis as typeof globalThis & { __framecraftOperatorSession?: { currentUser(): { name: string } | null }; __framecraftUserAccess?: { currentUser?(): { name: string } | null } };
+    const access = scope.__framecraftOperatorSession ?? scope.__framecraftUserAccess;
+    try { return access?.currentUser?.()?.name || "Nessun utente"; } catch { return "Accesso non disponibile"; }
   };
   const [name, setName] = useState(read);
   useEffect(() => { const update = () => setName(read()); update(); window.addEventListener("framecraft:user-changed", update); window.addEventListener("storage", update); return () => { window.removeEventListener("framecraft:user-changed", update); window.removeEventListener("storage", update); }; }, []);

@@ -5305,6 +5305,67 @@ Verifiche del 5 ottobre 2026:
   confronto/handshake PLC e collaudo reale. Nessuna parità Unified/Optix o prontezza produzione
   dichiarata, nessuna inferenza AI, provisioning Windows o riapertura dell’app utente.
 
+### 152. Account operatore locali verificati dal server (2026-10-20)
+
+- Scelta esplicita dell’utente: account locali del pannello, con username/password e permessi
+  assegnati dal responsabile. Separati da ChatGPT/Codex, dai PIN del browser e dal token proxy.
+  Nessun utente, amministratore, password o concessione predefinita; nessuna conversione dei PIN.
+- Archivio privato `.framecraft-runtime/security/operators.json`, escluso da Git/public/dist.
+  Schema stretto, limite account/file, hash scrypt N=131072/r=8/p=1 con salt casuale; verifica
+  asincrona e confronto costante, massimo due derivazioni contemporanee. Node crypto, nessuna
+  nuova dipendenza. CAS, lock esclusivo e pubblicazione atomica; errori/lock/corruzione non
+  provocano reset, riparazioni o cancellazioni automatiche. ACL e backup del servizio da collaudare.
+- CLI esplicito nel runtime generato: operators add/list/password/permissions/disable/enable,
+  password nascosta due volte e conferma SALVA. Nessuna password in argomenti/env/log, nessun
+  provisioning automatico dall’editor o dall’AI. Ruolo solo descrittivo, capacità server e
+  permessi grafici distinti. GUI amministrativa e policy avanzate ancora da implementare.
+- Login/logout/stato HTTP dietro token proxy e origine verificata. Sessione opaca server in
+  memoria, cookie HttpOnly/SameSite Strict e Secure per HTTPS; CSRF in memoria browser per le
+  mutazioni. HTTP ammesso solo su loopback esplicitamente configurato. Idle e durata assoluta,
+  letture/polling senza rinnovo; cambio archivio/password/permessi, disabilitazione e riavvio
+  revocano le sessioni. Rate limit per username e globale, sessioni/derivazioni limitate.
+- Launcher standard integra gli account reali configurati, non richiede più callback esterni
+  per ricette/allarmi/tag. Capacità verificate prima di ogni comando e ricevuta duplicata;
+  token gateway da solo non autorizza più le write. Dedupe delle write legato anche al soggetto.
+  Consensi gateway/connessione/mapping e interlock PLC restano necessari. Nessun comando
+  automatico, inferenza di identità, replay offline o conferma PLC presunta.
+- Pulsante utente standard accessibile anche da tastiera, form username/password e gestione
+  sessione desktop/mobile; PIN locale mai usato come fallback quando il provider server è presente,
+  neppure dopo errore/scadenza/dispose. Regole grafiche leggono il profilo server. CSRF aggiunto
+  a ricette, allarmi e write; errori noti con rimedi, senza testo grezzo o credenziali. Uscita
+  senza risposta resta non confermata. Cambio account rispetta la guardia delle bozze ricetta.
+- La pipeline nuovi pannelli include moduli e framecraft.auth.json disabilitato con namespace
+  proprio; nessuna credenziale nel progetto pubblico. Preview editor senza installazione della
+  sessione o rete. Aggiornamento dei vecchi progetti solo esplicito. Vite generato nega accesso
+  HTTP alla cartella privata e conserva i deny per env/certificati/config di registro. Non
+  copiare segreti in public o esporli tramite alias/symlink/loader; produzione con web root dist.
+- Skill system-design applicata ai confini account/sessioni/trasporto/capacità; UI/UX a etichette,
+  focus nativo dialog, controlli >=48 px e assenza di overflow mobile; documentazione a setup,
+  errori e limiti nel README runtime. Consultati riferimenti primari OWASP password/session/CSRF,
+  Node crypto e Vite fs.deny. Nessun codice o asset vendor/nuova licenza incorporati.
+- Snapshot pubblico `.hmi-preview/public-check-NByxSm`, senza export WinCC privati: 116 test
+  mirati in 12 file, tsc -b e build editor passati. Altri 11 test del solo bridge HTTP/MQTT
+  modificato passati con broker locale isolato, non PLC. Ultimo test launcher aggiunto nella
+  copia `.hmi-preview/public-check-cSn33e`: tutti e 6 i test generazione ricette passati, incluso
+  login/logout con archivio locale e salvataggio ricetta nel processo distribuito. Totale 128
+  test unici; tipi stretti dei moduli/test account, gateway e client passati. Nessuna suite
+  generale o test Rust; restano gli avvisi preesistenti di import statici/dinamici.
+- Edge headless sul pannello realmente generato: login/logout con password/hash sintetici e
+  cookie/CSRF reali, ricette su file, risposta persa/reload senza replay, preview editor senza
+  chiamate ricette, namespace ricette invalido isolato. Viewport 375/768/1024/1440, zero errori
+  JS, nessun overflow, target login >=48 px; screenshot login 375/1440 ispezionati. Richieste
+  dirette /@fs e ?raw/?import a credenziali/archivio negate, bundle produzione senza token,
+  password, salt o hash. Build pannello passata, non collaudo completo scaffold/IPC/installer.
+  Fixture: `public-check-NByxSm/.hmi-preview/recipe-browser-1lskUz`. Creazione CLI interattiva
+  provata separatamente in `operator-cli-F713PQ`: password mai mostrata, hash verificato e soli
+  permessi scelti; nessun account dell’utente creato o modificato.
+- Restano ACL per singolo tag/ricetta/allarme/pagina, gruppi/SSO/MFA, amministrazione grafica,
+  audit immutabile, policy password avanzate, revoca distribuita e collaudo carico/HTTPS/ACL
+  Windows/backup/recovery sul target. Snapshot PLC non segregato per utente; logout non annulla
+  un comando già accettato e non è arresto macchina. Roadmap Unified/Optix ancora PARZIALE;
+  nessuna equivalenza vendor o prontezza industriale dichiarata. Lavori trend/profili e dati
+  privati preservati, niente agenti, riapertura nativa o richieste AI reali.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

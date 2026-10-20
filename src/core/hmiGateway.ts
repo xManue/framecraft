@@ -1,6 +1,8 @@
 import { connectionDiagnostic, connectionMessages, createDiagnosticReporter, diagnosticText, safeNotify, type ConnectionDiagnostic } from "../../runtime/connection-diagnostics.mjs";
 import { normalizeMqttTagValue } from "../../runtime/connection-config.mjs";
 import { parseAlarmSnapshot, type AlarmSnapshot, type AlarmCommand } from "../../runtime/alarm-engine.mjs";
+import { OperatorAuthError } from "../../runtime/operator-policy.mjs";
+import { operatorSessionHeaders } from "./hmiOperatorSession";
 export type { ConnectionDiagnostic } from "../../runtime/connection-diagnostics.mjs";
 export interface HmiGatewaySample {
   tag: string; connectionId: string; value?: string; qualityCode?: number; timestamp?: number; sourceTimestamp?: number;
@@ -142,10 +144,14 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
       const generationBefore = generation;
       const instanceBefore = snapshot.alarms.instanceId;
       let result;
-      try { result = await json("/alarm-action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) }, signal); }
+      try { result = await json("/alarm-action", { method: "POST", headers: { "Content-Type": "application/json", ...operatorSessionHeaders() }, body: JSON.stringify(command) }, signal); }
       catch { throw new Error("Esito presa visione non noto: aggiorna gli allarmi prima di riprovare. Nessun invio automatico."); }
       if (!running || generationBefore !== generation) throw new Error("Sessione cambiata: aggiorna gli allarmi prima di agire di nuovo.");
-      if (!result.ok) throw new Error(result.status === 403 ? "Operatore non autorizzato: verifica accesso e permessi nel servizio." : result.status === 409 ? "L'allarme è cambiato o non permette questa operazione. Aggiorna la vista e selezionalo di nuovo." : "Operazione non completata: controlla la diagnostica del servizio.");
+      if (!result.ok) {
+        const data = result.data as Record<string, unknown>;
+        if (data?.type === "operator" && typeof data.code === "string" && new OperatorAuthError(data.code).code === data.code) { const error = new OperatorAuthError(data.code); throw new Error(error.message + ". " + error.remedy); }
+        throw new Error(result.status === 403 ? "Operatore non autorizzato: verifica accesso e permessi nel servizio." : result.status === 409 ? "L'allarme è cambiato o non permette questa operazione. Aggiorna la vista e selezionalo di nuovo." : "Operazione non completata: controlla la diagnostica del servizio.");
+      }
       const next = parseAlarmSnapshot((result.data as { alarms?: unknown })?.alarms);
       if (next.instanceId !== instanceBefore || snapshot?.alarms?.instanceId !== instanceBefore) throw new Error("Il servizio allarmi è cambiato. Aggiorna la vista prima di agire di nuovo.");
       if (snapshot.alarms.revision > next.revision) return structuredClone(snapshot.alarms);
@@ -173,11 +179,12 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
       try { value = normalizeMqttTagValue(value, definition.dataType); } catch { throw commandError("WRITE_INVALID", "rejected", tag); }
       const id = crypto.randomUUID().replaceAll("-", ""), token = generation;
       try {
-        const result = await json("/write", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, tag, value }) }, signal);
+        const result = await json("/write", { method: "POST", headers: { "Content-Type": "application/json", ...operatorSessionHeaders() }, body: JSON.stringify({ id, tag, value }) }, signal);
         if (!running || token !== generation) throw new Error("Sessione interrotta.");
         const data = result.data as Record<string, unknown>;
         if (!data || typeof data !== "object") throw new Error("Risposta comando non valida.");
         if (!result.ok) {
+          if (data.type === "operator" && typeof data.code === "string" && new OperatorAuthError(data.code).code === data.code && data.outcome === "rejected" && data.plcConfirmed === false) { const error = new OperatorAuthError(data.code); throw new HmiGatewayCommandError(error.message + ". " + error.remedy, "rejected"); }
           const outcome = data.outcome === "rejected" ? "rejected" : "uncertain";
           const event = data.diagnostic !== undefined ? parseDiagnostic(data.diagnostic) : connectionDiagnostic(outcome === "uncertain" ? "WRITE_UNCERTAIN" : httpCode(result.status), { protocol: "gateway", tag });
           safeNotify(options.onDiagnostic, event);

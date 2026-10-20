@@ -108,7 +108,9 @@ function installUserAccess(config: UserAccessConfig) {
   const replacements: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
   const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => replacements[character]);
   type Session = { id?: string; name: string; role?: string; permissions?: string[]; loginAt?: string };
+  const externalProvider = () => (globalThis as { __framecraftOperatorSession?: { currentUser(): Session | null; open(source?: HTMLElement): void } }).__framecraftOperatorSession;
   const session = (): Session | null => {
+    if (externalProvider()) { try { return externalProvider()!.currentUser(); } catch { return null; } }
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || "null") as Session | null;
       if (!saved || typeof saved.name !== "string") return null;
@@ -177,6 +179,7 @@ function installUserAccess(config: UserAccessConfig) {
   let idleTimer = 0;
   const startIdleTimer = () => {
     if (idleTimer) { clearTimeout(idleTimer); idleTimer = 0; }
+    if (externalProvider()) return;
     if (!idleLimit || !session()) return;
     idleTimer = setTimeout(() => logout("Sessione chiusa per inattività."), idleLimit) as unknown as number;
   };
@@ -304,6 +307,7 @@ function installUserAccess(config: UserAccessConfig) {
   }
 
   const openPage = (source: HTMLElement) => {
+    if (externalProvider()) { externalProvider()!.open(source); return; }
     closePage();
     trigger = source;
     page = document.createElement("div");
@@ -354,7 +358,7 @@ function installUserAccess(config: UserAccessConfig) {
    * down first: otherwise each reload would add another listener and another login page. */
   const scope = globalThis as { __framecraftUserAccess?: { dispose: () => void } };
   scope.__framecraftUserAccess?.dispose();
-  const onChanged = () => { updateLabels(); startIdleTimer(); };
+  const onChanged = () => { if (externalProvider() && page) closePage(); updateLabels(); startIdleTimer(); };
   const observer = new MutationObserver(() => updateLabels());
   observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-framecraft-mode", "data-fc-user-requires", "data-fc-user-visible-requires", "data-fc-user-access", "data-fc-user-logged-out"] });
   window.addEventListener("framecraft:user-changed", onChanged);

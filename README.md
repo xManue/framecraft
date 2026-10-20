@@ -775,6 +775,16 @@ npm run web:dev
 
 Run `npm test` for parser and transformation fixtures, and `npm run build` for the editor production build.
 
+## Local HMI operator accounts
+
+New panels include explicit server-side username/password login through the panel's user button,
+separate from ChatGPT/Codex and legacy browser PINs. Accounts are provisioned from the server
+terminal; no default users or grants. Session/capability checks protect recipe actions, alarm
+acknowledgements and tag writes, including duplicate requests. The proxy token alone no longer
+authorizes writes. See [setup, limits and recovery](runtime/README.md#account-operatore-locali-sul-server).
+Existing panels require an explicit runtime/configuration update. Per-object ACLs, administrative
+GUI, durable security audit, target/HTTPS/Windows ACL validation remain production gates.
+
 ## Files, workspace and local test values
 
 **File** opens JS/JSX/TS/TSX sources beside the graphical page; **Torna alla grafica** returns

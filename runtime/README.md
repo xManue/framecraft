@@ -39,15 +39,15 @@ e [presa visione](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-
 
 ### Autorizzazione degli operatori: bloccata per impostazione iniziale
 
-`start-gateway.mjs` non dichiara identità o permessi dell'operatore: gli allarmi
-sono consultabili, ma presa visione/conferma sono bloccate. L'integrazione server
-deve fornire `createPlcGateway(..., { alarmCatalog, authorizeAlarmAction })`:
+`start-gateway.mjs` integra gli account locali descritti sotto quando configurati esplicitamente;
+senza identità server gli allarmi sono consultabili ma presa visione/conferma sono bloccate.
+Un embedding con identità esterna può fornire `createPlcGateway(..., { alarmCatalog, authorizeAlarmAction })`:
 il callback riceve la richiesta HTTP e il comando, verifica sessione, ruolo,
 allarme e azione e restituisce l'identificativo dell'operatore **verificato dal server**,
 oppure rifiuta. Non autorizzare restituendo un nome fisso, accettando `actor` dal
 browser o fidandosi del PIN locale. Il callback ha un timeout di 5 secondi.
-Autenticazione/RBAC e audit persistente dell'integrazione restano da implementare
-e collaudare; questo hook non è un prodotto di autenticazione completo.
+ACL per singolo allarme, identità esterne e audit persistente restano da implementare
+e collaudare; il solo hook non è un prodotto di autenticazione completo.
 
 `POST /_framecraft/plc/v1/alarm-action` accetta soltanto `alarmId`, `occurrence`,
 `revision` e `action` (`acknowledge` o `confirm`), con JSON e le stesse protezioni
@@ -527,10 +527,11 @@ minime per l’account servizio: i mode Unix non sostituiscono le ACL. Anche su 
 directory e backup devono essere protetti da modifiche esterne durante il servizio.
 
 API sotto `/_framecraft/plc/v1/recipes`, sempre con token/origine del gateway e ulteriore
-`authorizeRecipeAction(request, command)` del servizio. Il callback deve verificare una vera
+sessione/capacità locale server, oppure `authorizeRecipeAction(request, command)` nell’embedding.
+Il callback deve verificare una vera
 sessione/identità e il permesso dell’azione, poi restituire l’ID del soggetto, mai il token,
-il valore di un header non verificato o il PIN browser. Il CLI standard non inventa questa
-integrazione: senza callback nega l’accesso; il factory `createPlcGateway` consente di integrarla.
+il valore di un header non verificato o il PIN browser. Il launcher standard integra soltanto
+account locali configurati esplicitamente; senza identità nega l’accesso.
 
 - `GET`: snapshot con revisione, sequenza, schemi e ricette. Richiede azione `read` autorizzata.
 - `POST`: `id` univoco, `expectedRevision`, `action`, `schemaId`, `recordId`; `create`/`update`
@@ -564,9 +565,9 @@ Lo stesso elemento è in Aggiungi → HMI e PLC → Archivio ricette. I vecchi p
 un aggiornamento esplicito del Runtime; inserire il div da solo non aggiorna il servizio.
 In Modifica resta un segnaposto, senza letture o scritture. In Prova pannello/Runtime:
 
-1. Configura catalogo, gateway/proxy e un’identità verificata nel callback server già descritto.
-   Il launcher standard continua a negare l’accesso senza questa integrazione; non togliere il
-   controllo e non usare token, header dichiarati dal browser o PIN locali come identità.
+1. Configura catalogo, gateway/proxy e gli account locali server descritti sotto, poi accedi
+   dal pulsante utente del pannello. Senza questa configurazione il launcher nega l’accesso;
+   non togliere il controllo e non usare token, header browser o PIN locali come identità.
 2. Premi **Rileggi archivio**. Ogni richiesta usa la stessa origine e le credenziali di sessione;
    il segreto del gateway resta nel proxy. Non esistono lettura automatica o polling delle ricette.
 3. Seleziona schema e ricetta, poi Nuova/Modifica/Copia/Rinomina/Elimina. Compila tutti i campi:
@@ -596,6 +597,88 @@ browser lo consente: crash, Back/history SPA, chiusura nativa, multi-tab, touch 
 HTTPS/SSO reali restano da collaudare. La pagina guidata ha form mobile fluido, senza ridurre
 i comandi; un widget inserito in una pagina personalizzata non riscrive il layout circostante.
 Permessi visivi/disabilitazione sono rispettati dal controllo ma non sostituiscono il server.
+
+## Account operatore locali sul server
+
+Nei nuovi progetti l’accesso è nel pulsante utente della barra del pannello, anche da tastiera.
+Non è il login ChatGPT/Codex dell’AI né il vecchio PIN grafico: non vengono importati PIN,
+utenti o permessi dal browser. I progetti precedenti richiedono aggiornamento esplicito del
+Runtime e della configurazione Vite, non una sostituzione automatica degli account.
+
+Flusso e confini:
+
+```text
+Pulsante utente → POST stessa origine → proxy (token solo server) → gateway
+  → archivio privato operators.json → verifica password → cookie HttpOnly + CSRF in memoria
+Comando ricetta/allarme/tag → sessione + origine + CSRF + capacità → archivio/driver
+```
+
+Preparazione da parte del responsabile, nella cartella `runtime` del progetto generato:
+
+1. Esegui `npm run operators -- add` in un terminale interattivo. Scegli username, nome,
+   etichetta ruolo, capacità server e permessi grafici. Password di almeno 12 caratteri,
+   nascosta e richiesta due volte; conferma con SALVA. Nessuna password da argomenti,
+   variabili d’ambiente o chat. Non esistono amministratore, password o concessioni predefinite.
+2. Le capacità sono `recipes.read/create/update/copy/rename/delete`, `alarms.acknowledge`,
+   `alarms.confirm`, `tags.write`. Inserisci gli ID completi separati da virgola oppure
+   `nessuno`. Il ruolo è solo un’etichetta. I permessi grafici (`comandi`, `parametri`,
+   `manutenzione` o ID personalizzati) controllano visibilità/reazione, non concedono capacità
+   server. Tutti i consensi gateway/connessione/mapping restano necessari per scrivere tag.
+3. In `framecraft.auth.json` conserva namespace/versione generati, imposta `enabled: true`
+   e scegli timeout: `idleMinutes` 1–60, `absoluteMinutes` da idle fino a 480. In produzione
+   `allowHttpLoopback: false`, origine HTTPS esatta in `gateway.allowedOrigins` e reverse
+   proxy stessa origine. Per una prova **solo locale** puoi impostare `allowHttpLoopback: true`
+   con origini esclusivamente HTTP localhost/127.0.0.1/[::1]. Non abilitarlo per LAN/Internet.
+4. Configura gateway e proxy come sopra; avvia il servizio. Nel pannello apri il pulsante
+   utente, inserisci username/password e Accedi al pannello. Verifica accesso rilegge la
+   sessione; Esci/cambia utente la revoca sul server. Login/logout sono espliciti, mai ritentati
+   automaticamente. Bozze ricetta e richieste pendenti vengono verificate prima del cambio.
+
+Altri comandi: `npm run operators -- list`, `password`, `permissions`, `disable`, `enable`.
+Ogni modifica valida confronta la revisione su disco, usa lock esclusivo e pubblicazione atomica;
+un conflitto non sovrascrive. Non cancellare lock o file corrotti per sbloccare il servizio:
+verifica processo proprietario/backup con il responsabile. Non ci sono reset, riparazioni,
+migrazioni, cancellazione utenti o recupero password automatici. L’amministrazione è per ora
+da terminale sul server, non dal browser o dall’editor PIN; GUI amministrativa da completare.
+
+File privato: `.framecraft-runtime/security/operators.json`, fuori da Git, public e dist.
+Contiene hash scrypt con salt casuale, mai password in chiaro: N=131072/r=8/p=1, 128 MiB per
+derivazione, massimo due derivazioni contemporanee. Scelta senza nuove dipendenze Node e con
+[profilo scrypt OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#scrypt);
+restano da misurare latenza/RAM sul target minimo. Limite 64 account e 128 sessioni, 8 per account;
+massimo 5 tentativi/minuto per username e 30/minuto per processo, senza coda. Non è un limite
+distribuito o un blocco permanente dell’account. File assente/non regolare/corrotto nega l’accesso,
+non genera nuovi account. Proteggi cartella e backup con ACL dell’account servizio: mode POSIX
+non configura ACL Windows. Solo dist deve essere web root in produzione; nessun alias/symlink
+pubblico verso i file privati. La configurazione Vite generata nega `.framecraft-runtime`,
+segreti e certificati tramite [fs.deny](https://vite.dev/config/server-options#server-fs-deny),
+che non filtra public né loader personalizzati: non spostare lì questi file.
+
+Sessioni opache solo in memoria server, cookie HttpOnly/SameSite=Strict e Secure su HTTPS,
+CSRF non persistito nel browser, origine esatta obbligatoria per login/logout e mutazioni.
+Polling dello stato e letture non rinnovano l’inattività; un comando autorizzato sì, mai oltre
+la durata assoluta. Riavvio, modifica password/permessi, disabilitazione o cambio archivio
+revocano tutte le sessioni. GET sessione non concede permessi. Il gateway verifica ogni azione,
+anche richieste duplicate: il token proxy da solo non abilita più la scrittura dei tag.
+Gli embedding personalizzati possono usare callback server espliciti, mai attori dal browser;
+con account locali configurati, i callback non possono aggirarli. Un comando già accettato
+può terminare dopo logout/revoca: non è un arresto di sicurezza della macchina.
+
+API riservata al proxy: GET `/_framecraft/plc/v1/session`, POST `/session/login` con soli
+`username/password`, POST `/session/logout` con `{}`. Risposta con profilo/capacità, CSRF e
+durata residua, mai hash o password. Mutazioni con cookie e `X-Framecraft-CSRF`. Errori
+`AUTH_CONFIG/STORE` (503), `AUTH_CREDENTIALS/REQUIRED` (401), `AUTH_PERMISSION/CSRF/ORIGIN`
+(403), `AUTH_THROTTLED/BUSY` (429) hanno messaggio e rimedio italiani; non mostrano input,
+percorsi, stack o credenziali. Logout senza risposta non significa logout riuscito: Verifica
+accesso e ripeti solo l’uscita confermata. Eventi AUTH_LOGIN/LOGOUT/CREDENTIALS/PERMISSION/
+THROTTLED contengono solo codice, attore server quando noto e timestamp, non password/cookie/
+CSRF o valori PLC. Per ora sono output del servizio, non un audit persistente e immutabile.
+
+Questo è controllo per capacità dell’intero pannello, non ancora ACL per singolo tag, pagina,
+ricetta o gruppo allarmi. Lettura snapshot PLC resta del proxy/gateway, non segregata per utente.
+Niente UMC/SSO/MFA, UI di amministrazione, revoca distribuita o replica sessioni. Da verificare
+proxy HTTPS/cookie reali, browser/device multipli, ACL/backup/recovery e carico sul target.
+Salvare ricette non trasferisce valori al PLC; consegna driver non significa conferma PLC.
 
 ## Prima della produzione
 
