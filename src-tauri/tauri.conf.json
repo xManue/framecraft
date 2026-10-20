@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "Framecraft",
+        "backgroundColor": "#0b0d11",
         "width": 1500,
         "height": 940,
         "minWidth": 980,

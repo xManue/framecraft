@@ -23,6 +23,7 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    warmup: { clientFiles: ["./src/main.tsx"] },
     watch: { ignored: [isPreviewArtifact, "**/src-tauri/target/**", "**/src-tauri/gen/**"] },
   },
   envPrefix: ["VITE_", "TAURI_"],

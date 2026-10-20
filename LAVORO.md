@@ -5164,6 +5164,49 @@ Verifiche del 5 ottobre 2026:
   dell’utente e nell’installer finale; compilazione Rust a freddo e gate produzione restano
   separati. L’eseguibile esistente non è stato sostituito o riavviato da queste verifiche.
 
+### 149. Compilazione desktop e preparazione frontend in parallelo (2026-10-20)
+
+- Priorità dell’utente: risolvere anche la compilazione, non solo la finestra bianca del punto 148.
+  L’utente ha salvato e chiuso l’app per evitare riavvii durante il lavoro. Un’interruzione della
+  verifica automatica per crediti esauriti ha fermato temporaneamente i comandi; ripresa il 20/10
+  dopo nuova verifica autorizzata, senza aggirare il controllo. Nessun agente utilizzato.
+- Ricompilazione iniziale di riferimento: 24,1 s con dipendenze già in cache. Il manifest produceva
+  anche una libreria statica da 779 MB e un DLL non usati dall’host desktop. Ora produce `rlib` e
+  l’eseguibile; i vecchi artefatti non sono stati eliminati. I layout HMI mobile restano web e
+  invariati; un eventuale host nativo Android/iOS richiederebbe una configurazione dedicata.
+- Profilo dev: stack trace con file/riga, niente simboli delle dipendenze. Controlli di debug,
+  overflow e unwind non disabilitati; release invariata. Profilo `debugging` esplicito con simboli
+  completi anche delle dipendenze. La prima ricostruzione di cache col nuovo profilo ha richiesto
+  315 s su questa macchina; eseguita qui, non presentata come un miglioramento a freddo verificato.
+- Selezione di sviluppo dal normale `npm run dev` tramite `tauri.dev.conf.json`, che annulla solo
+  `bundle.resources`. Il backend usa già il plugin dal checkout quando presente: le modifiche ai
+  runtime JS non devono più invalidare la compilazione Rust. Il manifest di distribuzione conserva
+  tutti i 15 percorsi risorsa; niente rimozione di file, autorizzazioni, driver o controllo PLC.
+- Warmup Vite del solo entry `src/main.tsx` in parallelo alla compilazione: nessuna compilazione
+  produzione forzata o attesa artificiale per mostrare la finestra. Colore nativo iniziale allineato
+  al tema HTML già presente. Dialoghi/generatori rimangono differiti come al punto 148.
+- Nove test mirati avvio/configurazione e tipi del config passati sullo snapshot pubblico
+  `.hmi-preview/public-check-WvFnSu`, senza dati macchina o lavori trend/profili preesistenti.
+  Dipendenze locali collegate, non installazione pulita; nessuna suite generale o inferenza AI.
+- Profilo finale: ricompilazioni equivalenti da circa 24 s iniziali a 6–14 s nelle prove successive,
+  con variabilità del carico locale; non una garanzia su altre macchine o sulla prima build pulita.
+  Build invariata in 1,05 s; dopo aggiornamento della data di `framecraft-snap.mjs`, 1,2 s e artefatti
+  ancora `fresh`. JSON Cargo conferma `opt_level=0`, debug assertions e overflow checks attivi.
+  I file JS non compaiono più nel depfile dell’eseguibile di sviluppo.
+- Confronto frontend/compilatore con cache Vite nuove e ordine invertito: verificato che il main
+  sia realmente pretrasformato solo con warmup. Pipeline controllata con warmup 8,4–13,6 s, e dalla
+  navigazione browser alla home 1–2,4 s, senza errori JS o generatori caricati sulla home. Questi
+  numeri includono il compilatore reale ma usano Edge headless, non misurano il WebView nativo.
+- Singolo test Rust `bundled_preview_resources_match_the_backend_lookup_path` passato (110
+  filtrati): tutti i 15 percorsi della distribuzione ancora corretti. Nessun test macchina eseguito.
+  Prova finale del vero `npm run dev`: Vite pronto in 2,23 s, Cargo senza ricompilare in 2,43 s,
+  eseguibile avviato e lasciato aperto per la verifica utente. Nessun progetto aperto/modificato
+  durante la prova e nessuna interazione con account, driver o PLC. Il tempo visivo del WebView
+  resta da confermare dall’utente; native binary ricostruito, nessun installer prodotto.
+- Riferimenti primari verificati: Cargo build performance/profiles, Vite server warmup e Tauri
+  preparing-for-mobile/configuration. Nessuna nuova dipendenza, licenza o risorsa vendor.
+  La riduzione dei simboli cambia l’esperienza del debugger, non i permessi dell’app o del PLC.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: autorizzazioni dei comandi e audit da collegare al server.

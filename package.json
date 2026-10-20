@@ -5,7 +5,7 @@
   "type": "module",
   "engines": { "node": "^22.13.0 || ^24.0.0 || >=26.0.0" },
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "web:dev": "vite --configLoader runner",
     "build": "tsc -b && vite build --configLoader runner",
     "web:preview": "vite preview --configLoader runner --host 127.0.0.1 --port 1420",

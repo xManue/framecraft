@@ -740,6 +740,19 @@ temporary tree, without deleting previews, projects or drafts. Restart `npm run 
 changing Vite configuration. A first development launch or changed Rust sources can still
 require compilation; browser startup measurements are not native WebView startup guarantees.
 
+Development uses `src-tauri/tauri.dev.conf.json`: Runtime JavaScript is read from this checkout,
+not copied as installer resources on every edit. Normal production builds still use the resource
+map in `tauri.conf.json`. Vite warms the initial module graph while the native host compiles.
+The desktop host builds an `rlib` and executable, not extra C-compatible library artifacts.
+This does not change the HMI's desktop/mobile web layouts; native Android/iOS app packaging
+would require its own library target configuration and is not provided by this desktop setup.
+
+The default development profile keeps assertions, overflow checks and source-line backtraces,
+but omits dependency debug symbols and local-variable/type debug data. A profile change needs
+one dependency rebuild; subsequent launches reuse that cache. For full debugger symbols use
+`npm run dev -- -- --profile debugging` (also needs its own initial build). Release settings are
+unchanged. These trade-offs follow the [Cargo build performance guidance](https://doc.rust-lang.org/cargo/guide/build-performance.html).
+
 To work on the web shell alone, without local filesystem access, use:
 
 ```bash

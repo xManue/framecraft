@@ -55,6 +55,7 @@ describe("first HTML before the editor module loads", () => {
 describe("development startup boundaries", () => {
   it("scans only the real app entry and excludes its temporary tree from watching", () => {
     expect(config.optimizeDeps?.entries).toEqual(["index.html"]);
+    expect(config.server?.warmup?.clientFiles).toEqual(["./src/main.tsx"]);
     const ignored = config.server?.watch?.ignored;
     expect(Array.isArray(ignored)).toBe(true);
     const predicate = (ignored as unknown[]).find(entry => typeof entry === "function") as (path: string) => boolean;
@@ -64,6 +65,18 @@ describe("development startup boundaries", () => {
     expect(predicate(temporary.replaceAll("/", "\\") + "\\copy\\file.ts")).toBe(true);
     expect(predicate(temporary + "-backup/file.ts")).toBe(false);
     expect(predicate(fileURLToPath(new URL("../src/main.tsx", import.meta.url)))).toBe(false);
+  });
+
+  it("keeps the native window background consistent before the first HTML is available", () => {
+    const native = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+    expect(native.app.windows[0].backgroundColor).toBe("#0b0d11");
+    expect(html).toContain(`background: ${native.app.windows[0].backgroundColor}`);
+    expect(native.build.beforeDevCommand).toBe("npm run web:dev");
+    const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    expect(packageJson.scripts.dev).toBe("tauri dev --config src-tauri/tauri.dev.conf.json");
+    const development = JSON.parse(readFileSync(new URL("../src-tauri/tauri.dev.conf.json", import.meta.url), "utf8"));
+    expect(development).toEqual({ bundle: { resources: null } });
+    expect(native.bundle.resources["../scripts/framecraft-vite-plugin.mjs"]).toBe("scripts/framecraft-vite-plugin.mjs");
   });
 
   it("preserves the generator exports and exact section counts after the lightweight split", () => {
