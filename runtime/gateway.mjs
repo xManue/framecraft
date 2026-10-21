@@ -8,6 +8,7 @@ import { ConnectionOperationError, connectionDiagnostic, createDiagnosticReporte
 import { RecipeStoreError, parseRecipeCommand, recipeActor } from "./recipe-catalog.mjs";
 import { OperatorAuthError, operatorText } from "./operator-policy.mjs";
 import { auditContext, appendAudit as persistAuditEvent, runAudited as auditOperation } from "./audit-operation.mjs";
+import { parseAuditQuery, parseAuditSnapshot } from "./audit-query.mjs";
 
 const api = "/_framecraft/plc/v1";
 function failure(status, code = "GATEWAY_REQUEST") { return Object.assign(new ConnectionOperationError(connectionDiagnostic(code, { protocol: "gateway" })), { status }); }
@@ -47,6 +48,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
     safeNotify(options.onDiagnostic, { ...diagnostic });
   };
   const report = createDiagnosticReporter(record, { protocol: "gateway" });
+  let nextAuditRead = 0;
   const alarms = options.alarmCatalog !== undefined ? createAlarmEngine(options.alarmCatalog, variables, { onEvent: options.onAlarmEvent }) : undefined;
   const connections = enabled.map((connection) => {
     const driver = (connection.protocol === "opcua" ? createOpcUaPlcConnection : createMqttPlcConnection)(connection, variables, {
@@ -86,6 +88,26 @@ export function createPlcGateway(catalog, variables, options = {}) {
       const actual = Buffer.from(typeof request.headers.authorization === "string" ? request.headers.authorization : ""); const expected = Buffer.from("Bearer " + token);
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw failure(401, "GATEWAY_AUTH");
       if (request.url === api + "/snapshot" && request.method === "GET") { respond(response, 200, snapshot()); return; }
+      if (request.url === api + "/audit" || request.url?.startsWith(api + "/audit?")) {
+        if (request.method !== "GET") throw new OperatorAuthError("AUTH_INPUT");
+        if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
+        if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;
+        let timer;
+        try {
+          const actor = await Promise.race([options.operatorAuth.authorize(request, "audit.read", false), new Promise((_, reject) => { timer = setTimeout(() => reject(new OperatorAuthError("AUTH_BUSY")), 5000); })]);
+          if (!operatorText(actor, 200) || actor === token || actor === "Bearer " + token) throw new OperatorAuthError("AUTH_REQUIRED");
+        }
+        finally { clearTimeout(timer); }
+        if (stopping || request.aborted || response.destroyed) throw new OperatorAuthError("AUTH_CONFIG");
+        if (!options.audit || typeof options.audit.read !== "function") throw new OperatorAuthError("AUTH_AUDIT");
+        if (request.url.length > 4096) throw new OperatorAuthError("AUTH_INPUT");
+        const params = new URL(request.url, "http://localhost").searchParams;
+        if ([...params.keys()].length > 9 || new Set(params.keys()).size !== [...params.keys()].length) throw new OperatorAuthError("AUTH_INPUT");
+        const query = parseAuditQuery(Object.fromEntries(params));
+        if (performance.now() < nextAuditRead) throw new OperatorAuthError("AUTH_BUSY");
+        nextAuditRead = performance.now() + 200;
+        respond(response, 200, parseAuditSnapshot(await options.audit.read(query), query)); return;
+      }
       if ([api + "/session", api + "/session/login", api + "/session/logout"].includes(request.url)) {
         if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_CONFIG");
         if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;

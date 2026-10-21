@@ -2,6 +2,9 @@
 
 Aggiornato al 12 ottobre 2026. Baseline funzionale: documentazione ufficiale WinCC Unified V21.
 
+Aggiornamento mirato 21 ottobre 2026: consultazione HMI del registro attività Framecraft
+(LAVORO 159), confrontata con Audit Viewer V21. Non equivale a firme, commenti o conformità Audit.
+
 Questo file è la checklist stabile del progetto. L'obiettivo non è copiare l'aspetto di TIA Portal,
 ma coprire le capacità che servono a progettare e usare un HMI Unified, poi renderle più verificabili,
 più veloci e più estendibili. L'inventario elenca le **famiglie funzionali**; le migliaia di singole
@@ -186,7 +189,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-SEC-05 | Sessioni e client multipli | PARZIALE | Collaudo multi-device e revoca distribuita | Limiti, idle/assoluta, polling senza rinnovo, revoca al cambio account o riavvio (152) |
 | WCU-SEC-06 | Conferma operatore e commento | DA FARE | Dialoghi protetti e audit | Regole per rischio invece di flag sparsi |
 | WCU-SEC-07 | Comunicazione protetta e certificati | DA FARE | HTTPS, trust e rinnovo | Stato certificati e scadenze nel progetto |
-| WCU-SEC-08 | Hardening e security events | PARZIALE | Audit amministrativo/trasporto, Viewer, firme, archivio e target | Registro Runtime persistente con richieste/esiti e accessi, CLI verifica, nessun replay o valore/credenziale registrato (155) |
+| WCU-SEC-08 | Hardening e security events | PARZIALE | Audit amministrativo/trasporto, firme/commenti, export/offline, archivio e target | Registro Runtime persistente, CLI e controllo HMI con audit.read, filtri server e cursore coerente; nessun replay o valore/credenziale registrato (155/159) |
 
 ## 11. Connettività e architettura Runtime
 

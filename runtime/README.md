@@ -756,7 +756,7 @@ può modificare il filesystem, non esiste un’ancora esterna per provare la per
 
 La catena rileva incoerenze, **non è una firma digitale né una certificazione antimanomissione**.
 Un amministratore OS può riscrivere file e checksum. Restano firme/motivi, conservazione
-immutabile/remota, audit amministrazione/trasporto, Viewer con permessi, archiviazione,
+immutabile/remota, audit amministrazione/trasporto, firma/commento dei record e archiviazione,
 clock/NTP, guasti reali e prove di carico/power-loss sul target. L’API Node SQLite è disponibile
 da Node 22.13 senza flag ma ancora sperimentale in quella linea; in Node 24.15+ è Release
 Candidate. I collaudi qui usano Node 24.19, non certificano altre versioni o un impianto.
@@ -772,6 +772,48 @@ Riferimenti primari: [WinCC Unified Audit V21](https://docs.tia.siemens.cloud/r/
 [Node SQLite LTS 24](https://nodejs.org/download/release/latest-v24.x/docs/api/sqlite.html).
 [SQLite WAL, backup e WAL-reset](https://sqlite.org/wal.html).
 Firme e conformità dei vendor non sono equivalenze già ottenute da Framecraft.
+
+### Consultare il registro dal pannello HMI
+
+Nei pannelli generati con il Runtime aggiornato puoi inserire **Aggiungi componenti → HMI e PLC →
+Registro attività** in qualsiasi pagina. In Modifica rimane un segnaposto: la consultazione reale
+avviene nel pannello in esecuzione, non nel ponte dell’editor.
+
+1. Configura e abilita gli account locali e il gateway come descritto sopra, sul PC del servizio.
+   Nei nuovi progetti restano disabilitati; non vengono creati utenti predefiniti.
+2. Assegna esplicitamente la capacità **Consultare il registro attività del servizio** (`audit.read`)
+   all’account autorizzato, tramite GUI o CLI account. Il nome del ruolo non la concede.
+   Questa capacità permette di leggere tutto il registro del servizio: i filtri non sono ACL.
+3. Inserisci il componente, apri il pannello e accedi con quell’account. Premi **Carica registro**.
+   Non parte alcuna lettura del registro prima del comando e non esiste aggiornamento periodico.
+4. Scegli operazione, esito, ID operatore esatto o intervallo di date, poi aggiorna dalla prima
+   pagina. Le date dei filtri seguono il fuso del dispositivo; l’ora UTC originale resta nei dettagli
+   di ogni evento. **Eventi precedenti** conserva filtri, identità dell’archivio e sequenza iniziale.
+   Modificare i filtri non cambia i risultati già mostrati finché non li applichi.
+
+Il servizio espone `GET /_framecraft/plc/v1/audit` soltanto a una sessione con `audit.read`, oltre
+al consueto token del proxy server. Non esiste una chiave nel browser. Le letture non rinnovano
+il timeout per inattività, non aggiungono eventi al registro e non eseguono comandi PLC. Il cambio
+utente o la scadenza dell’accesso rimuovono i risultati dal controllo; nessun evento viene conservato
+in localStorage/sessionStorage. Altri client possono registrare nuovi eventi durante la paginazione:
+ritorna alla prima pagina per includerli. Un archivio diverso o una sequenza ripristinata vengono
+segnalati, non mescolati. Le richieste ravvicinate possono essere respinte come servizio occupato:
+attendi e riprova manualmente, senza cicli di richieste.
+
+Mostra al massimo 50 eventi per pagina, con filtri applicati prima del limite sul server. I contatori
+di esiti incerti e richieste senza esito terminale riguardano il registro completo, non solo il filtro.
+L’operatore è l’ID stabile registrato dal servizio: non viene ricostruito un nome storico. Le righe
+distinguono richiesta, esito e consegna al trasporto; **consegnato non significa confermato dal PLC**.
+La catena verificata dal servizio non è una firma digitale né una certificazione normativa.
+
+Questa prima vista non aggiunge commenti, firme, esportazione CSV, query salvate o apertura di
+archivi offline. Per la verifica da terminale resta `npm run audit -- --json`. Sono ancora necessari
+collaudi sul target, clock/NTP, guasti reali e carico; non dichiarare il progetto pronto per produzione
+soltanto perché il registro è consultabile.
+
+Riferimenti funzionali, non dipendenze o formati importati:
+[Audit Viewer Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-audit-rt-unified/basics-rt-unified/audit-viewer-rt-unified?contentId=_Gg68rYFKeU2yUIBYRS7kQ) e
+[Event Logger Optix](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/1-03/contents-ditamap/using-the-software/logger/event-logger.html).
 
 ### Risorse consentite per account
 

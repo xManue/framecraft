@@ -1,5 +1,7 @@
-export const operatorCapabilities = Object.freeze(["recipes.read", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "alarms.acknowledge", "alarms.confirm", "tags.write"]);
+export const operatorCapabilities = Object.freeze(["recipes.read", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "alarms.acknowledge", "alarms.confirm", "tags.write", "audit.read"]);
 const messages = {
+  AUTH_AUDIT_CHANGED: [409, "Il registro è cambiato", "Ricarica la prima pagina del registro. Le pagine di archivi diversi non vengono mescolate."],
+  AUTH_AUDIT_RESPONSE: [502, "Risposta del registro non valida", "Non fidarti di questi dati. Controlla versione, servizio e proxy con il responsabile; nessun comando viene ripetuto."],
   AUTH_NODE: [503, "Node.js non disponibile per la gestione locale", "Installa una versione Node LTS supportata nel sistema, poi chiudi e riapri Framecraft. Gli eseguibili dentro al progetto non vengono usati per amministrare password e account."],
   AUTH_CONFIG: [503, "Accesso operatore non configurato", "Configura esplicitamente gli account locali e il trasporto protetto del servizio. Non usare il PIN browser o l’account ChatGPT."],
   AUTH_STORE: [503, "Archivio operatori non disponibile", "Controlla file, backup e permessi dell’account servizio. Non vengono creati utenti o sostituiti archivi automaticamente."],

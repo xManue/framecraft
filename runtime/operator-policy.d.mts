@@ -1,4 +1,4 @@
-export type OperatorCapability = "recipes.read" | "recipes.create" | "recipes.update" | "recipes.copy" | "recipes.rename" | "recipes.delete" | "alarms.acknowledge" | "alarms.confirm" | "tags.write";
+export type OperatorCapability = "recipes.read" | "recipes.create" | "recipes.update" | "recipes.copy" | "recipes.rename" | "recipes.delete" | "alarms.acknowledge" | "alarms.confirm" | "tags.write" | "audit.read";
 export interface OperatorAuthConfig { version: 1; enabled: boolean; namespace: string; allowHttpLoopback: boolean; idleMinutes: number; absoluteMinutes: number }
 export interface OperatorProfile { id: string; name: string; role: string; permissions: string[]; capabilities: OperatorCapability[] }
 export interface OperatorSession { user: OperatorProfile | null; csrfToken: string | null; expiresInMs: number }

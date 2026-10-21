@@ -6,6 +6,9 @@ Aggiornato al 24 settembre 2026. Baseline funzionale: documentazione ufficiale F
 Aggiornamento implementativo 20 ottobre 2026: schemi ricetta riletti nella guida `current`, che
 ora si presenta come 1.8.0. L’inventario restante non è stato rivalutato integralmente per 1.8.0.
 
+Aggiornamento mirato 21 ottobre 2026: nucleo comune di consultazione del registro attività
+Framecraft (LAVORO 159). Non importa oggetti Optix e non completa l’Event Logger generico.
+
 Questa roadmap registra fin da ora tutto ciò che Framecraft dovrà coprire dopo la roadmap WinCC
 Unified. I contratti Rockwell restano separati da quelli Siemens: il nucleo comune viene riusato
 solo quando il comportamento è realmente equivalente. Un componente React simile a un oggetto
@@ -158,7 +161,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | ID | Capacità FactoryTalk Optix | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
 | FTX-DAT-01 | Data Logger periodico e on-demand | DA FARE | Sampling, deadband, store e lifecycle | Stima crescita e perdita dati prima del deploy |
-| FTX-DAT-02 | Event Logger | DA FARE | Eventi, campi, store e filtri | Correlazione temporale con tag, allarmi e sessioni |
+| FTX-DAT-02 | Event Logger | PARZIALE | Tipi evento/campi/sorgenti generici, store e correlazione completa | Registro Runtime SQLite e vista HMI protetta con filtri/pagine per le operazioni Framecraft supportate, non Event Logger Optix generico (155/159) |
 | FTX-DAT-03 | Embedded Database SQLite | DA FARE | Store, tabelle, query e manutenzione | Migrazioni versionate, retention e backup verificati |
 | FTX-DAT-04 | Database ODBC | ESTERNO | Connessione, credenziali, schema e query | Test di compatibilità e segreti mai salvati nel progetto |
 | FTX-DAT-05 | InfluxDB | ESTERNO | Connessione e mapping time-series | Stima cardinalità, retention e costi di storage |
@@ -181,7 +184,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-SEC-06 | OAuth2 con PKCE | ESTERNO | Provider e flusso supportato | Checklist redirect, scope e scadenze token |
 | FTX-SEC-07 | Audit signing e firme operatore | DA FARE | Workflow, motivo e entitlement | Diff esatto prima/dopo e prova non ripudiabile |
 | FTX-SEC-08 | Document signature e file verification | DA FARE | Certificati, firme e Runtime | Catena di fiducia e scadenze visibili |
-| FTX-SEC-09 | Security events e tentativi accesso | PARZIALE | Copertura amministrazione/trasporto, Viewer, firme e conservazione target | Audit SQLite Runtime e accessi, identità server, risorsa/traccia/esito, CLI di verifica e rifiuto prima del comando se il log non è disponibile (155) |
+| FTX-SEC-09 | Security events e tentativi accesso | PARZIALE | Copertura amministrazione/trasporto, firme, export/offline e conservazione target | Audit SQLite, CLI e vista HMI con audit.read, identità server, risorsa/traccia/esito e filtri; rifiuto prima del comando se il log non è disponibile (155/159) |
 | FTX-SEC-10 | Segreti e certificati | DA FARE | Store sicuro e deploy | Nessun segreto nel repository, rotazione guidata |
 
 ## 12. OPC UA, MQTT, FTP e IoT

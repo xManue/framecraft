@@ -5582,6 +5582,41 @@ Verifiche del 5 ottobre 2026:
   locale, non installazione pulita. Progetto sintetico e nessuna chiamata AI/PLC.
   Resta da confermare sul WebView2 reale; nessun riavvio forzato del desktop.
 
+### 159. Registro attività consultabile dal pannello HMI (2026-10-21)
+
+- Priorità aggiornata dall’utente: lasciare temporaneamente l’AI e proseguire Unified/Optix.
+  Il riepilogo AI locale ancora in lavorazione resta separato e non viene pubblicato in questo
+  passaggio. Nessuna inferenza o modifica alla pipeline AI richiesta per usare il registro.
+- Capacità comune confrontata con Audit Viewer Unified V21 ed Event Logger Optix: nuovo controllo
+  **Registro attività** nella palette HMI e PLC e nel Runtime di ogni nuovo pannello standard,
+  senza inventare una pagina dell’export macchina. La guida è in `runtime/README.md`.
+- API GET protetta dal token del proxy e dalla capacità server esplicita `audit.read`; account
+  precedenti non ricevono il permesso automaticamente. Non basta il nome del ruolo, né il PIN
+  grafico. Letture senza rinnovo idle, scritture o eventi audit aggiuntivi; limite alle letture
+  ravvicinate e alle risposte/query. Nessun token nel browser o nuovo comando PLC.
+- Filtri server per operazione/esito/ID operatore/intervallo UTC, applicati prima del limite;
+  cursore con ID archivio e sequenza iniziale. Archivi cambiati o sequenze ripristinate fermano
+  la paginazione. Contatori globali distinti dalle righe filtrate, catena verificata non firma.
+- Controllo manuale a pagine di 50 righe, leggibile e con target da almeno 48 px, stato di lettura,
+  rimedi chiari, focus/scroll conservati, filtri in modifica distinti da quelli applicati. Attori
+  come ID stabili, mai nomi storici ricostruiti. Dati rimossi a cambio utente/logout/scadenza;
+  risposte tardive ignorate, nessun polling o deposito nei browser storage. In Modifica è un
+  segnaposto e il ponte dell’editor non apre connessioni come rimedio.
+- Prima verifica: test mirati di query/SQLite/API/permessi/sessioni e controllo/generazione,
+  più prova Edge su pannello generato, account locali, cookie e database veri; nessuna CPU o
+  connessione PLC. Login, lettura e filtro manuali, logout con rimozione dei dati e quattro
+  viewport (375/768/1024/1440). Test browser ripetibile:
+  `node tests/browser/audit-viewer.mjs` con Playwright o `FRAMECRAFT_PLAYWRIGHT_MODULE`.
+- Verifica pubblicabile `public-check-DaFnXj`: 76 casi mirati in 10 file, TypeScript e build
+  editor superati (avvisi static/dynamic import gia' noti). Ripetuta la prova Edge del pannello
+  generato senza JSON macchina: tipi del Runtime e bundle production dell’entry QA superati,
+  due letture esplicite, zero comandi e richieste esterne; credenziali sintetiche assenti dal
+  bundle client. La prova non invoca lo scaffolding Tauri né certifica installazione pulita
+  o build dell’intera applicazione HMI; dipendenze locali tramite junction.
+- Restano firme/commenti, export e query salvate/offline, risoluzione dei nomi storici, eventi
+  generici, audit amministrazione/trasporto, conservazione e prove native/industriali/carico.
+  Nessuna nuova dipendenza o licenza vendor. Le roadmaps restano parziali, non parità dichiarata.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.
@@ -5628,9 +5663,10 @@ Verifiche del 5 ottobre 2026:
   completare identita' HTTP dell'anteprima e rilevamento del server vivo ma bloccato.
 - **Dopo WinCC**: capacità funzionali di `FACTORYTALK-OPTIX-ROADMAP.md` a partire dall'information
   model Framecraft, non dal round-trip verso un formato proprietario.
-- **Priorità attuale AI + app**: completare la pipeline facoltativa del punto 116 e di
-  `AI-FRAMECRAFT-ROADMAP.md`; riprendere poi le capacità WinCC/Optix residue. Restano command
-  layer completo, diff semantico e le verifiche operative senza dati inventati.
+- **Priorità attuale Unified/Optix** (richiesta del 21 ottobre): proseguire le capacità funzionali
+  residue, mantenendo separati i contratti vendor e il Runtime autonomo OPC UA/MQTT. La pipeline
+  AI facoltativa del punto 116 e di `AI-FRAMECRAFT-ROADMAP.md` resta nell’obiettivo, temporaneamente
+  rinviata; restano command layer, diff semantico e verifiche operative senza dati inventati.
 - **Editor — inserimento componenti con dati locali**: props letterali e dati importati viaggiano
   già col componente; per props nate da stato/calcoli locali l'editor oggi rifiuta l'inserimento e
   spiega quali mancano. Serve una configurazione guidata se si vuole crearne valori iniziali sicuri.

@@ -10,8 +10,10 @@ import {
   CircleGauge, Clock3, Columns3, Database, FileText, Folder, Gauge, Grid3X3, Heading, Image,
   LayoutPanelTop, Link, List, ListTree, Minus, MousePointerClick, Navigation, PanelLeft,
   PanelTop, Play, Power, RectangleHorizontal, Rows3, Search, Settings, SlidersHorizontal, Square, SquareMousePointer,
-  Table2, TextCursorInput, ToggleLeft, Type, Wrench, Zap,
+  ScrollText, Table2, TextCursorInput, ToggleLeft, Type, Wrench, Zap,
 } from "lucide-react";
+
+const auditControlJsx = `<div data-hmi-type="HmiAuditControl" style={{ width: "100%", height: 620, overflow: "auto", background: "#F7F8FA", color: "#172331" }}>Registro attività del servizio HMI. In Modifica è un segnaposto: usa Prova pannello. Richiede Runtime aggiornato, gateway e account con audit.read. Sola lettura, nessun comando PLC.</div>`;
 
 /** "Standard HMI" sono i pezzi del pannello vero: le misure e i colori vengono dallo standard
  * aziendale (`src/core/hmiStandard.ts`), e ogni pezzo dichiara con `data-hmi-type` quale oggetto
@@ -41,6 +43,7 @@ const component = (
 ): EditorComponentDefinition => ({ type, name, description, category, icon, keywords, defaultProps: {}, createJsx: () => `  ${jsx}` });
 
 const definitions: EditorComponentDefinition[] = [
+  component("hmi-audit-control", "Registro attività", "Consulta accessi, comandi ed esiti del registro persistente con filtri server e pagine. Richiede gateway, Runtime aggiornato e account con audit.read; non modifica dati o PLC.", "HMI e PLC", ScrollText, auditControlJsx, "audit registro attività operatore eventi storico sicurezza tracciabilità"),
   component("text", "Testo", "Scritta breve", "Base", Type, "<span>Nuovo testo</span>"),
   component("paragraph", "Paragrafo", "Blocco di testo", "Base", AlignLeft, "<p>Inserisci qui il testo.</p>"),
   component("heading", "Titolo", "Titolo di sezione", "Base", Heading, "<h2>Nuovo titolo</h2>"),

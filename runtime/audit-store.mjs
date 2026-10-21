@@ -3,6 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { lstatSync, fstatSync, realpathSync, mkdirSync, openSync, closeSync, readSync, writeFileSync, fsyncSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { operatorKeys, operatorText, OperatorAuthError } from "./operator-policy.mjs";
+import { parseAuditQuery, matchesAuditQuery } from "./audit-query.mjs";
 
 const maxBytes = 64 * 1024 * 1024, maxRecords = 100000, zero = "0".repeat(64);
 const fail = (code = "AUTH_AUDIT") => { throw new OperatorAuthError(code); };
@@ -108,9 +109,19 @@ export function openRuntimeAudit({ root, namespace, readOnly = false, recordLimi
           return { sequence, id: identity.id };
         } catch (error) { try { db.exec("ROLLBACK"); } catch { /* A commit may already have reached disk. Never retry. */ } poisoned = true; fail(error instanceof OperatorAuthError ? error.code : error.errcode === 13 ? "AUTH_AUDIT_LIMIT" : error.errcode === 5 || error.errcode === 6 ? "AUTH_AUDIT_BUSY" : "AUTH_AUDIT"); }
       },
-      read({ limit = 100, before } = {}) {
-        if (!Number.isInteger(limit) || limit < 1 || limit > 500 || before !== undefined && (!Number.isSafeInteger(before) || before < 1)) fail();
-        db.exec("BEGIN"); try { const verified = verify(); const events = verified.events.filter(item => before === undefined || item.seq < before).slice(-limit).reverse(); db.exec("COMMIT"); return { version: 1, id: identity.id, namespace, sequence: verified.sequence, verified: true, events, uncertainCount: verified.events.filter(item => item.outcome === "uncertain" || item.code.endsWith("UNCERTAIN")).length, unresolvedCount: (() => { const pending = new Set(); for (const item of verified.events) { if (item.outcome === "requested") pending.add(item.traceId); else pending.delete(item.traceId); } return pending.size; })(), nextBefore: events.length ? events[events.length - 1].seq : null }; } catch { try { db.exec("ROLLBACK"); } catch {} fail(); }
+      read(input = {}) {
+        const query = parseAuditQuery({ limit: 100, ...input });
+        db.exec("BEGIN");
+        try {
+          const verified = verify();
+          if (query.journalId !== undefined && query.journalId !== identity.id || query.through !== undefined && query.through > verified.sequence) fail("AUTH_AUDIT_CHANGED");
+          const matching = verified.events.filter(item => matchesAuditQuery(item, query)), events = matching.slice(-query.limit).reverse();
+          db.exec("COMMIT");
+          return { version: 1, id: identity.id, namespace, sequence: verified.sequence, verified: true, events,
+            uncertainCount: verified.events.filter(item => item.outcome === "uncertain" || item.code.endsWith("UNCERTAIN")).length,
+            unresolvedCount: (() => { const pending = new Set(); for (const item of verified.events) { if (item.outcome === "requested") pending.add(item.traceId); else pending.delete(item.traceId); } return pending.size; })(),
+            nextBefore: matching.length > events.length ? events.at(-1).seq : null };
+        } catch (error) { try { db.exec("ROLLBACK"); } catch {} fail(error instanceof OperatorAuthError ? error.code : undefined); }
       },
       close() { if (!closed) { closed = true; db.close(); } },
     };

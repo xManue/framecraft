@@ -8,6 +8,7 @@ export function operatorAdminJournalKey(namespace: string, root: string): string
   return "framecraft:operator-admin-pending:" + namespace + ":" + encodeURIComponent(path);
 }
 export const operatorCapabilityLabels: Record<OperatorCapability, string> = {
+  "audit.read": "Consultare il registro attività del servizio",
   "recipes.read": "Leggere l’archivio ricette", "recipes.create": "Creare ricette", "recipes.update": "Modificare ricette", "recipes.copy": "Copiare ricette", "recipes.rename": "Rinominare ricette", "recipes.delete": "Eliminare ricette",
   "alarms.acknowledge": "Prendere visione degli allarmi", "alarms.confirm": "Confermare gli allarmi", "tags.write": "Scrivere le variabili PLC abilitate",
 };

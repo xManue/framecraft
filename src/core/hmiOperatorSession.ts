@@ -3,6 +3,8 @@ import { OperatorAuthError, operatorCapabilities, operatorKeys, operatorText, ty
 interface OperatorProvider { currentUser(): OperatorProfile | null; open(opener?: HTMLElement): void; headers(): Record<string, string> }
 type OperatorWindow = typeof globalThis & { __framecraftOperatorSession?: OperatorProvider & { dispose(): void } };
 export function operatorSessionHeaders(): Record<string, string> { return (globalThis as OperatorWindow).__framecraftOperatorSession?.headers() ?? {}; }
+export function operatorSessionProfile(): OperatorProfile | null { return (globalThis as OperatorWindow).__framecraftOperatorSession?.currentUser() ?? null; }
+export function openOperatorSession(opener?: HTMLElement): void { (globalThis as OperatorWindow).__framecraftOperatorSession?.open(opener); }
 
 function parseSession(value: unknown): OperatorSession {
   if (!operatorKeys(value, ["user", "csrfToken", "expiresInMs"])) throw new OperatorAuthError("AUTH_STORE");
