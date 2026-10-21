@@ -47,6 +47,15 @@ describe("messaggi comprensibili senza alterare l'errore originale", () => {
     expect(result.nextStep).toContain("Riprova l’anteprima"); expect(result.nextStep).not.toContain("riavviare l’app");
   });
 
+  it("offers recovery without closing the project after an interface import fails", () => {
+    const raw = "Failed to fetch dynamically imported module: http://localhost:1420/src/editor/AppShell.tsx";
+    const result = describeEditorMessage(raw, "interface");
+    expect(result.nextStep).toContain("Riprova caricamento");
+    expect(result.nextStep).toContain("progetto e la bozza restano aperti");
+    expect(result.nextStep).toContain("terminale");
+    expect(result.details).toBe(raw);
+  });
+
   it("un avviso di compatibilità non dichiara fallita un'anteprima funzionante", () => {
     const message = describeEditorMessage('The config path contains the "?" character', "preview", "warning");
     expect(message.text).toContain("Avviso");

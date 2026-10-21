@@ -12,6 +12,10 @@ export function cleanDiagnosticText(value: string) {
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").trim();
 }
 
+export function isModuleLoadError(message: string) {
+  return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk [\w-]+ failed/i.test(message);
+}
+
 /** Presentation only: keep the original log and recovery payload unchanged. */
 export function describeEditorMessage(raw: string, context: MessageContext = "editor", level: ConsoleEntry["level"] = "error"): EditorMessage {
   const details = cleanDiagnosticText(raw);
@@ -20,9 +24,11 @@ export function describeEditorMessage(raw: string, context: MessageContext = "ed
     return message("La copia automatica della bozza non è stata aggiornata.",
       `${/ENOSPC|disco pieno|spazio insufficiente/i.test(details) ? "Libera spazio sul disco. " : ""}Le ultime modifiche potrebbero non essere recuperabili dopo la chiusura. Salva la pagina o copia le modifiche prima di uscire; poi riprova il backup.`);
   }
-  if (/Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk [\w-]+ failed/i.test(details)) return context === "preview"
+  if (isModuleLoadError(details)) return context === "preview"
     ? message("Una parte del pannello non è stata caricata.", "Riprova l’anteprima. Se ricapita, apri la diagnostica: un caricamento fallito non significa necessariamente che il file sia mancante.")
-    : message("Un componente dell’editor non è stato caricato.", "Attendi che eventuali aggiornamenti dell’editor finiscano, poi riprova il comando. Se ricapita, conserva la bozza prima di riavviare l’app e comunica i dettagli tecnici a chi ti assiste. Non è un errore del PLC.");
+    : message("Un componente dell’editor non è stato caricato.", context === "interface"
+      ? "Premi Riprova caricamento: il progetto e la bozza restano aperti. Se non funziona, verifica che npm run dev sia ancora attivo e controlla l’errore nel terminale. Prima di riavviare l’app, conserva la bozza. Non è un errore del PLC."
+      : "Attendi che eventuali aggiornamenti dell’editor finiscano, poi riprova il comando. Se ricapita, conserva la bozza prima di riavviare l’app e comunica i dettagli tecnici a chi ti assiste. Non è un errore del PLC.");
   if (context === "interface") return message("L’interfaccia dell’editor si è interrotta.",
     "Prova a tornare ai progetti. Se ci sono modifiche non salvate, conferma l’uscita solo dopo averle conservate. Se ricapita, comunica i dettagli tecnici a chi ti assiste.");
   if (/config path contains.*\?/i.test(details)) return message("Avviso sul percorso Windows dell’anteprima.",

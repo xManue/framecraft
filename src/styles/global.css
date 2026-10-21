@@ -240,7 +240,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .project-loading strong, .editor-recovery h1 { margin: 0; font-size: 18px; }
 .project-loading p, .editor-recovery p { max-width: 560px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .editor-recovery > span { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 7px; color: #f0b04c; background: rgba(240,176,76,.12); }
-.editor-recovery button { height: 36px; margin-top: 8px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--text); background: var(--surface-2); }
+.editor-recovery button { min-height: 44px; margin-top: 8px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--text); background: var(--surface-2); }
 .recovery-details { width: min(680px, 100%); margin-top: 4px; color: var(--muted); font-size: 11px; text-align: left; }
 .recovery-details summary { cursor: pointer; text-align: center; }
 .reload-recovery { overflow: auto; justify-content: flex-start; padding: clamp(16px, 4vh, 48px) 24px; }

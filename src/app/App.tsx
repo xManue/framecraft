@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect } from "react";
+import { Component, Suspense, useEffect, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, LoaderCircle, RotateCcw } from "lucide-react";
 import { WelcomeScreen } from "../editor/WelcomeScreen";
@@ -8,7 +8,7 @@ import type { PreviewExit, PreviewOutput } from "../core/types";
 import { editorCheckpointFresh } from "../state/editorRecovery";
 import { installEditorDraftRecovery } from "../state/editorDraft";
 import { MessageNotice } from "../editor/MessageNotice";
-import { describeEditorMessage } from "../core/editorMessages";
+import { describeEditorMessage, isModuleLoadError } from "../core/editorMessages";
 import { installEditorKeyboardShortcuts } from "../core/editorCommands";
 import { useEditorShortcuts } from "../state/editorShortcuts";
 import { useEditorGuidance } from "../state/editorGuidance";
@@ -16,23 +16,18 @@ import { useEditorAi } from "../state/editorAi";
 import { useAiAccountEvents } from "../ai/useAiAccountEvents";
 import { installAiInterviewDraftRecovery } from "../state/editorAiDraft";
 import { installAiChatProjectScope } from "../state/editorAiChat";
-
-const AppShell = lazy(() => import("../editor/AppShell").then(module => ({ default: module.AppShell })));
-const CommandPalette = lazy(() => import("../editor/CommandPalette").then(module => ({ default: module.CommandPalette })));
-const UserAccessWindow = lazy(() => import("../editor/UserAccessWindow").then(module => ({ default: module.UserAccessWindow })));
-const EditorSettings = lazy(() => import("../editor/EditorSettings").then(module => ({ default: module.EditorSettings })));
-const EditorHelp = lazy(() => import("../editor/EditorHelp").then(module => ({ default: module.EditorHelp })));
-const AiAssistant = lazy(() => import("../editor/AiAssistant").then(module => ({ default: module.AiAssistant })));
+import { createEditorComponents } from "./editorComponents";
 
 function InterfaceLoading() {
   return <div className="interface-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} /> Caricamento dell’interfaccia…</div>;
 }
 
 export function App() {
-  return <EditorErrorBoundary><EditorApp /></EditorErrorBoundary>;
+  const [components, setComponents] = useState(() => createEditorComponents());
+  return <EditorErrorBoundary onRetry={() => setComponents(createEditorComponents(true))}><EditorApp components={components} /></EditorErrorBoundary>;
 }
 
-class EditorErrorBoundary extends Component<{ children: ReactNode }, { error?: Error; componentStack?: string }> {
+class EditorErrorBoundary extends Component<{ children: ReactNode; onRetry: () => void }, { error?: Error; componentStack?: string }> {
   state: { error?: Error; componentStack?: string } = {};
 
   static getDerivedStateFromError(error: Error) {
@@ -50,8 +45,17 @@ class EditorErrorBoundary extends Component<{ children: ReactNode }, { error?: E
       <span><AlertTriangle size={26} /></span>
       <h1>Framecraft non è riuscito a mostrare il progetto</h1>
       <MessageNotice context="interface" raw={[this.state.error.message, this.state.componentStack].filter(Boolean).join("\n")} />
+      {isModuleLoadError(this.state.error.message) && <button onClick={() => {
+        this.props.onRetry();
+        this.setState({ error: undefined, componentStack: undefined });
+      }}><RotateCcw size={15} /> Riprova caricamento</button>}
       <button onClick={() => {
-        void useEditorStore.getState().closeProject().then(() => this.setState({ error: undefined }));
+        void useEditorStore.getState().closeProject().then(() => {
+          if (!useEditorStore.getState().project && !useEditorStore.getState().reloadRecovery) {
+            this.props.onRetry();
+            this.setState({ error: undefined, componentStack: undefined });
+          }
+        });
       }}><RotateCcw size={15} /> Torna ai progetti</button>
     </main>;
   }
@@ -115,7 +119,8 @@ function ReloadRecoveryScreen() {
   </main>;
 }
 
-function EditorApp() {
+function EditorApp({ components }: { components: ReturnType<typeof createEditorComponents> }) {
+  const { AppShell, CommandPalette, UserAccessWindow, EditorSettings, EditorHelp, AiAssistant } = components;
   useAiAccountEvents();
   const aiOpen = useEditorAi(state => state.open);
   const aiMode = useEditorAi(state => state.mode);

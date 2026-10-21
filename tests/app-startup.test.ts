@@ -53,6 +53,11 @@ describe("first HTML before the editor module loads", () => {
 });
 
 describe("development startup boundaries", () => {
+  it("isolates the optimizer cache from shared dependencies and verification copies", () => {
+    expect(config.cacheDir).toBe(fileURLToPath(new URL("../.hmi-preview/node_modules/.vite", import.meta.url)));
+    expect(config.cacheDir).not.toBe(fileURLToPath(new URL("../node_modules/.vite", import.meta.url)));
+  });
+
   it("scans only the real app entry and excludes its temporary tree from watching", () => {
     expect(config.optimizeDeps?.entries).toEqual(["index.html"]);
     expect(config.server?.warmup?.clientFiles).toEqual(["./src/main.tsx"]);

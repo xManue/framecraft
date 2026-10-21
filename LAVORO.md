@@ -5551,6 +5551,37 @@ Verifiche del 5 ottobre 2026:
 - Nessuna dipendenza aggiunta o modifica a licenze, driver o backend nativo. Da verificare sul
   dispositivo finale WebView2 e sui progetti reali; i materiali macchina restano locali.
 
+### 158. Recupero del caricamento dell’editor e cache Vite separata (2026-10-21)
+
+- Segnalazione: apertura progetti bloccata da `Failed to fetch dynamically imported module`
+  su `src/editor/AppShell.tsx`. Alla verifica il server originale sulla porta 1420 non era
+  attivo: il suo errore HTTP iniziale non e' stato recuperato. Il modulo corrente risponde
+  200 ed entra nell’editor in un server di prova isolato, senza errori di compilazione.
+- Trovati metadati in `node_modules/.vite` con riferimenti a dipendenze inesistenti,
+  relativi alle copie QA con `node_modules` condiviso. Cache ora nella `.hmi-preview`
+  di ogni checkout, con segmento `node_modules` per escludere i bundle dal pass Babel.
+  Nessuna cache, bozza o cartella progetto eliminata. Nuova configurazione al prossimo
+  `npm run dev`; la prima preparazione ricrea solo la cache separata.
+- Componenti lazy creati per istanza dell’app; `Riprova caricamento` li ricrea senza
+  chiudere il progetto o riavviare l’anteprima. In sviluppo usa URL sorgente nuovi:
+  la prova Edge ha dimostrato che il solo reset React lascia l’import fallito nella cache
+  del browser. Nessun ciclo automatico, valutazione di URL dal messaggio di errore o reload.
+  In produzione restano gli import staticamente risolvibili del bundle; il bypass degli
+  URL sorgente e' solo di sviluppo, non una promessa di recupero di ogni errore di chunk.
+- `Torna ai progetti` non nasconde più l’errore se l’utente annulla l’uscita con una bozza
+  modificata. Dettagli tecnici conservati; messaggio con controllo del terminale e comando
+  di recupero, pulsante accessibile da tastiera con altezza minima 44 px.
+- Test mirati: 49 casi in 4 file su import, lifecycle desktop, avvio e messaggi.
+  QA Edge ripetibile con `node tests/browser/editor-module-recovery.mjs`, Playwright
+  disponibile come pacchetto o tramite `FRAMECRAFT_PLAYWRIGHT_MODULE`: blocco iniziale,
+  secondo fallimento e terzo tentativo riuscito; stessa bozza, undo e sessione, nessun
+  reload o traffico esterno, verifiche a 375/768/1024/1440 px. Cache QA dedicata.
+  Ripetuti test e QA sullo snapshot pubblico `public-check-oOcyfU`, senza export macchina:
+  TypeScript e build Vite superati, soli avvisi static/dynamic import gia' noti;
+  nessun URL sorgente di recupero nel bundle produzione. Dipendenze tramite junction
+  locale, non installazione pulita. Progetto sintetico e nessuna chiamata AI/PLC.
+  Resta da confermare sul WebView2 reale; nessun riavvio forzato del desktop.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

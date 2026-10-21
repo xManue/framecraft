@@ -17,6 +17,8 @@ const browserProcessEnv = {
 
 export default defineConfig({
   plugins: [react()],
+  // Verification copies may share node_modules, but must never replace the live editor's cache.
+  cacheDir: fileURLToPath(new URL("./.hmi-preview/node_modules/.vite", import.meta.url)),
   clearScreen: false,
   define: browserProcessEnv,
   optimizeDeps: { entries: ["index.html"], esbuildOptions: { define: browserProcessEnv } },
