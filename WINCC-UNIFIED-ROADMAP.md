@@ -5,6 +5,9 @@ Aggiornato al 12 ottobre 2026. Baseline funzionale: documentazione ufficiale Win
 Aggiornamento mirato 21 ottobre 2026: consultazione HMI del registro attività Framecraft
 (LAVORO 159), confrontata con Audit Viewer V21. Non equivale a firme, commenti o conformità Audit.
 
+21 ottobre 2026: scambio ricette Framecraft JSON con confronto e importazione atomica nel servizio
+(LAVORO 160). Il riferimento Unified usa TSV; non viene dichiarata compatibilità del file vendor.
+
 Questo file è la checklist stabile del progetto. L'obiettivo non è copiare l'aspetto di TIA Portal,
 ma coprire le capacità che servono a progettare e usare un HMI Unified, poi renderle più verificabili,
 più veloci e più estendibili. L'inventario elenca le **famiglie funzionali**; le migliaia di singole
@@ -154,13 +157,13 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | ID | Capacità WinCC Unified | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
 | WCU-PAR-01 | Tipi parameter set da tag o UDT | DA FARE | Definizione struttura e versioni | Generazione dal catalogo PLC con diff tipo |
-| WCU-PAR-02 | Creazione/modifica/eliminazione ricette | PARZIALE | Servizio (144), editor iniziale scalare (145), chat con confronto/backup (146) e catalogo iniziale nel wizard (147); restano form Runtime, autorizzazione applicativa e Undo operativo | Validazione campo per campo e undo |
+| WCU-PAR-02 | Creazione/modifica/eliminazione ricette | PARZIALE | UDT, cronologia valori completa, Undo operativo e collaudo target | Archivio scalare, form Runtime (151), account/ACL server (152–154) e importazione di gruppo con confronto/revisione (160) |
 | WCU-PAR-03 | Trasferimento HMI-PLC | DA FARE | Nessun trasferimento ricetta implementato: non basta la scrittura di singoli tag | Anteprima delle differenze prima di scrivere |
 | WCU-PAR-04 | Lettura ricetta dal PLC | DA FARE | Upload e salvataggio come nuovo set | Confronto live tra PLC, ricetta e modifiche operatore |
-| WCU-PAR-05 | Import/export TSV | DA FARE | Formato compatibile e gestione versioni | Import con mapping colonne e report errori |
+| WCU-PAR-05 | Import/export TSV | PARZIALE | TSV e mapping colonne non implementati; nessun round-trip vendor dichiarato | Scambio JSON Framecraft v1, tipi esatti, confronto per ID, importazione atomica senza eliminazioni, capacità/ACL e recupero richiesta (160) |
 | WCU-PAR-06 | Array e strutture versionate | DA FARE | Migrazione UDT e valori | Migrazione assistita senza perdere campi |
-| WCU-PAR-07 | Maschere personalizzate | DA FARE | Collegamento a un tipo parameter set reale; la pagina guidata è ancora struttura | Form automatico ma completamente personalizzabile |
-| WCU-PAR-08 | Audit delle operazioni ricetta | DA FARE | Trail e firme secondo licenza | Diff esatto dei valori prima/dopo |
+| WCU-PAR-07 | Maschere personalizzate | PARZIALE | UDT, composizione libera dei singoli campi e trasferimenti PLC | Controllo Runtime e pagina guidata dagli schemi scalari, errori per campo, confronto e conferma; editor manuale senza AI obbligatoria (151/160) |
+| WCU-PAR-08 | Audit delle operazioni ricetta | PARZIALE | Storico esatto valori prima/dopo, firme/commenti, conformità e collaudo target | Audit persistente di richieste/esiti del servizio, compresa importazione di gruppo, senza valori nei log (155/160) |
 
 ## 9. Logging, trend, report e audit
 
@@ -173,8 +176,8 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-DAT-05 | Statistiche trend ed export CSV | PARZIALE | Statistiche complete, deviazione e analisi salvate | Export CSV online/storico con sorgente e quality code; aggregazioni min/max/media disponibili nel Data Log |
 | WCU-DAT-06 | Reporting e template Excel | DA FARE | Template, job, dati e generazione | Versionamento template e anteprima con dati di test |
 | WCU-DAT-07 | Report pianificati e distribuzione | DA FARE | Scheduler, stampa/email e stato job | Retry controllato e storico consegne |
-| WCU-DAT-08 | Audit Trail | DA FARE | Modifiche valori, login, operazioni e tamper indication | Ricerca unificata con oggetto/pagina/tag |
-| WCU-DAT-09 | Audit Viewer | DA FARE | Controllo Runtime, filtri ed export | Vista causale prima/dopo invece di solo righe |
+| WCU-DAT-08 | Audit Trail | PARZIALE | Valori prima/dopo, operazioni restanti, rotazione/restore, firme e conformità | SQLite con sequenza/catena hash verificata e correlazione richiesta/esito per comandi/accessi supportati (155) |
+| WCU-DAT-09 | Audit Viewer | PARZIALE | Export/offline, commenti/firme e vista causale completa | Vista HMI read-only con audit.read, filtri server e pagine ancorate ad archivio/sequenza (159) |
 | WCU-DAT-10 | Firma elettronica singola/doppia | DA FARE | Flusso secondo licenza Basis/Enhanced | Policy dichiarativa riusabile e testabile |
 | WCU-DAT-11 | Backup e restore Audit | DA FARE | Segmenti e integrità | Verifica automatica del ripristino |
 

@@ -5617,6 +5617,40 @@ Verifiche del 5 ottobre 2026:
   generici, audit amministrazione/trasporto, conservazione e prove native/industriali/carico.
   Nessuna nuova dipendenza o licenza vendor. Le roadmaps restano parziali, non parità dichiarata.
 
+### 160. Scambio ricette dal pannello con importazione atomica (2026-10-21)
+
+- Prosegue il blocco comune Unified/Optix, mantenendo ferma l’AI. Riferimento funzionale:
+  import/export dei Parameter Set Unified V21 e RecipeImportExport Optix. Formato autonomo
+  Framecraft JSON v1, non compatibilità TSV/CSV vendor o copia di codice NetLogic.
+- Nel controllo Archivio ricette: export dello schema selezionato dalla copia letta, file
+  UTF-8 massimo 2 MB, confronto locale prima/dopo e riepilogo nuove/sostituite/identiche/conservate.
+  Dettagli richiudibili caricati a richiesta, controlli touch da 48 px e testo sicuro senza HTML.
+- Una conferma invia il gruppo in una sola mutazione server: merge per ID, nessuna eliminazione,
+  schema/campi e limiti verificati, nomi unici, revisione attesa, ID richiesta/ricevuta persistenti.
+  Un errore o catalogo risultante oltre limite non pubblica modifiche parziali. La revisione
+  esportata non diventa la revisione destinazione e non certifica la provenienza del file.
+- Nuova capacità esplicita `recipes.import`, senza concessione agli account esistenti. Restano
+  sessione server, CSRF e limite `recipeChanges` sullo schema. Audit richiesta/esito del batch,
+  senza dati ricetta/credenziali. Nessun comando, connessione o falsa conferma PLC aggiunti.
+- Cambio utente pulisce copia letta/confronto e corpo ripetibile (resta solo l’ID da verificare),
+  invalida risposte tardive e revoca URL temporanei;
+  esito incerto conserva il marker ID e il confronto, con recupero soltanto della stessa richiesta.
+  Generatore standard include codec, tipi, form e servizi aggiornati; pannelli vecchi e helper
+  nativo richiedono aggiornamento/riavvio esplicito. Nessuna nuova dipendenza o licenza aggiunta.
+- Verifiche sulla copia pubblicabile senza JSON/foto privati: 146 test mirati su 13 file passati;
+  dopo l’ultima protezione al cambio utente, 39 casi sui quattro file interessati passati
+  (comprendono il nuovo caso e cinque casi sessione, non si sommano come test tutti distinti).
+  TypeScript/build editor e controllo tipi/bundle dell’entry QA del Runtime generato passati.
+  Browser Edge: download effettivo, file scelto, confronto e conferma da tastiera; account locali,
+  archivio su disco e audit SQLite reali. Una lettura, una importazione, zero altri comandi e
+  zero richieste esterne/connessioni PLC; logout pulisce la vista. Nessun overflow e controlli
+  da almeno 48 px a 375/768/1024/1440 px, schermate mobile/desktop ispezionate. Nessun segreto
+  di test nel bundle client. Dipendenze locali condivise, non installazione pulita; restano
+  IPC/scaffolding Tauri, target/CPU, HTTPS/proxy di produzione e touch fisico da collaudare.
+- Restano CSV/TSV con mapping, firma/provenienza, migrazioni UDT, backup/restore operativo,
+  storico valori completo e trasferimenti ricetta HMI–PLC. Le modifiche AI/trend già presenti
+  nella worktree restano separate da questa tranche.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

@@ -9,6 +9,9 @@ ora si presenta come 1.8.0. L’inventario restante non è stato rivalutato inte
 Aggiornamento mirato 21 ottobre 2026: nucleo comune di consultazione del registro attività
 Framecraft (LAVORO 159). Non importa oggetti Optix e non completa l’Event Logger generico.
 
+21 ottobre 2026: import/export ricette Framecraft JSON con confronto, capacità server dedicata,
+ACL schema e commit atomico (LAVORO 160). Non è il CSV/NetLogic RecipeImportExport Optix.
+
 Questa roadmap registra fin da ora tutto ciò che Framecraft dovrà coprire dopo la roadmap WinCC
 Unified. I contratti Rockwell restano separati da quelli Siemens: il nucleo comune viene riusato
 solo quando il comportamento è realmente equivalente. Un componente React simile a un oggetto
@@ -154,7 +157,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-RCP-05 | Recipe editor e Recipe application example | PARZIALE | Widget archivio dagli schemi, pagina guidata e palette (151), login server locale nel launcher (152); nessun TargetNode/Item/DataItem o trasferimento PLC | Form generato ma completamente personalizzabile |
 | FTX-RCP-06 | Ricette concorrenti e metadati | PARZIALE | Revisione contenuto, lock esclusivo e ultime 256 ricevute persistenti con soggetto/data al punto 144 | Merge guidato e storico delle revisioni completo |
 | FTX-RCP-07 | Tabelle database delle ricette | DA FARE | Schema store e query | Migrazione dati testata insieme al progetto |
-| FTX-RCP-08 | Import/export delle ricette | DA FARE | Formati e compatibilità Optix | Mapping colonne, preview e report errori |
+| FTX-RCP-08 | Import/export delle ricette | PARZIALE | CSV, mapping colonne, UDT e migrazione fra schemi; nessuna compatibilità Optix dichiarata | File Framecraft JSON v1, anteprima ID/valori, merge atomico senza eliminazioni, revisione/permessi/ACL e audit di gruppo (160) |
 
 ## 10. Logger, database, trend e report
 

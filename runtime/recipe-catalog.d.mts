@@ -3,8 +3,8 @@ export interface RecipeField { id: string; name: string; type: "boolean" | "inte
 export interface RecipeRecord { id: string; name: string; values: Record<string, RecipeScalar> }
 export interface RecipeSchema { id: string; name: string; fields: RecipeField[]; records: RecipeRecord[] }
 export interface RecipeCatalog { version: 1; schemas: RecipeSchema[] }
-export type RecipeAction = "create" | "update" | "rename" | "delete" | "copy";
-export interface RecipeCommand { id: string; expectedRevision: string; action: RecipeAction; schemaId: string; recordId: string; name?: string; values?: Record<string, RecipeScalar>; targetId?: string }
+export type RecipeAction = "create" | "update" | "rename" | "delete" | "copy" | "import";
+export interface RecipeCommand { id: string; expectedRevision: string; action: RecipeAction; schemaId: string; recordId: string; name?: string; values?: Record<string, RecipeScalar>; targetId?: string; fields?: RecipeField[]; records?: RecipeRecord[] }
 export class RecipeStoreError extends Error { readonly code: string; readonly status: number; readonly remedy: string; readonly fieldId?: string; constructor(code: string, fieldId?: string) }
 export function recipeObject(value: unknown): value is Record<string, unknown>;
 export function recipeKeys(value: unknown, required: string[], optional?: string[]): boolean;

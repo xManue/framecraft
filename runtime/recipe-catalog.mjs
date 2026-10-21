@@ -1,4 +1,6 @@
 const messages = {
+  RECIPE_FILE: [422, "File ricette non valido", "Usa un file JSON Framecraft versione 1, di massimo 2 MB, con schema e valori completi. CSV e TSV vendor non sono importati automaticamente."],
+  RECIPE_FILE_SCHEMA: [409, "Il file usa uno schema diverso", "Seleziona lo schema corretto. Identificativo, campi, tipi, unità e limiti devono corrispondere; il file non modifica la struttura del progetto."],
   RECIPE_CONFIG: [400, "Schema ricette non valido", "Controlla versione, identificativi unici, campi, tipi e valori iniziali del catalogo Framecraft."],
   RECIPE_VALUE: [422, "Valori ricetta non validi", "Completa tutti i campi con il tipo e i limiti dello schema. Nessuna conversione o valore predefinito viene scelto al tuo posto."],
   RECIPE_COMMAND: [400, "Operazione ricetta non valida", "Rileggi lo stato e invia una sola operazione con ID univoco, revisione attesa e campi previsti."],
@@ -71,9 +73,14 @@ export function parseRecipeCatalog(input) {
   return { version: 1, schemas };
 }
 export function parseRecipeCommand(value) {
-  if (!recipeKeys(value, ["id", "expectedRevision", "action", "schemaId", "recordId"], ["name", "values", "targetId"]) || typeof value.id !== "string" || !/^[A-Za-z0-9_-]{16,80}$/.test(value.id) || typeof value.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(value.expectedRevision) || !recipeId(value.schemaId) || !recipeId(value.recordId)) fail("RECIPE_COMMAND");
-  const extras = { create: ["name", "values"], update: ["name", "values"], rename: ["name"], delete: [], copy: ["name", "targetId"] };
+  if (!recipeKeys(value, ["id", "expectedRevision", "action", "schemaId", "recordId"], ["name", "values", "targetId", "fields", "records"]) || typeof value.id !== "string" || !/^[A-Za-z0-9_-]{16,80}$/.test(value.id) || typeof value.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(value.expectedRevision) || !recipeId(value.schemaId) || !recipeId(value.recordId)) fail("RECIPE_COMMAND");
+  const extras = { create: ["name", "values"], update: ["name", "values"], rename: ["name"], delete: [], copy: ["name", "targetId"], import: ["fields", "records"] };
   if (typeof value.action !== "string" || !Object.hasOwn(extras, value.action) || !recipeKeys(value, ["id", "expectedRevision", "action", "schemaId", "recordId", ...extras[value.action]])) fail("RECIPE_COMMAND");
+  if (value.action === "import") {
+    if (value.recordId !== "batch" || !Array.isArray(value.records) || !value.records.length || recipeByteSize(JSON.stringify(value)) > 2_100_000) fail("RECIPE_COMMAND");
+    const schema = parseRecipeCatalog({ version: 1, schemas: [{ id: value.schemaId, name: "Import", fields: value.fields, records: value.records }] }).schemas[0];
+    return { id: value.id, expectedRevision: value.expectedRevision, action: "import", schemaId: schema.id, recordId: "batch", fields: schema.fields, records: schema.records };
+  }
   if (extras[value.action].includes("name") && !recipeText(value.name) || extras[value.action].includes("targetId") && !recipeId(value.targetId) || extras[value.action].includes("values") && !recipeObject(value.values)) fail("RECIPE_COMMAND");
   if (value.values !== undefined && (!recipeObject(value.values) || Object.keys(value.values).length > 64 || Object.entries(value.values).some(([key, value]) => !recipeId(key) || !["number", "string", "boolean"].includes(typeof value) || typeof value === "number" && !Number.isFinite(value) || typeof value === "string" && value.length > 1024))) fail("RECIPE_COMMAND");
   return { id: value.id, expectedRevision: value.expectedRevision, action: value.action, schemaId: value.schemaId, recordId: value.recordId, ...(value.name !== undefined ? { name: value.name } : {}), ...(value.targetId !== undefined ? { targetId: value.targetId } : {}), ...(value.values !== undefined ? { values: Object.fromEntries(Object.entries(value.values).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) } : {}) };

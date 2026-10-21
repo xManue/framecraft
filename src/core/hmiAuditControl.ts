@@ -7,6 +7,7 @@ import { hmiAlarmElementBlocked } from "./hmiAlarmControl";
 const operations: Record<string, string> = {
   "tags.write": "Scrittura variabile", "alarms.acknowledge": "Presa visione allarme", "alarms.confirm": "Conferma allarme",
   "recipes.create": "Creazione ricetta", "recipes.update": "Modifica ricetta", "recipes.copy": "Copia ricetta", "recipes.rename": "Rinomina ricetta", "recipes.delete": "Eliminazione ricetta", "session.login": "Accesso operatore", "session.logout": "Uscita operatore",
+  "recipes.import": "Importazione ricette · gruppo di record",
 };
 const outcomes: Record<string, string> = { requested: "Richiesta registrata", applied: "Applicato al servizio", delivered: "Consegnato al trasporto, non confermato dal PLC", duplicate: "Richiesta già gestita", rejected: "Rifiutato", uncertain: "Esito incerto: da verificare", authenticated: "Accesso riuscito", "logged-out": "Accesso chiuso" };
 const css = `

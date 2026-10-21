@@ -127,7 +127,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (active >= 32) throw failure(429, "GATEWAY_BUSY");
         active++; accepted = true;
         if (request.method === "POST" && (request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw Object.assign(new RecipeStoreError("RECIPE_COMMAND"), { status: 415 });
-        const command = request.method === "GET" ? { action: "read" } : parseRecipeCommand(await body(request, 524_288));
+        const command = request.method === "GET" ? { action: "read" } : parseRecipeCommand(await body(request, 2_100_000));
         if (request.method === "POST") auditScope = auditContext("recipes." + command.action, { kind: "recipe-schema", id: command.schemaId, recordId: command.recordId, targetId: command.targetId ?? null }, command.id);
         let actor, authorizationTimer;
         try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "recipes." + command.action, request.method === "POST", request.method === "POST" ? { schemaId: command.schemaId } : undefined) : options.authorizeRecipeAction(request, structuredClone(command)), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }

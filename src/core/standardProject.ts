@@ -60,6 +60,9 @@ import recipeCatalogSource from "../../runtime/recipe-catalog.mjs?raw";
 import recipeCatalogTypes from "../../runtime/recipe-catalog.d.mts?raw";
 import recipeStoreSource from "../../runtime/recipe-store.mjs?raw";
 import recipeStoreTypes from "../../runtime/recipe-store.d.mts?raw";
+import recipeExchangeSource from "../../runtime/recipe-exchange.mjs?raw";
+import recipeExchangeTypes from "../../runtime/recipe-exchange.d.mts?raw";
+import recipeExchangeControlSource from "./hmiRecipeExchange.ts?raw";
 import gatewayStartSource from "../../runtime/start-gateway.mjs?raw";
 import gatewayProxySource from "../../runtime/vite-gateway.mjs?raw";
 import gatewayProxyTypes from "../../runtime/vite-gateway.d.mts?raw";
@@ -1855,6 +1858,8 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/recipe-catalog.d.mts", content: recipeCatalogTypes },
     { path: "runtime/recipe-store.mjs", content: recipeStoreSource },
     { path: "runtime/recipe-store.d.mts", content: recipeStoreTypes },
+    { path: "runtime/recipe-exchange.mjs", content: recipeExchangeSource },
+    { path: "runtime/recipe-exchange.d.mts", content: recipeExchangeTypes },
     { path: "framecraft.recipes.json", content: JSON.stringify(config.guided?.recipes !== undefined ? parseRecipeCatalog(config.guided.recipes) : emptyRecipeCatalog(), null, 2) + "\n" },
     { path: "runtime/alarm-labels.mjs", content: alarmLabelSource },
     { path: "runtime/alarm-labels.d.mts", content: alarmLabelTypes },
@@ -1878,7 +1883,8 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },
     { path: "src/framecraftGateway.ts", content: gatewayClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiRecipeClient.ts", content: recipeClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
-    { path: "src/framecraftHmiRecipeControl.ts", content: recipeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
+    { path: "src/framecraftHmiRecipeControl.ts", content: recipeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiRecipeExchange"', '"./framecraftHmiRecipeExchange"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
+    { path: "src/framecraftHmiRecipeExchange.ts", content: recipeExchangeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiAuditControl.ts", content: auditControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
     { path: "framecraft.recipes-ui.json", content: JSON.stringify({ version: 1, namespace: crypto.randomUUID() }, null, 2) + "\n" },
     { path: "vite.config.ts", content: panelViteConfigSource },

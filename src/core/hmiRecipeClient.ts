@@ -120,6 +120,7 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
     retry: (signal?: AbortSignal) => pending?.command ? perform(pending.command, signal, true) : Promise.reject(localError("pending")),
     acknowledgeReviewed() { if (busy || !pending || !reviewed) throw localError("pending"); forget(); notify(); },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    discardRetryBody() { if (pending) { pending = { id: pending.id }; reviewed = false; notify(); } },
     get pending() { return pending ? { id: pending.id, canRetry: !!pending.command, reviewed } : undefined; },
     get busy() { return busy; },
     dispose() { disposed = true; for (const controller of controllers) controller.abort(); listeners.clear(); },

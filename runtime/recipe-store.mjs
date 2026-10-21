@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rename, unlink, link, readdir } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
+import { mergeRecipeRecords } from "./recipe-exchange.mjs";
 import { RecipeStoreError, parseRecipeCatalog, parseRecipeCommand, parseRecipeRecords, parseRecipeValues, recipeActor, recipeByteSize, recipeId, recipeKeys, recipeNameKey, recipeText } from "./recipe-catalog.mjs";
 
 const digest = source => createHash("sha256").update(source).digest("hex");
@@ -61,7 +62,7 @@ export async function openRecipeStore({ directory, catalog: input, onChange } = 
       value.schemas = catalog.schemas.map(schema => { const stored = value.schemas.find(item => item.id === schema.id); if (!recipeKeys(stored, ["id", "records"])) fail("RECIPE_CORRUPT"); return { id: schema.id, records: parseRecipeRecords(stored.records, schema.fields) }; });
       let previous = 0; const ids = new Set();
       for (const receipt of value.receipts) {
-        if (!recipeKeys(receipt, ["id", "fingerprint", "sequence", "action", "schemaId", "recordId", "actor", "at"]) || typeof receipt.id !== "string" || !/^[A-Za-z0-9_-]{16,80}$/.test(receipt.id) || ids.has(receipt.id) || !hash(receipt.fingerprint) || !Number.isSafeInteger(receipt.sequence) || receipt.sequence <= previous || receipt.sequence > value.sequence || !["create", "update", "rename", "delete", "copy"].includes(receipt.action) || !catalog.schemas.some(schema => schema.id === receipt.schemaId) || !recipeId(receipt.recordId) || !recipeActor(receipt.actor) || !recipeText(receipt.at, 32) || new Date(receipt.at).toISOString() !== receipt.at) fail("RECIPE_CORRUPT");
+        if (!recipeKeys(receipt, ["id", "fingerprint", "sequence", "action", "schemaId", "recordId", "actor", "at"]) || typeof receipt.id !== "string" || !/^[A-Za-z0-9_-]{16,80}$/.test(receipt.id) || ids.has(receipt.id) || !hash(receipt.fingerprint) || !Number.isSafeInteger(receipt.sequence) || receipt.sequence <= previous || receipt.sequence > value.sequence || !["create", "update", "rename", "delete", "copy", "import"].includes(receipt.action) || !catalog.schemas.some(schema => schema.id === receipt.schemaId) || !recipeId(receipt.recordId) || !recipeActor(receipt.actor) || !recipeText(receipt.at, 32) || new Date(receipt.at).toISOString() !== receipt.at) fail("RECIPE_CORRUPT");
         ids.add(receipt.id); previous = receipt.sequence;
       }
       if (previous !== value.sequence) fail("RECIPE_CORRUPT");
@@ -110,14 +111,17 @@ export async function openRecipeStore({ directory, catalog: input, onChange } = 
         const schema = catalog.schemas.find(schema => schema.id === command.schemaId), group = state.schemas.find(schema => schema.id === command.schemaId);
         if (!schema || !group) fail("RECIPE_MISSING");
         const original = group.records.find(record => record.id === command.recordId), targetId = command.action === "copy" ? command.targetId : command.recordId;
-        if (command.action !== "create" && !original) fail("RECIPE_MISSING");
+        if (!["create", "import"].includes(command.action) && !original) fail("RECIPE_MISSING");
         if (["create", "copy"].includes(command.action) && group.records.some(record => record.id === targetId) || command.name !== undefined && group.records.some(record => (command.action === "copy" || record.id !== targetId) && recipeNameKey(record.name) === recipeNameKey(command.name))) fail("RECIPE_EXISTS");
-        if (command.action === "delete") group.records = group.records.filter(record => record.id !== command.recordId);
+        if (command.action === "import") group.records = mergeRecipeRecords({ ...schema, records: group.records }, command.fields, command.records);
+        else if (command.action === "delete") group.records = group.records.filter(record => record.id !== command.recordId);
         else {
           const record = { id: targetId, name: command.name, values: ["create", "update"].includes(command.action) ? parseRecipeValues(command.values, schema.fields) : clone(original.values) };
           if (["create", "copy"].includes(command.action)) group.records.push(record); else group.records[group.records.findIndex(record => record.id === targetId)] = record;
           if (group.records.length > 500) fail("RECIPE_LIMIT");
         }
+        // A committed archive must remain readable by the catalog/client, including all schemas.
+        parseRecipeCatalog({ version: 1, schemas: catalog.schemas.map(schema => ({ ...schema, records: state.schemas.find(item => item.id === schema.id).records })) });
         if (!Number.isSafeInteger(state.sequence + 1)) fail("RECIPE_LIMIT");
         state.sequence++; const receipt = { id: command.id, fingerprint, sequence: state.sequence, action: command.action, schemaId: schema.id, recordId: targetId, actor, at: new Date().toISOString() };
         state.receipts = [...state.receipts.slice(-255), receipt];

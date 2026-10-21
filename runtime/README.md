@@ -536,7 +536,10 @@ account locali configurati esplicitamente; senza identità nega l’accesso.
 - `GET`: snapshot con revisione, sequenza, schemi e ricette. Richiede azione `read` autorizzata.
 - `POST`: `id` univoco, `expectedRevision`, `action`, `schemaId`, `recordId`; `create`/`update`
   richiedono `name` e tutti i `values`, `rename` solo `name`, `copy` `name` e `targetId`, `delete`
-  nessun campo extra. Corpo fino a 512 KiB. Un privilegio o un actor nel JSON non è accettato.
+  nessun campo extra. `import` richiede `recordId: "batch"`, `fields` e `records` completi:
+  unisce per ID senza eliminazioni e salva il gruppo in una sola mutazione. Serve capacità
+  `recipes.import` e il limite `recipeChanges` sullo schema. Corpo massimo 2.100.000 byte;
+  il catalogo risultante deve restare entro 2 MB. Un actor nel JSON non è accettato.
 - ID ripetuto con identico contenuto e soggetto, fra le ultime 256 mutazioni, restituisce la
   ricevuta senza applicare ancora; contenuto/soggetto differente o revisione obsoleta è conflitto.
   La deduplicazione persiste alla riapertura. Una vecchia ricevuta può uscire dalla finestra:
@@ -557,6 +560,47 @@ Nessun metodo del servizio invia comandi MQTT/OPC UA. I riferimenti funzionali s
 e i [parameter set Unified](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-rt-unified/controlling-with-parameter-sets-rt-unified),
 non una promessa di round-trip o parità vendor. Le garanzie di flush restano quelle di
 [Node e del dispositivo](https://nodejs.org/docs/latest-v24.x/api/fs.html#filehandlesync).
+
+## Importare ed esportare ricette dal pannello
+
+Nel controllo **Archivio ricette**, dopo **Rileggi archivio**, trovi **Scambio ricette con file**.
+Questa funzione non legge né scrive tag PLC e non cambia lo schema del progetto.
+
+1. Seleziona lo schema e premi **Esporta schema JSON**. Il browser scarica tutte le sue ricette
+   dalla copia già letta, con ID, tipi, unità, limiti, revisione, sequenza e data UTC di export.
+   Per una copia più recente premi prima Rileggi archivio. Il file contiene valori macchina:
+   proteggilo come gli altri documenti dell’impianto. Non contiene account, password, token o
+   mapping PLC. Il download locale non è certificato né registrato come evento server.
+2. Per importare scegli un file JSON Framecraft v1, UTF-8, massimo 2.000.000 byte. Il file è
+   letto localmente; non è inviato finché non confermi. Schema ID e campi (ordine, tipi, unità
+   e limiti compresi) devono coincidere con la destinazione. Nessuna conversione di tipi,
+   sostituzione con default o creazione automatica di uno schema.
+3. Controlla il riepilogo nuove/sostituite/identiche/conservate e apri i dettagli prima/dopo.
+   Si abbina per ID, non per nome: un ID esistente sostituisce nome e valori, uno nuovo crea
+   una ricetta. Le ricette non presenti nel file restano intatte. Nomi duplicati o un singolo
+   campo invalido bloccano l’intero gruppo, senza salvare prima le righe valide.
+4. **Conferma importazione nell’archivio** richiede esplicitamente `recipes.import` sul server;
+   creare/modificare singole ricette non basta. I limiti per schema configurati continuano ad
+   applicarsi. Negli archivi account ancora al formato 1, questa capacità vale per tutti gli
+   schemi: per restringerla configura **Risorse consentite**, con migrazione esplicita al formato 2.
+   Gli account esistenti non ricevono la nuova capacità automaticamente. Dopo l’aggiornamento
+   riavvia Framecraft per aggiornare anche l’helper locale di amministrazione degli account.
+5. Se il servizio rifiuta la revisione, rileggi l’archivio e scegli **Rigenera confronto sulla
+   copia riletta**; ricontrolla i nuovi valori prima di confermare. Non si usa come destinazione
+   la revisione dichiarata nel file. Risposte perse usano la stessa protezione/ID descritta sotto,
+   senza replay automatico. Il cambio utente rimuove copia letta, confronto e corpo ripetibile
+   della richiesta precedente (resta solo l’ID da verificare); il download già
+   salvato sul dispositivo resta responsabilità dell’operatore.
+
+Il formato è `{"format":"framecraft.recipes","version":1,"source":{...},"schema":{...}}`;
+`schema` contiene lo stesso contratto scalare del catalogo, incluse le ricette. È un formato
+Framecraft, **non** il CSV del RecipeImportExport Optix né il TSV del Parameter Set Unified.
+Non è un backup completo di `store.id`, ricevute, audit o progetto, e non ne ripristina le identità.
+Il registro server annota richiesta/esito, soggetto e schema (`recordId: "batch"`), non i valori.
+CSV/TSV con mapping, firma/verifica di provenienza e migrazione fra schemi restano da implementare.
+Vecchi pannelli richiedono un aggiornamento esplicito del Runtime, non solo l’inserimento del div.
+Un Runtime precedente che non conosce l’azione `import` non va riutilizzato dopo nuove importazioni:
+aggiornare insieme servizio e interfaccia; provare backup/restore e aggiornamento sul target finale.
 
 ## Form operatore ricette
 
