@@ -29,6 +29,20 @@ beforeEach(() => {
 });
 afterEach(async () => { if (root) await act(async () => root!.unmount()); host?.remove(); root = undefined; useEditorStore.setState(actions); vi.restoreAllMocks(); });
 describe("finestra pagine e categorie", () => {
+  it("distingue le pagine con simboli coerenti senza aggiungere un secondo nome accessibile", async () => {
+    useEditorStore.setState({ pages: [
+      { id: "synoptic", name: "Upstair", file: "C:/synthetic-panel/Upstair.tsx", route: "/upstair" },
+      { id: "alarm", name: "Allarmi", file: "C:/synthetic-panel/Alarm.tsx", route: "/alarms" },
+      { id: "unknown", name: "Pagina personalizzata", file: "C:/synthetic-panel/Custom.tsx", route: "/custom" },
+    ], pageCategories: [{ ...useEditorStore.getState().pageCategories[0], id: "alarms", label: "Alarms", pages: ["/alarms"] }] });
+    await mount();
+    const symbols = [...document.querySelectorAll('.page-list-symbol')];
+    expect(symbols).toHaveLength(3);
+    expect(symbols.every(symbol => symbol.getAttribute("aria-hidden") === "true")).toBe(true);
+    expect(new Set(symbols.map(symbol => symbol.querySelector('svg')?.innerHTML)).size).toBe(3);
+    expect(document.body.textContent).toContain("Pagina personalizzata");
+    expect(desktopBridge.writeFile).not.toHaveBeenCalled();
+  });
   it("mostra il funzionamento della base selezionata e distingue strutture e servizi esterni", async () => {
     await mount(); await click(button("Nuova pagina"));
     expect(document.querySelector('.template-behavior-info')?.textContent).toContain("Solo struttura");

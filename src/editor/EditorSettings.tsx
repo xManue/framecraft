@@ -1,5 +1,5 @@
 import { HelpCircle, Keyboard, LayoutTemplate, RotateCcw, Search, Sparkles, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { defaultEditorShortcuts, editorCommands, editorShortcutFromEvent, editorShortcutIssue, editorShortcutsIssue, formatEditorShortcut, type EditorCommandId } from "../../scripts/editor-shortcuts.mjs";
 import { useEditorShortcuts } from "../state/editorShortcuts";
@@ -7,6 +7,14 @@ import { useEditorGuidance } from "../state/editorGuidance";
 import { layoutPresets, snapGrids, useEditorStore, type UiDensity, type WorkLayout } from "../state/editorStore";
 import { AiAccountSettings } from "./AiAccountSettings";
 import { useEditorAi } from "../state/editorAi";
+import "./editor-settings.css";
+
+const sections = [
+  { id: "workspace", label: "Area di lavoro", icon: LayoutTemplate },
+  { id: "shortcuts", label: "Scorciatoie e comandi", icon: Keyboard },
+  { id: "assistance", label: "Aiuto e suggerimenti", icon: HelpCircle },
+  { id: "ai", label: "AI e account", icon: Sparkles },
+] as const;
 
 const workLayouts: { id: WorkLayout; label: string; description: string }[] = [
   { id: "disegno", label: "Grafica e componenti", description: "Componenti e più spazio al disegno" },
@@ -24,7 +32,7 @@ export function EditorSettings() {
   const [recording, setRecording] = useState<{ id: EditorCommandId; index: number }>();
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const panel = useRef<HTMLElement>(null), capture = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLElement>(null), body = useRef<HTMLDivElement>(null), capture = useRef<HTMLButtonElement>(null);
   const recordingRef = useRef(recording); recordingRef.current = recording;
   const uiDensity = useEditorStore(state => state.uiDensity);
   const setUiDensity = useEditorStore(state => state.setUiDensity);
@@ -55,7 +63,7 @@ export function EditorSettings() {
         if (recordingRef.current) setRecording(undefined); else setOpen(false);
       }
       if (event.key !== "Tab") return;
-      const nodes = [...(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]') ?? [])];
+      const nodes = [...(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled):not([tabindex="-1"]), input:not(:disabled), select:not(:disabled), a[href], textarea:not(:disabled), [tabindex="0"]') ?? [])].filter(node => !node.closest('[hidden], [inert]'));
       const index = nodes.indexOf(document.activeElement as HTMLElement);
       if (event.shiftKey && index <= 0) { event.preventDefault(); nodes.at(-1)?.focus(); }
       else if (!event.shiftKey && (index < 0 || index === nodes.length - 1)) { event.preventDefault(); nodes[0]?.focus(); }
@@ -68,6 +76,12 @@ export function EditorSettings() {
     };
   }, [setOpen]);
   useEffect(() => { if (recording) capture.current?.focus({ preventScroll: true }); }, [recording]);
+  useLayoutEffect(() => { if (body.current) body.current.scrollTop = 0; }, [section]);
+
+  function selectSection(id: typeof section, focus = false) {
+    setOpen(true, id); setRecording(undefined);
+    if (focus) document.getElementById(`editor-settings-tab-${id}`)?.focus({ preventScroll: true });
+  }
 
   function record(event: React.KeyboardEvent) {
     if (!recording || event.currentTarget !== capture.current || event.key === "Tab" || event.key === "Escape") return;
@@ -104,13 +118,13 @@ export function EditorSettings() {
   return createPortal(<div className="editor-settings-backdrop">
     <section className="editor-settings" role="dialog" aria-modal="true" aria-labelledby="editor-settings-title" ref={panel} tabIndex={-1}>
       <header><div><small>PREFERENZE DELL’APP</small><h2 id="editor-settings-title">Impostazioni dell’editor</h2><p>Personalizza il tuo lavoro. Il pannello HMI finale non viene modificato.</p></div><button type="button" onClick={() => setOpen(false)} aria-label="Chiudi impostazioni"><X size={20} /></button></header>
-      <nav aria-label="Sezioni delle impostazioni">
-        <button type="button" aria-pressed={section === "workspace"} onClick={() => { setOpen(true, "workspace"); setRecording(undefined); }}><LayoutTemplate size={18} />Area di lavoro</button>
-        <button type="button" aria-pressed={section === "shortcuts"} onClick={() => setOpen(true, "shortcuts")}><Keyboard size={18} />Scorciatoie e comandi</button>
-        <button type="button" aria-pressed={section === "assistance"} onClick={() => { setOpen(true, "assistance"); setRecording(undefined); }}><HelpCircle size={18} />Aiuto e suggerimenti</button>
-        <button type="button" aria-pressed={section === "ai"} onClick={() => { setOpen(true, "ai"); setRecording(undefined); }}><Sparkles size={18} />AI e account</button>
+      <nav role="tablist" aria-label="Sezioni delle impostazioni">
+        {sections.map(({ id, label, icon: Icon }, index) => <button key={id} id={`editor-settings-tab-${id}`} type="button" role="tab" aria-selected={section === id} aria-controls="editor-settings-content" tabIndex={section === id ? 0 : -1} onClick={() => selectSection(id)} onKeyDown={event => {
+          const next = event.key === "ArrowRight" ? (index + 1) % sections.length : event.key === "ArrowLeft" ? (index + sections.length - 1) % sections.length : event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : undefined;
+          if (next !== undefined) { event.preventDefault(); selectSection(sections[next].id, true); }
+        }}><Icon size={18} /><span>{label}</span></button>)}
       </nav>
-      <div className="editor-settings-body">
+      <div className="editor-settings-body" ref={body} id="editor-settings-content" role="tabpanel" aria-labelledby={`editor-settings-tab-${section}`} tabIndex={0}>
         {section === "ai" ? <AiAccountSettings /> : section === "workspace" ? <div className="editor-settings-workspace">
           <p className="editor-settings-hint">Queste preferenze si applicano subito e sono condivise tra i progetti. Puoi cambiarle anche dai menu rapidi.</p>
           <fieldset><legend>Disposizione dei pannelli</legend><p>{layoutCustomized ? "Disposizione personalizzata. Scegli una configurazione per riapplicarla." : "Scegli gli strumenti per il lavoro corrente."} Non cambia grafica o codice della pagina.</p><div className="editor-settings-layouts">{workLayouts.map(layout => <button type="button" key={layout.id} aria-pressed={!layoutCustomized && workLayout === layout.id} onClick={() => applyWorkLayout(layout.id)}><strong>{layout.label}</strong><small>{layout.description}</small></button>)}</div></fieldset>
@@ -134,7 +148,7 @@ export function EditorSettings() {
         </>}
       </div>
       <footer><div>{error ? <p role="alert">{error}</p> : <p role="status">{message || (changed ? "Hai modifiche alle scorciatoie non ancora salvate." : section === "ai" ? "Account e modello sono gestiti qui. Nessuna richiesta AI parte senza il tuo consenso." : "Le scorciatoie sono preferenze locali dell’app: non inviano comandi al PLC.")}</p>}</div>
-        <div className="editor-settings-actions">{(section === "shortcuts" || changed) && <><button type="button" onClick={() => { setDraft(defaultEditorShortcuts()); setRecording(undefined); setError(""); setMessage("Predefiniti ripristinati nella bozza. Salva per applicarli."); }}><RotateCcw size={16} />Ripristina predefiniti</button><button type="button" className="primary" disabled={!changed || !!recording} onClick={save}>Salva scorciatoie</button></>}<button type="button" onClick={() => setOpen(false)}>{changed ? "Chiudi senza salvare" : returnToAi ? "Torna alla schermata AI" : "Chiudi"}</button></div>
+        <div className="editor-settings-actions"><div className="editor-settings-shortcut-actions" hidden={section !== "shortcuts" && !changed}><button type="button" onClick={() => { setDraft(defaultEditorShortcuts()); setRecording(undefined); setError(""); setMessage("Predefiniti ripristinati nella bozza. Salva per applicarli."); }}><RotateCcw size={16} />Ripristina predefiniti</button><button type="button" className="primary" disabled={!changed || !!recording} onClick={save}>Salva scorciatoie</button></div><button type="button" onClick={() => setOpen(false)}>{changed ? "Chiudi senza salvare" : returnToAi ? "Torna alla schermata AI" : "Chiudi"}</button></div>
       </footer>
     </section>
   </div>, document.body);

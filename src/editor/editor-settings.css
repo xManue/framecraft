@@ -1,0 +1,131 @@
+.editor-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 55%);
+}
+
+.editor-settings {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: min(1040px, calc(100vw - 48px));
+  height: min(800px, calc(100dvh - 48px));
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--text);
+  box-shadow: var(--dialog-shadow);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.editor-settings > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+}
+.editor-settings > header > div { min-width: 0; }
+.editor-settings > header > button { flex: 0 0 44px; padding: 0; background: transparent; border-color: transparent; }
+.editor-settings h2 { margin: 4px 0; font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+.editor-settings p { margin: 6px 0; line-height: 1.5; }
+.editor-settings p, .editor-settings small { color: var(--muted); }
+.editor-settings > header small { font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+.editor-settings :is(button, input, select, textarea) {
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+.editor-settings button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 12px; cursor: pointer; transition: background-color .15s, border-color .15s; }
+.editor-settings button > svg { flex-shrink: 0; }
+.editor-settings button:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
+.editor-settings button:disabled { opacity: .5; cursor: default; }
+.editor-settings :focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.editor-settings > nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 0 24px; border-bottom: 1px solid var(--border); }
+.editor-settings [role="tab"] { position: relative; padding: 10px 8px 14px; border-color: transparent; border-radius: var(--radius) var(--radius) 0 0; background: transparent; color: var(--muted); font-size: 13px; }
+.editor-settings [role="tab"][aria-selected="true"] { color: var(--text); background: var(--surface-2); }
+.editor-settings [role="tab"][aria-selected="true"]::after { content: ""; position: absolute; bottom: -1px; left: 12px; right: 12px; height: 2px; background: var(--accent); }
+.editor-settings-body { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 20px 24px; }
+.editor-settings-body:focus-visible { outline-offset: -3px; }
+.editor-settings-hint { margin: 0 0 20px !important; }
+.editor-settings-search { display: flex; align-items: center; gap: 10px; margin: 16px 0; }
+.editor-settings-search input { flex: 1; padding: 10px 12px; }
+.editor-shortcut-list article { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 1.4fr); align-items: center; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.editor-shortcut-list article strong { display: block; margin-top: 3px; font-weight: 600; }
+.editor-shortcut-list article p { font-size: 13px; }
+.editor-shortcut-combinations { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
+.editor-shortcut-chip { display: flex; min-width: 0; }
+.editor-shortcut-chip > button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.editor-shortcut-chip > button:last-child { flex: 0 0 44px; border-left: 0; border-radius: 0 var(--radius) var(--radius) 0; padding: 8px; }
+.editor-shortcut-chip kbd { font: inherit; overflow-wrap: anywhere; }
+.editor-settings button.recording { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+
+.editor-settings > footer { padding: 14px 24px 18px; border-top: 1px solid var(--border); background: var(--surface-1); }
+.editor-settings > footer > div:first-child { height: 3em; overflow: auto; scrollbar-gutter: stable; overflow-wrap: anywhere; font-size: 13px; }
+.editor-settings > footer p { margin: 0; }
+.editor-settings [role="alert"] { color: var(--red); }
+.editor-settings-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.editor-settings-shortcut-actions { display: flex; gap: 8px; }
+/* Keep the action row in place on every tab, without hidden keyboard targets. */
+.editor-settings-shortcut-actions[hidden] { display: flex; visibility: hidden; }
+.editor-settings-actions > button { margin-left: auto; }
+.editor-settings .primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.editor-settings .primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.editor-settings-workspace { min-width: 0; overflow-wrap: anywhere; }
+.editor-settings-workspace fieldset { min-width: 0; margin: 0 0 24px; padding: 0 0 24px; border: 0; border-bottom: 1px solid var(--border); }
+.editor-settings-workspace fieldset:last-child { margin-bottom: 0; border-bottom: 0; }
+.editor-settings-workspace legend { width: 100%; padding: 0 0 8px; font-size: 14px; font-weight: 600; }
+.editor-settings-workspace label { display: block; margin: 10px 0; }
+.editor-settings-workspace select { padding: 8px 12px; min-width: min(300px, 100%); max-width: 100%; }
+.editor-settings-layouts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.editor-settings-layouts button { flex-direction: column; align-items: flex-start; padding: 14px; text-align: left; }
+.editor-settings-layouts strong { font-weight: 600; }
+.editor-settings-layouts [aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.editor-settings-toggle { display: flex !important; align-items: center; gap: 10px; min-height: 44px; }
+.editor-settings-toggle input { flex: 0 0 20px; min-height: 20px; width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.editor-settings .ai-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.editor-settings .ai-model-controls { gap: 16px; padding: 0; }
+.editor-settings .ai-model-controls > label { min-width: 0; }
+.editor-settings .ai-model-controls select { min-width: 0; width: 100%; }
+.editor-settings .ai-model-controls small { font-size: 13px; }
+.editor-settings .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .editor-settings-backdrop { padding: 8px; }
+  .editor-settings { width: calc(100vw - 16px); height: min(800px, calc(100dvh - 16px)); }
+  .editor-settings > header, .editor-settings-body, .editor-settings > footer { padding: 14px; }
+  .editor-settings > nav { padding: 0 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .editor-settings [role="tab"] { padding: 8px; }
+  .editor-settings-layouts { grid-template-columns: 1fr; }
+  .editor-shortcut-list article { grid-template-columns: minmax(0, 1fr); }
+  .editor-shortcut-combinations { justify-content: flex-start; }
+  .editor-settings-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .editor-settings-actions > button { margin-left: 0; }
+  .editor-settings-shortcut-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .editor-settings-shortcut-actions[hidden] { display: grid; }
+  .editor-settings > footer > div:first-child { height: 4.5em; }
+}
+@media (max-width: 480px) {
+  .editor-settings-body { font-size: 16px; }
+  .editor-settings [role="tab"] { gap: 5px; font-size: 12px; }
+  .editor-settings-shortcut-actions button { font-size: 12px; padding: 6px; }
+}
+@media (max-height: 560px) {
+  .editor-settings > header { padding-block: 8px; }
+  .editor-settings > header p, .editor-settings > header small { display: none; }
+  .editor-settings > footer { padding-block: 8px; }
+  .editor-settings > footer > div:first-child { height: 1.5em; }
+  .editor-settings-actions { margin-top: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .editor-settings button { transition: none; } }

@@ -1,0 +1,24 @@
+.editor-grid { --activity-width: 52px; }
+.editor-grid.inspector-closed { grid-template-columns: var(--activity-width) minmax(0, var(--pane-left, 220px)) minmax(240px, 1fr); }
+.editor-grid.left-collapsed.inspector-closed { grid-template-columns: var(--activity-width) minmax(240px, 1fr); }
+.activity-bar { padding: 8px 4px; gap: 8px; }
+.activity-bar button { width: 44px; height: 44px; }
+.activity-bar button span { display: none; }
+.activity-bar button.active::before { left: -4px; width: 2px; height: 24px; }
+.workspace-stack > .workspace { flex: 1; min-height: 0; }
+.workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; min-height: 44px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--border); background: var(--surface-1); }
+.workspace-page-title { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-page-title svg { flex-shrink: 0; color: var(--muted); }
+.workspace-heading button, .context-panel-close { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-width: 44px; min-height: 44px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; }
+.workspace-heading button:hover:not(:disabled), .context-panel-close:hover { background: var(--surface-hover); color: var(--text); }
+.workspace-heading button[aria-expanded="true"] { color: var(--text); background: var(--surface-3); }
+.workspace-heading button:disabled { opacity: .55; cursor: default; }
+.workspace-heading button:focus-visible, .context-panel-close:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: -2px; }
+.editor-right-pane { position: relative; }
+.editor-right-pane[hidden] { display: none; }
+.editor-right-pane:not(.chat-open) > .inspector > .panel-title { height: 44px; padding-right: 52px; }
+.context-panel-close { position: absolute; z-index: 6; top: 0; right: 4px; width: 44px; padding: 0; }
+@media (max-width: 760px) {
+  .editor-grid.inspector-closed, .editor-grid.left-collapsed.inspector-closed { grid-template-columns: var(--activity-width) minmax(0, 1fr); }
+  .workspace-heading { padding-left: 10px; }
+}

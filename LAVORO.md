@@ -5500,6 +5500,29 @@ Verifiche del 5 ottobre 2026:
   Viewer HMI, firme, audit amministrativo/trasporto completo, archiviazione e restore, policy
   operative, validazione ACL/clock/guasti/carico sul target. Obiettivo complessivo ancora attivo.
 
+### 156. Revisione dell’editor e impostazioni stabili (2026-10-21)
+
+- Scelta utente: scuro neutro con poco blu, testi più discreti, colonna sinistra stretta e
+  richiudibile, canvas ampio e proprietà a richiesta. Ultima scelta pagine: miniature reali,
+  non solo icone; la cattura locale è il prossimo intervento, non è ancora inclusa qui.
+- Palette e superfici condivise più uniformi; dimensione Normale da 125% a 110%, Grande 130%,
+  Compatta 100%. Non cambia la grafica dei pannelli HMI o i dati dei progetti.
+- Impostazioni con contenitore a dimensioni definite, contenuto scorrevole e footer fermo:
+  schede lunghe, brevi o ricerca vuota non ridimensionano la finestra. Schede da tastiera,
+  focus delimitato, bozza scorciatoie conservata e nessuna richiesta AI implicita.
+- Colonna proprietà nascosta senza selezione e in Usa pannello; compare selezionando un
+  elemento, si richiude e riapre dal titolo della pagina senza perdere selezione o bozza.
+  Non riapre per il solo cambio degli offset AST; nuova selezione o richiesta esplicita sì.
+- Divisori visibili, drag in pixel dell’editor, doppio clic/Home per ripristinare la larghezza.
+  Riduzione proporzionale quando manca spazio senza sovrascrivere le larghezze memorizzate.
+  Rimossa la regola responsive che ignorava le dimensioni scelte per i pannelli.
+- Verifiche mirate: impostazioni, account/isolamento AI, pagine, preferenze, dimensionamento e
+  apertura/chiusura delle proprietà. QA browser con progetto sintetico, nessun PLC o AI reale;
+  finestra e footer invariati tra quattro schede su 375/768/1024/1440 px e finestra bassa.
+  Trascinamento e ripristino divisori controllati anche con larghezze richieste eccessive.
+- Le modifiche trend/profili già presenti restano escluse. Questa revisione UI non chiude
+  le roadmap Unified/Optix/AI né costituisce un collaudo industriale o dell’eseguibile nativo.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

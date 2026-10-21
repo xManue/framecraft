@@ -1,24 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { AlertTriangle, CheckCircle2, Info, Undo2, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, Info, PanelRightClose, PanelRightOpen, Undo2, X } from "lucide-react";
 import { ActivityBar } from "./ActivityBar";
 import { LeftPanel } from "./LeftPanel";
 import { TopBar } from "./TopBar";
 import { ConsolePanel } from "./ConsolePanel";
 import { Inspector } from "../inspector/Inspector";
 import { Workspace } from "./Workspace";
-import { densityScale, useEditorStore, type PaneSizes } from "../state/editorStore";
+import { densityScale, layoutPresets, useEditorStore, type PaneSizes } from "../state/editorStore";
+import { fitWorkspacePanes } from "../core/workspaceLayout";
 import { StandalonePreview } from "../preview/StandalonePreview";
 import { consoleMessageSource, describeEditorMessage } from "../core/editorMessages";
 import { useEditorAi } from "../state/editorAi";
 import { AiProjectChat } from "./AiProjectChat";
 import { AiContextMenu } from "./AiContextMenu";
+import "./workspace-chrome.css";
 
 /** The bar between two panels. It is dragged in the editor's own pixels, which are not the screen's
  * once the interface is scaled up, so the pointer distance is divided back down before it is used. */
-function PaneResizer({ pane, edge, scale }: { pane: keyof PaneSizes; edge: "left" | "right"; scale: number }) {
-  const width = useEditorStore((state) => state.paneSizes[pane]);
+function PaneResizer({ pane, edge, scale, width }: { pane: keyof PaneSizes; edge: "left" | "right"; scale: number; width: number }) {
   const setPaneSize = useEditorStore((state) => state.setPaneSize);
+  const workLayout = useEditorStore((state) => state.workLayout);
+  const reset = () => setPaneSize(pane, layoutPresets[workLayout].panes[pane]);
   const drag = useRef<{ pointerId: number; clientX: number; width: number }>(undefined);
   const begin = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -36,14 +39,18 @@ function PaneResizer({ pane, edge, scale }: { pane: keyof PaneSizes; edge: "left
     drag.current = undefined;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
-  return <div className={`pane-resizer pane-resizer-${pane}`} role="separator" aria-orientation="vertical"
+  return <div className={`pane-resizer pane-resizer-${pane}`} role="separator" aria-orientation="vertical" aria-valuenow={Math.round(width)}
     aria-label={pane === "left" ? "Larghezza pannello sinistro" : "Larghezza pannello proprietà"}
+    title="Trascina per allargare o restringere. Doppio clic per ripristinare la larghezza."
+    onDoubleClick={reset}
     onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish}
     // Reaching for the keyboard is the way back when a panel has been dragged somewhere unusable.
     tabIndex={0} onKeyDown={(event) => {
       const step = event.shiftKey ? 40 : 10;
-      if (event.key === "ArrowLeft") setPaneSize(pane, width + (edge === "left" ? -step : step));
-      if (event.key === "ArrowRight") setPaneSize(pane, width + (edge === "left" ? step : -step));
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        setPaneSize(pane, width + (event.key === "ArrowRight" ? 1 : -1) * (edge === "left" ? 1 : -1) * step);
+      } else if (event.key === "Home") { event.preventDefault(); reset(); }
     }} />;
 }
 
@@ -79,29 +86,61 @@ export function AppShell() {
   const standalonePreviewOpen = useEditorStore((state) => state.standalonePreviewOpen);
   const paneSizes = useEditorStore((state) => state.paneSizes);
   const density = useEditorStore((state) => state.uiDensity);
+  const editing = useEditorStore(state => state.interactionMode === "edit");
+  const pageTitle = useEditorStore(state => state.pages.find(page => page.id === state.activePageId)?.name ?? state.document?.file.split(/[\\/]/).at(-1) ?? "Pannello");
+  const selection = useEditorStore(state => {
+    if (state.multiSelection.length > 1) return JSON.stringify(state.multiSelection.map(item => item.instanceId).sort());
+    const node = state.selectedId ? state.document?.nodes[state.selectedId] : undefined;
+    if (node) return JSON.stringify([node.source.file, node.source.start, node.type, state.selectionInfo?.listIndex, state.selectionInfo?.instanceIndex]);
+    const unresolved = state.unresolvedSelection;
+    return unresolved ? JSON.stringify([unresolved.file, unresolved.source?.start, unresolved.tag]) : "";
+  });
+  const propertiesRequest = useEditorStore(state => Math.max(state.propertiesExpandedAt ?? 0, state.textFocusRequestedAt ?? 0));
+  const [dismissedProperties, setDismissedProperties] = useState<{ selection: string; request: number }>();
+  const propertiesOpen = editing && !!selection && (dismissedProperties?.selection !== selection || dismissedProperties.request !== propertiesRequest);
+  const rightOpen = chatOpen || propertiesOpen;
+  const propertiesButton = useRef<HTMLButtonElement>(null);
+  function closeProperties() {
+    setDismissedProperties({ selection, request: propertiesRequest });
+    propertiesButton.current?.focus({ preventScroll: true });
+  }
   const scale = densityScale[density];
+  const grid = useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = useState(() => window.innerWidth / scale);
+  const visiblePanes = fitWorkspacePanes(paneSizes, gridWidth, leftPanelCollapsed, rightOpen);
   // The whole shell is scaled from one place. Everything inside keeps its own sizes in editor
   // pixels, so no rule has to know that the interface can be made larger.
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.style.setProperty("--ui", String(scale));
+    const measure = () => { if (grid.current) setGridWidth(grid.current.clientWidth); };
+    measure();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : undefined;
+    if (grid.current) observer?.observe(grid.current);
+    window.addEventListener("resize", measure);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
   }, [scale]);
   return (
     <>
       <main className="app-shell">
         <TopBar />
-        <div className={`editor-grid ${leftPanelCollapsed ? "left-collapsed" : ""}`}
-          style={{ "--pane-left": `${paneSizes.left}px`, "--pane-inspector": `${paneSizes.inspector}px` } as React.CSSProperties}>
+        <div className={`editor-grid ${leftPanelCollapsed ? "left-collapsed" : ""} ${rightOpen ? "" : "inspector-closed"}`} ref={grid}
+          style={{ "--pane-left": `${visiblePanes.left}px`, "--pane-inspector": `${visiblePanes.inspector}px` } as React.CSSProperties}>
           <ActivityBar />
           {!leftPanelCollapsed && <LeftPanel />}
           <section className="workspace-stack">
+            <header className="workspace-heading"><span className="workspace-page-title"><FileText size={15} aria-hidden="true" />{pageTitle}</span><button type="button" ref={propertiesButton} disabled={!selection || !editing} aria-expanded={!chatOpen && propertiesOpen} aria-controls="editor-property-panel" title={selection ? "Mostra o nascondi le proprietà dell’elemento selezionato" : "Seleziona un elemento per aprire le sue proprietà"} onClick={() => {
+              if (chatOpen) { useEditorAi.getState().close(); setDismissedProperties(undefined); }
+              else if (propertiesOpen) closeProperties(); else setDismissedProperties(undefined);
+            }}><PanelRightOpen size={16} aria-hidden="true" /><span>Proprietà</span></button></header>
             <Workspace />
             {consoleOpen && <ConsolePanel />}
           </section>
-          <section className={`editor-right-pane ${chatOpen ? "chat-open" : ""}`}>
+          <section id="editor-property-panel" className={`editor-right-pane ${chatOpen ? "chat-open" : ""}`} hidden={!rightOpen}>
+            {!chatOpen && <button type="button" className="context-panel-close" aria-label="Nascondi proprietà" title="Nascondi proprietà e lascia più spazio al canvas" onClick={closeProperties}><PanelRightClose size={16} /></button>}
             {chatOpen ? <AiProjectChat /> : <Inspector />}
           </section>
-          {!leftPanelCollapsed && <PaneResizer pane="left" edge="left" scale={scale} />}
-          <PaneResizer pane="inspector" edge="right" scale={scale} />
+          {!leftPanelCollapsed && <PaneResizer pane="left" edge="left" scale={scale} width={visiblePanes.left} />}
+          {rightOpen && <PaneResizer pane="inspector" edge="right" scale={scale} width={visiblePanes.inspector} />}
         </div>
         <ActionToast />
         <AiContextMenu />

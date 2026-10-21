@@ -48,7 +48,7 @@ export type UiDensity = "compatta" | "normale" | "grande";
  * Drawing a page and wiring three hundred PLC tags want different amounts of room. */
 export type WorkLayout = "disegno" | "plc" | "sviluppo";
 
-export const densityScale: Record<UiDensity, number> = { compatta: 1, normale: 1.25, grande: 1.45 };
+export const densityScale: Record<UiDensity, number> = { compatta: 1, normale: 1.1, grande: 1.3 };
 
 /** The one generated file the ready-made access lives in: accounts, permissions and the login
  * page of the panel are all inside it, so copying the project copies the access with it. */
@@ -405,7 +405,7 @@ function readRecentProjects() {
 
 const defaultView: ViewSettings = {
   uiDensity: "normale",
-  paneSizes: { left: 250, inspector: 310 },
+  paneSizes: { left: 220, inspector: 310 },
   workLayout: "disegno",
   viewport: "libero",
   snap: { enabled: true, grid: 8 },

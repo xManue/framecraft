@@ -1,5 +1,6 @@
 import { Activity, AlertTriangle, ArrowDown, BarChart3, Bot, Boxes, CircleGauge, Copy, Droplets, FileText, Frame, Globe, History, Languages, Layers, LayoutGrid, ListChecks, ListTree, Map, MapPin, Ruler, Settings, SlidersHorizontal, Square, Table2, Video, Workflow, Wrench } from "lucide-react";
 import { standardPageTemplates, type StandardPageTemplate, type StandardPageTemplateId } from "../core/hmiPages";
+import type { PageDefinition } from "../core/types";
 
 const emptyVariants = new Set<StandardPageTemplateId>(["blank", "machine-downstair", "main-counters", "main-collector-counters", "main-free", "main-maintenance"]);
 export function pageTemplateGroups(templates: readonly StandardPageTemplate[]) {
@@ -8,7 +9,7 @@ export function pageTemplateGroups(templates: readonly StandardPageTemplate[]) {
     ? item === empty[0] ? [{ template: item, variants: empty, name: "Pagina vuota e basi Main" }] : []
     : [{ template: item, variants: [item], name: item.name }]);
 }
-export function PageTemplateIcon({ template }: { template: StandardPageTemplate }) {
+function templateIcon(template: StandardPageTemplate) {
   const id = template.id;
   const exactIcons: Partial<Record<StandardPageTemplateId, typeof Frame>> = {
     "data-board": Table2, "program-modification": Ruler, "program-layer": Boxes, "program-pallet": Layers,
@@ -24,6 +25,16 @@ export function PageTemplateIcon({ template }: { template: StandardPageTemplate 
     : /format/.test(id) ? FileText : /diagnostic/.test(id) ? Activity
     : /program|clv|special/.test(id) ? SlidersHorizontal : /command/.test(id) ? LayoutGrid
     : /system/.test(id) ? Settings : ListChecks);
+  return Icon;
+}
+export function PageTemplateIcon({ template }: { template: StandardPageTemplate }) {
+  const Icon = templateIcon(template);
   return <span className="page-template-icon" data-family={Icon.displayName} aria-hidden="true"><Icon size={34} /><small>{template.recommendedSection ?? "libera"}</small></span>;
+}
+export function PageNavigationIcon({ page, category }: { page: PageDefinition; category?: string }) {
+  const names = [page.name, page.componentName, page.file.split(/[\\/]/).at(-1)?.replace(/\.[^.]+$/, "")].filter(Boolean).map(name => name!.toLocaleLowerCase("it"));
+  const template = standardPageTemplates.find(item => names.includes(item.sourceScreen.replace(/^\d+_/, "").toLocaleLowerCase("it")) || names.includes(item.name.toLocaleLowerCase("it")));
+  const Icon = template ? templateIcon(template) : category === "settings" ? Settings : category === "alarms" ? AlertTriangle : FileText;
+  return <span className="page-list-symbol" aria-hidden="true"><Icon size={20} strokeWidth={1.5} /></span>;
 }
 export const pageCatalogCount = pageTemplateGroups(standardPageTemplates).length;

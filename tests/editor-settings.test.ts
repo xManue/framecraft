@@ -28,6 +28,49 @@ beforeEach(() => {
 afterEach(async () => { dispose?.(); dispose = undefined; await act(async () => root.unmount()); host.remove(); useEditorStore.setState(initial, true); useEditorShortcuts.setState({ bindings: defaultEditorShortcuts(), open: false }); vi.restoreAllMocks(); });
 
 describe("pagina impostazioni e comandi rapidi", () => {
+  it("collega le schede al contenuto, le cambia da tastiera e non include azioni nascoste nel focus", async () => {
+    useEditorShortcuts.setState({ open: true, section: "workspace" });
+    await act(async () => root.render(createElement(Frame)));
+    const tabs = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs).toHaveLength(4);
+    expect(tabs.filter(tab => tab.tabIndex === 0)).toHaveLength(1);
+    tabs[0].focus();
+    await act(async () => press("End"));
+    expect(useEditorShortcuts.getState().section).toBe("ai");
+    expect(document.activeElement).toBe(tabs[3]);
+    const content = document.querySelector<HTMLElement>('#editor-settings-content')!;
+    expect(content.getAttribute("aria-labelledby")).toBe(tabs[3].id);
+    expect(tabs[3].getAttribute("aria-controls")).toBe(content.id);
+    content.scrollTop = 500;
+    await act(async () => press("ArrowRight"));
+    expect(document.activeElement).toBe(tabs[0]);
+    expect(content.scrollTop).toBe(0);
+    await act(async () => press("ArrowLeft"));
+    expect(document.activeElement).toBe(tabs[3]);
+    await act(async () => press("Home"));
+    expect(document.activeElement).toBe(tabs[0]);
+    expect(document.querySelector('.editor-settings-shortcut-actions')?.hasAttribute("hidden")).toBe(true);
+    button("Chiudi impostazioni").focus();
+    await act(async () => press("Tab", { shiftKey: true }));
+    expect(document.activeElement).toBe(button("Chiudi"));
+    expect(useEditorStore.getState().document?.source).toBe("draft");
+  });
+  it("mantiene la stessa struttura tra contenuti brevi, elenchi lunghi e ricerche vuote", async () => {
+    useEditorShortcuts.setState({ open: true, section: "workspace" });
+    await act(async () => root.render(createElement(Frame)));
+    const dialog = document.querySelector('.editor-settings'), content = document.querySelector('.editor-settings-body'), footer = dialog?.querySelector('footer');
+    for (const label of ["Scorciatoie e comandi", "Aiuto e suggerimenti", "AI e account", "Area di lavoro"]) {
+      await act(async () => button(label).click());
+      expect(document.querySelector('.editor-settings')).toBe(dialog);
+      expect(document.querySelector('.editor-settings-body')).toBe(content);
+      expect(dialog?.querySelector('footer')).toBe(footer);
+    }
+    await act(async () => button("Scorciatoie e comandi").click());
+    const input = document.querySelector<HTMLInputElement>('.editor-settings-search input')!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "no-such-command"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(document.body.textContent).toContain("Nessun comando trovato");
+    expect(dialog?.querySelector('footer')).toBe(footer);
+  });
   it("si apre da File con preferenze reali e non modifica il documento", async () => {
     await act(async () => root.render(createElement(Frame)));
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>("nav > div > button")].find(node => node.textContent?.startsWith("File"))!.click());
