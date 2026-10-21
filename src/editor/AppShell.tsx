@@ -15,6 +15,7 @@ import { useEditorAi } from "../state/editorAi";
 import { AiProjectChat } from "./AiProjectChat";
 import { AiContextMenu } from "./AiContextMenu";
 import "./workspace-chrome.css";
+import { usePageThumbnailCapture } from "../preview/usePageThumbnailCapture";
 
 /** The bar between two panels. It is dragged in the editor's own pixels, which are not the screen's
  * once the interface is scaled up, so the pointer distance is divided back down before it is used. */
@@ -106,6 +107,7 @@ export function AppShell() {
   }
   const scale = densityScale[density];
   const grid = useRef<HTMLDivElement>(null);
+  usePageThumbnailCapture(grid);
   const [gridWidth, setGridWidth] = useState(() => window.innerWidth / scale);
   const visiblePanes = fitWorkspacePanes(paneSizes, gridWidth, leftPanelCollapsed, rightOpen);
   // The whole shell is scaled from one place. Everything inside keeps its own sizes in editor

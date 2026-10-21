@@ -5523,6 +5523,34 @@ Verifiche del 5 ottobre 2026:
 - Le modifiche trend/profili già presenti restano escluse. Questa revisione UI non chiude
   le roadmap Unified/Optix/AI né costituisce un collaudo industriale o dell’eseguibile nativo.
 
+### 157. Miniature reali locali delle pagine (2026-10-21)
+
+- Ultima scelta design dell’utente: miniature vere con il nome, non soltanto simboli. La lista
+  usa il PNG della vista già aperta; le pagine non visitate hanno un segnaposto. Nessuna
+  navigazione automatica, iframe aggiuntivo, istanza HMI, connessione PLC o richiesta AI.
+- Cattura limitata alla modalità Modifica e all’origine locale dell’editor, già fissata dal
+  ponte. Handshake con documento e nonce; controllo finestra/origine/percorso/schermata di
+  stato. Risultati tardivi ignorati dopo cambi di pagina, progetto, viewport o versione.
+- Snapshot DOM rasterizzato in PNG al massimo 240x160: niente script, eventi, iframe, URL
+  esterni o nuovi fetch di risorse. Password e campi token/chiave riconoscibili mascherati.
+  Immagini/canvas già caricati sono copiati solo se leggibili; video, shadow DOM, pseudo-elementi,
+  font esterni e sfondi protetti/esterni possono essere omessi. Non è una cattura pixel-perfect
+  né una vista live: il titolo lo esplicita e un errore non interrompe l’editor.
+- Limiti per nodi, testo, attributi, immagini e SVG temporaneo; cattura esclusiva e rate limit.
+  Cache per progetto solo in RAM, massimo 64 immagini/4 milioni di caratteri base64, niente
+  salvataggio o export dei PNG. Cattura rinviata all’idle e budget temporale per la clonazione.
+  Accettati solo piccoli PNG statici verificati strutturalmente, non SVG/URL o animazioni.
+- Verifiche mirate del protocollo, sanitizzazione, race di navigazione, cache e lista pagine.
+  Snapshot pubblico: 46 casi in 6 file, inclusi layout e protocollo di selezione del ponte;
+  non l’intera suite. Revisione principale UI al punto 156 verificata con 62 test in 7 file.
+  QA Edge con plugin realmente serializzato e progetto sintetico: immagine 240x150 con
+  contenuto reale, una sola iframe HMI, nessuna richiesta esterna, password mascherata.
+  TypeScript e build Vite superati sullo snapshot pubblico finale public-check-5XOD4o,
+  con i soli avvisi static/dynamic import già noti. Dipendenze locali tramite junction,
+  non installazione pulita; nessun riavvio forzato o compilazione del backend nativo.
+- Nessuna dipendenza aggiunta o modifica a licenze, driver o backend nativo. Da verificare sul
+  dispositivo finale WebView2 e sui progetti reali; i materiali macchina restano locali.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.
@@ -5562,6 +5590,7 @@ Verifiche del 5 ottobre 2026:
   completare conferme PLC/payload avanzati, command layer restante e OPC UA avanzato; RBAC/audit/storage
   server e collaudo TLS/CPU fisiche o virtuali. Mai segreti nel browser o replay di comandi incerti.
 - **Produzione**: chiudere licenze/notice e diritti asset, audit distribuzione/Rust/OS,
+  definire e verificare la CSP del contenitore desktop (attualmente `app.security.csp: null`),
   packaging su runtime LTS e guasti/recovery nella finestra desktop e su progetti reali;
   collaudare il plugin senza checkout e distribuire/risolvere le sue dipendenze bare, oltre
   alla mappa delle risorse corretta al punto 81;

@@ -7,6 +7,7 @@ import { useEditorStore } from "../state/editorStore";
 import { PageNavigationIcon, PageTemplateIcon, pageCatalogCount, pageTemplateGroups } from "./PageTemplateIcon";
 import { TemplateBehaviorInfo } from "./TemplateBehaviorInfo";
 import { pageChatContextMenu } from "./AiContextMenu";
+import { usePageThumbnails } from "../state/pageThumbnails";
 
 function PageCreationDialog({ initialTab, onClose }: { initialTab: "page" | "category"; onClose(): void }) {
   const createPage = useEditorStore((state) => state.createPage);
@@ -117,10 +118,19 @@ export function PagesPanel() {
   const openPage = useEditorStore((state) => state.openPage);
   const project = useEditorStore((state) => state.project);
   const routerFile = useEditorStore((state) => state.routerFile);
+  const thumbnails = usePageThumbnails(state => state.project === project?.root ? state.entries : undefined);
   const refreshCategories = useEditorStore((state) => state.refreshPageCategories);
   useEffect(() => { if (project && routerFile) void refreshCategories(); }, [project, routerFile, refreshCategories]);
   const [creating, setCreating] = useState<"page" | "category">();
-  const pageButton = (page: typeof pages[number]) => <button type="button" key={page.id} className={activePageId === page.id ? "page-list-item active" : "page-list-item"} aria-current={activePageId === page.id ? "page" : undefined} onClick={() => void openPage(page)} onContextMenu={event => pageChatContextMenu(page, event)} title={`${page.file} · Tasto destro: aggiungi alla chat AI`}><PageNavigationIcon page={page} category={categories.find(category => category.pages.includes(page.route))?.id} /><span><strong>{page.name}</strong><small>{page.stateValue ? `schermata: ${page.stateValue}` : page.route}</small></span></button>;
+  const pageButton = (page: typeof pages[number]) => {
+    const thumbnail = thumbnails?.[page.id], category = categories.find(item => item.pages.includes(page.route));
+    return <button type="button" key={page.id} className={activePageId === page.id ? "page-list-item active" : "page-list-item"} aria-current={activePageId === page.id ? "page" : undefined} onClick={() => void openPage(page)} onContextMenu={event => pageChatContextMenu(page, event)} title={page.file + " · Tasto destro: aggiungi alla chat AI"}>
+      <span className="page-thumbnail" aria-hidden="true" title={thumbnail ? "Ultima anteprima locale della pagina; non è un monitoraggio live" : "Apri la pagina per creare la sua anteprima"}>
+        {thumbnail ? <img src={thumbnail} alt="" loading="lazy" decoding="async" /> : <PageNavigationIcon page={page} category={category?.id} />}
+      </span>
+      <span><strong>{page.name}</strong><small>{page.stateValue ? "schermata: " + page.stateValue : page.route}</small>{!thumbnail && <small className="page-thumbnail-placeholder" aria-hidden="true">{activePageId === page.id ? "Miniatura non disponibile" : "Apri per vedere"}</small>}</span>
+    </button>;
+  };
   const freePages = pages.filter((page) => !categories.some((category) => category.pages.includes(page.route)));
   return <div className="panel-content pages-panel"><div className="panel-title"><span>PAGINE</span><button aria-label="Nuova pagina" onClick={() => setCreating("page")} disabled={!routerEditable}><Plus size={16} /></button></div>
     <p className="panel-help">Le categorie organizzano anche il menu del pannello. Qui crei pagine; in Aggiungi elementi trovi soltanto componenti.</p>

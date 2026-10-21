@@ -14,6 +14,105 @@ import { hmiFunctionTrendRuntimeModuleSource } from "./hmi-function-trend.mjs";
 import { createHmiTrendPreview } from "./hmi-trend-preview.mjs";
 import { editorCommands, defaultEditorShortcuts, normalizeEditorShortcut, editorShortcutIssue, editorShortcutsIssue, parseEditorShortcuts, editorShortcutFromEvent, editorCommandForShortcut } from "./editor-shortcuts.mjs";
 
+export function previewThumbnailSvg(view) {
+  const document = view.document, width = Math.min(4096, view.innerWidth), height = Math.min(4096, view.innerHeight);
+  if (!document.body || width < 1 || height < 1) throw new Error("THUMBNAIL_EMPTY");
+  const properties = ("display position top right bottom left box-sizing width height min-width min-height max-width max-height margin-top margin-right margin-bottom margin-left padding-top padding-right padding-bottom padding-left border-top border-right border-bottom border-left border-radius background-color background-image background-size background-position background-repeat color font-family font-size font-weight font-style line-height letter-spacing text-align text-transform text-decoration white-space word-break overflow-wrap overflow opacity transform transform-origin flex flex-direction flex-wrap flex-grow flex-shrink flex-basis align-items align-self justify-content gap row-gap column-gap grid-template-columns grid-template-rows grid-column grid-row vertical-align table-layout border-collapse border-spacing object-fit object-position fill stroke stroke-width stroke-linecap stroke-linejoin clip-path").split(" ");
+  let count = 0, bytes = 0, imageCount = 0;
+  const started = view.performance.now();
+  const resourceSafe = value => !/url\(/i.test(value) || [...value.matchAll(/url\(([^)]*)\)/gi)].every(match => /^(?:['"]?#[\w:.-]+['"]?|['"]?data:image\/(?:png|jpeg|webp);base64,[a-z\d+/=]+['"]?)$/i.test(match[1].trim()));
+  function clone(source) {
+    if (++count > 2200) throw new Error("THUMBNAIL_COMPLEX");
+    if (count % 64 === 0 && view.performance.now() - started > 120) throw new Error("THUMBNAIL_COMPLEX");
+    if (source.nodeType === 3) { bytes += source.textContent.length; if (bytes > 1800000) throw new Error("THUMBNAIL_COMPLEX"); return document.createTextNode(source.textContent); }
+    if (source.nodeType !== 1 || /^(SCRIPT|STYLE|LINK|META|IFRAME|OBJECT|EMBED|VIDEO|AUDIO|NOSCRIPT)$/i.test(source.tagName)) return null;
+    const style = view.getComputedStyle(source);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.zIndex) >= 2147480000) return null;
+    let result;
+    if (/^(IMG|CANVAS)$/i.test(source.tagName)) {
+      result = document.createElement("img");
+      if (++imageCount <= 24) try {
+        const w = source.naturalWidth || source.width, h = source.naturalHeight || source.height;
+        if (w > 0 && h > 0) {
+          const bitmap = document.createElement("canvas"), factor = Math.min(1, 512 / w, 512 / h);
+          bitmap.width = Math.max(1, Math.round(w * factor)); bitmap.height = Math.max(1, Math.round(h * factor));
+          bitmap.getContext("2d").drawImage(source, 0, 0, bitmap.width, bitmap.height);
+          const image = bitmap.toDataURL("image/png"); if (image.length < 180000) { result.src = image; bytes += image.length; }
+        }
+      } catch { /* Cross-origin or protected pixels remain a placeholder; never fetch them again. */ }
+      if (!result.hasAttribute("src")) { result = document.createElement("div"); result.style.backgroundColor = "#e3e6e9"; }
+    } else if (/^(INPUT|TEXTAREA|SELECT)$/i.test(source.tagName)) {
+      result = document.createElement("div");
+      const privateField = source.type === "password" || /password|secret|token|api.?key|one-time-code/i.test([source.name, source.id, source.autocomplete].join(" "));
+      result.textContent = (privateField ? "••••" : source.tagName === "SELECT" ? source.selectedOptions[0]?.textContent || "" : /^(checkbox|radio)$/.test(source.type) ? source.checked ? "☑" : "☐" : source.value || "").slice(0, 4096);
+    } else {
+      result = document.createElementNS(source.namespaceURI, source.localName);
+      for (const attribute of source.attributes) {
+        if (attribute.value.length > 50000) throw new Error("THUMBNAIL_COMPLEX");
+        if (attribute.name === "id" || /^(viewBox|d|x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|points|width|height|preserveAspectRatio|colspan|rowspan)$/i.test(attribute.name)) result.setAttribute(attribute.name, attribute.value);
+        else if (source.namespaceURI === "http://www.w3.org/2000/svg" && /^(fill|stroke|stroke-width|transform|offset|stop-color|stop-opacity|gradientUnits|gradientTransform|clip-path|mask)$/i.test(attribute.name) && resourceSafe(attribute.value)) result.setAttribute(attribute.name, attribute.value);
+        else if (source.localName === "use" && /^(?:xlink:)?href$/.test(attribute.name) && /^#[\w:.-]+$/.test(attribute.value)) result.setAttribute(attribute.name, attribute.value);
+      }
+      for (const child of source.childNodes) { const copied = clone(child); if (copied) result.append(copied); }
+    }
+    for (const property of properties) { const value = style.getPropertyValue(property); if (value && resourceSafe(value)) result.style.setProperty(property, value); }
+    result.style.animation = "none"; result.style.transition = "none";
+    bytes += result.getAttribute("style")?.length || 0;
+    if (bytes > 1800000) throw new Error("THUMBNAIL_COMPLEX");
+    return result;
+  }
+  const body = clone(document.body);
+  if (!body) throw new Error("THUMBNAIL_EMPTY");
+  body.style.width = width + "px";
+  const markup = new view.XMLSerializer().serializeToString(body);
+  return { width, height, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="white"/><foreignObject width="100%" height="100%">${markup}</foreignObject></svg>` };
+}
+
+export async function capturePreviewThumbnail(view) {
+  if (typeof view.requestIdleCallback === "function") await new Promise(resolve => view.requestIdleCallback(resolve, { timeout: 2000 }));
+  const { svg, width, height } = previewThumbnailSvg(view);
+  if (svg.length > 2000000) throw new Error("THUMBNAIL_COMPLEX");
+  const image = new view.Image();
+  await new Promise((resolve, reject) => {
+    const timer = view.setTimeout(() => { image.onload = image.onerror = null; reject(new Error("THUMBNAIL_TIMEOUT")); }, 4000);
+    image.onload = () => { view.clearTimeout(timer); resolve(); };
+    image.onerror = () => { view.clearTimeout(timer); reject(new Error("THUMBNAIL_RENDER")); };
+    image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  });
+  const canvas = view.document.createElement("canvas"), factor = Math.min(240 / width, 160 / height, 1);
+  canvas.width = Math.max(1, Math.round(width * factor)); canvas.height = Math.max(1, Math.round(height * factor));
+  canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+  const png = canvas.toDataURL("image/png");
+  if (png.length > 180000) throw new Error("THUMBNAIL_COMPLEX");
+  return png;
+}
+
+export function installPreviewThumbnailCapture(view, options, capture = capturePreviewThumbnail) {
+  let disposed = false, busy = false, lastCapture = -Infinity;
+  const localEditor = origin => {
+    try { const url = new URL(origin); return ["http:", "https:", "tauri:"].includes(url.protocol) && ["localhost", "127.0.0.1", "[::1]", "tauri.localhost"].includes(url.hostname); }
+    catch { return false; }
+  };
+  const context = () => ({ path: view.location.pathname, statePage: typeof view.__framecraftCurrentPage === "string" ? view.__framecraftCurrentPage : null });
+  const receive = async event => {
+    const data = event.data;
+    if (!data || !["framecraft:thumbnail-hello", "framecraft:thumbnail-capture"].includes(data.type)) return;
+    if (view.parent === view || event.source !== view.parent || !options.enabled() || !localEditor(event.origin) || event.origin !== options.allowedOrigin()) return;
+    if (typeof data.requestId !== "string" || !/^[a-f\d-]{20,64}$/i.test(data.requestId)) return;
+    const pageId = options.pageId();
+    if (data.type === "framecraft:thumbnail-hello") { view.parent.postMessage({ type: "framecraft:thumbnail-ready", requestId: data.requestId, pageId, ...context() }, event.origin); return; }
+    if (data.pageId !== pageId || busy || view.performance.now() - lastCapture < 500) return;
+    const before = JSON.stringify(context()); busy = true; lastCapture = view.performance.now();
+    try {
+      const image = await capture(view);
+      if (!disposed && options.enabled() && options.pageId() === pageId && event.origin === options.allowedOrigin() && before === JSON.stringify(context())) view.parent.postMessage({ type: "framecraft:thumbnail-result", requestId: data.requestId, pageId, image, ...context() }, event.origin);
+    } catch { /* A thumbnail must never interrupt editing or trigger a navigation/retry. */ }
+    finally { busy = false; }
+  };
+  view.addEventListener("message", receive);
+  return () => { disposed = true; view.removeEventListener("message", receive); };
+}
+
 export function installPanelLayoutPreference(root, key, storage = () => root.defaultView.sessionStorage) {
   const valid = (value) => ["auto", "desktop", "mobile"].includes(value);
   const view = root.defaultView;
@@ -93,7 +192,7 @@ const editorShortcutFromEvent = (${String(editorShortcutFromEvent)});
 const editorCommandForShortcut = (${String(editorCommandForShortcut)});
 `;
 
-const bridgeScript = String(installStandalonePreviewControls) + "\n" + sharedHelpers + String.raw`
+const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPreviewThumbnailCapture, installStandalonePreviewControls].map(String).join("\n") + "\n" + sharedHelpers + String.raw`
 (() => {
   if (new URLSearchParams(window.location.search).has("framecraftPreview") || /^framecraft:standalone:[a-zA-Z0-9-]{16,64}$/.test(window.name)) {
     const dispose = installStandalonePreviewControls(window);
@@ -150,6 +249,8 @@ const bridgeScript = String(installStandalonePreviewControls) + "\n" + sharedHel
   let simulationOn = false;
   const alarmPreview = createHmiAlarmPreviewBridge(window, { active: () => mode === "navigate" && simulationOn, navigate: (route) => navigateHmiTarget(route) });
   let editorShortcutBindings = defaultEditorShortcuts(), editorShortcutOrigin;
+  const stopThumbnailCapture = installPreviewThumbnailCapture(window, { pageId: () => alarmPreview.pageId, allowedOrigin: () => editorShortcutOrigin, enabled: () => mode === "edit" });
+  window.addEventListener("pagehide", event => { if (!event.persisted) stopThumbnailCapture(); });
   const faceplatePreview = createHmiFaceplatePreview(window, { active: () => mode === "navigate", pageId: () => alarmPreview.pageId, instanceId: (host) => instanceId(host) }, faceplateRenderers);
   const trendPreview = createHmiTrendPreview(window, { active: () => mode === "navigate", pageId: () => alarmPreview.pageId, instanceId: (host) => instanceId(host), allowed: (host) => propertyFlashingSurface.allowsInteraction(host) }, { time: timeTrendRenderers, xy: xyTrendRenderers });
   window.addEventListener("pagehide", (event) => { if (event.persisted) trendPreview.reset(); else trendPreview.dispose(); });

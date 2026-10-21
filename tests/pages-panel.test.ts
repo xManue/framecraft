@@ -11,6 +11,7 @@ import { PagesPanel } from "../src/editor/PagesPanel";
 import { standardProjectFiles } from "../src/core/standardProject";
 import { readPageCategories } from "../src/core/pageNavigation";
 import { detectPages } from "../src/core/pages";
+import { usePageThumbnails } from "../src/state/pageThumbnails";
 const editorStyles = readFileSync(new NodeURL("../src/styles/global.css", import.meta.url), "utf8");
 const project = { root: "C:/synthetic-panel", name: "Synthetic", framework: "vite" as const, language: "typescript" as const, packageManager: "npm" as const, entryFiles: [] as string[], files: [], scripts: {}, dependencies: [], hasNodeModules: true, missingDependencies: [] };
 const generated = standardProjectFiles({ machineName: "Synthetic", layout: "desktop-mobile", sections: ["main"] });
@@ -29,6 +30,19 @@ beforeEach(() => {
 });
 afterEach(async () => { if (root) await act(async () => root!.unmount()); host?.remove(); root = undefined; useEditorStore.setState(actions); vi.restoreAllMocks(); });
 describe("finestra pagine e categorie", () => {
+  it("mostra la miniatura reale disponibile solo nel suo progetto, senza nuovi iframe o scritture", async () => {
+    const page = useEditorStore.getState().pages[0];
+    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1kAAAAASUVORK5CYII=";
+    usePageThumbnails.getState().reset(project.root);
+    usePageThumbnails.getState().put(project.root, page.id, png);
+    await mount();
+    expect(document.querySelector<HTMLImageElement>('.page-thumbnail img')?.src).toBe(png);
+    expect(document.querySelectorAll('iframe')).toHaveLength(0);
+    await act(async () => usePageThumbnails.getState().reset('C:/different-panel'));
+    expect(document.querySelector('.page-thumbnail img')).toBeNull();
+    expect(desktopBridge.writeFile).not.toHaveBeenCalled();
+    usePageThumbnails.getState().reset(undefined);
+  });
   it("distingue le pagine con simboli coerenti senza aggiungere un secondo nome accessibile", async () => {
     useEditorStore.setState({ pages: [
       { id: "synoptic", name: "Upstair", file: "C:/synthetic-panel/Upstair.tsx", route: "/upstair" },
