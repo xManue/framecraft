@@ -14,7 +14,7 @@ const variables = [{ name: "Signal", dataType: "Bool", access: "read", address: 
 const initial = (): AlarmConfigurationSnapshot => ({ generation: 2, source: JSON.stringify(emptyAlarmCatalog()), plc: JSON.stringify({ version: 1, variables }) });
 let root: Root, host: HTMLElement; const close = vi.fn();
 const button = (name: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((node) => node.textContent?.trim() === name)!;
-const field = (name: string) => [...document.querySelectorAll<HTMLLabelElement>("label")].find((node) => node.childNodes[0]?.textContent === name)?.querySelector<HTMLInputElement | HTMLSelectElement>("input,select")!;
+const field = (name: string) => [...document.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent === name)?.control as HTMLInputElement | HTMLSelectElement;
 async function click(node: HTMLElement) { await act(async () => node.click()); }
 async function change(name: string, value: string) { const node = field(name); expect(node).toBeTruthy(); await act(async () => { Object.getOwnPropertyDescriptor(node.tagName === "SELECT" ? HTMLSelectElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(node, value); node.dispatchEvent(new Event(node.tagName === "SELECT" ? "change" : "input", { bubbles: true })); }); }
 async function mount(component = createElement(AlarmsDialog, { onClose: close })) { host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root.render(component)); }
@@ -22,6 +22,24 @@ async function createAlarm() { await click(button("Nuovo allarme")); await chang
 beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); useEditorStore.setState({ project, loading: false, dirty: false, previewRestarting: false, previewUrl: undefined, consoleEntries: [], history: [], future: [], multiSelection: [] }); vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue(initial()); vi.mocked(desktopBridge.saveAlarmConfiguration).mockImplementation(async (_root, expected, source) => ({ ...expected, source })); });
 afterEach(async () => { if (root) await act(async () => root.unmount()); host?.remove(); vi.restoreAllMocks(); });
 describe("Allarmi: configurazione e prova guidata", () => {
+  it("configura e prova una soglia PLC senza salvare, collegarsi o inventare un campione", async () => {
+    const analog = ["Pressure", "Limit"].map(name => ({ ...variables[0], name, dataType: "Real" }));
+    vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue({ ...initial(), plc: JSON.stringify({ version: 1, variables: [...analog, ...variables] }) });
+    const network = vi.spyOn(globalThis, "fetch"); await mount(); await click(button("Nuovo allarme")); await change("Nome", "Pressione"); await change("Messaggio operatore", "Controlla pressione"); await change("Segnale PLC", "Pressure"); await change("Attivazione", "high-equal"); await change("Origine della soglia", "tag");
+    expect(button("Salva allarmi").disabled).toBe(true); expect([...field("Segnale PLC della soglia").querySelectorAll("option")].some(option => option.value === "Signal")).toBe(false);
+    await change("Segnale PLC della soglia", "Limit"); await change("Isteresi di rientro", "2"); await change("Valore del segnale selezionato", "10"); await click(button("Applica segnale di prova"));
+    expect(document.querySelector('[data-hmi-type="HmiAlarmIndicator"]')!.textContent).toContain("sconosciuti");
+    await change("Valore della soglia PLC di prova", "10"); await click(button("Applica soglia di prova")); expect(document.body.textContent).toContain("Attivo");
+    await change("Qualità della soglia", "0"); await change("Valore della soglia PLC di prova", "100"); await click(button("Applica soglia di prova")); expect(document.body.textContent).toContain("Soglia PLC non disponibile"); expect(document.body.textContent).toContain("Attivo");
+    expect(network).not.toHaveBeenCalled(); expect(desktopBridge.saveAlarmConfiguration).not.toHaveBeenCalled(); await click(button("Salva allarmi"));
+    expect(JSON.parse(vi.mocked(desktopBridge.saveAlarmConfiguration).mock.calls[0][2]).alarms[0].trigger).toEqual({ kind: "high-equal", limit: { tag: "Limit" }, hysteresis: 2 });
+  });
+  it("uguaglianza mostra il confronto esatto e azzera esplicitamente l’isteresi", async () => {
+    vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue({ ...initial(), plc: JSON.stringify({ version: 1, variables: [{ ...variables[0], dataType: "Real" }] }) });
+    await mount(); await createAlarm(); await change("Attivazione", "high"); await change("Isteresi di rientro", "3"); await change("Attivazione", "equal");
+    expect(field("Isteresi di rientro")).toBeUndefined(); expect(document.body.textContent).toContain("Confronto numerico esatto"); await click(button("Salva allarmi")); expect(JSON.parse(vi.mocked(desktopBridge.saveAlarmConfiguration).mock.calls[0][2]).alarms[0].trigger).toEqual({ kind: "equal", limit: 0, hysteresis: 0 });
+    await change("Origine della soglia", "tag"); await change("Origine della soglia", "fixed"); expect(field("Soglia").value).toBe(""); expect(button("Salva allarmi").disabled).toBe(true);
+  });
   it("abilita l’archivio su disco solo su scelta esplicita e salva insieme ai limiti", async () => {
     await mount(); const checkbox = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(node => node.closest("label")?.textContent?.includes("Conserva gli eventi anche dopo il riavvio"))!; expect(checkbox.checked).toBe(false);
     await click(checkbox); await change("Limite eventi nell’archivio su disco", "999"); expect(button("Salva allarmi").disabled).toBe(true); await change("Limite eventi nell’archivio su disco", "12000"); await click(button("Salva allarmi"));
@@ -38,7 +56,7 @@ describe("Allarmi: configurazione e prova guidata", () => {
     await change("Numero bit (Bool = 0)", "0"); await click(button("Salva allarmi"));
     expect(desktopBridge.saveAlarmConfiguration).toHaveBeenCalledOnce(); const [savedRoot, expected, source] = vi.mocked(desktopBridge.saveAlarmConfiguration).mock.calls[0]; expect(savedRoot).toBe(project.root); expect(expected).toEqual(initial()); expect(JSON.parse(source).alarms[0]).toMatchObject({ tag: "Signal", text: "Controlla motore" });
     expect(document.body.textContent).toContain("Nessun comando o collegamento PLC avviato"); expect(button("Salva allarmi").disabled).toBe(true);
-    for (const input of document.querySelectorAll<HTMLInputElement>('input:not([type="checkbox"]), select')) expect(input.closest("label")).toBeTruthy();
+    for (const input of document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input:not([type="checkbox"]), select')) expect(input.labels?.length).toBeGreaterThan(0);
   });
   it("prova locale del motore senza rete, rientro distinto dalla presa visione", async () => {
     await mount(); await createAlarm();

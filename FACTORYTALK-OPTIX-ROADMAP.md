@@ -15,6 +15,9 @@ ACL schema e commit atomico (LAVORO 160). Non è il CSV/NetLogic RecipeImportExp
 21 ottobre 2026: storico allarmi Framecraft SQLite e controllo di sola lettura con capacità dedicata
 (LAVORO 161), confrontati con Alarm Event Logger nella guida `current` (1.8.0), non parità completa.
 
+22 ottobre 2026: confronti analogici e soglia variabile nel nucleo Framecraft (LAVORO 162).
+Riletto Limit alarm 1.3.2: livelli esclusivi/non esclusivi e tipi Optix restano separati e aperti.
+
 Questa roadmap registra fin da ora tutto ciò che Framecraft dovrà coprire dopo la roadmap WinCC
 Unified. I contratti Rockwell restano separati da quelli Siemens: il nucleo comune viene riusato
 solo quando il comportamento è realmente equivalente. Un componente React simile a un oggetto
@@ -140,7 +143,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 
 | ID | Capacità FactoryTalk Optix | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
-| FTX-ALM-01 | Digital, ExclusiveLevel e NonExclusiveLevel Alarm | PARZIALE | Tipi, stati, soglie e deadband | Editor unico con simulazione della macchina a stati |
+| FTX-ALM-01 | Digital, ExclusiveLevel e NonExclusiveLevel Alarm | PARZIALE | Tipi/stati Optix e livelli multipli esclusivi/non esclusivi, deadband specifica del tipo | Motore scalare Framecraft con bit e sei confronti, soglia fissa/PLC, isteresi, qualità delle dipendenze e prova; non importa né emula l’oggetto Optix (106/162) |
 | FTX-ALM-02 | Tipi allarme personalizzati | DA FARE | Ereditarietà e proprietà estese | Diff del tipo e migrazione delle istanze |
 | FTX-ALM-03 | Stato active, acknowledged e confirmed | PARZIALE | Tipi/condizioni/metodi Optix completi e ack al PLC | Motore scalare Framecraft e metodi singoli con identità server; transizioni storiche salvate, stato attuale separato (106/161) |
 | FTX-ALM-04 | AlarmGrid, AlarmWidget e filtri | PARZIALE | Query, toolbar, selezione e operazioni | Filtri salvabili e collegamento alla causa macchina |

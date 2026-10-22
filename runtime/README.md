@@ -18,8 +18,8 @@ Il catalogo nasce vuoto: nessun tag, testo macchina, soglia o comando viene inve
 Per provare: aggiungi un allarme, scegli un tag dichiarato e leggibile, compila il
 messaggio e applica un valore nella **Prova locale**. Bool usa bit 0; gli interi
 supportano bit fino alla larghezza dichiarata. LWord/LInt usano stringhe decimali
-esatte, mai numeri JavaScript già arrotondati. I tag analogici supportati hanno una
-soglia fissa sopra/sotto e isteresi di rientro; gli altri confronti Unified sono aperti.
+esatte, mai numeri JavaScript già arrotondati. I tag analogici supportano sei confronti
+e soglia fissa oppure letta da un altro segnale PLC; vedi la guida seguente.
 
 Il servizio carica il catalogo all'avvio manuale. Salvare nell'editor non riavvia
 gateway/PLC, non modifica connessioni né invia comandi. Il motore usa `onSample` dei
@@ -28,6 +28,58 @@ browser riceve lo stesso stato da `GET /_framecraft/plc/v1/snapshot`, campo `ala
 La qualità deve essere Good conosciuta e il valore compatibile. Bad, Uncertain,
 errore o qualità mancante conservano l'ultima condizione e mostrano il problema;
 non generano un rientro. Nessun campione iniziale significa stato sconosciuto, non Normale.
+
+### Soglie analogiche: valore fisso o variabile PLC
+
+In **Pannello → Allarmi**, scegli l’allarme e **Attivazione**: sopra (`>`), sotto (`<`),
+maggiore o uguale (`≥`), minore o uguale (`≤`), uguale (`=`), diverso (`≠`).
+**Origine della soglia → Variabile PLC** mostra solo segnali numerici dichiarati e leggibili.
+Scegli il tag della soglia, l’isteresi e verifica che segnale e soglia usino le stesse unità:
+Framecraft non converte automaticamente bar/kPa, °C/°F o altre unità.
+
+La prova locale ha due campioni separati: **Applica segnale di prova** e **Applica soglia
+di prova**, con qualità indipendenti. Finché entrambi non sono validi lo stato resta
+sconosciuto o conserva l’ultima condizione, senza sostituire la soglia con zero. Anche
+un cambiamento della sola soglia rivaluta l’allarme; un rientro deve essere verificabile
+con entrambi i dati validi. Apri **Problema del segnale / della soglia** nella riga per
+leggere causa e rimedio anche da tastiera o touch: non serve un tooltip.
+Ricerca e zona sono in **Filtra allarmi**, richiudibile. La conferma compare quando la
+lista contiene allarmi con quel modello; paginazione soltanto oltre 100 risultati.
+Nei WebView/browser moderni la lista sotto 600 px diventa una sequenza di schede con
+etichette dei campi; su viste larghe resta una tabella. Il cambio dipende dalla larghezza
+del controllo, non forza la pagina HMI da mobile a desktop o viceversa.
+
+Per `>` si rientra a `valore ≤ soglia − isteresi`; per `<` a `valore ≥ soglia + isteresi`.
+Per `≥` il rientro richiede `valore < soglia − isteresi`; per `≤` richiede
+`valore > soglia + isteresi`. La soglia dinamica usa il valore attuale anche per il rientro,
+non congela quello dell’attivazione. `=` e `≠` richiedono isteresi zero: confronto numerico
+esatto, nessun epsilon o tolleranza implicita. Real/LReal possono essere arrotondati
+dal PLC/trasporto; per segnalare l’uscita da una fascia usa due allarmi sopra/sotto, non un’uguaglianza.
+
+Il catalogo versione 1 mantiene le vecchie soglie numeriche; la nuova forma è ad esempio
+`"trigger": { "kind": "high-equal", "limit": { "tag": "PressureLimit" }, "hysteresis": 2 }`.
+È un esempio di struttura, non un tag macchina da creare automaticamente. Valori e soglie
+devono essere SInt/USInt, Int/UInt, DInt/UDInt, Real/LReal (alias Float/Double): Bool,
+String, Byte/Word come bitfield, struct e interi 64 bit non vengono convertiti in analogici.
+Nessun fallback nascosto o scrittura PLC viene aggiunto.
+
+Il servizio valuta gli ultimi campioni ricevuti: non garantisce letture simultanee o un
+timestamp comune tra i due segnali, né tra due connessioni. Configura `staleAfterMs` su
+entrambi i binding per rendere non valida una sorgente ferma; il motore non aggiunge un
+orologio o un timeout autonomo. Nella simulazione editor una nuova mappa è applicata in
+un solo gruppo, evitando eventi artificiali dovuti all’ordine delle chiavi. Il trasporto
+reale continua a valutare ogni aggiornamento ricevuto, non una transazione PLC.
+
+Nuovi pannelli includono motore e tipi aggiornati. I pannelli già esportati richiedono
+aggiornamento esplicito di Runtime/servizio e riavvio manuale; salvare il catalogo non lo
+esegue. Non sono implementati limiti multipli dentro una singola condizione, classificazione
+ExclusiveLevel/NonExclusiveLevel Optix o confronti analogici esatti a 64 bit. Riferimenti:
+[trigger Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/configuring-alarms-rt-unified/configuring-analog-alarms-rt-unified/configure-trigger-rt-unified)
+e [Limit alarm Optix 1.3.2](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/1-3-2/contents-ditamap/creating-projects/object-and-variable-reference/ftoptix-alarm/objecttypes/limitalarmcontroller.html).
+La pagina Optix consultata descrive livelli esclusivi/non esclusivi: non è dichiarata
+parità con quell’oggetto né una nuova rivalutazione dell’intera baseline `current`.
+
+### Presa visione e rientro
 
 Classi: `none` chiude al rientro, `single` richiede anche la presa visione,
 `reset` richiede inoltre una conferma dopo rientro valido e presa visione.

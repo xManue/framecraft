@@ -15,6 +15,7 @@ import { inspectHmiScript, inspectHmiScriptProgram } from "../core/hmiScript";
 import { hmiScriptFunctions, hmiScriptGlobalDefinition, hmiScriptVariables } from "../core/hmiScriptModules";
 import { hmiTrendAttribute, parseHmiTrendConfig } from "../core/hmiTrend";
 import { hmiFunctionTrendAttribute, parseHmiFunctionTrendConfig } from "../core/hmiFunctionTrend";
+import { alarmDependencyTags } from "../core/hmiAlarms";
 
 const emptyVariable: PlcVariableDefinition = { name: "", dataType: "", access: "read", address: "", description: "" };
 const plcTypes = ["BOOL", "BYTE", "WORD", "DWORD", "INT", "DINT", "LINT", "REAL", "LREAL", "STRING", "WSTRING", "TIME", "DATE_AND_TIME"];
@@ -183,7 +184,7 @@ export function PlcVariablesPanel() {
         if (task.trigger.kind === "tag" && task.trigger.tag) tags.add(task.trigger.tag);
       }
       for (const log of dataLogCatalog.logs.filter((log) => log.enabled)) for (const logged of log.tags) { if (logged.tag) tags.add(logged.tag); if (logged.mode === "on-demand" && logged.triggerTag) tags.add(logged.triggerTag); }
-      for (const alarm of alarmConfiguration?.catalog.alarms ?? []) if (alarm.enabled) tags.add(alarm.tag);
+      for (const tag of alarmConfiguration ? alarmDependencyTags(alarmConfiguration.catalog) : []) tags.add(tag);
       return [...tags].sort();
     },
     [document, simulation.elements, simulation.values, simulation.status, tagCatalog, dataLogCatalog, scriptCatalog, previewPath, alarmConfiguration],

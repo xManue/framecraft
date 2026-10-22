@@ -7,6 +7,21 @@ const variables = [{ name: "Signal", dataType: "Bool", access: "read" }];
 const button = (host: HTMLElement, name: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === name)!;
 afterEach(() => { document.body.replaceChildren(); });
 describe("vista allarmi operativi", () => {
+  it("filtri richiudibili, azioni pertinenti e paginazione solo quando necessaria", () => {
+    const host = document.createElement("div"); document.body.append(host); const c = emptyAlarmCatalog(); c.alarms = Array.from({ length: 101 }, (_, index) => ({ ...catalog.alarms[0], id: "a" + index, tag: "Signal" + index }));
+    const engine = createAlarmEngine(c, c.alarms.map(item => ({ ...variables[0], name: item.tag }))); engine.updateSamples(c.alarms.map(item => ({ tag: item.tag, value: "1", qualityCode: 192 })));
+    const styles = document.head.querySelectorAll("style").length, control = createHmiAlarmControl(host, vi.fn()); control.update({ ...engine.snapshot(), actionsEnabled: true });
+    const filters = [...host.querySelectorAll("details")].find(node => node.querySelector("summary")?.textContent === "Filtra allarmi")!; expect(filters.open).toBe(false); expect(button(host, "Successivi").hidden).toBe(false); expect(button(host, "Conferma rientro").hidden).toBe(true);
+    filters.open = true; button(host, "Successivi").click(); expect(host.querySelectorAll("tbody tr")).toHaveLength(1); expect(filters.open).toBe(true);
+    host.querySelector<HTMLInputElement>('input[type="search"]')!.value = "a100"; host.querySelector<HTMLInputElement>('input[type="search"]')!.dispatchEvent(new Event("input")); expect(button(host, "Successivi").hidden).toBe(true); expect(host.querySelector('td[data-alarm-column="Messaggio"]')).not.toBeNull();
+    control.dispose(); control.dispose(); expect(document.head.querySelectorAll("style")).toHaveLength(styles); expect(host.style.containerType).toBe("");
+  });
+  it("rende la causa del segnale non valido consultabile anche senza mouse o tooltip", () => {
+    const host = document.createElement("div"); document.body.append(host); const engine = createAlarmEngine(catalog, variables), control = createHmiAlarmControl(host, vi.fn());
+    engine.updateSample({ tag: "Signal", value: "0", qualityCode: 0 }); control.update({ ...engine.snapshot(), actionsEnabled: false });
+    const detail = host.querySelector<HTMLDetailsElement>("tbody details")!; expect(detail).not.toBeNull(); expect(detail.querySelector("summary")?.textContent).toContain("Problema del segnale"); expect(detail.querySelector("p")?.textContent).toContain("Controlla connessione"); expect(host.querySelector("script")).toBeNull();
+    engine.updateSample({ tag: "Signal", value: "1", qualityCode: 192 }); control.update({ ...engine.snapshot(), actionsEnabled: false }); expect(host.querySelector("tbody details")).toBeNull(); control.dispose();
+  });
   it("la selezione nascosta da ricerca o filtro esterno non autorizza azioni", () => {
     const host = document.createElement("div"); document.body.append(host); const engine = createAlarmEngine(catalog, variables), action = vi.fn(); let included = true;
     const control = createHmiAlarmControl(host, action, () => included);

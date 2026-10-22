@@ -17,9 +17,17 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
     host.dataset.hmiAlarmRoot = "";
     host.setAttribute("role", "region");
     host.setAttribute("aria-label", "Allarmi operativi");
-    Object.assign(host.style, { background: "#333333", color: "#ffffff", display: "flex", flexDirection: "column", overflow: "hidden", fontSize: "16px" });
+    Object.assign(host.style, { background: "#333333", color: "#ffffff", display: "flex", flexDirection: "column", overflow: "hidden", fontSize: "16px", containerType: "inline-size", containerName: "framecraft-alarms" });
     const make = (tag, value) => { const node = host.ownerDocument.createElement(tag); if (value !== undefined)
         node.textContent = value; return node; };
+    const responsive = make("style"); responsive.textContent = "[data-hmi-alarm-root] [hidden]{display:none!important}";
+    if (host.ownerDocument.defaultView?.CSS?.supports?.("container-type", "inline-size")) responsive.textContent += `@container framecraft-alarms (max-width:600px){
+      [data-hmi-alarm-root] table,[data-hmi-alarm-root] tbody,[data-hmi-alarm-root] tr,[data-hmi-alarm-root] td{display:block;box-sizing:border-box;width:100%;min-width:0}
+      [data-hmi-alarm-root] thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+      [data-hmi-alarm-root] tbody{padding:8px}[data-hmi-alarm-root] tbody tr{border:1px solid #8894a4;margin-bottom:12px}
+      [data-hmi-alarm-root] td[data-alarm-column]:not(:first-child)::before{content:attr(data-alarm-column);display:block;font-size:14px;font-weight:600;color:#d1d9e4}
+      [data-hmi-alarm-root] td button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+    }`; host.ownerDocument.head.append(responsive);
     const notice = make("p"), toolbar = make("div"), status = make("p"), scroller = make("div"), table = make("table"), head = make("thead"), body = make("tbody");
     notice.setAttribute("role", "status");
     status.setAttribute("role", "status");
@@ -37,7 +45,11 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
     for (const input of [search, area])
         Object.assign(input.style, { minHeight: "44px", maxWidth: "100%", background: "#181e28", color: "#fff", border: "1px solid #8894a4", borderRadius: "4px", padding: "6px" });
     const ack = button("Prendi in visione"), confirm = button("Conferma rientro"), previous = button("Precedenti"), next = button("Successivi");
-    toolbar.append(searchLabel, areaLabel, ack, confirm, previous, next);
+    const filters = make("details"), filtersTitle = make("summary", "Filtra allarmi"), filterFields = make("div");
+    Object.assign(filters.style, { maxWidth: "100%", minWidth: "0", padding: "0", border: "1px solid #8894a4", borderRadius: "4px", margin: "0", background: "#252d39" });
+    Object.assign(filtersTitle.style, { minHeight: "44px", padding: "6px 12px", boxSizing: "border-box", cursor: "pointer" });
+    Object.assign(filterFields.style, { display: "flex", flexWrap: "wrap", gap: "8px", padding: "8px" });
+    filterFields.append(searchLabel, areaLabel); filters.append(filtersTitle, filterFields); toolbar.append(filters, ack, confirm, previous, next);
     const headers = make("tr");
     for (const label of ["Allarme", "Stato", "Messaggio", "Zona", "Ora"]) {
         const th = make("th", label);
@@ -76,12 +88,13 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
         page = Math.min(page, Math.max(0, Math.ceil(rows.length / 100) - 1));
         previous.disabled = page === 0;
         next.disabled = (page + 1) * 100 >= rows.length;
+        previous.hidden = next.hidden = rows.length <= 100;
         const current = snapshot?.rows.find((row) => row.id === selected?.id), unchanged = current && current.occurrence === selected?.occurrence && current.revision === selected?.revision;
         const canAct = connected && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && unchanged && current?.pending && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id]) && !busy && !hmiAlarmElementBlocked(host);
         ack.disabled = !canAct || current.acknowledged || current.acknowledgment === "none";
         confirm.disabled = !canAct || current.active !== false || !current.acknowledged || current.acknowledgment !== "reset" || current.quality !== "good";
         ack.hidden = source === "history";
-        confirm.hidden = source === "history";
+        confirm.hidden = source === "history" || !rows.some(row => row.acknowledgment === "reset");
         if (!busy)
             status.textContent = actionMessage && connected && actionMessageKey === snapshotKey() ? actionMessage : invalidFilter ? "Filtro non supportato: usa AlarmClassName = 'nome classe'. Nessun allarme viene mostrato con un filtro ambiguo." : selected && !unchanged ? "L'allarme è cambiato: selezionalo di nuovo prima di agire." : connected && snapshot && !snapshot.actionsEnabled && source !== "history" ? "Presa visione bloccata finché il servizio non autorizza l'operatore." : rows.length + " risultati · pagina " + (page + 1);
         const visible = rows.slice(page * 100, (page + 1) * 100), nextSignature = JSON.stringify([visible, selected, page]);
@@ -93,6 +106,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
             const tr = make("tr"), history = "state" in item, row = item;
             Object.assign(tr.style, { background: !history && selected?.id === item.id ? "#23466a" : "#333333", borderBottom: "1px solid #596372" });
             const cell = make("td");
+            cell.dataset.alarmColumn = "Allarme";
             cell.style.padding = "6px 8px";
             if (history)
                 cell.textContent = item.name;
@@ -106,13 +120,18 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
             tr.append(cell);
             const state = history ? ({ Incoming: "Attivato", Outgoing: "Rientrato", Acknowledged: "Presa visione", Confirmed: "Rientro confermato" }[item.state]) + (item.actor ? " · " + item.actor : "") : alarmStateLabel(row) + (row.quality !== "good" ? " · segnale non valido" : "");
             const time = history ? item.time : row.activatedAt;
-            for (const value of [state, item.text, item.area ?? "", time === undefined ? "—" : new Date(time).toLocaleString()]) {
+            for (const [index, value] of [state, item.text, item.area ?? "", time === undefined ? "—" : new Date(time).toLocaleString()].entries()) {
                 const td = make("td", value);
+                td.dataset.alarmColumn = ["Stato", "Messaggio", "Zona", "Ora"][index];
                 Object.assign(td.style, { padding: "8px", overflowWrap: "anywhere" });
                 tr.append(td);
             }
-            if (!history && row.diagnostic)
+            if (!history && row.diagnostic) {
                 tr.title = row.diagnostic;
+                const detail = make("details"), summary = make("summary", "Problema del segnale / della soglia");
+                Object.assign(summary.style, { cursor: "pointer", minHeight: "44px", padding: "8px 0" });
+                detail.append(summary, make("p", row.diagnostic)); tr.cells[2].append(detail);
+            }
             return tr;
         }));
         if (!visible.length) {
@@ -160,7 +179,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
     return {
         update(value, available = true) { if (value)
             snapshot = value; connected = available && !!value; render(); },
-        dispose() { disposed = true; delete host.dataset.hmiAlarmRoot; host.replaceChildren(...original); for (const [name, value] of [["style", oldStyle], ["role", oldRole], ["aria-label", oldLabel]]) {
+        dispose() { if (disposed) return; disposed = true; responsive.remove(); delete host.dataset.hmiAlarmRoot; host.replaceChildren(...original); for (const [name, value] of [["style", oldStyle], ["role", oldRole], ["aria-label", oldLabel]]) {
             if (value === null)
                 host.removeAttribute(name);
             else

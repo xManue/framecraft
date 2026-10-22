@@ -5688,6 +5688,52 @@ Verifiche del 5 ottobre 2026:
   retention/export, multilingua storica e import Alarm & Conditions UA restano da completare.
   Modifiche AI e trend già presenti nella worktree lasciate separate.
 
+### 162. Allarmi analogici: confronti e soglia PLC (2026-10-22)
+
+- Prosegue Unified/Optix, AI rimandata su richiesta. Riferimento primario Unified V21:
+  sei modalità di confronto analogico. Riletto Limit alarm Optix 1.3.2 per tenere distinti
+  i livelli esclusivi/non esclusivi ancora mancanti. Nessun codice/asset vendor o dipendenza nuova.
+- Catalogo v1 retrocompatibile: `high`/`low` e costanti restano invariati; aggiunti
+  `high-equal`, `low-equal`, `equal`, `not-equal` e `limit: { tag }`. Tag soglia dichiarato
+  una sola volta, numerico e leggibile, senza detected/fallback o conversioni 64 bit.
+  Isteresi non negativa; uguaglianza/diversità esatte richiedono zero, senza epsilon implicito.
+- Motore comune editor/servizio: dipendenze indicizzate su segnale e soglia, stato iniziale
+  sconosciuto, nessun valore sostitutivo; Bad/Uncertain/errore o valore incompatibile conserva
+  condizione/occorrenza e blocca il falso rientro. Cambiare soltanto la soglia rivaluta l’allarme.
+  Aggiornamento di un gruppo prima della valutazione evita transizioni spurie nella mappa
+  di simulazione; non dichiara acquisizione simultanea dal PLC. Batch eventi persistenti invariato.
+- Pannello → Allarmi: origine fissa/PLC, selettore solo numerico leggibile, confronto e
+  isteresi con guida ai confini; uguaglianza senza isteresi nascosta. Prova con due campioni
+  e qualità separate. Nel pannello PLC di prova compaiono anche le soglie degli allarmi abilitati.
+- Diagnostica della riga consultabile da un dettaglio nativo anche touch/tastiera, non più
+  disponibile soltanto in `title`. Etichette dei campi separate dai select e associate per
+  ID; guida su tutta la larghezza della griglia. Filtri richiudibili e conferma/paginazione
+  soltanto pertinenti. Sotto 600 px del controllo, schede con etichette (container query nei
+  browser moderni), senza cambiare il layout mobile/desktop della pagina. Stili ripristinati
+  e rimossi alla chiusura del controllo, testi mai interpretati come HTML.
+- Copia pubblicabile `public-analog-295a9879`, senza export/foto privati o WIP AI/trend:
+  135 casi mirati su 11 file, contando i casi unici dopo le correzioni; ripetuti solo quelli
+  coinvolti. Compresi quattro casi allarmi nel Runtime esportato (non gli altri 50 del file),
+  con harness aggiornato alle dipendenze ricette/audit/sessione già presenti. Launcher
+  realmente generato con broker MQTT e server OPC UA sintetici locali: due segnali/nodi,
+  variazione della sola soglia, Bad senza falso rientro e zero scritture PLC.
+- Browser Edge sull’editor reale con bridge solo per cataloghi sintetici: scelta/prova dei
+  due segnali, diagnostica aperta con Invio, salvataggio mock solo dopo modifica del catalogo;
+  375/768/1024/1440 px senza overflow orizzontale, schede strette e tabella larga verificate,
+  screenshot desktop/mobile ispezionati. Zero richieste PLC o esterne da questa prova UI;
+  gli aggiornamenti dei valori simulati non abilitano da soli Salva. Un timeout a freddo
+  del banco prova è stato corretto usando cache sotto `node_modules/.vite` e attese esplicite
+  per l’entry; nessuna modifica all’avvio dell’app. Dipendenze condivise, non clean install.
+  TypeScript e build editor passati, ripetuta la build dopo l’ultima rifinitura. Il motore
+  ignora anche un tag detected che tenti di coprire il tipo del corrispondente dichiarato;
+  ultima regressione con i vecchi allarmi: 69 casi passati. Non sono prove native IPC o
+  hardware, né della certificazione industriale.
+- Restano limiti multipli nello stesso allarme, tipi/livelli Optix, unità e conversioni
+  dichiarate, analogici 64 bit, letture coordinate e collaudo fisico/TLS/carico. La qualità
+  stale dipende dai binding dei driver, senza timeout autonomi aggiunti al motore. I nuovi
+  pannelli includono i sorgenti; Runtime già esportati richiedono aggiornamento esplicito.
+  AI e modifiche trend/profili preesistenti restano fuori dalla tranche.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

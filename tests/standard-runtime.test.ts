@@ -22,6 +22,12 @@ import { connectionDiagnostic } from "../runtime/connection-diagnostics.mjs";
 import * as alarmEngine from "../runtime/alarm-engine.mjs";
 import { createHmiAlarmControl } from "../src/core/hmiAlarmControl";
 import { createHmiAlarmSummary, defaultHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig } from "../src/core/hmiAlarmSummary";
+import * as recipeClient from "../src/core/hmiRecipeClient";
+import * as recipeControl from "../src/core/hmiRecipeControl";
+import * as auditControl from "../src/core/hmiAuditControl";
+import * as alarmArchive from "../src/core/hmiAlarmArchive";
+import * as operatorSession from "../src/core/hmiOperatorSession";
+import { AlarmHistoryError } from "../runtime/alarm-history.mjs";
 
 interface GeneratedRuntime {
   installFramecraftHmiRuntime(options: { navigate: (target: string) => void; routes?: readonly string[]; trace: (message: string) => void; error: (message: string) => void }): () => void;
@@ -204,6 +210,15 @@ function loadGeneratedRuntime(scriptCatalog: HmiScriptCatalog = emptyHmiScriptCa
     if (id === "../runtime/alarm-engine.mjs") return alarmEngine;
     if (id === "./framecraftHmiAlarmControl") return { createHmiAlarmControl };
     if (id === "./framecraftHmiAlarmSummary") return { createHmiAlarmSummary };
+    if (id === "./framecraftHmiRecipeClient") return recipeClient;
+    if (id === "./framecraftHmiRecipeControl") return recipeControl;
+    if (id === "./framecraftHmiAuditControl") return auditControl;
+    if (id === "./framecraftHmiAlarmArchive") return alarmArchive;
+    if (id === "./framecraftOperatorSession") return operatorSession;
+    if (id === "../runtime/alarm-history.mjs") return { AlarmHistoryError };
+    // This unit fixture sets permission attributes itself; real access/session policy has dedicated integration tests.
+    if (id === "./framecraftOperatorAccess.js") return {};
+    if (id.startsWith("../") && id.endsWith(".json") && generatedSources.has(id.slice(3))) return { default: JSON.parse(generatedSources.get(id.slice(3))!) };
     throw new Error(`Dipendenza generata non prevista: ${id}`);
   });
   return module.exports as unknown as GeneratedRuntime;
@@ -385,6 +400,18 @@ describe("Runtime del pannello standard generato", () => {
       expect(trace.mock.calls.some(([message]) => message.includes("unexpected-parent-click"))).toBe(false);
     } finally { dispose(); }
     expect(document.querySelector("[data-hmi-alarm-root]")).toBeNull();
+  });
+  it("allarmi analogici nel Runtime esportato rivalutano la soglia senza inventare dati o duplicare eventi", async () => {
+    const catalog = { ...alarmEngine.emptyAlarmCatalog(), alarms: [{ id: "analog", name: "Pressione", text: "Controlla pressione", tag: "Value", className: "Alarm_CTH", enabled: true, priority: 1, trigger: { kind: "high-equal" as const, limit: { tag: "Limit" }, hysteresis: 2 } }] };
+    const scripts = parseHmiScriptCatalog({ scheduledTasks: [{ id: "analog-task", name: "Soglia", trigger: { kind: "alarm", criterion: "state", condition: "equals", operand: "Incoming" }, script: 'HMIRuntime.Trace("analog-event");' }] });
+    const runtime = loadGeneratedRuntime(scripts, undefined, false, ["Value", "Limit"].map(name => ({ name, dataType: "LReal", access: "read" })), catalog);
+    document.body.innerHTML = '<div data-hmi-type="HmiAlarmControl" style="height:300px"></div>'; const trace = vi.fn(), error = vi.fn(), dispose = runtime.installFramecraftHmiRuntime({ navigate: vi.fn(), trace, error });
+    try {
+      runtime.setRuntimeTagValue("Value", "10"); expect(document.body.textContent).toContain("In attesa del segnale"); expect(trace).not.toHaveBeenCalled();
+      runtime.setRuntimeTagValue("Limit", "10"); expect(document.body.textContent).toContain("Attivo"); await vi.waitFor(() => expect(trace).toHaveBeenCalledWith("[HMI TASK Soglia] analog-event"));
+      runtime.applyRuntimeTagSample({ tag: "Limit", connectionId: "local", value: "100", qualityCode: 0, receivedAt: 1000 }); runtime.setRuntimeTagValue("Value", "0"); expect(document.body.textContent).toContain("Attivo"); expect(document.body.textContent).toContain("Soglia PLC non disponibile");
+      runtime.applyRuntimeTagSample({ tag: "Limit", connectionId: "local", value: "100", qualityCode: 192, receivedAt: 1001 }); expect(document.body.textContent).toContain("Rientrato"); expect(trace.mock.calls.filter(([message]) => message.includes("analog-event"))).toHaveLength(1); expect(error).not.toHaveBeenCalled();
+    } finally { dispose(); }
   });
   it("aggiorna il valore dei veri campi IO input in sola lettura indiretta e ripristina la modificabilità alla chiusura", () => {
     const runtime = loadGeneratedRuntime(undefined, undefined, false, [{ name: "Selected", dataType: "WSTRING", access: "read" }, { name: "Motor1", dataType: "REAL", access: "read" }]);

@@ -24,6 +24,15 @@ function setup(config: AlarmPreviewConfiguration | null = configuration) {
 }
 const button = (text: string, scope: ParentNode = document) => [...scope.querySelectorAll<HTMLButtonElement>("button")].find((node) => node.textContent === text)!;
 describe("allarmi nella prova locale del pannello", () => {
+  it("include la soglia PLC e valuta insieme la mappa di prova senza eventi intermedi", () => {
+    const config: AlarmPreviewConfiguration = { catalog: { ...emptyAlarmCatalog(), alarms: [{ ...configuration.catalog.alarms[0], className: "Alarm_CTH", tag: "Value", trigger: { kind: "high", limit: { tag: "Limit" }, hysteresis: 0 } }] }, variables: ["Value", "Limit"].map(name => ({ name, dataType: "Real", access: "read" })) };
+    const test = setup(config); test.set({ values: { Value: "10" } }); test.control.update(); expect(test.model.update()!.rows[0]).toMatchObject({ active: null, quality: "unknown" });
+    test.set({ values: { Value: "10", Limit: "15" } }); test.control.update(); expect(test.model.update()!.rows[0]).toMatchObject({ active: false, quality: "good" });
+    test.set({ values: { Value: "20", Limit: "25" } }); test.control.update(); expect(test.model.update()!.history).toEqual([]);
+    test.set({ values: { Value: "20", Limit: "10" } }); test.control.update(); expect(test.model.update()!.rows[0].active).toBe(true);
+    test.set({ values: { Value: "0" } }); test.control.update(); expect(test.model.update()!.rows[0]).toMatchObject({ active: true, quality: "unknown" }); expect(test.model.update()!.history).toHaveLength(1);
+    expect(test.network).not.toHaveBeenCalled();
+  });
   it("non monta in Modifica e non interpreta un valore mancante come Good o zero", () => {
     const test = setup(); test.set({ interactive: false, values: {} }); test.control.update(); expect(test.host.firstChild).toBe(test.original); expect(document.querySelector('[data-hmi-alarm-preview-note]')).toBeNull();
     test.set({ interactive: true }); test.control.update(); expect(test.host.textContent).toContain("sconosciuti"); expect(test.host.querySelector('[data-hmi-alarm-summary-state="normal"]')).toBeNull(); expect(test.host.textContent).toContain("SIMULAZIONE"); expect(button("Pulisci").disabled).toBe(true); expect(test.network).not.toHaveBeenCalled();

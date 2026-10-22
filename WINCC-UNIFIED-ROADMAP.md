@@ -11,6 +11,10 @@ Aggiornamento mirato 21 ottobre 2026: consultazione HMI del registro attività F
 21 ottobre 2026: archivio allarmi Framecraft su disco e vista protetta separata dallo stato attivo
 (LAVORO 161). Restano multilingua storica, manutenzione industriale e collaudo target.
 
+22 ottobre 2026: sei confronti analogici scalari e soglia da variabile PLC nel motore,
+nella configurazione/prova e nel Runtime generato (LAVORO 162). Non completa limiti multipli,
+tipi avanzati, simultaneità delle letture o collaudo CPU.
+
 Questo file è la checklist stabile del progetto. L'obiettivo non è copiare l'aspetto di TIA Portal,
 ma coprire le capacità che servono a progettare e usare un HMI Unified, poi renderle più verificabili,
 più veloci e più estendibili. L'inventario elenca le **famiglie funzionali**; le migliaia di singole
@@ -145,7 +149,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | ID | Capacità WinCC Unified | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
 | WCU-ALM-01 | Allarmi discreti e trigger bit/tag | PARZIALE | Import cataloghi completi, ack PLC e collaudo CPU | Catalogo guidato, Bool/interi scalari, bit set/clear esatti fino a 64 bit, collisioni/tipi/accesso verificati; motore nel servizio MQTT/OPC UA, qualità conservativa e prova locale (106) |
-| WCU-ALM-02 | Allarmi analogici e limiti | PARZIALE | Altri confronti Unified, limiti da tag, più limiti nello stesso allarme e tipi avanzati | Soglia fissa sopra/sotto e isteresi di rientro; stesso motore nella prova e nel servizio scalare, valori incompatibili non chiudono il guasto |
+| WCU-ALM-02 | Allarmi analogici e limiti | PARZIALE | Più limiti nello stesso allarme, analogici 64 bit/tipi avanzati e collaudo target | Sei confronti, costante o soglia PLC leggibile, isteresi esplicita, dipendenze/qualità di entrambi i segnali e prova locale; nessun falso rientro o valore sostitutivo (106/162) |
 | WCU-ALM-03 | Allarmi PLC e multi-instance | DA FARE | Ricezione/struttura dal controller | Collegamento automatico a gerarchia e faceplate |
 | WCU-ALM-04 | Classi, priorità, aree e testi | PARZIALE | Multilingua, altri modelli Unified, colori/classi completi e identità/RBAC server | Editor di classi e tre modelli di chiusura, messaggi, zone e priorità; nessun dato macchina precompilato |
 | WCU-ALM-05 | Active, historical e logged alarms | PARZIALE | Recovery/retention/backup industriali, multilingua e collaudo target | Motore condiviso, storico di sessione e archivio SQLite per eventi supportati; batch per valutazione, riavvii distinti, lacune segnalate e nessun ripristino dello stato attivo dallo storico (106/161) |

@@ -15,6 +15,15 @@ import { parseHmiScriptCatalog } from "../src/core/hmiScriptModules";
 import { emptyAlarmCatalog } from "../src/core/hmiAlarms";
 
 describe("simulazione PLC dei trend", () => {
+  it("offre anche le variabili usate come soglia dagli allarmi analogici abilitati", async () => {
+    const before = useEditorStore.getState(), container = document.createElement("div"), root = createRoot(container); Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    try {
+      const catalog = emptyAlarmCatalog(); catalog.alarms = [true, false].map((enabled, index) => ({ id: "a" + index, name: "Pressione", text: "Controlla", tag: "Value" + index, className: "Alarm_CTH", priority: 1, enabled, trigger: { kind: "high", limit: { tag: "Limit" + index }, hysteresis: 1 } }));
+      useEditorStore.setState({ project: undefined, document: undefined, alarmPreviewConfiguration: { catalog, variables: [] }, scriptCatalog: parseHmiScriptCatalog({}), dataLogCatalog: emptyHmiDataLogCatalog(), simulation: { on: true, values: {}, status: {}, elements: [], unresolved: [] } }); await act(async () => root.render(createElement(PlcVariablesPanel)));
+      for (const name of ["Value0", "Limit0"]) expect(container.querySelector(`[aria-label="Valore simulato ${name}"]`)).not.toBeNull();
+      for (const name of ["Value1", "Limit1"]) expect(container.querySelector(`[aria-label="Valore simulato ${name}"]`)).toBeNull();
+    } finally { await act(async () => root.unmount()); useEditorStore.setState(before, true); }
+  });
   it("offre anche i segnali allarme abilitati e spiega Usa il pannello senza inviare comandi", async () => {
     const before = useEditorStore.getState(), container = document.createElement("div"), root = createRoot(container); Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     try {

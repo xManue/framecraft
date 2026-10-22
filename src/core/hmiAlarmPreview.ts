@@ -1,4 +1,4 @@
-import { createAlarmEngine, type AlarmCommand, type AlarmSnapshot } from "../../runtime/alarm-engine.mjs";
+import { alarmDependencyTags, createAlarmEngine, type AlarmCommand, type AlarmSnapshot } from "../../runtime/alarm-engine.mjs";
 import type { AlarmPreviewConfiguration } from "./hmiAlarms";
 import type { HmiScriptTagStatus } from "./hmiScript";
 import type { StoreApi } from "zustand";
@@ -41,7 +41,7 @@ export function hmiAlarmPreviewSession(owner: AlarmPreviewOwner) {
 }
 export function createHmiAlarmPreview(configuration: AlarmPreviewConfiguration | undefined, options: { state(): AlarmPreviewState; current(): boolean; error(message: string): void }) {
   let disposed = false, wasOn = false, engine: ReturnType<typeof createAlarmEngine> | undefined;
-  const tags = [...new Set(configuration?.catalog.alarms.filter((alarm) => alarm.enabled).map((alarm) => alarm.tag))];
+  const tags = configuration ? alarmDependencyTags(configuration.catalog) : [];
   const resetEngine = () => {
     engine = undefined;
     if (!configuration) return;
@@ -52,11 +52,11 @@ export function createHmiAlarmPreview(configuration: AlarmPreviewConfiguration |
   const active = () => !disposed && options.current() && options.state().on && options.state().interactive;
   const samples = () => {
     const state = options.state(); if (!state.on || !options.current()) return;
-    for (const tag of tags) {
+    engine?.updateSamples(tags.map(tag => {
       const explicit = Object.prototype.hasOwnProperty.call(state.values, tag), status = state.status[tag];
       const qualityCode = !explicit || status?.qualityKnown === false ? undefined : status?.qualityCode ?? (status?.qualityKnown === true ? undefined : 192);
-      engine?.updateSample({ tag, value: explicit ? state.values[tag] : undefined, qualityCode, lastError: status?.lastError });
-    }
+      return { tag, value: explicit ? state.values[tag] : undefined, qualityCode, lastError: status?.lastError };
+    }));
   };
   const snapshot = (): AlarmSnapshot | undefined => !disposed && options.current() && engine ? { ...engine.snapshot(), actionsEnabled: active() } : undefined;
   return {

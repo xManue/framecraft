@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Framecraft · allarmi analogici QA</title></head><body><div id="root"></div><script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import '../../src/styles/global.css';
+import { AlarmsDialog } from '../../src/editor/AlarmsDialog';
+import { desktopBridge } from '../../src/filesystem/desktopBridge';
+import { useEditorStore } from '../../src/state/editorStore';
+import { emptyAlarmCatalog } from '../../src/core/hmiAlarms';
+const variables = ['Pressure', 'Limit'].map(name => ({ name, dataType: 'LReal', access: 'read', address: '', description: '' }));
+const catalog = { ...emptyAlarmCatalog(), alarms: [{ id: 'pressure', name: 'Pressione', text: 'Controlla pressione', tag: 'Pressure', className: 'Alarm_CTH', priority: 1, area: 'QA sintetica', enabled: true, trigger: { kind: 'high-equal', limit: { tag: 'Limit' }, hysteresis: 2 } }] };
+const project = { root: 'C:/synthetic-analog-qa', name: 'Allarmi QA', framework: 'vite', language: 'typescript', packageManager: 'npm', entryFiles: [], files: [], scripts: {}, dependencies: [], hasNodeModules: true, missingDependencies: [] };
+let snapshot = { generation: 1, source: JSON.stringify(catalog), plc: JSON.stringify({ version: 1, variables }) };
+window.framecraftAnalogQa = { reads: 0, saves: 0, saved: undefined };
+desktopBridge.readAlarmConfiguration = async () => { window.framecraftAnalogQa.reads++; return snapshot; };
+desktopBridge.saveAlarmConfiguration = async (_root, expected, source) => { if (expected !== snapshot) throw new Error('Snapshot QA cambiato'); snapshot = { ...snapshot, source }; window.framecraftAnalogQa.saves++; window.framecraftAnalogQa.saved = JSON.parse(source); return snapshot; };
+useEditorStore.setState({ project, loading: false, dirty: false, previewRestarting: false, previewUrl: undefined, consoleEntries: [], history: [], future: [], multiSelection: [] });
+createRoot(document.getElementById('root')).render(React.createElement(AlarmsDialog, { onClose() {} }));
+</script></body></html>

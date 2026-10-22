@@ -1,5 +1,7 @@
 import { normalizeMqttTagValue } from "./connection-config.mjs";
 const integerTypes = new Map(Object.entries({ byte: [8, false], usint: [8, false], sint: [8, true], word: [16, false], uint: [16, false], int: [16, true], dword: [32, false], udint: [32, false], dint: [32, true], lword: [64, false], ulint: [64, false], lint: [64, true] }));
+const analogTypes = ["real", "lreal", "float", "double", "sint", "usint", "int", "uint", "dint", "udint"];
+const analogKinds = ["high", "low", "high-equal", "low-equal", "equal", "not-equal"];
 const text = (value, max = 200) => typeof value === "string" && !!value.trim() && value.length <= max && !/[\x00-\x1f]/.test(value);
 const object = (value) => value && typeof value === "object" && !Array.isArray(value);
 const copy = (value) => JSON.parse(JSON.stringify(value));
@@ -48,9 +50,15 @@ export function alarmCatalogIssues(catalog, variables) {
       const key = JSON.stringify([item.tag, trigger.bit]);
       if (bits.has(key)) add(path + ".trigger.bit", "Questo bit è già usato da un altro allarme: scegli un bit diverso.");
       bits.add(key);
-    } else if (["high", "low"].includes(trigger.kind)) {
-      if (variables && !["real", "lreal", "float", "double", "sint", "usint", "int", "uint", "dint", "udint"].includes(type)) add(path + ".tag", "Una soglia richiede un numero scalare fino a 32 bit o Real/LReal; i 64 bit esatti non si convertono in Number.");
-      if (!Number.isFinite(trigger.limit) || !Number.isFinite(trigger.hysteresis) || trigger.hysteresis < 0 || !Number.isFinite(trigger.limit + trigger.hysteresis) || !Number.isFinite(trigger.limit - trigger.hysteresis)) add(path + ".trigger.limit", "Compila una soglia finita e un'isteresi finita, non negativa.");
+    } else if (analogKinds.includes(trigger.kind)) {
+      if (variables && !analogTypes.includes(type)) add(path + ".tag", "Una soglia richiede un numero scalare fino a 32 bit o Real/LReal; i 64 bit esatti non si convertono in Number.");
+      if (object(trigger.limit)) {
+        if (Object.keys(trigger.limit).length !== 1 || !text(trigger.limit.tag)) add(path + ".trigger.limit", "Scegli un solo segnale dichiarato come soglia. Non è previsto un valore sostitutivo.");
+        const limits = variables?.filter(variable => variable.name === trigger.limit.tag && !variable.detected);
+        if (variables && (limits.length !== 1 || !["read", "read-write"].includes(limits[0].access) || !analogTypes.includes(limits[0].dataType?.toLowerCase()))) add(path + ".trigger.limit", "La soglia deve essere un segnale numerico dichiarato una sola volta e leggibile, fino a 32 bit o Real/LReal.");
+      } else if (!Number.isFinite(trigger.limit) || !Number.isFinite(trigger.limit + trigger.hysteresis) || !Number.isFinite(trigger.limit - trigger.hysteresis)) add(path + ".trigger.limit", "Compila una soglia finita e un'isteresi finita, non negativa.");
+      if (!Number.isFinite(trigger.hysteresis) || trigger.hysteresis < 0) add(path + ".trigger.hysteresis", "L'isteresi deve essere un numero finito, non negativo.");
+      if (["equal", "not-equal"].includes(trigger.kind) && trigger.hysteresis !== 0) add(path + ".trigger.hysteresis", "Uguale e diverso richiedono isteresi zero: il confronto è esatto, senza tolleranza implicita.");
     } else add(path + ".trigger", "Attivazione non supportata.");
     const mode = trigger.kind === "bit" ? "bit" : "analog";
     if (modes.has(item.tag) && modes.get(item.tag) !== mode) add(path + ".tag", "Non mescolare allarmi a bit e analogici sullo stesso segnale.");
@@ -71,6 +79,34 @@ export function parseAlarmCatalog(value, variables) {
   const issues = alarmCatalogIssues(catalog, variables);
   if (issues.length) throw new Error(issues[0].message);
   return copy(catalog);
+}
+
+const dependencyTags = alarm => alarm.trigger.kind !== "bit" && object(alarm.trigger.limit) ? [...new Set([alarm.tag, alarm.trigger.limit.tag])] : [alarm.tag];
+export function alarmDependencyTags(catalog) { return [...new Set(catalog.alarms.filter(alarm => alarm.enabled).flatMap(dependencyTags))]; }
+
+function sampleQuality(sample) {
+  if (!sample) return "unknown";
+  const valid = Number.isInteger(sample.qualityCode) && sample.qualityCode >= 0 && sample.qualityCode <= 65535 && [128, 192].includes(sample.qualityCode & 192) && !sample.lastError && ["string", "number", "boolean"].includes(typeof sample.value);
+  return valid ? "good" : sample.qualityCode === undefined && !sample.lastError ? "unknown" : "bad";
+}
+function numericValue(value, type) {
+  if (!["number", "string"].includes(typeof value) || String(value).trim() === "") throw new Error("Numero mancante.");
+  const number = normalizeMqttTagValue(value, type);
+  if (typeof number !== "number" || !Number.isFinite(number)) throw new Error("Numero non valido.");
+  return number;
+}
+function analogActive(number, limit, trigger, wasActive) {
+  if (!Number.isFinite(limit + trigger.hysteresis) || !Number.isFinite(limit - trigger.hysteresis)) throw new Error("Soglia fuori intervallo.");
+  const high = wasActive ? limit - trigger.hysteresis : limit, low = wasActive ? limit + trigger.hysteresis : limit;
+  switch (trigger.kind) {
+    case "high": return number > high;
+    case "low": return number < low;
+    case "high-equal": return number >= high;
+    case "low-equal": return number <= low;
+    case "equal": return number === limit;
+    case "not-equal": return number !== limit;
+    default: throw new Error("Confronto non supportato.");
+  }
 }
 
 function bitValue(value, type, bit) {
@@ -118,12 +154,11 @@ export function parseAlarmSnapshot(value) {
 export function createAlarmEngine(value, variables, options = {}) {
   const catalog = parseAlarmCatalog(value, variables), now = options.now ?? Date.now;
   const definitions = new Map(catalog.alarms.filter((item) => item.enabled).map((item) => [item.id, item]));
-  const tags = new Map(variables.map((item) => [item.name, item])), classes = new Map(catalog.classes.map((item) => [item.name, item.acknowledgment]));
-  const rows = new Map(), byTag = new Map(), history = [], pendingEvents = [], listeners = new Set(), instanceId = crypto.randomUUID(); let sequence = 0, revision = 0;
+  const tags = new Map(variables.filter(item => !item.detected).map((item) => [item.name, item])), classes = new Map(catalog.classes.map((item) => [item.name, item.acknowledgment]));
+  const rows = new Map(), byTag = new Map(), samples = new Map(), history = [], pendingEvents = [], listeners = new Set(), instanceId = crypto.randomUUID(); let sequence = 0, revision = 0;
   for (const item of definitions.values()) {
     rows.set(item.id, { ...item, acknowledgment: classes.get(item.className), active: null, acknowledged: false, confirmed: false, pending: false, quality: "unknown", revision: 0 });
-    if (!byTag.has(item.tag)) byTag.set(item.tag, []);
-    byTag.get(item.tag).push(item.id);
+    for (const tag of dependencyTags(item)) { if (!byTag.has(tag)) byTag.set(tag, []); byTag.get(tag).push(item.id); }
   }
   const snapshot = () => copy({ version: 1, instanceId, revision, sequence, rows: [...rows.values()], history, historyDropped: Math.max(0, sequence - history.length) });
   const notify = () => { if (pendingEvents.length) { const events = pendingEvents.splice(0); try { options.onEvents?.(copy(events)); } catch { /* Archive failure cannot stop alarm acquisition. */ } } for (const listener of listeners) try { listener(snapshot()); } catch { /* A viewer cannot alter alarm acquisition. */ } };
@@ -133,45 +168,59 @@ export function createAlarmEngine(value, variables, options = {}) {
     try { options.onEvent?.(copy(entry)); } catch { /* Diagnostics must not stop state transitions. */ }
   };
   const pending = (row) => row.active === true || !!row.occurrence && (classes.get(row.className) !== "none" && !row.acknowledged || classes.get(row.className) === "reset" && !row.confirmed);
+  function updateSamples(batch) {
+    if (!Array.isArray(batch) || batch.length > 4000) throw new Error("Gruppo campioni allarmi non valido: massimo 4000 segnali.");
+    const affected = new Set();
+    for (const sample of batch) {
+      if (!object(sample) || !byTag.has(sample.tag)) continue;
+      samples.set(sample.tag, { value: sample.value, qualityCode: sample.qualityCode, lastError: sample.lastError });
+      for (const id of byTag.get(sample.tag)) affected.add(id);
+    }
+    let changed = false;
+    for (const id of affected) {
+      const row = rows.get(id), before = JSON.stringify(row), trigger = row.trigger, sample = samples.get(row.tag);
+      const dynamic = trigger.kind !== "bit" && object(trigger.limit), limitSample = dynamic ? samples.get(trigger.limit.tag) : undefined;
+      const signalQuality = sampleQuality(sample), limitQuality = dynamic ? sampleQuality(limitSample) : "good";
+      if (signalQuality !== "good" || limitQuality !== "good") {
+        row.quality = [signalQuality, limitQuality].includes("bad") ? "bad" : "unknown";
+        row.diagnostic = signalQuality !== "good" ? "Segnale non valido o qualità sconosciuta. Controlla connessione e mapping: l'ultimo stato allarme non viene cancellato." : "Soglia PLC non disponibile o qualità non valida. Controlla il segnale usato come soglia: l'ultimo stato allarme non viene cancellato, senza valori sostitutivi.";
+      } else {
+        let active;
+        try {
+          const type = tags.get(row.tag).dataType.toLowerCase();
+          if (trigger.kind === "bit") active = bitValue(sample.value, type, trigger.bit) === (trigger.activeWhen === "set");
+          else {
+            const number = numericValue(sample.value, type);
+            let limit = trigger.limit;
+            if (dynamic) {
+              try { limit = numericValue(limitSample.value, tags.get(trigger.limit.tag).dataType.toLowerCase()); }
+              catch { row.diagnostic = "Valore della soglia PLC incompatibile con il tipo dichiarato. Correggi il mapping o il campione; l'ultimo stato allarme non viene cancellato."; }
+            }
+            if (!dynamic || typeof limit === "number") active = analogActive(number, limit, trigger, row.active === true);
+          }
+          if (active === undefined) row.quality = "bad";
+          else { row.quality = "good"; delete row.diagnostic; }
+        } catch {
+          row.quality = "bad"; row.diagnostic = "Valore incompatibile con il tipo o la soglia. Controlla catalogo e formato del campione PLC.";
+        }
+        if (row.quality === "good" && active !== row.active) {
+          row.active = active;
+          if (active) {
+            if (!row.pending) row.occurrence = (options.occurrenceId ?? (() => crypto.randomUUID()))();
+            row.acknowledged = false; row.confirmed = false; delete row.clearedAt; row.activatedAt = now(); event(row, "Incoming");
+          } else if (row.occurrence) { row.clearedAt = now(); event(row, "Outgoing"); }
+          row.pending = pending(row);
+        }
+      }
+      if (JSON.stringify(row) !== before) { row.revision++; changed = true; }
+    }
+    if (changed) { revision++; notify(); }
+  }
   return {
     snapshot,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    updateSample(sample) {
-      if (!object(sample)) return;
-      let changed = false;
-      for (const id of byTag.get(sample.tag) ?? []) {
-        const row = rows.get(id), before = JSON.stringify(row);
-        const good = Number.isInteger(sample.qualityCode) && sample.qualityCode >= 0 && sample.qualityCode <= 65535 && [128, 192].includes(sample.qualityCode & 192) && !sample.lastError;
-        if (!good || sample.value === undefined) {
-          row.quality = sample.qualityCode === undefined ? "unknown" : "bad";
-          row.diagnostic = "Segnale non valido o qualità sconosciuta. Controlla connessione e mapping: l'ultimo stato allarme non viene cancellato.";
-        } else {
-          try {
-            const trigger = row.trigger, type = tags.get(row.tag).dataType.toLowerCase();
-            let active;
-            if (trigger.kind === "bit") active = bitValue(sample.value, type, trigger.bit) === (trigger.activeWhen === "set");
-            else {
-              if (typeof sample.value === "boolean" || String(sample.value).trim() === "") throw new Error("Numero mancante.");
-              const number = normalizeMqttTagValue(sample.value, type); if (typeof number !== "number" || !Number.isFinite(number)) throw new Error("Numero non valido.");
-              active = trigger.kind === "high" ? number > (row.active ? trigger.limit - trigger.hysteresis : trigger.limit) : number < (row.active ? trigger.limit + trigger.hysteresis : trigger.limit);
-            }
-            row.quality = "good"; delete row.diagnostic;
-            if (active !== row.active) {
-              row.active = active;
-              if (active) {
-                if (!row.pending) row.occurrence = (options.occurrenceId ?? (() => crypto.randomUUID()))();
-                row.acknowledged = false; row.confirmed = false; delete row.clearedAt; row.activatedAt = now(); event(row, "Incoming");
-              } else if (row.occurrence) { row.clearedAt = now(); event(row, "Outgoing"); }
-              row.pending = pending(row);
-            }
-          } catch {
-            row.quality = "bad"; row.diagnostic = "Valore incompatibile con il tipo o la soglia. Controlla catalogo e formato del campione PLC.";
-          }
-        }
-        if (JSON.stringify(row) !== before) { row.revision++; changed = true; }
-      }
-      if (changed) { revision++; notify(); }
-    },
+    updateSample(sample) { updateSamples([sample]); },
+    updateSamples,
     action(command, actor) {
       if (!object(command) || Object.keys(command).some((key) => !["alarmId", "occurrence", "revision", "action"].includes(key)) || !text(actor)) throw new Error("Operatore o comando allarme non valido.");
       const row = rows.get(command.alarmId);

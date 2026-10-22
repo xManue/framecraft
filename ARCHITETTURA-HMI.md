@@ -686,6 +686,30 @@ restano salvati; lo stato attivo parte sconosciuto da un nuovo instanceId. Le da
 valutazione del servizio, non eventi nativi del PLC. Retention, export, backup/restore verificato,
 multilingua storica e firma restano gate espliciti, senza avanzare la conformità Audit.
 
+## Decisione: confronti analogici e dipendenze della soglia (22 ottobre 2026)
+
+Stato: implementato nel nucleo Framecraft; collaudo target ancora necessario. Contesto:
+una soglia fissa sopra/sotto non copre i sei confronti Unified o un setpoint variabile.
+Si estende il trigger v1 senza migrare le vecchie costanti: `limit` è un numero oppure
+`{ tag }`. Il medesimo motore serve editor, simulazione e launcher MQTT/OPC UA esportato.
+Le dipendenze includono segnale e soglia; cambiare uno dei due rivaluta tutte le condizioni
+coinvolte. Cache limitata ai tag necessari, niente campioni o soglie predefiniti.
+
+Alternative scartate: confronto soltanto nel browser (non funziona senza client), copia
+della soglia all’attivazione (ignora cambi reali), fallback a zero (inventa una condizione),
+arrotondamento/epsilon impliciti (modificano il significato del confronto). Il servizio usa
+gli ultimi due campioni validi e mantiene lo stato con qualità sconosciuta/non valida;
+per scadenze si riusa il contratto `staleAfterMs` dei driver. Non promette simultaneità PLC.
+L’uguaglianza è numerica esatta con isteresi zero; i confronti inclusivi hanno confine di
+rientro strettamente oltre la zona d’isteresi, gli esclusivi includono quel confine.
+
+La simulazione riceve invece una mappa coerente da un singolo aggiornamento dell’editor:
+`updateSamples` installa prima tutte le dipendenze e valuta ogni allarme una sola volta.
+Questo gruppo non viene presentato come lettura atomica industriale. Gli eventi risultanti
+mantengono il batch d’archiviazione già esistente; nessun replay o nuovo comando PLC.
+Restano conversioni/unità tipizzate, limiti multipli e livelli esclusivi/non esclusivi,
+tipi analogici 64 bit, generazione di prove di carico e collaudo sulla macchina.
+
 ## Flusso di verifica
 
 1. Collegare il template a una foto e alla schermata esportata.
