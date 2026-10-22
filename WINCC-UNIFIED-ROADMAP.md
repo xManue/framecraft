@@ -8,6 +8,9 @@ Aggiornamento mirato 21 ottobre 2026: consultazione HMI del registro attività F
 21 ottobre 2026: scambio ricette Framecraft JSON con confronto e importazione atomica nel servizio
 (LAVORO 160). Il riferimento Unified usa TSV; non viene dichiarata compatibilità del file vendor.
 
+21 ottobre 2026: archivio allarmi Framecraft su disco e vista protetta separata dallo stato attivo
+(LAVORO 161). Restano multilingua storica, manutenzione industriale e collaudo target.
+
 Questo file è la checklist stabile del progetto. L'obiettivo non è copiare l'aspetto di TIA Portal,
 ma coprire le capacità che servono a progettare e usare un HMI Unified, poi renderle più verificabili,
 più veloci e più estendibili. L'inventario elenca le **famiglie funzionali**; le migliaia di singole
@@ -145,10 +148,10 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-ALM-02 | Allarmi analogici e limiti | PARZIALE | Altri confronti Unified, limiti da tag, più limiti nello stesso allarme e tipi avanzati | Soglia fissa sopra/sotto e isteresi di rientro; stesso motore nella prova e nel servizio scalare, valori incompatibili non chiudono il guasto |
 | WCU-ALM-03 | Allarmi PLC e multi-instance | DA FARE | Ricezione/struttura dal controller | Collegamento automatico a gerarchia e faceplate |
 | WCU-ALM-04 | Classi, priorità, aree e testi | PARZIALE | Multilingua, altri modelli Unified, colori/classi completi e identità/RBAC server | Editor di classi e tre modelli di chiusura, messaggi, zone e priorità; nessun dato macchina precompilato |
-| WCU-ALM-05 | Active, historical e logged alarms | PARZIALE | Archivio persistente, recovery e query industriali | Motore condiviso indipendente dalla pagina, active/pending e storico di sessione limitato, contatore eventi scartati, qualità persa senza falsi rientri e instanceId nuovo al riavvio |
-| WCU-ALM-06 | Acknowledge, confirm e shelving | PARZIALE | Identità/RBAC/audit server, batch, shelving e motivazioni | Presa visione e conferma singola senza scrittura PLC, hook server obbligatorio e default negato, verifica di occorrenza/revisione dopo await, nessun replay; prova locale esplicita |
-| WCU-ALM-07 | Filtri, ordinamento e statistiche | PARZIALE | Filtri salvabili, query complete e statistiche | Ricerca nome/testo/ID, zona e filtro classe conservato, priorità e pagine da 100 righe; filtri ambigui segnalati |
-| WCU-ALM-08 | Logging, import/export e CSV | DA FARE | Persistenza e scambio | Export riproducibile con metadati progetto |
+| WCU-ALM-05 | Active, historical e logged alarms | PARZIALE | Recovery/retention/backup industriali, multilingua e collaudo target | Motore condiviso, storico di sessione e archivio SQLite per eventi supportati; batch per valutazione, riavvii distinti, lacune segnalate e nessun ripristino dello stato attivo dallo storico (106/161) |
+| WCU-ALM-06 | Acknowledge, confirm e shelving | PARZIALE | Batch, shelving, motivazioni, ack PLC e collaudo target | Presa visione/conferma singola nel servizio senza scrittura PLC, account/capacità/ACL e audit server (152–155); occorrenza/revisione verificate dopo await, nessun replay |
+| WCU-ALM-07 | Filtri, ordinamento e statistiche | PARZIALE | Filtri salvabili, query complete e statistiche | Filtri nella lista attiva; nuova vista storica con classe/zona/ID/stato/date sul server e pagine ancorate ad archivio/sequenza (161) |
+| WCU-ALM-08 | Logging, import/export e CSV | PARZIALE | CSV/import e manutenzione industriale | Persistenza locale SQLite opzionale e consultazione HMI protetta; niente replay, troncamento o false conferme (161) |
 | WCU-ALM-09 | Security events | DA FARE | Eventi sicurezza nel controllo allarmi | Correlazione con login, cambi e audit |
 | WCU-ALM-10 | Notifica email allarme | DA FARE | Trigger, destinatari e stato invio | Deduplica, escalation e test della regola |
 

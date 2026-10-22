@@ -3,12 +3,14 @@ import { normalizeMqttTagValue } from "../../runtime/connection-config.mjs";
 import { parseAlarmSnapshot, type AlarmSnapshot, type AlarmCommand } from "../../runtime/alarm-engine.mjs";
 import { OperatorAuthError } from "../../runtime/operator-policy.mjs";
 import { operatorSessionHeaders } from "./hmiOperatorSession";
+import { parseAlarmHistoryCapture, type AlarmHistoryCapture } from "../../runtime/alarm-history.mjs";
 export type { ConnectionDiagnostic } from "../../runtime/connection-diagnostics.mjs";
 export interface HmiGatewaySample {
   tag: string; connectionId: string; value?: string; qualityCode?: number; timestamp?: number; sourceTimestamp?: number;
   receivedAt: number; retained?: boolean; lastError?: string; errorDescription?: string; serverTimestamp?: number; opcUaStatusCode?: number;
 }
 export interface HmiGatewaySnapshot {
+  alarmHistory?: AlarmHistoryCapture;
   alarms?: AlarmSnapshot;
   version: 1; allowWrites: boolean;
   connections: { id: string; state: string; error?: string; diagnostic?: ConnectionDiagnostic }[];
@@ -110,6 +112,7 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
       value.diagnostics = value.diagnostics.map(parseDiagnostic);
     }
     if (value.alarms !== undefined) value.alarms = parseAlarmSnapshot(value.alarms);
+    if (value.alarmHistory !== undefined) value.alarmHistory = parseAlarmHistoryCapture(value.alarmHistory);
     return value;
   };
   const poll = async (token: number) => {

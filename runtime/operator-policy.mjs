@@ -1,4 +1,4 @@
-export const operatorCapabilities = Object.freeze(["recipes.read", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "alarms.acknowledge", "alarms.confirm", "tags.write", "audit.read"]);
+export const operatorCapabilities = Object.freeze(["recipes.read", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "alarms.acknowledge", "alarms.confirm", "alarms.history.read", "tags.write", "audit.read"]);
 const messages = {
   AUTH_AUDIT_CHANGED: [409, "Il registro è cambiato", "Ricarica la prima pagina del registro. Le pagine di archivi diversi non vengono mescolate."],
   AUTH_AUDIT_RESPONSE: [502, "Risposta del registro non valida", "Non fidarti di questi dati. Controlla versione, servizio e proxy con il responsabile; nessun comando viene ripetuto."],
@@ -44,7 +44,7 @@ export function parseOperatorResources(value) {
 }
 export function operatorResourceAllowed(store, accountId, capability, context) {
   if (store.version === 1) return true;
-  const mapping = capability === "tags.write" ? ["tagWrites", "tag"] : capability.startsWith("alarms.") ? ["alarmActions", "alarmId"] : capability.startsWith("recipes.") && capability !== "recipes.read" ? ["recipeChanges", "schemaId"] : undefined;
+  const mapping = capability === "tags.write" ? ["tagWrites", "tag"] : ["alarms.acknowledge", "alarms.confirm"].includes(capability) ? ["alarmActions", "alarmId"] : capability.startsWith("recipes.") && capability !== "recipes.read" ? ["recipeChanges", "schemaId"] : undefined;
   if (!mapping) return true;
   const [kind, key] = mapping, rule = store.resourceRules.find(item => item.accountId === accountId), id = context?.[key];
   return !!rule && operatorKeys(context, [key]) && operatorText(id, 200) && (rule.limits[kind].mode === "all" || rule.limits[kind].ids.includes(id));

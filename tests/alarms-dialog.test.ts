@@ -22,6 +22,11 @@ async function createAlarm() { await click(button("Nuovo allarme")); await chang
 beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); useEditorStore.setState({ project, loading: false, dirty: false, previewRestarting: false, previewUrl: undefined, consoleEntries: [], history: [], future: [], multiSelection: [] }); vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue(initial()); vi.mocked(desktopBridge.saveAlarmConfiguration).mockImplementation(async (_root, expected, source) => ({ ...expected, source })); });
 afterEach(async () => { if (root) await act(async () => root.unmount()); host?.remove(); vi.restoreAllMocks(); });
 describe("Allarmi: configurazione e prova guidata", () => {
+  it("abilita l’archivio su disco solo su scelta esplicita e salva insieme ai limiti", async () => {
+    await mount(); const checkbox = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(node => node.closest("label")?.textContent?.includes("Conserva gli eventi anche dopo il riavvio"))!; expect(checkbox.checked).toBe(false);
+    await click(checkbox); await change("Limite eventi nell’archivio su disco", "999"); expect(button("Salva allarmi").disabled).toBe(true); await change("Limite eventi nell’archivio su disco", "12000"); await click(button("Salva allarmi"));
+    expect(JSON.parse(vi.mocked(desktopBridge.saveAlarmConfiguration).mock.calls[0][2]).archive).toEqual({ enabled: true, maxRecords: 12000 }); expect(document.body.textContent).toContain("La prova locale qui sotto non scrive nell’archivio");
+  });
   it("si apre dal menu superiore, non salva né avvia l'anteprima", async () => {
     const restart = vi.spyOn(useEditorStore.getState(), "restartPreview").mockResolvedValue(); await mount(createElement(TopBar));
     expect(document.querySelector('[role="dialog"]')).toBeNull(); await click(button("Pannello"));

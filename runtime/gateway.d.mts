@@ -9,10 +9,13 @@ import type { RecipeStore } from "./recipe-store.mjs";
 import type { LocalOperatorAuth } from "./operator-auth.mjs";
 import type { OperatorAuthError } from "./operator-policy.mjs";
 import type { RuntimeAudit, RuntimeAuditReader } from "./audit-store.mjs";
+import type { AlarmHistoryStore } from "./alarm-history-store.mjs";
+import type { AlarmHistoryCapture, AlarmHistoryError } from "./alarm-history.mjs";
 export interface GatewayConfig {
   enabled: boolean; host?: "127.0.0.1"; port: number; tokenEnv: string; allowedOrigins: string[]; allowWrites?: boolean;
 }
 export interface GatewaySnapshot {
+  alarmHistory?: AlarmHistoryCapture;
   alarms?: AlarmSnapshot;
   version: 1; allowWrites: boolean;
   connections: { id: string; state: string; error?: string; diagnostic?: ConnectionDiagnostic }[];
@@ -25,6 +28,9 @@ export function createPlcGateway(
   variables: readonly { name: string; dataType: string; access: "read" | "write" | "read-write" }[],
   options?: Pick<MqttConnectionCallbacks, "resolveSecret" | "onState" | "onError" | "onDiagnostic"> & { alarmCatalog?: AlarmCatalog; onAlarmEvent?: (event: AlarmEvent) => void; authorizeAlarmAction?: (request: IncomingMessage, command: AlarmCommand) => string | undefined | Promise<string | undefined>;
     recipeStore?: RecipeStore;
+    alarmHistory?: AlarmHistoryStore;
+    historyUnavailable?: AlarmHistoryError;
+    onHistoryDiagnostic?: (event: { type: "alarm-history"; code: string; error: string; remedy: string }) => void;
     audit?: RuntimeAudit & Partial<RuntimeAuditReader>;
     operatorAuth?: LocalOperatorAuth;
     operatorUnavailable?: OperatorAuthError;

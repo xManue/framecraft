@@ -54,6 +54,11 @@ import auditOperationTypes from "../../runtime/audit-operation.d.mts?raw";
 import auditQuerySource from "../../runtime/audit-query.mjs?raw";
 import auditQueryTypes from "../../runtime/audit-query.d.mts?raw";
 import auditControlSource from "./hmiAuditControl.ts?raw";
+import alarmArchiveSource from "./hmiAlarmArchive.ts?raw";
+import alarmHistorySource from "../../runtime/alarm-history.mjs?raw";
+import alarmHistoryTypes from "../../runtime/alarm-history.d.mts?raw";
+import alarmHistoryStoreSource from "../../runtime/alarm-history-store.mjs?raw";
+import alarmHistoryStoreTypes from "../../runtime/alarm-history-store.d.mts?raw";
 import auditReadSource from "../../runtime/read-audit.mjs?raw";
 import operatorSessionSource from "./hmiOperatorSession.ts?raw";
 import recipeCatalogSource from "../../runtime/recipe-catalog.mjs?raw";
@@ -309,6 +314,8 @@ import { createHmiAlarmSummary } from "./framecraftHmiAlarmSummary";
 import { createHmiRecipeClient } from "./framecraftHmiRecipeClient";
 import { createHmiRecipeControl, allowHmiRecipeNavigation } from "./framecraftHmiRecipeControl";
 import { createHmiAuditControl } from "./framecraftHmiAuditControl";
+import { createHmiAlarmArchive } from "./framecraftHmiAlarmArchive";
+import { AlarmHistoryError } from "../runtime/alarm-history.mjs";
 import { installHmiOperatorSession } from "./framecraftOperatorSession";
 import "./framecraftOperatorAccess.js";
 import operatorConfig from "../framecraft.auth.json";
@@ -571,6 +578,11 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiRecipeControl"]')) if (!recipeControls.has(host)) recipeControls.set(host, createHmiRecipeControl(host, { client: recipeClient }));
   };
   const auditControls = new Map<HTMLElement, ReturnType<typeof createHmiAuditControl>>();
+  const alarmArchives = new Map<HTMLElement, ReturnType<typeof createHmiAlarmArchive>>();
+  const renderAlarmArchives = () => {
+    for (const [host, control] of alarmArchives) if (!host.isConnected) { control.dispose(); alarmArchives.delete(host); }
+    for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAlarmArchiveControl"]')) if (!alarmArchives.has(host)) alarmArchives.set(host, createHmiAlarmArchive(host, { enabled: gatewayConfig.enabled && operatorConfig.enabled, path: gatewayConfig.path, timeoutMs: gatewayConfig.timeoutMs }));
+  };
   const renderAuditControls = () => {
     for (const [host, control] of auditControls) if (!host.isConnected) { control.dispose(); auditControls.delete(host); }
     for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAuditControl"]')) if (!auditControls.has(host)) auditControls.set(host, createHmiAuditControl(host, { enabled: gatewayConfig.enabled && operatorConfig.enabled, path: gatewayConfig.path, timeoutMs: gatewayConfig.timeoutMs }));
@@ -1057,7 +1069,8 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     const connected = gatewaySnapshot?.connections.filter((connection) => connection.state === "connected").length ?? 0;
     const total = gatewaySnapshot?.connections.length ?? 0;
     const invalid = gatewaySnapshot?.samples.filter((sample) => sample.lastError || sample.qualityCode !== undefined && (sample.qualityCode & 0xc0) === 0).length ?? 0;
-    const label = !gatewayConfig.enabled ? "PLC: da configurare" : state !== "connected" ? "Gateway non collegato" : !total ? "Nessuna connessione" : "PLC " + connected + "/" + total + (invalid ? " · tag Bad" : "");
+    const archiveFault = gatewaySnapshot?.alarmHistory?.state === "error" && state === "connected";
+    const label = (!gatewayConfig.enabled ? "PLC: da configurare" : state !== "connected" ? "Gateway non collegato" : !total ? "Nessuna connessione" : "PLC " + connected + "/" + total + (invalid ? " · tag Bad" : "")) + (archiveFault ? " · archivio allarmi!" : "");
     for (const element of document.querySelectorAll<HTMLElement>("[data-framecraft-gateway-status]")) {
       if (element.textContent !== label) element.textContent = label;
       element.title = "Apri lo stato PLC per diagnostica e guida. Stato del trasporto MQTT/OPC UA, non conferma di esecuzione PLC.";
@@ -1067,7 +1080,9 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     }
     for (const element of document.querySelectorAll<HTMLElement>("[data-framecraft-plc-summary]")) {
       const text = !gatewayConfig.enabled ? "Collegamento disabilitato. Configura Pannello → Connessioni PLC e avvia il servizio Node; salvare non apre la rete." : state !== "connected" ? "Il pannello non raggiunge il gateway. Controlla servizio, porta e proxy; i valori non sono aggiornati e i comandi non vengono accodati." : connected + "/" + total + " connessioni disponibili. " + invalid + " tag non validi. Connesso non equivale a qualità Good o esecuzione PLC.";
-      if (element.textContent !== text) element.textContent = text;
+      const archiveError = archiveFault ? new AlarmHistoryError(gatewaySnapshot!.alarmHistory!.code!) : undefined;
+      const summary = text + (archiveError ? " " + archiveError.message + ". " + archiveError.remedy + " Eventi senza conferma di registrazione in questo avvio: " + gatewaySnapshot!.alarmHistory!.unconfirmedInThisRun : "");
+      if (element.textContent !== summary) element.textContent = summary;
     }
     for (const list of document.querySelectorAll<HTMLElement>("[data-framecraft-plc-connections]")) {
       const signature = JSON.stringify(gatewaySnapshot?.connections ?? []);
@@ -1142,14 +1157,15 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   const observer = new MutationObserver((records) => {
     const interactionAttributes = ["disabled", "hidden", "inert", "aria-disabled", "style", "class", "data-fc-reacts", "data-fc-user-requires", "data-fc-user-granted", "data-fc-user-visible-requires", "data-fc-user-visible-granted"];
     if (records.every((record) => record.type === "attributes" && interactionAttributes.includes(record.attributeName ?? ""))) {
-      const hosts = [...alarmControls.keys(), ...alarmSummaries.keys(), ...recipeControls.keys(), ...auditControls.keys()];
+      const hosts = [...alarmControls.keys(), ...alarmSummaries.keys(), ...recipeControls.keys(), ...auditControls.keys(), ...alarmArchives.keys()];
       if (records.some((record) => record.target instanceof Element && hosts.some((host) => record.target.contains(host)))) renderAlarmControls();
       for (const [host, control] of recipeControls) if (records.some(record => record.target instanceof Element && record.target.contains(host))) control.refresh();
       for (const [host, control] of auditControls) if (records.some(record => record.target instanceof Element && record.target.contains(host))) control.refresh();
+      for (const [host, control] of alarmArchives) if (records.some(record => record.target instanceof Element && record.target.contains(host))) control.refresh();
       return;
     }
-    if (records.every((record) => record.attributeName !== "data-hmi-alarm-summary" && record.target instanceof Element && record.target.closest("[data-hmi-trend-root], [data-hmi-function-trend-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-recipe-root], [data-hmi-audit-root]"))) return;
-    scanLoaded(); syncCycles(); requestRefresh(); renderRuntimeFaceplates(); renderTrendControls(); renderGatewayStatus(gatewayClient?.state ?? "stopped"); renderAlarmControls(); renderRecipeControls(); renderAuditControls();
+    if (records.every((record) => record.attributeName !== "data-hmi-alarm-summary" && record.target instanceof Element && record.target.closest("[data-hmi-trend-root], [data-hmi-function-trend-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-recipe-root], [data-hmi-audit-root], [data-hmi-alarm-archive-root]"))) return;
+    scanLoaded(); syncCycles(); requestRefresh(); renderRuntimeFaceplates(); renderTrendControls(); renderGatewayStatus(gatewayClient?.state ?? "stopped"); renderAlarmControls(); renderRecipeControls(); renderAuditControls(); renderAlarmArchives();
   });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-hmi-events", "data-hmi-dynamizations", "data-hmi-faceplate", "data-hmi-trend", "data-hmi-function-trend", "data-hmi-alarm-summary", "disabled", "hidden", "inert", "aria-disabled", "style", "class", "data-fc-reacts", "data-fc-user-requires", "data-fc-user-granted", "data-fc-user-visible-requires", "data-fc-user-visible-granted"] });
   if (!gatewayConfig.enabled) for (const error of scriptContexts.initialize(scriptCatalog, undefined, "scheduler", values, { tagStatus })) (options.error ?? console.error)("[HMI SCRIPT scheduler] " + error);
@@ -1157,7 +1173,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   syncCycles();
   installScheduledTasks();
   renderAlarmControls();
-  renderRecipeControls(); renderAuditControls();
+  renderRecipeControls(); renderAuditControls(); renderAlarmArchives();
   renderRuntimeFaceplates();
   renderTrendControls();
   const trendTimer = setInterval(renderTrendControls, 250);
@@ -1168,6 +1184,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     operatorSession.dispose();
     for (const control of recipeControls.values()) control.dispose(); recipeControls.clear();
     for (const control of auditControls.values()) control.dispose(); auditControls.clear();
+    for (const control of alarmArchives.values()) control.dispose(); alarmArchives.clear();
     stopAlarmSubscription?.();
     for (const control of alarmControls.values()) control.dispose(); alarmControls.clear();
     for (const control of alarmSummaries.values()) control.dispose(); alarmSummaries.clear();
@@ -1865,6 +1882,10 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/alarm-labels.d.mts", content: alarmLabelTypes },
     { path: "runtime/alarm-engine.mjs", content: alarmEngineSource },
     { path: "runtime/alarm-engine.d.mts", content: alarmEngineTypes },
+    { path: "runtime/alarm-history.mjs", content: alarmHistorySource },
+    { path: "runtime/alarm-history.d.mts", content: alarmHistoryTypes },
+    { path: "runtime/alarm-history-store.mjs", content: alarmHistoryStoreSource },
+    { path: "runtime/alarm-history-store.d.mts", content: alarmHistoryStoreTypes },
     { path: "src/framecraftHmiAlarmControl.mjs", content: alarmControlJs },
     { path: "src/framecraftHmiAlarmControl.d.mts", content: alarmControlTypes },
     { path: "src/framecraftHmiAlarmSummary.mjs", content: alarmSummaryJs.replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
@@ -1886,6 +1907,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/framecraftHmiRecipeControl.ts", content: recipeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiRecipeExchange"', '"./framecraftHmiRecipeExchange"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiRecipeExchange.ts", content: recipeExchangeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiAuditControl.ts", content: auditControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
+    { path: "src/framecraftHmiAlarmArchive.ts", content: alarmArchiveSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
     { path: "framecraft.recipes-ui.json", content: JSON.stringify({ version: 1, namespace: crypto.randomUUID() }, null, 2) + "\n" },
     { path: "vite.config.ts", content: panelViteConfigSource },
     { path: "src/framecraftScriptRuntime.ts", content: hmiScriptRuntimeModuleSource() },

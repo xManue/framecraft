@@ -46,8 +46,9 @@ il callback riceve la richiesta HTTP e il comando, verifica sessione, ruolo,
 allarme e azione e restituisce l'identificativo dell'operatore **verificato dal server**,
 oppure rifiuta. Non autorizzare restituendo un nome fisso, accettando `actor` dal
 browser o fidandosi del PIN locale. Il callback ha un timeout di 5 secondi.
-ACL per singolo allarme, identità esterne e audit persistente restano da implementare
-e collaudare; il solo hook non è un prodotto di autenticazione completo.
+Gli account locali possono limitare presa visione/conferma a ID allarme esatti e registrano
+richieste/esiti nell’audit del servizio. Identità esterne, conformità e collaudo del target
+restano da completare; il solo hook non è un prodotto di autenticazione completo.
 
 `POST /_framecraft/plc/v1/alarm-action` accetta soltanto `alarmId`, `occurrence`,
 `revision` e `action` (`acknowledge` o `confirm`), con JSON e le stesse protezioni
@@ -202,6 +203,75 @@ senza inserire automaticamente gli oggetti nelle schermate macchina o migrare pa
 vecchi. Misure e stile dei due nuovi controlli sono Framecraft, non dati di export reali.
 Restano object model/eventi/proprietà completi, profili, altri fusi e timestamp di
 modifica, oltre ai gate di archivio, identità/audit e collaudo visivo/touch/CPU.
+
+## Storico allarmi su disco
+
+**Attivazione:** Pannello → Allarmi → Archivio su disco del servizio. Spunta **Conserva gli eventi
+anche dopo il riavvio**, scegli il limite (1000–500000, iniziale 100000), salva e riavvia manualmente
+il servizio. Il catalogo `framecraft.alarms.json` conserva `archive: { enabled, maxRecords }`.
+Niente archivio viene creato dalla prova locale o quando l’opzione è assente/disabilitata.
+Il namespace del progetto viene da `framecraft.auth.json`, anche se l’accesso account è disabilitato.
+Non modificarlo per aggirare un errore di identità dell’archivio.
+
+Inserisci **Aggiungi → HMI e PLC → Storico allarmi su disco**, poi accedi nel pannello con un account
+che abbia `alarms.history.read`. È una capacità globale di consultazione di **tutto** l’archivio,
+non un filtro ACL: scegliere una zona o un ID non è una barriera di sicurezza. I limiti per allarme
+restano separati e proteggono presa visione/conferma. Ruolo, PIN browser, token del gateway e permesso
+di presa visione non concedono la nuova lettura. Gli account esistenti non ricevono questo permesso
+automaticamente. Riavvia Framecraft dopo l’aggiornamento per aggiornare anche l’helper account.
+Vecchi pannelli richiedono l’aggiornamento esplicito di Runtime e servizio prima di usare il nuovo
+controllo o il catalogo con `archive`; aggiungere il solo div non aggiorna il codice.
+
+**Uso:** premi **Carica storico**; non c’è polling né lettura automatica del controllo. I filtri
+richiudibili usano ID allarme/classe/zona esatti, tipo evento e intervallo date. Le date dei filtri
+sono nell’ora del dispositivo; nei dettagli ci sono UTC e identificativi. Carica la prima pagina
+dopo ogni variazione dei filtri. Le pagine più vecchie restano ancorate all’identità dell’archivio
+e alla sequenza iniziale: nuovi eventi non vi si mescolano. Il cambio utente rimuove i dati letti
+e invalida le risposte in ritardo. Nessun evento viene scritto in localStorage/sessionStorage.
+
+Il servizio registra Incoming/Outgoing/Acknowledged/Confirmed dal motore Framecraft, indipendente
+dalla pagina aperta, in `.framecraft-runtime/alarm-history/alarms.sqlite` con `identity.json`.
+Ogni valutazione del segnale salva insieme i propri eventi, con sequenze globali e per avvio,
+occorrenza, testo/classe/priorità/zona dell’epoca ed eventuale ID operatore qualificato. Non vengono
+inventati nomi storici degli account. La data evento è l’ora di valutazione del segnale nel servizio,
+**non** un timestamp evento ricevuto dal PLC; l’ora di registrazione è distinta. Le transizioni
+supportate sono condivise fra MQTT e OPC UA scalare, non un import di eventi/Alarm & Conditions UA.
+
+Lo stato attivo al riavvio resta sconosciuto fino a nuovi campioni validi. Leggere un vecchio evento
+non riattiva, chiude, prende visione o conferma un allarme. Un campione Bad/Uncertain o invalido non
+produce un rientro. Il vecchio controllo allarmi conserva ancora il proprio storico di sessione:
+questa nuova vista riguarda il servizio su disco. Disabilitando la registrazione, l’archivio
+esistente resta consultabile in sola lettura e non viene cancellato.
+
+**Guasti:** pieno/occupato/corrotto/identità errata non azzerano file e non generano retry automatici.
+L’acquisizione degli allarmi attivi prosegue; lo stato PLC in alto avvisa del guasto di archivio.
+La vista mostra il numero di eventi **senza conferma** di registrazione in questo avvio: alcuni
+potrebbero essere arrivati su disco prima di un errore, quindi non è un conteggio certo di perdite.
+Gli avvii lasciati aperti dopo un arresto anomalo, o chiusi con errori di registrazione, restano
+segnalati. I periodi a servizio fermo o senza qualità possono avere lacune non quantificabili,
+anche quando quel contatore vale zero. Non vengono ricostruiti né reinviati eventi storici.
+
+SQLite usa transazioni WAL/FULL e un writer esclusivo del servizio; la chiusura o terminazione
+del processo rilascia il lock SQLite, senza cancellare lock in base all’età. Le query passano dal
+servizio: non aprire programmi di manutenzione sul database mentre gira. Usare solo disco locale,
+ACL/permessi minimi e una versione Node LTS con SQLite corretto come indicato dall’errore.
+Il database ha limite 256 MiB, oltre ai file WAL/temporanei; riservare margine disco. Il limite
+eventi non è una retention con cancellazione: richiede manutenzione/backup verificati prima di
+riempirsi. Backup coerente dell’intera cartella a servizio fermo, non del solo `.sqlite` mentre è
+aperto. Nessuna copia automatica o procedura di restore certificata è inclusa.
+
+API `GET /_framecraft/plc/v1/alarm-history`: stessa origine/token privato del gateway più sessione
+server e capacità dedicata, senza rinnovo idle. Query: `limit` (1–500), `before`, `through`,
+`archiveId`, `alarmId`, `alarmClass`, `area`, `state`, `from`, `to` (UTC ISO). Niente SQL libero,
+campi sconosciuti o duplicati; massimo una lettura ogni 200 ms per servizio. La vista chiede 50
+eventi. La consultazione non modifica macchina o archivio e non produce una firma elettronica.
+
+Non equivale ancora a multilingua storica, logger generico, export/retention/restore industriali,
+firma o archivio antimanomissione. Le scritture a batch sono sincrone nel servizio: throughput,
+latenze, supporti, perdita alimentazione e limiti di carico vanno collaudati sul target reale.
+Riferimenti funzionali, senza copia di codice o formati proprietari:
+[allarmi registrati Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/logging-alarms-rt-unified/basics-of-alarm-logging-rt-unified),
+[Alarm Event Logger Optix](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/getting-started/quick-start/configure-alarms/configure-an-alarm-event-logger.html).
 
 ## Abilitazione in un pannello standard
 

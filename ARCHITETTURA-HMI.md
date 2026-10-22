@@ -666,6 +666,26 @@ Quando due screenshot hanno strutture differenti servono due famiglie, anche se 
 simili. Quando invece cambia solo la macchina o l'organo rappresentato, si riusa la stessa famiglia
 con un'immagine sostituibile e dati diversi.
 
+## Decisione: storico allarmi locale distinto dallo stato attivo (21 ottobre 2026)
+
+Stato: implementato nel nucleo Framecraft, da collaudare sul target industriale. Contesto:
+lo storico in RAM non sopravvive al servizio, mentre ripristinare allarmi attivi da vecchi eventi
+inventerebbe lo stato macchina. È scelto un archivio SQLite locale separato dall’audit comandi,
+opzionale nel catalogo e interrogato soltanto da un endpoint autenticato di sola lettura.
+Il motore consegna un batch per valutazione; il servizio salva il gruppo in una transazione.
+Non viene aggiunta una dipendenza database esterna. Il writer ha lock SQLite esclusivo e rilasciato
+dal sistema alla terminazione; niente eliminazione di lock per anzianità o supposizione sul PID.
+
+Alternative: localStorage/JSON del browser non garantiscono un servizio condiviso né continuità;
+un database remoto aggiunge credenziali, distribuzione e manutenzione fuori dal primo nucleo;
+un worker dedicato potrà isolare meglio I/O e carico, ma qui le transazioni a batch sono sincrone
+e richiedono misure di throughput/latenza sul target. Il limite è dichiarato, non scambiato per
+collaudo industriale. Errori di archivio non fermano l’acquisizione: la diagnostica evidenzia
+eventi non confermati e avvii incompleti, senza ricostruire dati. Testo e classificazione dell’epoca
+restano salvati; lo stato attivo parte sconosciuto da un nuovo instanceId. Le date sono di
+valutazione del servizio, non eventi nativi del PLC. Retention, export, backup/restore verificato,
+multilingua storica e firma restano gate espliciti, senza avanzare la conformità Audit.
+
 ## Flusso di verifica
 
 1. Collegare il template a una foto e alla schermata esportata.

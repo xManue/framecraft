@@ -12,6 +12,9 @@ Framecraft (LAVORO 159). Non importa oggetti Optix e non completa l’Event Logg
 21 ottobre 2026: import/export ricette Framecraft JSON con confronto, capacità server dedicata,
 ACL schema e commit atomico (LAVORO 160). Non è il CSV/NetLogic RecipeImportExport Optix.
 
+21 ottobre 2026: storico allarmi Framecraft SQLite e controllo di sola lettura con capacità dedicata
+(LAVORO 161), confrontati con Alarm Event Logger nella guida `current` (1.8.0), non parità completa.
+
 Questa roadmap registra fin da ora tutto ciò che Framecraft dovrà coprire dopo la roadmap WinCC
 Unified. I contratti Rockwell restano separati da quelli Siemens: il nucleo comune viene riusato
 solo quando il comportamento è realmente equivalente. Un componente React simile a un oggetto
@@ -139,9 +142,9 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 |---|---|---|---|---|
 | FTX-ALM-01 | Digital, ExclusiveLevel e NonExclusiveLevel Alarm | PARZIALE | Tipi, stati, soglie e deadband | Editor unico con simulazione della macchina a stati |
 | FTX-ALM-02 | Tipi allarme personalizzati | DA FARE | Ereditarietà e proprietà estese | Diff del tipo e migrazione delle istanze |
-| FTX-ALM-03 | Stato active, acknowledged e confirmed | DA FARE | Transizioni e metodi Runtime | Timeline e motivazioni operative verificabili |
+| FTX-ALM-03 | Stato active, acknowledged e confirmed | PARZIALE | Tipi/condizioni/metodi Optix completi e ack al PLC | Motore scalare Framecraft e metodi singoli con identità server; transizioni storiche salvate, stato attuale separato (106/161) |
 | FTX-ALM-04 | AlarmGrid, AlarmWidget e filtri | PARZIALE | Query, toolbar, selezione e operazioni | Filtri salvabili e collegamento alla causa macchina |
-| FTX-ALM-05 | Storico allarmi e Event Logger | DA FARE | Persistenza, store e query | Playback correlato a tag, sessione e navigazione |
+| FTX-ALM-05 | Storico allarmi e Event Logger | PARZIALE | Logger e tipi Optix generici, multilingua, correlazione e manutenzione industriali | Eventi del motore Framecraft persistenti, avvii/occorrenze separati, filtri/pagine e permesso server di sola lettura; nessun replay o ripristino degli allarmi attivi (161) |
 | FTX-ALM-06 | Import allarmi OPC UA | DA FARE | Tipi, condizioni e mapping OPC UA | Anteprima collisioni e normalizzazione controllata |
 | FTX-ALM-07 | Polling e aggiornamento allarmi | DA FARE | Frequenze e prestazioni Runtime | Carico stimato e diagnostica dei ritardi |
 | FTX-ALM-08 | Eventi progetto nel logger | DA FARE | Selezione eventi e campi | Schema evento esplicito e query generate |
@@ -165,7 +168,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 |---|---|---|---|---|
 | FTX-DAT-01 | Data Logger periodico e on-demand | DA FARE | Sampling, deadband, store e lifecycle | Stima crescita e perdita dati prima del deploy |
 | FTX-DAT-02 | Event Logger | PARZIALE | Tipi evento/campi/sorgenti generici, store e correlazione completa | Registro Runtime SQLite e vista HMI protetta con filtri/pagine per le operazioni Framecraft supportate, non Event Logger Optix generico (155/159) |
-| FTX-DAT-03 | Embedded Database SQLite | DA FARE | Store, tabelle, query e manutenzione | Migrazioni versionate, retention e backup verificati |
+| FTX-DAT-03 | Embedded Database SQLite | PARZIALE | Store/tabelle/query generici, migrazioni, retention e backup/restore verificati | Store applicativi fissi per audit e allarmi; nessuna query SQL arbitraria esposta nel pannello (155/161) |
 | FTX-DAT-04 | Database ODBC | ESTERNO | Connessione, credenziali, schema e query | Test di compatibilità e segreti mai salvati nel progetto |
 | FTX-DAT-05 | InfluxDB | ESTERNO | Connessione e mapping time-series | Stima cardinalità, retention e costi di storage |
 | FTX-DAT-06 | SQL query e binding ai controlli | DA FARE | SelectQuery e comportamento Runtime | Builder parametrico e protezione da query fragili |

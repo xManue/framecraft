@@ -5651,6 +5651,43 @@ Verifiche del 5 ottobre 2026:
   storico valori completo e trasferimenti ricetta HMI–PLC. Le modifiche AI/trend già presenti
   nella worktree restano separate da questa tranche.
 
+### 161. Archivio allarmi persistente e consultazione dal pannello (2026-10-21)
+
+- Richiesta Unified/Optix proseguita senza AI. In Pannello → Allarmi si abilita esplicitamente
+  la registrazione su disco, con limite eventi; nessuna connessione o scrittura PLC avviata dal
+  salvataggio. Nuovo controllo “Storico allarmi su disco” in Aggiungi → HMI e PLC e nel Runtime
+  generato; vecchio storico di sessione separato. Nessun dato macchina precompilato.
+- SQLite locale, batch atomico per valutazione, writer esclusivo, namespace/identità e percorsi
+  controllati, limiti senza eliminazione automatica. Avvii/occorrenze e testo/classe dell’epoca
+  restano distinti. Dopo stop o riavvio niente restore degli allarmi attivi: occorrono campioni
+  validi. Lettura possibile anche con registrazione disabilitata, senza creare archivi mancanti.
+- Nuova capacità globale `alarms.history.read`, non assegnata agli account esistenti. Separata
+  dalle ACL di presa visione/conferma; identità server obbligatoria, token/ruolo/PIN non bastano.
+  Filtri esatti e date sul server, pagine ancorate ad archivio/sequenza, niente SQL libero,
+  polling, rinnovo idle, cache eventi nel browser, replay o comandi dalla vista storica.
+- Spazio/limite, corruzione, identità diversa e writer concorrente non azzerano dati. In caso di
+  guasto l’acquisizione continua ma diagnostica PLC e vista avvertono di registrazione non
+  disponibile. Il contatore indica esiti su disco non confermati, non perdite certe. Avvii
+  interrotti o con errori restano segnalati; lacune durante stop/qualità persa non ricostruite.
+- Riferimenti primari: Basics of alarm logging Unified V21 e Configure an alarm event logger
+  Optix `current` 1.8.0. Nessuna copia di codice vendor e nessuna nuova dipendenza npm.
+- Verifiche concluse il 22 ottobre sulla copia pubblicabile senza JSON/foto privati: 115 casi
+  mirati su 11 file, con sola ripetizione del test di generazione inizialmente oltre il budget
+  standard di 5 secondi (20 secondi per quel caso con filesystem e processo). TypeScript e build
+  editor passati; tipi e bundle dell’entry QA del Runtime generato verificati. Browser Edge:
+  launcher realmente emesso, account/SQLite e broker MQTT locale reali, consultazione da un avvio
+  precedente con testo del vecchio catalogo, nuovo evento acquisito, filtri e logout; tre letture
+  esplicite, zero comandi/scritture PLC o richieste esterne. Layout 375/768/1024/1440 px senza
+  overflow e controlli da 48 px, schermate mobile/desktop ispezionate, nessun segreto di test
+  nei bundle client. La vista indica lo stato del servizio all’ultima lettura, senza polling.
+  Dipendenze locali condivise, non installazione pulita. Restano throughput/I/O sincrono,
+  CPU/TLS, touch fisico e Runtime nativo/IPC da validare; nessuna parità completa, firma o
+  conformità industriale dichiarata. L’AI e le modifiche trend preesistenti restano separate.
+- Nuovi pannelli includono i moduli; pannelli esistenti richiedono aggiornamento esplicito del
+  Runtime/servizio e riavvio dell’helper account. Manutenzione/backup/restore verificati,
+  retention/export, multilingua storica e import Alarm & Conditions UA restano da completare.
+  Modifiche AI e trend già presenti nella worktree lasciate separate.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

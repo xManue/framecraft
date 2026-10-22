@@ -9,6 +9,7 @@ import { RecipeStoreError, parseRecipeCommand, recipeActor } from "./recipe-cata
 import { OperatorAuthError, operatorText } from "./operator-policy.mjs";
 import { auditContext, appendAudit as persistAuditEvent, runAudited as auditOperation } from "./audit-operation.mjs";
 import { parseAuditQuery, parseAuditSnapshot } from "./audit-query.mjs";
+import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot } from "./alarm-history.mjs";
 
 const api = "/_framecraft/plc/v1";
 function failure(status, code = "GATEWAY_REQUEST") { return Object.assign(new ConnectionOperationError(connectionDiagnostic(code, { protocol: "gateway" })), { status }); }
@@ -48,8 +49,16 @@ export function createPlcGateway(catalog, variables, options = {}) {
     safeNotify(options.onDiagnostic, { ...diagnostic });
   };
   const report = createDiagnosticReporter(record, { protocol: "gateway" });
-  let nextAuditRead = 0;
-  const alarms = options.alarmCatalog !== undefined ? createAlarmEngine(options.alarmCatalog, variables, { onEvent: options.onAlarmEvent }) : undefined;
+  let nextAuditRead = 0, nextHistoryRead = 0, historyError = options.historyUnavailable ? new AlarmHistoryError(options.historyUnavailable.code) : undefined, historyMissed = 0, historyRunning = false, alarmInstanceId;
+  const archiveEnabled = options.alarmCatalog?.archive?.enabled === true;
+  const historyFault = error => { if (!historyError) { historyError = error instanceof AlarmHistoryError ? error : new AlarmHistoryError("ALARM_HISTORY_STORAGE"); safeNotify(options.onHistoryDiagnostic, { type: "alarm-history", code: historyError.code, error: historyError.message, remedy: historyError.remedy }); } };
+  const historyCapture = () => ({ state: historyError ? "error" : !archiveEnabled ? "disabled" : historyRunning ? "recording" : "stopped", unconfirmedInThisRun: historyMissed, ...(historyError ? { code: historyError.code } : {}) });
+  const alarms = options.alarmCatalog !== undefined ? createAlarmEngine(options.alarmCatalog, variables, { onEvent: options.onAlarmEvent, onEvents: events => {
+    if (!archiveEnabled) return;
+    try { if (historyError || !historyRunning || !options.alarmHistory) throw historyError ?? new AlarmHistoryError("ALARM_HISTORY_STORAGE"); options.alarmHistory.append(events); }
+    catch (error) { historyMissed = Math.min(Number.MAX_SAFE_INTEGER, historyMissed + events.length); historyFault(error); }
+  } }) : undefined;
+  alarmInstanceId = alarms?.snapshot().instanceId;
   const connections = enabled.map((connection) => {
     const driver = (connection.protocol === "opcua" ? createOpcUaPlcConnection : createMqttPlcConnection)(connection, variables, {
       resolveSecret: options.resolveSecret,
@@ -67,6 +76,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
     states.set(connection.id, { id: connection.id, state: "stopped" }); return driver;
   });
   const snapshot = () => ({ version: 1, allowWrites: config.allowWrites === true,
+    alarmHistory: historyCapture(),
     ...(alarms ? { alarms: { ...alarms.snapshot(), actionsEnabled: !!options.operatorAuth || typeof options.authorizeAlarmAction === "function" } } : {}),
     diagnostics: diagnostics.map((event) => ({ ...event })),
     connections: [...states.values()].map((state) => ({ ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) })),
@@ -88,6 +98,22 @@ export function createPlcGateway(catalog, variables, options = {}) {
       const actual = Buffer.from(typeof request.headers.authorization === "string" ? request.headers.authorization : ""); const expected = Buffer.from("Bearer " + token);
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw failure(401, "GATEWAY_AUTH");
       if (request.url === api + "/snapshot" && request.method === "GET") { respond(response, 200, snapshot()); return; }
+      if (request.url === api + "/alarm-history" || request.url?.startsWith(api + "/alarm-history?")) {
+        if (request.method !== "GET") throw new AlarmHistoryError("ALARM_HISTORY_QUERY");
+        if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
+        if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;
+        let timer;
+        try { const actor = await Promise.race([options.operatorAuth.authorize(request, "alarms.history.read", false), new Promise((_, reject) => { timer = setTimeout(() => reject(new OperatorAuthError("AUTH_BUSY")), 5000); })]); if (!operatorText(actor, 200) || actor === token || actor === "Bearer " + token) throw new OperatorAuthError("AUTH_PERMISSION"); }
+        finally { clearTimeout(timer); }
+        if (stopping || request.aborted || response.destroyed) throw new AlarmHistoryError("ALARM_HISTORY_STORAGE");
+        if (!options.alarmHistory) throw historyError ?? new AlarmHistoryError("ALARM_HISTORY_DISABLED");
+        if (request.url.length > 8192) throw new AlarmHistoryError("ALARM_HISTORY_QUERY");
+        const params = new URL(request.url, "http://localhost").searchParams;
+        if ([...params].length > 10 || new Set(params.keys()).size !== [...params].length) throw new AlarmHistoryError("ALARM_HISTORY_QUERY");
+        const raw = Object.fromEntries(params); for (const key of ["limit", "before", "through"]) if (raw[key] !== undefined) { if (!/^(0|[1-9]\d*)$/.test(raw[key])) throw new AlarmHistoryError("ALARM_HISTORY_QUERY"); raw[key] = Number(raw[key]); }
+        const query = parseAlarmHistoryQuery(raw); if (Date.now() < nextHistoryRead) throw new OperatorAuthError("AUTH_BUSY"); nextHistoryRead = Date.now() + 200;
+        respond(response, 200, parseAlarmHistorySnapshot({ ...options.alarmHistory.read(query), capture: historyCapture() }, query)); return;
+      }
       if (request.url === api + "/audit" || request.url?.startsWith(api + "/audit?")) {
         if (request.method !== "GET") throw new OperatorAuthError("AUTH_INPUT");
         if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
@@ -211,6 +237,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         const code = error instanceof OperatorAuthError || error instanceof RecipeStoreError ? error.code : error instanceof ConnectionOperationError ? error.diagnostic.code : "REQUEST_REJECTED";
         try { await appendAudit(options.audit, auditScope, "rejected", code); } catch (auditError) { error = auditError; }
       }
+      if (error instanceof AlarmHistoryError) { respond(response, error.status, { type: "alarm-history", code: error.code, error: error.message, remedy: error.remedy }); return; }
       if (error instanceof OperatorAuthError) { respond(response, error.status, { type: "operator", code: error.code, error: error.message, remedy: error.remedy, outcome: error.outcome, plcConfirmed: false }); return; }
       if (error instanceof RecipeStoreError) {
         const diagnostic = { type: "recipe", code: error.code, error: error.message, remedy: error.remedy, ...(error.fieldId ? { fieldId: error.fieldId } : {}) };
@@ -231,6 +258,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
       if (startTask) return startTask;
       startTask = (async () => {
         await new Promise((resolve, reject) => { const error = (cause) => reject(new ConnectionOperationError(report("GATEWAY_LISTEN", { technicalCode: cause.code }))); server.once("error", error); server.listen(config.port, "127.0.0.1", () => { server.off("error", error); port = server.address().port; resolve(); }); });
+        if (!stopping && archiveEnabled && alarmInstanceId) try { if (!options.alarmHistory) throw historyError ?? new AlarmHistoryError("ALARM_HISTORY_STORAGE"); options.alarmHistory.begin(alarmInstanceId); historyRunning = true; } catch (error) { historyFault(error); }
         if (!stopping) await Promise.allSettled(connections.map((driver) => driver.start()));
       })();
       return startTask;
@@ -244,6 +272,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         await Promise.allSettled([...commands.values()].map(entry => entry.result));
         await Promise.allSettled([...auditTasks]);
         await startTask?.catch(() => {});
+        if (historyRunning) { try { options.alarmHistory.finish(alarms.snapshot().sequence, historyMissed); } catch (error) { historyFault(error); } historyRunning = false; }
         const closed = server.listening ? new Promise((resolve) => server.close(resolve)) : Promise.resolve(); server.closeAllConnections();
         await closed; commands.clear();
       })();

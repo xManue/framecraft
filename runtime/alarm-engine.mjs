@@ -12,7 +12,8 @@ export function alarmCatalogIssues(catalog, variables) {
   const issues = [], add = (path, message) => issues.push({ path, message });
   if (!object(catalog) || catalog.version !== 1 || !Array.isArray(catalog.classes) || !Array.isArray(catalog.alarms)) return [{ path: "catalog", message: "Catalogo allarmi non valido: servono versione 1, classi e allarmi." }];
   const fields = (item, allowed, path) => { if (object(item) && Object.keys(item).some((key) => !allowed.includes(key))) add(path, "Proprietà non supportate nel catalogo allarmi. Non inserire credenziali o altri dati in questo file."); };
-  fields(catalog, ["version", "classes", "alarms", "maxHistory"], "catalog");
+  fields(catalog, ["version", "classes", "alarms", "maxHistory", "archive"], "catalog");
+  if (catalog.archive !== undefined && (!object(catalog.archive) || Object.keys(catalog.archive).some(key => !["enabled", "maxRecords"].includes(key)) || typeof catalog.archive.enabled !== "boolean" || !Number.isInteger(catalog.archive.maxRecords) || catalog.archive.maxRecords < 1000 || catalog.archive.maxRecords > 500000)) add("archive", "Archivio su disco: scegli abilitazione e limite da 1000 a 500000 eventi. Nessuna cancellazione automatica.");
   if (catalog.classes.length > 100 || catalog.alarms.length > 2000) add("catalog", "Superato il limite Framecraft di 100 classi o 2000 allarmi.");
   if (!Number.isInteger(catalog.maxHistory) || catalog.maxHistory < 100 || catalog.maxHistory > 10000) add("maxHistory", "Lo storico di sessione deve contenere da 100 a 10000 eventi.");
   const classes = new Map(), ids = new Set(), bits = new Set(), modes = new Map();
@@ -118,17 +119,17 @@ export function createAlarmEngine(value, variables, options = {}) {
   const catalog = parseAlarmCatalog(value, variables), now = options.now ?? Date.now;
   const definitions = new Map(catalog.alarms.filter((item) => item.enabled).map((item) => [item.id, item]));
   const tags = new Map(variables.map((item) => [item.name, item])), classes = new Map(catalog.classes.map((item) => [item.name, item.acknowledgment]));
-  const rows = new Map(), byTag = new Map(), history = [], listeners = new Set(), instanceId = crypto.randomUUID(); let sequence = 0, revision = 0;
+  const rows = new Map(), byTag = new Map(), history = [], pendingEvents = [], listeners = new Set(), instanceId = crypto.randomUUID(); let sequence = 0, revision = 0;
   for (const item of definitions.values()) {
     rows.set(item.id, { ...item, acknowledgment: classes.get(item.className), active: null, acknowledged: false, confirmed: false, pending: false, quality: "unknown", revision: 0 });
     if (!byTag.has(item.tag)) byTag.set(item.tag, []);
     byTag.get(item.tag).push(item.id);
   }
   const snapshot = () => copy({ version: 1, instanceId, revision, sequence, rows: [...rows.values()], history, historyDropped: Math.max(0, sequence - history.length) });
-  const notify = () => { for (const listener of listeners) try { listener(snapshot()); } catch { /* A viewer cannot alter alarm acquisition. */ } };
+  const notify = () => { if (pendingEvents.length) { const events = pendingEvents.splice(0); try { options.onEvents?.(copy(events)); } catch { /* Archive failure cannot stop alarm acquisition. */ } } for (const listener of listeners) try { listener(snapshot()); } catch { /* A viewer cannot alter alarm acquisition. */ } };
   const event = (row, state, actor) => {
     const entry = { sequence: ++sequence, id: row.id, occurrence: row.occurrence, name: row.name, text: row.text, alarmClass: row.className, priority: row.priority, area: row.area ?? "", state, time: now(), ...(actor ? { actor } : {}) };
-    history.push(entry); if (history.length > catalog.maxHistory) history.shift();
+    history.push(entry); pendingEvents.push(entry); if (history.length > catalog.maxHistory) history.shift();
     try { options.onEvent?.(copy(entry)); } catch { /* Diagnostics must not stop state transitions. */ }
   };
   const pending = (row) => row.active === true || !!row.occurrence && (classes.get(row.className) !== "none" && !row.acknowledged || classes.get(row.className) === "reset" && !row.confirmed);
