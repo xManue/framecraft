@@ -204,7 +204,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 
 | ID | Capacità FactoryTalk Optix | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
-| FTX-CON-01 | OPC UA Client | PARZIALE | Browsing/import, array/UDT, metodi, eventi/allarmi e collaudo CPU | Driver Node scalare, subscription + letture reali, Namespace URI risolto a ogni sessione, mapping e permessi verificati; gateway comune senza replay |
+| FTX-CON-01 | OPC UA Client | PARZIALE | Selettore/import grafico, array/UDT, metodi, eventi/allarmi e collaudo CPU | Driver scalare e gateway senza replay; browse/CLI read-only con pagine revisionate, Namespace URI/NodeId, tipo/rank/accesso e trust invariato, senza importazioni o comandi impliciti (168) |
 | FTX-CON-02 | OPC UA Server | ESTERNO | Endpoint, nodi pubblicati, sampling e array | Superficie esposta revisionabile e test interoperabilità |
 | FTX-CON-03 | OPC UA security mode, policy e X509 | PARZIALE | Gestione guidata PKI/rinnovo, trust aziendali e collaudo CPU | Mode/policy espliciti, policy SHA1 escluse, trust reciproco non automatico, hostname/URI/validità/chiave e accesso verificati, errori con rimedi |
 | FTX-CON-04 | Configurazione dinamica OPC UA | DA FARE | Nodi e metodi Runtime previsti | Validazione transazionale e rollback |

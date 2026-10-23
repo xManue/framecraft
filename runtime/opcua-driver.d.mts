@@ -1,4 +1,5 @@
 import type { MqttConnectionCallbacks, MqttTagSample } from "./mqtt-driver.mjs";
+import type { OpcUaBrowseQuery, OpcUaBrowsePage } from "./opcua-browse-policy.mjs";
 export interface OpcUaBinding {
   tag: string; namespaceUri: string; nodeId: string; writeEnabled?: boolean; staleAfterMs?: number;
 }
@@ -17,5 +18,6 @@ export function createOpcUaPlcConnection(config: OpcUaConnectionConfig,
   callbacks?: Omit<MqttConnectionCallbacks, "onSample"> & { onSample?: (sample: OpcUaTagSample) => void },
 ): {
   readonly state: string; read(tag: string): OpcUaTagSample | undefined; start(): Promise<void>; stop(): Promise<void>;
+  browse(query?: OpcUaBrowseQuery, signal?: AbortSignal): Promise<OpcUaBrowsePage>;
   write(tag: string, value: string | number | boolean): Promise<{ tag: string; delivery: "opcua-service"; plcConfirmed: false }>;
 };

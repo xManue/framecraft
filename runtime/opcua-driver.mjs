@@ -10,6 +10,8 @@ import { OPCUACertificateManager } from "node-opcua-certificate-manager";
 import { LogLevel, setLogLevel, setDebugLogger, setTraceLogger } from "node-opcua-debug";
 import { normalizeMqttTagValue, validateOpcUaConnection } from "./connection-config.mjs";
 import { ConnectionOperationError, connectionDiagnostic, createDiagnosticReporter, diagnosticText, safeNotify, transportDiagnosticCode } from "./connection-diagnostics.mjs";
+import { browseOpcUaSession } from "./opcua-browse.mjs";
+import { OpcUaBrowseError, parseOpcUaBrowseQuery } from "./opcua-browse-policy.mjs";
 
 const types = { bool: DataType.Boolean, boolean: DataType.Boolean, sint: DataType.SByte, usint: DataType.Byte, byte: DataType.Byte,
   int: DataType.Int16, uint: DataType.UInt16, word: DataType.UInt16, dint: DataType.Int32, udint: DataType.UInt32, dword: DataType.UInt32,
@@ -38,7 +40,7 @@ export function createOpcUaPlcConnection(config, variables, callbacks = {}) {
   const samples = new Map(), pendingWrites = new Set();
   const report = createDiagnosticReporter(callbacks.onDiagnostic, { protocol: "opcua", connectionId: config.id });
   const timeoutMs = config.timeoutMs ?? 10000, readIntervalMs = config.readIntervalMs ?? 1000;
-  let state = "stopped", stopped = false, active, startTask, stopTask, retryTimer;
+  let state = "stopped", stopped = false, active, startTask, stopTask, retryTimer, browsing = false;
   const failure = (code, tag, extra = {}, outcome = "rejected") => new ConnectionOperationError(report(code, { tag, ...extra }), outcome);
   const stateChanged = (next, code, error) => {
     state = next; const diagnostic = report(code, { technicalCode: error?.code });
@@ -232,6 +234,14 @@ export function createOpcUaPlcConnection(config, variables, callbacks = {}) {
   }
   return {
     get state() { return state; },
+    async browse(raw = {}, signal) {
+      const query = parseOpcUaBrowseQuery(raw); if (browsing) throw new OpcUaBrowseError("OPC_UA_BROWSE_BUSY");
+      const attempt = active; if (!attempt || state !== "connected" || !live(attempt)) throw new OpcUaBrowseError("OPC_UA_BROWSE_OFFLINE");
+      browsing = true;
+      try { return await browseOpcUaSession(attempt.session, query, { signal, wait: task => wait(attempt, task) }); }
+      catch (error) { if (error instanceof OpcUaBrowseError || error instanceof ConnectionOperationError) throw error; throw failure(causeCode(error)); }
+      finally { browsing = false; }
+    },
     read(tag) {
       const sample = samples.get(tag); if (!sample) return undefined;
       if (state !== "connected" || Date.now() - sample.receivedAt > (bindings.get(tag)?.staleAfterMs ?? 5000)) {

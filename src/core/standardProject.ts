@@ -27,6 +27,13 @@ import { emptyHmiDataLogCatalog, hmiDataLogRuntimeModuleSource } from "./hmiData
 import mqttDriverSource from "../../runtime/mqtt-driver.mjs?raw";
 import opcUaDriverSource from "../../runtime/opcua-driver.mjs?raw";
 import opcUaDriverTypes from "../../runtime/opcua-driver.d.mts?raw";
+import opcUaBrowsePolicySource from "../../runtime/opcua-browse-policy.mjs?raw";
+import opcUaBrowsePolicyTypes from "../../runtime/opcua-browse-policy.d.mts?raw";
+import opcUaBrowseSource from "../../runtime/opcua-browse.mjs?raw";
+import opcUaBrowseTypes from "../../runtime/opcua-browse.d.mts?raw";
+import opcUaBrowserSource from "../../runtime/opcua-browser.mjs?raw";
+import opcUaBrowserTypes from "../../runtime/opcua-browser.d.mts?raw";
+import opcUaBrowseCliSource from "../../runtime/browse-opcua.mjs?raw";
 import connectionDiagnosticSource from "../../runtime/connection-diagnostics.mjs?raw";
 import connectionDiagnosticTypes from "../../runtime/connection-diagnostics.d.mts?raw";
 import runtimeLogSource from "../../runtime/runtime-log.mjs?raw";
@@ -1859,6 +1866,13 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/mqtt-driver.mjs", content: mqttDriverSource },
     { path: "runtime/opcua-driver.mjs", content: opcUaDriverSource },
     { path: "runtime/opcua-driver.d.mts", content: opcUaDriverTypes },
+    { path: "runtime/opcua-browse-policy.mjs", content: opcUaBrowsePolicySource },
+    { path: "runtime/opcua-browse-policy.d.mts", content: opcUaBrowsePolicyTypes },
+    { path: "runtime/opcua-browse.mjs", content: opcUaBrowseSource },
+    { path: "runtime/opcua-browse.d.mts", content: opcUaBrowseTypes },
+    { path: "runtime/opcua-browser.mjs", content: opcUaBrowserSource },
+    { path: "runtime/opcua-browser.d.mts", content: opcUaBrowserTypes },
+    { path: "runtime/browse-opcua.mjs", content: opcUaBrowseCliSource },
     { path: "runtime/connection-diagnostics.mjs", content: connectionDiagnosticSource },
     { path: "runtime/connection-diagnostics.d.mts", content: connectionDiagnosticTypes },
     { path: "runtime/runtime-log.mjs", content: runtimeLogSource },

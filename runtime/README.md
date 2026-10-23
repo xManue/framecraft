@@ -594,7 +594,7 @@ La diagnostica sanificata Framecraft sostituisce nel processo PLC i dump grezzi 
 Tipi iniziali: Bool, interi 8/16/32 bit con segno o senza, Real/Float, LReal/Double,
 String/WString. Tipo built-in, ValueRank scalare e UserAccessLevel vengono verificati
 prima di dichiarare il collegamento pronto e prima di ogni comando. Array, UDT, subtype
-custom, 64 bit, DateTime, browsing/import, metodi, eventi e allarmi OPC UA restano fuori
+custom, 64 bit, DateTime, import grafico, metodi, eventi e allarmi OPC UA restano fuori
 dal driver iniziale: un mapping incompatibile è un errore, non un dato convertito a caso.
 
 Subscription e letture periodiche reali mantengono la cache. `receivedAt` misura una
@@ -622,6 +622,67 @@ Restano due revisioni esplicite: `precond@0.2.3` non dichiara license nel manife
 `tweetnacl@0.14.5` dichiara Unlicense, da valutare secondo la policy della distribuzione.
 Client, certificate-manager e debug dichiarano MIT, ma questo non approva automaticamente
 l'intero grafo né sostituisce le notice. Il server SDK è soltanto una dipendenza di test.
+
+### Esplorazione nodi OPC UA (engineering locale)
+
+Il Runtime include `browse-opcua.mjs` e un motore di navigazione read-only da collegare al
+selettore dell’editor. **Il selettore grafico e l’importazione dei tag non sono ancora
+disponibili**: questo comando è una funzione esplicita da terminale, non una nuova API
+accessibile agli operatori HMI e non avvia il gateway ordinario.
+
+Con un profilo OPC UA reale già salvato e abilitato in `framecraft.connections.json`, esegui
+dalla cartella del pannello, sostituendo il segnaposto con il suo ID esatto:
+
+```powershell
+node runtime/browse-opcua.mjs --connection "<ID connessione salvata>"
+```
+
+La prima richiesta parte da ObjectsFolder (`http://opcfoundation.org/UA/`, `i=85`). Per
+entrare in un nodo locale usa **esattamente** la coppia `target.namespaceUri` / `target.nodeId`
+restituita nella pagina. Non inventare URI o usare indici di un’altra sessione:
+
+```powershell
+node runtime/browse-opcua.mjs --connection "<ID>" --namespace-uri "<URI restituito>" --node-id "<identificatore restituito>"
+```
+
+L’output JSON include `ok`, tipo `opcua-browse`, revisione della configurazione e `page`.
+Per proseguire usa `--offset` uguale a `page.nextOffset`, `--revision` uguale a
+`page.revision`, conservando cartella e `--limit` (1–100, default 100). `null` indica fine.
+Ogni comando apre e chiude una sessione distinta; rilegge la cartella e ne confronta la
+revisione prima di restituire un’altra pagina. Una modifica richiede ripartenza dalla prima.
+La revisione riguarda identità e descrizioni dei nodi, **non** uno snapshot atomico di tipo,
+permessi o valori della CPU: driver e futuri import devono ricontrollarli prima dell’uso.
+
+Sono restituiti nome/testo del server, classe, identità portabile, DataType, ValueRank,
+dimensioni e permessi UserAccessLevel correnti. `supportedDataType` indica solo compatibilità
+con i tipi scalari esistenti, non concede una scrittura. Array, tipi custom, metadati mancanti
+e riferimenti remoti restano dichiarati e non diventano tag scalari. Nessun Method viene
+chiamato, nessun valore di processo letto o sottoscritto e nessun mapping/catalogo scritto.
+Viene letta NamespaceArray e vengono letti esclusivamente attributi descrittivi dei nodi.
+
+La sessione di esplorazione riusa verifica dei certificati, hostname/URI e credenziali del
+driver. Richiede la PKI e l’ambiente del servizio sul PC da cui esegui il comando: non legge
+password dal browser, non accetta certificati sconosciuti, non prova credenziali/policy
+alternative e non abilita il profilo. La normale acquisizione del gateway non viene avviata
+dal comando. L’inizializzazione PKI può creare file locali o registrare certificati rifiutati,
+come il driver esistente; non è un’operazione senza effetti sul filesystem.
+
+Budget: 5000 riferimenti / 4 MiB per cartella, 120 richieste e 60 secondi nella navigazione,
+oltre ai timeout per operazione della connessione/chiusura. Nessun risultato troncato o
+retry del browse. Continuazioni rilasciate a errore/annullamento, incluse risposte tardive;
+il comando chiude comunque la sua sessione. Ctrl+C richiede l’annullamento. Configurazione
+cambiata durante la prova, file linkati/non regolari e profili assenti/disabilitati fanno
+scartare il risultato. Gli errori JSON hanno codice e rimedio statici, non stack SDK o segreti.
+
+Decisione: costruire sulla stessa implementazione TLS del driver, non un secondo client meno
+protetto. Il futuro ponte desktop deve usare un helper fidato dell’app, controllare sessione
+progetto e CAS, e proporre tag/mapping con revisione e comandi inizialmente disabilitati.
+Non deve eseguire alla cieca lo script modificabile presente nel progetto. Servono ancora
+selettore/import, packaging fidato Node/SDK, UDT/array e collaudo su CPU/rete aziendale.
+
+Fonti: [servizi Browse e continuazioni OPC Foundation](https://reference.opcfoundation.org/specs/OPC-10000-4/5)
+e [API ClientSession Node OPC UA](https://node-opcua.github.io/api_doc/latest/interfaces/node-opcua.ClientSession.html).
+Implementazione originale senza nuovo pacchetto o codice vendor copiato.
 
 ## Ricette: archivio dati server, non trasferimento PLC
 

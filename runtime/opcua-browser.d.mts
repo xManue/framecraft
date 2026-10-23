@@ -1,0 +1,2 @@
+import type { OpcUaBrowseQuery, OpcUaBrowsePage } from "./opcua-browse-policy.mjs";
+export function browseConfiguredOpcUa(options: { root: string; connectionId: string; query?: OpcUaBrowseQuery; signal?: AbortSignal; resolveSecret?(name: string): string | undefined }): Promise<{ version: 1; connectionId: string; configurationRevision: string; page: OpcUaBrowsePage }>;

@@ -75,6 +75,9 @@ export function validateGatewayConfiguration(config, allowEphemeralPort = false)
   })) fail("allowedOrigins deve contenere origini HTTP/HTTPS esatte.", "gateway.allowedOrigins");
 }
 
+export function isOpcUaNodeIdentifier(node) {
+  return typeof node === "string" && node.length <= 4096 && !/[\u0000-\u001f\u007f]/.test(node) && /^(i=(0|[1-9]\d*)|s=.+|g=[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}|b=(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/.test(node) && node !== "b=" && (!node.startsWith("i=") || Number(node.slice(2)) <= 4294967295);
+}
 export function validateOpcUaConnection(config, variables, prefix = "") {
   const reject = (message, key) => fail(message, prefix + key);
   if (!object(config) || typeof config.id !== "string" || !config.id.trim() || config.id.length > 200 || /[\u0000-\u001f\u007f]/.test(config.id)) reject("La connessione OPC UA richiede un nome valido, senza caratteri di controllo.", "id");
@@ -109,7 +112,7 @@ export function validateOpcUaConnection(config, variables, prefix = "") {
     try { normalizeMqttTagValue(["bool", "boolean"].includes(variable.dataType.toLowerCase()) ? false : ["string", "wstring"].includes(variable.dataType.toLowerCase()) ? "" : 0, variable.dataType); } catch { error("Tipo PLC non supportato dal driver OPC UA scalare; array e UDT richiedono un mapping dedicato.", "tag"); }
     if (typeof binding.namespaceUri !== "string" || !binding.namespaceUri.trim() || binding.namespaceUri.length > 2048 || /[\u0000-\u001f\u007f]/.test(binding.namespaceUri)) error("Usa il Namespace URI reale del server, non un indice ns= che può cambiare al riavvio.", "namespaceUri");
     const node = binding.nodeId;
-    if (typeof node !== "string" || node.length > 4096 || /[\u0000-\u001f\u007f]/.test(node) || !(/^(i=(0|[1-9]\d*)|s=.+|g=[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}|b=(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/.test(node)) || node === "b=" || node.startsWith("i=") && Number(node.slice(2)) > 4294967295) error("Identificatore nodo non valido: i=numero, s=testo, g=GUID o b=base64; namespace separato, senza ns=.", "nodeId");
+    if (!isOpcUaNodeIdentifier(node)) error("Identificatore nodo non valido: i=numero, s=testo, g=GUID o b=base64; namespace separato, senza ns=.", "nodeId");
     if (binding.writeEnabled !== undefined && typeof binding.writeEnabled !== "boolean") error("Abilitazione comando non valida.", "writeEnabled");
     if (variable.access === "read" && binding.writeEnabled === true) error("Un tag di sola lettura non può abilitare comandi.", "writeEnabled");
     if (binding.staleAfterMs !== undefined && (!Number.isInteger(binding.staleAfterMs) || binding.staleAfterMs < 250 || binding.staleAfterMs > 3_600_000)) error("Scadenza campione non valida: da 250 a 3600000 ms.", "staleAfterMs");

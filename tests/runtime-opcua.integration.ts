@@ -2,7 +2,7 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createServer } from "node:net";
-import { X509Certificate } from "node:crypto";
+import { X509Certificate, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { OPCUAServer } from "node-opcua-server";
@@ -13,6 +13,9 @@ import { createPlcGateway } from "../runtime/gateway.mjs";
 import type { ConnectionDiagnostic } from "../runtime/connection-diagnostics.mjs";
 import { standardProjectFiles } from "../src/core/standardProject";
 import { emptyAlarmCatalog } from "../runtime/alarm-engine.mjs";
+import { createLocalOperatorAuth } from "../runtime/operator-auth.mjs";
+import { hashOperatorPassword, writeOperatorStore } from "../runtime/operator-store.mjs";
+import { openRuntimeAudit } from "../runtime/audit-store.mjs";
 
 const variables = [{ name: "Motor.Speed", dataType: "Real", access: "read-write" as const }];
 const namespaceUri = "urn:framecraft:synthetic-test";
@@ -210,16 +213,26 @@ describe("OPC UA reale su server sintetico loopback", () => {
 
   it("il gateway HTTP autentica e deduplica il comando OPC UA, senza conferme o valori ottimistici", async () => {
     const test = await fixture(), token = "synthetic_gateway_token_01234567890123456789", origin = "http://127.0.0.1:4173";
+    const namespace = randomUUID(), accountId = randomUUID(), password = "SYNTHETIC-UA-operator-password-012345", file = path.join(test.root, ".framecraft-runtime/security/operators.json");
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeOperatorStore(file, { version: 2, id: randomUUID(), accounts: [{ id: accountId, username: "operator", name: "Operatore QA", role: "Operatore", disabled: false, permissions: [], capabilities: ["tags.write"], password: await hashOperatorPassword(password) }], resourceRules: [{ accountId, limits: { tagWrites: { mode: "selected", ids: ["Motor.Speed"] }, alarmActions: { mode: "selected", ids: [] }, recipeChanges: { mode: "selected", ids: [] } } }] }, undefined);
+    const audit = openRuntimeAudit({ root: test.root, namespace }), auth = createLocalOperatorAuth({ file, config: { version: 1, enabled: true, namespace, allowHttpLoopback: true, idleMinutes: 1, absoluteMinutes: 2 }, allowedOrigins: [origin], audit });
     const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, allowWrites: true, tokenEnv: "TEST_GATEWAY_TOKEN", allowedOrigins: [origin] },
-      connections: [{ ...test.config, protocol: "opcua", enabled: true }] }, variables, { resolveSecret: () => token });
+      connections: [{ ...test.config, protocol: "opcua", enabled: true }] }, variables, { resolveSecret: () => token, operatorAuth: auth, audit });
     try {
       await gateway.start(); await vi.waitFor(() => expect(gateway.snapshot().connections[0].state).toBe("connected"));
       const url = gateway.address + "/_framecraft/plc/v1/write", body = JSON.stringify({ id: "opcua_command_0123456789", tag: "Motor.Speed", value: 77 });
       expect((await fetch(url, { method: "POST", body })).status).toBe(401);
-      const request = () => fetch(url, { method: "POST", body, headers: { "Content-Type": "application/json", Authorization: "Bearer " + token, Origin: origin } });
+      const transport = { "Content-Type": "application/json", Authorization: "Bearer " + token, Origin: origin };
+      expect((await fetch(url, { method: "POST", body, headers: transport })).status).toBe(401); expect(test.writes).toBe(0);
+      const login = await fetch(gateway.address + "/_framecraft/plc/v1/session/login", { method: "POST", headers: transport, body: JSON.stringify({ username: "operator", password }) }); expect(login.status).toBe(200);
+      const session = await login.json(), cookie = login.headers.get("set-cookie")!.split(";")[0], headers = { ...transport, Cookie: cookie, "X-Framecraft-CSRF": session.csrfToken };
+      expect((await fetch(url, { method: "POST", body, headers: { ...transport, Cookie: cookie } })).status).toBe(403); expect(test.writes).toBe(0);
+      const request = () => fetch(url, { method: "POST", body, headers });
       const [one, two] = await Promise.all([request(), request()]);
-      expect(one.status).toBe(200); expect(await one.json()).toMatchObject({ delivery: "opcua-service", plcConfirmed: false });
+      const oneBody = await one.json(); expect(one.status, JSON.stringify(oneBody)).toBe(200); expect(oneBody).toMatchObject({ delivery: "opcua-service", plcConfirmed: false });
       expect(await two.json()).toMatchObject({ delivery: "opcua-service", plcConfirmed: false }); expect(test.writes).toBe(1);
-    } finally { await gateway.stop(); await test.close(); }
+      const journal = JSON.stringify(audit.read()); for (const secret of [password, token, cookie, session.csrfToken]) expect(journal).not.toContain(secret);
+    } finally { await gateway.stop(); auth.close(); audit.close(); await test.close(); }
   }, 20000);
 });

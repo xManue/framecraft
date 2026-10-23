@@ -8,6 +8,7 @@ export class ConnectionConfigurationError extends Error { path: string; construc
 export function normalizeMqttTagValue(value: unknown, dataType: string): string | number | boolean;
 export function validateMqttConnection(config: unknown, variables: readonly MqttVariable[], prefix?: string): Map<string, MqttVariable>;
 export function validateOpcUaConnection(config: unknown, variables: readonly MqttVariable[], prefix?: string): Map<string, MqttVariable>;
+export function isOpcUaNodeIdentifier(value: unknown): value is string;
 export function validatePlcConnection(config: unknown, variables: readonly MqttVariable[], prefix?: string): Map<string, MqttVariable>;
 export function validateGatewayConfiguration(config: unknown, allowEphemeralPort?: boolean): void;
 export function validateConnectionCatalog(catalog: unknown, variables: readonly MqttVariable[], options?: { includeDisabled?: boolean; allowEphemeralPort?: boolean }): void;

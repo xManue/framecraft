@@ -816,6 +816,14 @@ replaying it. This is not an electronic signature or regulated-release certifica
 restore, full security/admin coverage and a graphical Viewer remain open. See
 [Runtime audit setup and limits](runtime/README.md#registro-persistente-delle-operazioni-runtime).
 
+## OPC UA node discovery
+
+Updated panels include an explicit read-only engineering CLI to browse a saved, enabled OPC UA
+connection. It uses the driver's existing certificate/credential checks and returns portable
+namespace/node identity, paged metadata, scalar compatibility and effective access flags.
+No process values, writes, method calls or automatic tag imports. The graphical node selector
+is still pending. See [usage, security boundaries and limits](runtime/README.md#esplorazione-nodi-opc-ua-engineering-locale).
+
 ## Alarm history exports
 
 The **Storico allarmi su disco** control can prepare a CSV of all applied-filter results,

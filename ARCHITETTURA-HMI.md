@@ -778,6 +778,24 @@ CSV con quote/BOM/UTC e protezione formule, 64 MiB/500.000 eventi/cinque minuti,
 di registrazione senza lacune, un backup, una firma o un round-trip vendor. Carico e
 target/backup industriali restano separati dal collaudo browser su fixture sintetiche.
 
+## Esplorazione OPC UA: stessa sicurezza, confine engineering
+
+Il motore `runtime/opcua-browse.mjs` usa la sessione del driver, non una connessione con
+verifiche TLS ridotte. Il wrapper engineering `opcua-browser.mjs` legge un profilo locale
+salvato/abilitato e apre una connessione dedicata senza binding o comandi. La CLI aggiornata
+è inclusa nella pipeline standard; non è un endpoint HMI o un nuovo grant agli operatori.
+
+NamespaceArray e identità portabili separano URI dagli indici di sessione. La navigazione
+non ricorre automaticamente nel progetto: una cartella alla volta, continuazioni gestite,
+revisioni dei riferimenti per non mescolare le pagine, metadati del solo insieme visibile.
+Nessun valore di processo, Method o import automatico. Non è uno snapshot atomico del PLC.
+Budget e cancellazione scartano parziali e rilasciano le risorse anche a risposte tardive.
+Il file connessioni è ricontrollato prima di restituire dati e non viene modificato.
+
+Da collegare al selettore grafico con helper fidato dell’app, CAS/sessione e revisione dei
+mapping: mai eseguire dal ponte nativo uno script liberamente modificabile del progetto.
+Distribuzione fidata di Node/SDK, import UDT/array e collaudo fisico restano gate aperti.
+
 ## Flusso di verifica
 
 1. Collegare il template a una foto e alla schermata esportata.

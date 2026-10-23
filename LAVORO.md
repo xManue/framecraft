@@ -5935,6 +5935,40 @@ Verifiche del 5 ottobre 2026:
 - **Restano**: job server/streaming per export grandi, import vendor, query/statistiche,
   firme/backup/restore e collaudo industriale/target. Roadmap lasciate parziali.
 
+### 168. OPC UA: motore browse e comando engineering read-only (2026-10-23)
+
+- **Base funzionale, non GUI completata**: esplora una cartella con URI/NodeId portabili,
+  pagine da 1–100, revisione dei riferimenti, nomi/classi, DataType/rank/dimensioni e permessi
+  correnti. Array/custom/remoti/metadati mancanti dichiarati, nessuna conversione in scalari.
+- **Confine**: helper locale esplicito sul profilo salvato/abilitato, binding vuoti e comandi
+  disabilitati nella sola connessione dedicata. Stessa PKI/identità del driver; nessun downgrade,
+  auto-trust, API HTTP o nuovo grant HMI. Non legge valori di processo, chiama metodi o salva
+  cataloghi. Legge NamespaceArray; l’inizializzazione PKI può creare file locali/rifiuti.
+- **Affidabilità**: continuazioni, anche vuote, e risposte tardive gestite/rilasciate; budget
+  5000 riferimenti/4 MiB/120 richieste/60 s, timeout del driver e chiusura esplicita. Revisione
+  directory non è snapshot atomico di metadati/PLC. Cambi al file configurazione scartano il
+  risultato; file linkati/non regolari rifiutati. Nessun retry di browse o dati troncati.
+- **Pipeline**: helper/CLI e tipi consegnati nei nuovi Runtime; guide aggiornate, nessun nuovo
+  pacchetto o sorgente vendor copiato. Verificati i contratti sui riferimenti ufficiali OPC
+  Foundation e SDK; formato `ns=0;` dell’SDK separato correttamente dall’identificatore.
+- **Verifiche finali**: 130 casi unici mirati su sei file, tutti con esito finale verde:
+  119 su browse/configurazione/dialogo e 11 regressioni del driver OPC UA. Ripetuta solo la
+  prova HTTP rimasta al vecchio modello solo-token: rifiuto AUTH_AUDIT riprodotto, fixture
+  aggiornata con account locale v2, ACL selettiva del tag, audit e CSRF reali; nessun controllo
+  production allentato. Token da solo e sessione senza CSRF rifiutati; invio valido deduplicato.
+  Browse provato su 232 nodi di server SDK loopback reale: continuazioni, metadati scalari/
+  array/metodi, zero letture di processo/scritture/chiamate Method nell’esplorazione, sessioni
+  chiuse, trust reciproco esplicito, credenziali corrette/rifiutate, CAS configurazione e
+  hardlink rifiutato. CLI effettivamente emessa/eseguita dalla pipeline, JSON senza segreti o
+  dump SDK. Unit su cancellazione/continuazioni tardive, budget, URI ambigui, tipi non supportati
+  e identificatori numerici/GUID/ByteString. Typecheck e build editor riusciti sullo snapshot
+  pubblico, senza export privati o WIP AI/trend; avvisi preesistenti sugli import misti.
+  Dipendenze locali via junction, non clean install. Nessuna modifica Rust o agente; nessuna
+  suite generale. Non è collaudo GUI browse/WebView2, CPU fisica o rete/PKI aziendale.
+- **Prossimo passo**: selettore grafico/import con helper fidato dell’app, sessione/CAS e
+  revisione dei mapping senza grant impliciti; non eseguire dal renderer lo script del
+  progetto. Restano packaging Node/SDK, array/UDT, carico/CPU e collaudi industriali.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.
