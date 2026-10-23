@@ -2,7 +2,7 @@ import type { RecipeCatalog, RecipeRecord, RecipeSchema, RecipeScalar } from "./
 import type { RecipePlcVariable } from "./recipe-plc.mjs";
 export interface RecipeApplyProfile { schemaId: string; channelId: string; requestTag: string; responseTag: string; maxPayloadBytes: number; maxAgeMs: number; prepareTimeoutMs: number; applyTimeoutMs: number; stageLifetimeMs: number }
 export interface RecipeApplyConfig { version: 1; schemas: RecipeApplyProfile[] }
-export interface RecipeApplyCommand { id: string; expectedRevision: string; schemaId: string; recordId: string }
+export interface RecipeApplyCommand { id: string; expectedRevision: string; schemaId: string; recordId: string; ledgerId?: string }
 export interface RecipeApplyLookup { id: string; schemaId: string }
 export interface RecipeApplyAck { version: 1; namespace: string; channelId: string; sequence: number; id: string | null; fingerprint: string | null; state: "idle" | "prepared" | "applied" | "rejected" | "uncertain"; code: number }
 export class RecipeApplyError extends Error { readonly code: string; readonly status: number; readonly remedy: string; readonly outcome: "rejected" | "uncertain"; constructor(code: string) }

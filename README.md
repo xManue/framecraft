@@ -305,8 +305,12 @@ command replay. **Pannello → Ricette → Applicazione al PLC** now configures 
 text tags, buffer and timings, with review and a separate save confirmation. It checks transport
 and account prerequisites without granting permissions or starting a connection. Existing transfer
 ledgers make this setup read-only pending a verified migration; recipe archives are independent.
-The operational HMI Apply control and real PLC implementation still need integration/commissioning;
-this does not enable an Apply button yet. The config is off by default, no tags
+The HMI archive control now has a separate **Applicazione al PLC** section: review the stored
+values, explicitly acknowledge them and confirm the command. A lost response retains only request
+metadata; status verification never resends prepare/apply. Missing requests require a durable
+fence in the original ledger, not a dismissed warning. Receipts are historical, not live machine
+readback. The real PLC implementation, coordinated target comparison and industrial commissioning
+remain open. The config is off by default, no tags
 are invented, and there is no direct-write recipe bypass. The generated Runtime includes the
 [PLC interface contract](runtime/RECIPE-APPLY-PROTOCOL.md) and a read-only `recipe-interface`
 commissioning command. See also the [read/capture procedure](runtime/README.md#lettura-e-confronto-dei-valori-ricetta-dal-plc).

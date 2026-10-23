@@ -3,6 +3,7 @@ import { RecipePlcError, parseRecipePlcCapture, parseRecipePlcQuery, type Recipe
 import type { RecipeMutationResult, RecipeSnapshot } from "../../runtime/recipe-store.mjs";
 import { OperatorAuthError } from "../../runtime/operator-policy.mjs";
 import { operatorSessionHeaders } from "./hmiOperatorSession";
+import { createHmiRecipeApplyClient } from "./hmiRecipeApplyClient";
 
 export class HmiRecipeError extends Error {
   constructor(public readonly code: string, message: string, public readonly remedy: string, public readonly uncertain = false, public readonly fieldId?: string) { super(message); this.name = "HmiRecipeError"; }
@@ -46,6 +47,8 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
   } catch { journal = undefined; }
   const listeners = new Set<() => void>(), controllers = new Set<AbortController>();
   const notify = () => { for (const listener of listeners) try { listener(); } catch { /* An observer cannot replay an operation. */ } };
+  const apply = createHmiRecipeApplyClient({ path, scope: options.scope, request: options.request, journal, blocked: () => busy, canStart: () => !pending, report: options.report });
+  apply.subscribe(notify);
   const report = (error: HmiRecipeError) => { try { options.report?.({ code: error.code, requestId: pending?.id, uncertain: error.uncertain }); } catch { /* No payload is logged. */ } };
   function forget() {
     try { if (!journal) throw new Error(); journal.removeItem(key); if (journal.getItem(key) !== null) throw new Error(); }
@@ -88,13 +91,13 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
     } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); controllers.delete(controller); }
   }
   async function read(signal?: AbortSignal): Promise<RecipeSnapshot> {
-    if (busy || disposed) throw localError("busy"); busy = true; notify();
+    if (busy || disposed || apply.busy) throw localError("busy"); busy = true; notify();
     try { const snapshot = parseHmiRecipeSnapshot(await json(undefined, signal)); if (pending) reviewed = true; return snapshot; }
     catch (error) { const safe = error instanceof HmiRecipeError ? error : localError("network"); report(safe); throw safe; }
     finally { busy = false; notify(); }
   }
   async function capture(schema: RecipeSchema, revision: string, signal?: AbortSignal): Promise<RecipePlcCapture> {
-    if (busy || disposed) throw localError("busy"); if (pending) throw localError("pending"); busy = true; notify();
+    if (busy || disposed || apply.busy) throw localError("busy"); if (pending || apply.pending || apply.damaged) throw localError("pending"); busy = true; notify();
     try {
       const query = parseRecipePlcQuery({ schemaId: schema.id, expectedRevision: revision });
       return parseRecipePlcCapture(await json(undefined, signal, "/recipe-plc?" + new URLSearchParams(query)), schema, revision);
@@ -103,7 +106,8 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
     } finally { busy = false; notify(); }
   }
   async function perform(command: RecipeCommand, signal?: AbortSignal, retry = false): Promise<RecipeMutationResult> {
-    if (busy || disposed) throw localError("busy");
+    if (busy || disposed || apply.busy) throw localError("busy");
+    if (apply.pending || apply.damaged) throw localError("pending");
     if (signal?.aborted) throw localError("network");
     if (pending && !retry) throw localError("pending");
     const checked = parseRecipeCommand(command);
@@ -128,16 +132,17 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
     } finally { busy = false; notify(); }
   }
   return {
+    apply,
     read,
     capture,
     send: (command: RecipeCommand, signal?: AbortSignal) => perform(command, signal),
     retry: (signal?: AbortSignal) => pending?.command ? perform(pending.command, signal, true) : Promise.reject(localError("pending")),
     acknowledgeReviewed() { if (busy || !pending || !reviewed) throw localError("pending"); forget(); notify(); },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    discardRetryBody() { if (pending) { pending = { id: pending.id }; reviewed = false; notify(); } },
+    discardRetryBody() { apply.reset(); if (pending) { pending = { id: pending.id }; reviewed = false; notify(); } },
     get pending() { return pending ? { id: pending.id, canRetry: !!pending.command, reviewed } : undefined; },
-    get busy() { return busy; },
-    dispose() { disposed = true; for (const controller of controllers) controller.abort(); listeners.clear(); },
+    get busy() { return busy || apply.busy; },
+    dispose() { disposed = true; apply.dispose(); for (const controller of controllers) controller.abort(); listeners.clear(); },
   };
 }
 export type HmiRecipeClient = ReturnType<typeof createHmiRecipeClient>;

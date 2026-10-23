@@ -71,6 +71,8 @@ describe("ricette nel servizio realmente esportato", () => {
     for (const name of ["recipe-catalog.mjs", "recipe-catalog.d.mts", "recipe-store.mjs", "recipe-store.d.mts", "recipe-plc.mjs", "recipe-plc.d.mts", "recipe-apply.mjs", "recipe-apply-store.mjs", "recipe-apply-engine.mjs", "recipe-plc-reference.mjs", "print-recipe-interface.mjs"]) expect(byPath.has("runtime/" + name)).toBe(true);
     expect(JSON.parse(byPath.get("framecraft.recipe-apply.json")!)).toEqual({ version: 1, schemas: [] }); expect(JSON.parse(byPath.get("runtime/package.json")!).scripts["recipe-interface"]).toBe("node print-recipe-interface.mjs");
     expect(byPath.get("runtime/RECIPE-APPLY-PROTOCOL.md")).toContain("Framecraft Recipe Apply v1");
+    expect(byPath.get("src/framecraftHmiRecipeApplyClient.ts")).toContain('"../runtime/recipe-apply.mjs"'); expect(byPath.get("src/framecraftHmiRecipeApply.ts")).toContain('"./framecraftHmiRecipeApplyClient"');
+    expect(byPath.get("src/framecraftHmiRecipeControl.ts")).toContain('"./framecraftHmiRecipeApply"'); expect(byPath.get("src/framecraftHmiRecipeClient.ts")).toContain('"./framecraftHmiRecipeApplyClient"');
     expect(JSON.parse(byPath.get("framecraft.recipe-plc.json")!)).toEqual({ version: 1, schemas: [] });
     expect(byPath.get("src/framecraftHmiRecipeControl.ts")).toContain('"./framecraftHmiRecipePlc"'); expect(byPath.get("src/framecraftHmiRecipePlc.ts")).toContain('"../runtime/recipe-plc.mjs"'); expect(byPath.get("runtime/start-gateway.mjs")).toContain("framecraft.recipe-plc.json");
     expect(JSON.parse(byPath.get("framecraft.recipes.json")!)).toEqual({ version: 1, schemas: [] }); expect(files.some(file => file.path.startsWith(".framecraft-runtime/"))).toBe(false);

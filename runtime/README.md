@@ -1092,8 +1092,11 @@ descrive canali, buffer, ritenzione, interlock e messa in servizio. La configura
 in **Pannello → Ricette → Applicazione al PLC**: revisione e conferma salvano solo l’interfaccia,
 senza avviare connessioni. La presenza del registro trasferimenti rende la configurazione in sola
 lettura, per non perdere il recupero degli esiti incerti; migrazione guidata ancora da implementare.
-Restano comando operativo HMI, programma della CPU reale e collaudo industriale. Questa lettura
-resta indipendente dall’applicazione.
+Il controllo HMI offre ora **Applicazione al PLC** con revisione, dichiarazione e conferma;
+gli esiti incerti hanno verifica senza replay e chiusura protetta per richieste mai avviate.
+Vedi la [procedura operatore](RECIPE-APPLY-PROTOCOL.md#uso-nel-pannello-hmi). Restano programma
+della CPU reale, confronto target coordinato, migrazione/backup e collaudo industriale.
+Questa lettura resta indipendente dall’applicazione.
 
 Preparazione nell’editor, senza AI:
 

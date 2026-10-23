@@ -169,9 +169,9 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (stopping || request.aborted || response.destroyed) throw new OperatorAuthError("AUTH_CONFIG");
         response.setHeader("Set-Cookie", result.cookie); respond(response, 200, result.body); return;
       }
-      if (request.url === api + "/recipe-apply" || request.url === api + "/recipe-apply/check" || request.url?.startsWith(api + "/recipe-apply?") || request.url?.startsWith(api + "/recipe-apply/current?")) {
-        const mutation = request.method === "POST", checking = request.url === api + "/recipe-apply/check", current = request.url?.startsWith(api + "/recipe-apply/current?");
-        if (checking && !mutation || !["GET", "POST"].includes(request.method) || mutation && request.url.includes("?")) throw new RecipeApplyError("RECIPE_APPLY_INPUT");
+      if (request.url === api + "/recipe-apply" || request.url === api + "/recipe-apply/check" || request.url === api + "/recipe-apply/fence" || request.url?.startsWith(api + "/recipe-apply?") || request.url?.startsWith(api + "/recipe-apply/current?")) {
+        const mutation = request.method === "POST", checking = request.url === api + "/recipe-apply/check", fencing = request.url === api + "/recipe-apply/fence", current = request.url?.startsWith(api + "/recipe-apply/current?");
+        if ((checking || fencing) && !mutation || !["GET", "POST"].includes(request.method) || mutation && request.url.includes("?")) throw new RecipeApplyError("RECIPE_APPLY_INPUT");
         if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
         if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;
         let command;
@@ -189,8 +189,8 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (options.recipeApplyUnavailable) throw options.recipeApplyUnavailable; if (!applyEngine) throw new RecipeApplyError("RECIPE_APPLY_DISABLED");
         if (!mutation) { respond(response, 200, current ? applyEngine.current(command.schemaId) : applyEngine.status(command)); return; }
         const target = checking ? applyEngine.status(command) : command;
-        auditScope = auditContext(checking ? "recipes.check" : "recipes.apply", { kind: "recipe-schema", id: command.schemaId, recordId: target.recordId, targetId: null }, command.id, actor); auditStarted = true;
-        const task = runAudited(options.audit, auditScope, () => applyEngine[checking ? "check" : "apply"](command, { actor, authorize, alive: () => !stopping && !request.aborted && !response.destroyed }), result => ({ outcome: result.duplicate ? "duplicate" : result.outcome === "pending" ? "uncertain" : result.outcome, code: result.duplicate ? result.plcConfirmed ? "RECIPE_APPLY_DUPLICATE_CONFIRMED" : result.outcome === "rejected" ? "RECIPE_APPLY_DUPLICATE_REJECTED" : "RECIPE_APPLY_DUPLICATE_UNCERTAIN" : result.code }), () => !stopping && !request.aborted && !response.destroyed);
+        auditScope = auditContext(checking ? "recipes.check" : fencing ? "recipes.fence" : "recipes.apply", { kind: "recipe-schema", id: command.schemaId, recordId: target.recordId, targetId: null }, command.id, actor); auditStarted = true;
+        const task = runAudited(options.audit, auditScope, () => applyEngine[checking ? "check" : fencing ? "fence" : "apply"](command, { actor, authorize, alive: () => !stopping && !request.aborted && !response.destroyed }), result => ({ outcome: result.duplicate ? "duplicate" : result.outcome === "pending" ? "uncertain" : result.outcome, code: result.duplicate ? result.plcConfirmed ? "RECIPE_APPLY_DUPLICATE_CONFIRMED" : result.outcome === "rejected" ? "RECIPE_APPLY_DUPLICATE_REJECTED" : "RECIPE_APPLY_DUPLICATE_UNCERTAIN" : result.code }), () => !stopping && !request.aborted && !response.destroyed);
         recipeTasks.add(task); try { const result = await task; respond(response, result.outcome === "applied" ? 200 : result.outcome === "rejected" ? 422 : result.outcome === "pending" ? 202 : 503, result); } finally { recipeTasks.delete(task); }
         return;
       }

@@ -2,6 +2,7 @@ export interface RecipeApplyReceipt { id: string; namespace: string; channelId: 
 export type RecipeApplyReservation = Pick<RecipeApplyReceipt, "id" | "channelId" | "schemaId" | "recordId" | "recipeRevision" | "mappingRevision" | "fingerprint" | "actor">;
 export function parseRecipeApplyReceipt(value: unknown): RecipeApplyReceipt;
 export function openRecipeApplyStore(options: { root: string; namespace: string; recordLimit?: number }): {
+  readonly identity: string;
   get(id: string): RecipeApplyReceipt | undefined;
   channel(channelId: string, sentOnly?: boolean): RecipeApplyReceipt | undefined;
   reserve(input: RecipeApplyReservation): { receipt: RecipeApplyReceipt; duplicate: boolean };

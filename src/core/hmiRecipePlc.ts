@@ -61,7 +61,7 @@ export function createHmiRecipePlc(options: Options) {
     block.append(list, button("Crea bozza dai valori letti", () => {
       if (capture?.complete && capture.values && permitted("recipes.create") && permitted("recipes.capture") && capture.revision === options.snapshot()?.revision && capture.schemaId === options.schema()?.id) options.create(structuredClone(capture.values), capture.capturedAt);
     }, !capture.complete || !permitted("recipes.create") || !permitted("recipes.capture")));
-    block.append(make("p", "Crea una nuova bozza locale, con un nome da scegliere e una conferma di salvataggio. Non sovrascrive ricette né invia valori al PLC. L’applicazione richiederà una conferma del programma PLC; qui non è disponibile."));
+    block.append(make("p", "Crea una nuova bozza locale, con un nome da scegliere e una conferma di salvataggio. Non sovrascrive ricette né invia valori al PLC. Per applicare usa la sezione Applicazione al PLC e attendi la conferma del programma macchina."));
     return block;
   }
   return { render, reset, dispose() { active = false; reset(); } };

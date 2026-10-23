@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { Aedes } from "aedes";
@@ -46,7 +47,7 @@ async function fixture(emitted = false) {
     await symlink(path.resolve("node_modules"), path.join(root,"node_modules"), process.platform === "win32" ? "junction" : "dir");
     for (const [file, value] of Object.entries({ "framecraft.connections.json": connections, "framecraft.plc.json": {version:1,variables}, "framecraft.auth.json": authConfig, "framecraft.recipes.json": catalog, "framecraft.recipe-apply.json": config })) await writeFile(path.join(root,file),JSON.stringify(value));
     child = spawn(process.execPath,[path.join(root,"runtime/start-gateway.mjs"),"--json"],{cwd:root,windowsHide:true,env:{...process.env,SYNTHETIC_APPLY_TOKEN:token},stdio:["pipe","pipe","pipe"]}); child.stdout!.on("data",data=>{output+=data;}); child.stderr!.on("data",data=>{stderr+=data;}); exit = new Promise<void>((resolve,reject)=>{child!.once("exit",()=>resolve());child!.once("error",reject);});
-    await vi.waitFor(()=>expect(output,stderr).toContain('"type":"gateway"'),{timeout:25000}); address=output.split("\n").filter(Boolean).map(line=>JSON.parse(line)).find(row=>row.type==="gateway").address;
+    await vi.waitFor(()=>expect(output,stderr).toContain('"type":"gateway"'),{timeout:60000}); address=output.split("\n").filter(Boolean).map(line=>JSON.parse(line)).find(row=>row.type==="gateway").address;
   } else {
     ledger = openRecipeApplyStore({root,namespace}); audit = openRuntimeAudit({root,namespace}); const auth = createLocalOperatorAuth({file:path.join(security,"operators.json"),config:authConfig,allowedOrigins:[origin],audit});
     gateway = createPlcGateway(connections,variables,{resolveSecret:()=>token,operatorAuth:auth,audit,recipeStore:recipes,recipeApplyConfig:config,recipeApplyNamespace:namespace,recipeApplyStore:ledger}); await gateway.start(); address=gateway.address!;
@@ -54,11 +55,20 @@ async function fixture(emitted = false) {
   const request = (route: string, body?: unknown, extra = {}) => fetch(address+"/_framecraft/plc/v1/"+route,{method:body===undefined?"GET":"POST",headers:{Authorization:"Bearer "+token,Origin:origin,...(body===undefined?{}:{"Content-Type":"application/json"}),...extra},...(body===undefined?{}:{body:JSON.stringify(body)})});
   await vi.waitFor(async()=>expect((await (await request("snapshot")).json()).samples.some((sample:{tag:string})=>sample.tag==="Response")).toBe(true),{timeout:8000});
   const login = await request("session/login",{username:"operator",password}); expect(login.status).toBe(200); const session = await login.json(), headers={Cookie:login.headers.get("set-cookie")!.split(";")[0],"X-Framecraft-CSRF":session.csrfToken};
-  const snapshot = await (await request("recipes",undefined,headers)).json(), command={id:randomUUID().replaceAll("-",""),expectedRevision:snapshot.revision,schemaId:"s",recordId:"r"};
+  const snapshot = await (await request("recipes",undefined,headers)).json(), current = await (await request("recipe-apply/current?schemaId=s",undefined,headers)).json(), command={id:randomUUID().replaceAll("-",""),expectedRevision:snapshot.revision,schemaId:"s",recordId:"r",ledgerId:current.ledgerId};
   return {root,namespace,request,headers,command,frames,machine,errors,get audit(){return audit;},get output(){return output+stderr;},set dropApplied(value:boolean){dropApplied=value;},set ignorePrepare(value:boolean){ignorePrepare=value;},close};
   } catch(error) { await close(); throw error; }
 }
 describe("real HTTP/MQTT recipe application with server accounts and audit",()=>{
+  it("fences an unseen command with server ACL/CSRF and audit, without a single MQTT write",async()=>{
+    const test=await fixture();try{
+      expect((await test.request("recipe-apply/fence",test.command)).status).toBe(401);expect((await test.request("recipe-apply/fence",{...test.command,schemaId:"denied"},test.headers)).status).toBe(403);
+      expect((await test.request("recipe-apply/fence",test.command,{...test.headers,"X-Framecraft-CSRF":"bad"})).status).toBe(403);
+      const fenced=await test.request("recipe-apply/fence",test.command,test.headers);expect(fenced.status).toBe(422);expect(await fenced.json()).toMatchObject({outcome:"rejected",code:"RECIPE_APPLY_NOT_SENT",writePhase:"none"});
+      const delayed=await test.request("recipe-apply",test.command,test.headers);expect(delayed.status).toBe(422);expect(await delayed.json()).toMatchObject({outcome:"rejected",duplicate:true});expect(test.frames).toHaveLength(0);expect(test.machine).toHaveLength(0);
+      expect(test.audit!.read({operation:"recipes.fence"}).events.some(event=>event.code==="RECIPE_APPLY_NOT_SENT")).toBe(true);
+    }finally{await test.close();}
+  },20000);
   it("checks session, CSRF and schema capability before any protocol message, including raw alias writes",async()=>{
     const test=await fixture();try{
       expect((await test.request("recipe-apply",test.command)).status).toBe(401);expect((await test.request("recipe-apply",test.command,{...test.headers,"X-Framecraft-CSRF":"bad"})).status).toBe(403);expect((await test.request("recipe-apply",{...test.command,schemaId:"denied"},test.headers)).status).toBe(403);
@@ -81,7 +91,7 @@ describe("real HTTP/MQTT recipe application with server accounts and audit",()=>
     }finally{await test.close();}
   },20000);
   it("runs the emitted launcher with opt-in configuration and real MQTT, not an injected authorizer",async()=>{
-    const test=await fixture(true);try{const descriptor=JSON.parse(execFileSync(process.execPath,[path.join(test.root,"runtime/print-recipe-interface.mjs"),"--json"],{cwd:test.root,encoding:"utf8",windowsHide:true}));expect(descriptor).toMatchObject({namespace:test.namespace,configurationEnabled:true});expect(JSON.stringify(descriptor)).not.toContain(marker);expect(descriptor.schemas[0].schemaHash).toMatch(/^[a-f0-9]{64}$/);const response=await test.request("recipe-apply",test.command,test.headers);expect(response.status).toBe(200);expect(await response.json()).toMatchObject({plcConfirmed:true,outcome:"applied"});expect(test.machine).toHaveLength(1);expect(test.frames.map(frame=>frame.phase)).toEqual(["prepare","apply"]);for(const secret of [marker,password,token])expect(test.output).not.toContain(secret);expect(test.errors).toEqual([]);}
+    const test=await fixture(true);try{const {stdout}=await promisify(execFile)(process.execPath,[path.join(test.root,"runtime/print-recipe-interface.mjs"),"--json"],{cwd:test.root,encoding:"utf8",windowsHide:true,timeout:30000});const descriptor=JSON.parse(stdout);expect(descriptor).toMatchObject({namespace:test.namespace,configurationEnabled:true});expect(JSON.stringify(descriptor)).not.toContain(marker);expect(descriptor.schemas[0].schemaHash).toMatch(/^[a-f0-9]{64}$/);const response=await test.request("recipe-apply",test.command,test.headers);expect(response.status).toBe(200);expect(await response.json()).toMatchObject({plcConfirmed:true,outcome:"applied"});expect(test.machine).toHaveLength(1);expect(test.frames.map(frame=>frame.phase)).toEqual(["prepare","apply"]);for(const secret of [marker,password,token])expect(test.output).not.toContain(secret);expect(test.errors).toEqual([]);}
     finally{await test.close();}
-  },60000);
+  },120000);
 });

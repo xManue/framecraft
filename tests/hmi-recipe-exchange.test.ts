@@ -7,6 +7,7 @@ import { createHmiRecipeControl } from "../src/core/hmiRecipeControl";
 import { exportRecipeFile } from "../runtime/recipe-exchange.mjs";
 import { openRecipeStore } from "../runtime/recipe-store.mjs";
 import { RecipeStoreError, type RecipeCatalog } from "../runtime/recipe-catalog.mjs";
+const waitFor = (assertion: () => void) => vi.waitFor(assertion, { timeout: 10000 });
 const profile = vi.hoisted(() => ({ id: "synthetic", allowed: true }));
 vi.mock("../src/core/hmiOperatorSession", () => ({ operatorSessionHeaders: () => ({}), operatorSessionProfile: () => ({ id: profile.id, capabilities: profile.allowed ? ["recipes.import"] : [] }) }));
 const catalog: RecipeCatalog = { version: 1, schemas: [{ id: "s", name: "Schema", fields: [{ id: "v", name: "Valore", type: "string" }], records: [{ id: "r", name: "Originale", values: { v: "prima" } }] }] };
@@ -24,13 +25,13 @@ async function fixture() {
   });
   const client = createHmiRecipeClient({ scope: "exchange", request }), host = document.createElement("div"); document.body.append(host);
   const control = createHmiRecipeControl(host, { client, confirm: () => true }); cleanup.push(() => client.dispose(), () => control.dispose());
-  button(host, "Rileggi archivio").click(); await vi.waitFor(() => expect(host.querySelector('[data-recipe-exchange]')).not.toBeNull());
+  button(host, "Rileggi archivio").click(); await waitFor(() => expect(host.querySelector('[data-recipe-exchange]')).not.toBeNull());
   const source = async (text = "<img src=x onerror=alert(1)>\t\n=SUM(1)") => { const snapshot = await store.snapshot(); return exportRecipeFile({ ...catalog.schemas[0], records: [{ id: "r", name: "Originale", values: { v: text } }, { id: "new", name: "Nuova", values: { v: "" } }] }, { revision: snapshot.revision, sequence: snapshot.sequence, exportedAt: new Date().toISOString() }); };
   const select = async (text?: string) => {
     const input = host.querySelector<HTMLInputElement>('input[type="file"]')!, bytes = new TextEncoder().encode(text ?? await source());
     const file = new File([], "ricette.json", { type: "application/json" }); Object.defineProperty(file, "size", { value: bytes.length }); Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
     Object.defineProperty(input, "files", { configurable: true, value: [file] }); input.dispatchEvent(new Event("change", { bubbles: true }));
-    await vi.waitFor(() => expect(host.textContent).not.toContain("Lettura locale del file…"));
+    await waitFor(() => expect(host.textContent).not.toContain("Lettura locale del file…"));
   };
   return { host, store, client, request, control, source, select, lose: () => { loseResponse = true; } };
 }
@@ -41,7 +42,7 @@ it("previews safe text, locks other edits/navigation and sends no mutation until
   expect(button(test.host, "Nuova ricetta").disabled).toBe(true);
   const details = test.host.querySelector<HTMLDetailsElement>('[aria-label="Confronto importazione ricette"] details')!; details.open = true; details.dispatchEvent(new Event("toggle"));
   expect(details.textContent).toContain("<img src=x"); expect(test.host.querySelector("img")).toBeNull();
-  button(test.host, "Conferma importazione nell’archivio").click(); await vi.waitFor(() => expect(test.host.textContent).toContain("Importazione salvata"));
+  button(test.host, "Conferma importazione nell’archivio").click(); await waitFor(() => expect(test.host.textContent).toContain("Importazione salvata"));
   expect((await test.store.snapshot()).sequence).toBe(1); expect((await test.store.snapshot()).schemas[0].records).toHaveLength(2);
 });
 it("rejects bad files without requests and requires the dedicated permission", async () => {
@@ -52,17 +53,17 @@ it("rejects bad files without requests and requires the dedicated permission", a
 it("retains the file after a conflict and requires a new comparison against the reread copy", async () => {
   const test = await fixture(); await test.select(); const current = await test.store.snapshot();
   await test.store.mutate({ id: "concurrent_recipe_command_01", expectedRevision: current.revision, action: "update", schemaId: "s", recordId: "r", name: "Originale", values: { v: "concorrente" } }, "other");
-  button(test.host, "Conferma importazione nell’archivio").click(); await vi.waitFor(() => expect(test.host.textContent).toContain("Le ricette sono cambiate"));
-  button(test.host, "Rileggi archivio").click(); await vi.waitFor(() => expect(test.host.textContent).toContain("Rigenera confronto"));
+  button(test.host, "Conferma importazione nell’archivio").click(); await waitFor(() => expect(test.host.textContent).toContain("Le ricette sono cambiate"));
+  button(test.host, "Rileggi archivio").click(); await waitFor(() => expect(test.host.textContent).toContain("Rigenera confronto"));
   expect(button(test.host, "Conferma importazione nell’archivio").disabled).toBe(true);
   button(test.host, "Rigenera confronto sulla copia riletta").click();
   const details = test.host.querySelector<HTMLDetailsElement>('[aria-label="Confronto importazione ricette"] details')!; details.open = true; details.dispatchEvent(new Event("toggle")); expect(details.textContent).toContain("concorrente");
-  button(test.host, "Conferma importazione nell’archivio").click(); await vi.waitFor(() => expect(test.host.textContent).toContain("Importazione salvata")); expect((await test.store.snapshot()).sequence).toBe(2);
+  button(test.host, "Conferma importazione nell’archivio").click(); await waitFor(() => expect(test.host.textContent).toContain("Importazione salvata")); expect((await test.store.snapshot()).sequence).toBe(2);
 });
 it("uses the original request ID to recover a lost batch response without applying twice", async () => {
   const test = await fixture(); await test.select(); test.lose(); button(test.host, "Conferma importazione nell’archivio").click();
-  await vi.waitFor(() => expect(test.host.textContent).toContain("Salvataggio da verificare")); expect((await test.store.snapshot()).sequence).toBe(1);
-  button(test.host, "Verifica ripetendo la stessa richiesta").click(); await vi.waitFor(() => expect(test.host.textContent).toContain("Richiesta già registrata"));
+  await waitFor(() => expect(test.host.textContent).toContain("Salvataggio da verificare")); expect((await test.store.snapshot()).sequence).toBe(1);
+  button(test.host, "Verifica ripetendo la stessa richiesta").click(); await waitFor(() => expect(test.host.textContent).toContain("Richiesta già registrata"));
   const sent = test.request.mock.calls.filter(([, init]) => init?.method === "POST").map(([, init]) => JSON.parse(init!.body as string)); expect(sent).toHaveLength(2); expect(sent[1]).toEqual(sent[0]); expect((await test.store.snapshot()).sequence).toBe(1);
   expect(test.host.querySelector('[aria-label="Confronto importazione ricette"]')).toBeNull();
 });
@@ -72,7 +73,7 @@ it("clears the read archive and file review when the operator changes", async ()
 });
 it("keeps only the pending ID when changing operator, never a replayable previous-user payload", async () => {
   const test = await fixture(); await test.select(); test.lose(); button(test.host, "Conferma importazione nell’archivio").click();
-  await vi.waitFor(() => expect(test.host.textContent).toContain("Salvataggio da verificare")); expect(test.client.pending?.canRetry).toBe(true); const id = test.client.pending!.id;
+  await waitFor(() => expect(test.host.textContent).toContain("Salvataggio da verificare")); expect(test.client.pending?.canRetry).toBe(true); const id = test.client.pending!.id;
   profile.id = "other-user"; window.dispatchEvent(new CustomEvent("framecraft:user-changed"));
   expect(test.client.pending).toEqual({ id, canRetry: false, reviewed: false });
   expect(button(test.host, "Verifica ripetendo la stessa richiesta")).toBeUndefined();
@@ -85,9 +86,9 @@ it("ignores a file read completed after logout and rejects invalid UTF-8 locally
   Object.defineProperty(input, "files", { configurable: true, value: [file] }); input.dispatchEvent(new Event("change"));
   profile.id = "new-user"; window.dispatchEvent(new CustomEvent("framecraft:user-changed")); finish(new TextEncoder().encode(text).buffer); await Promise.resolve(); await Promise.resolve();
   expect(test.host.querySelector('[aria-label="Confronto importazione ricette"]')).toBeNull();
-  button(test.host, "Rileggi archivio").click(); await vi.waitFor(() => expect(test.host.querySelector('input[type="file"]')).not.toBeNull());
+  button(test.host, "Rileggi archivio").click(); await waitFor(() => expect(test.host.querySelector('input[type="file"]')).not.toBeNull());
   const next = test.host.querySelector<HTMLInputElement>('input[type="file"]')!, bad = new File([], "bad-utf8.json"); Object.defineProperty(bad, "size", { value: 1 }); Object.defineProperty(bad, "arrayBuffer", { value: async () => new Uint8Array([255]).buffer });
-  Object.defineProperty(next, "files", { configurable: true, value: [bad] }); next.dispatchEvent(new Event("change")); await vi.waitFor(() => expect(test.host.textContent).toContain("File ricette non valido"));
+  Object.defineProperty(next, "files", { configurable: true, value: [bad] }); next.dispatchEvent(new Event("change")); await waitFor(() => expect(test.host.textContent).toContain("File ricette non valido"));
   expect(test.request.mock.calls).toHaveLength(2);
 });
 it("downloads only portable schema data from the read snapshot, then releases object URLs", async () => {

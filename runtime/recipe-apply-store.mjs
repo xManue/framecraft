@@ -76,6 +76,7 @@ export function openRecipeApplyStore({ root, namespace, recordLimit = 10000 }) {
     const transaction = action => { check(); db.exec("BEGIN IMMEDIATE"); try { const result = action(); db.exec("COMMIT"); return result; } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; } };
     const count = check(), rows = db.prepare("SELECT * FROM apply_requests ORDER BY seq").all(); if (rows.length !== count || rows.some((row, i) => fromRow(row).sequence !== i + 1) || db.prepare("PRAGMA quick_check").get().quick_check !== "ok") fail("RECIPE_APPLY_STORAGE");
     return {
+      get identity() { return identity.id; },
       get(id) { try { check(); if (!recipeApplyId(id)) fail("RECIPE_APPLY_INPUT"); return fromRow(db.prepare("SELECT * FROM apply_requests WHERE id=?").get(id)); } catch (error) { throw safe(error); } },
       channel(channelId, sentOnly = false) { try { check(); if (!recipeId(channelId)) fail("RECIPE_APPLY_INPUT"); return db.prepare("SELECT * FROM apply_requests WHERE channel=? ORDER BY seq DESC").all(channelId).map(fromRow).find(row => !sentOnly || row.writePhase !== "none"); } catch (error) { throw safe(error); } },
       reserve(input) {

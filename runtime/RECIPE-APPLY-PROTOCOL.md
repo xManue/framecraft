@@ -2,7 +2,8 @@
 
 Stato: nucleo del servizio e riferimento eseguibile implementati il 23 ottobre 2026.
 Configurazione guidata disponibile in Pannello → Ricette → Applicazione al PLC;
-comando operativo nel controllo HMI ancora da collegare. Nessuna abilitazione
+comando operativo disponibile nella sezione Applicazione al PLC del controllo Archivio ricette.
+I pannelli già esportati richiedono aggiornamento esplicito del Runtime. Nessuna abilitazione
 automatica nei progetti. Non è un protocollo Siemens/Rockwell, un programma PLC certificato o
 una garanzia di sicurezza funzionale. Richiede implementazione e collaudo sul controller scelto.
 
@@ -202,23 +203,62 @@ Codici del riferimento: 1 interlock, 2 schema/hash, 3 valori, 4 occupato, 5 scad
 9 errore di esecuzione, 10 persistenza non affidabile. Un programma reale può aggiungere codici
 documentati entro 65535; non modificare il significato degli stati per nascondere un errore.
 
+## Uso nel pannello HMI
+
+1. Accedere con account server autorizzato, premere **Rileggi archivio**, scegliere schema e
+   ricetta. Salvataggio, importazione e lettura/cattura PLC restano operazioni separate.
+2. **Rivedi applicazione al PLC** legge solo lo stato del canale dal servizio. Non prepara né
+   applica niente. Una richiesta irrisolta o un checkpoint danneggiato bloccano nuovi invii.
+3. Controllare i valori archiviati mostrati, comprese unità, zero, booleani e testi vuoti.
+   La revisione è fissata; bozza, importazione e selettori non possono cambiarla silenziosamente.
+   Selezionare la dichiarazione di controllo e premere **Conferma applicazione al PLC**.
+4. Il servizio rilegge la revisione e verifica identità/autorizzazioni prima del commit.
+   Soltanto una ricevuta valida con identità della richiesta/registro e conferma PLC esatta è
+   mostrata come applicata. La conferma è storica, non dimostra i valori macchina attuali.
+5. Timeout, rete interrotta, riavvio browser e cambio utente non ripetono il comando. Il browser
+   conserva in sessionStorage soltanto ID richiesta, schema/ricetta, hash revisione e ID registro,
+   non i valori o le credenziali. **Verifica esito applicazione** legge la ricevuta e, solo se
+   necessario, invia `status`, mai prepare/apply. Nessun polling o retry automatico.
+6. Se il servizio non trova l’ID, il checkpoint resta aperto. **Chiudi richiesta non avviata**
+   richiede conferma e un rifiuto persistente nel registro originale. Non invia comandi PLC:
+   verifica prima cache fresca/buona/non-retained e coerenza del contatore del canale. Se
+   l’originale è già stato registrato, restituisce il suo stato reale, non lo cancella o annulla.
+   Se non esiste, ne impedisce anche un invio originale tardivo. Offline, contatori incoerenti,
+   registro diverso o errore di persistenza lasciano il checkpoint da verificare.
+
+Non usare la chiusura protetta come recovery di backup ripristinati o registri sostituiti:
+backup/restore, migrazione e riconciliazione con la memoria PLC devono essere collaudati sul
+target. L’ID del ledger impedisce di chiudere una richiesta in una nuova copia dell’archivio;
+non certifica che un amministratore non abbia ripristinato una vecchia copia con la stessa identità.
+
 ## API del servizio e registro
 
 - `POST /_framecraft/plc/v1/recipe-apply`: esattamente `id`, `expectedRevision`, `schemaId`,
-  `recordId`. I valori sono letti dall’archivio server, mai forniti liberamente dal browser.
+  `recordId` e, per il client HMI, `ledgerId` letto dalla verifica del canale. Il campo resta
+  opzionale per i precedenti client backend; se presente deve coincidere con il registro.
+  I valori sono letti dall’archivio server, mai forniti liberamente dal browser.
 - `GET /_framecraft/plc/v1/recipe-apply?id=...&schemaId=...`: solo la ricevuta del servizio,
   non una nuova lettura PLC e non un nuovo comando.
 - `GET /_framecraft/plc/v1/recipe-apply/current?schemaId=...`: recupera l’ultima ricevuta del
   canale per lo schema autorizzato, anche senza il marker del browser. Non espone richieste
   pendenti di altri schemi; segnala canale occupato senza i loro dettagli.
+  Restituisce anche `ledgerId` (UUID), presente in ogni ricevuta pubblica. Il client confronta
+  questo ID prima di accettare una ricevuta o chiudere il checkpoint; non è una credenziale.
 - `POST /_framecraft/plc/v1/recipe-apply/check`: esattamente `id`, `schemaId`. Può inviare solo
   `status`, mai preparazione/applicazione. Le richieste già concluse restituiscono la ricevuta.
+- `POST /_framecraft/plc/v1/recipe-apply/fence`: `id`, `expectedRevision`, `schemaId`, `recordId`,
+  **`ledgerId` obbligatorio**. Non avvia connessioni o scritture PLC. Un ID non ancora registrato
+  viene riservato e rifiutato durevolmente con `RECIPE_APPLY_NOT_SENT`; ID già presenti conservano
+  il risultato/stato reale. Una POST apply arrivata dopo il rifiuto non può eseguire il comando,
+  anche se stava aspettando la lettura asincrona dell’archivio. Le sequenze PLC possono avere
+  salti: una chiusura senza invio consuma una sequenza nel servizio ma non la invia al PLC.
 
 Tutti richiedono sessione server, `recipes.apply` e ACL schema; i POST richiedono CSRF. Token e
 origine del gateway sono verificati prima. Audit obbligatorio prima degli effetti; archivio o
 audit guasto non vengono aggirati. Se il salvataggio dell’esito fallisce dopo possibili effetti,
 la risposta è incerta anche se il trasporto era riuscito. Non cancellare ricevute o creare un
-nuovo ID per riprovare. Il registro attività non contiene valori o credenziali.
+nuovo ID per riprovare. Il registro attività non contiene valori o credenziali; la chiusura
+protetta è identificata da `recipes.fence`, distinta da applicazione e verifica PLC.
 
 Il ledger privato è `.framecraft-runtime/recipe-apply/requests.sqlite`, separato da ricette e
 audit. Usa SQLite locale, commit FULL e writer esclusivo. Conserva ID, soggetto, revisioni,
@@ -236,6 +276,6 @@ Le funzioni di gestione/trasferimento sono confrontate con
 e [Optix 1.8 — Recipes editor](https://www.rockwellautomation.com/en-pr/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes/recipesx-editor.html).
 La separazione preparazione/applicazione con conferma obbligatoria è il contratto Framecraft
 richiesto dall’utente, non una dichiarazione di identità con i protocolli vendor.
-La GUI configura l’interfaccia ma non completa ancora comando operativo HMI, migrazione dei
-canali commissionati, adapter CPU, collaudo hardware/TLS/carico,
+Configurazione e comando HMI non completano ancora migrazione dei canali commissionati,
+adapter CPU, confronto dei valori target coordinati prima di ogni apply, collaudo hardware/TLS/carico,
 backup/restore industriale, firme o sicurezza funzionale della macchina.

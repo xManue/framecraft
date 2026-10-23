@@ -5861,6 +5861,48 @@ Verifiche del 5 ottobre 2026:
   non la cancellazione arbitraria dell’avviso. Migrazione canali, CPU reale e prove industriali
   restano aperte. AI e WIP trend/profili preesistenti non toccati.
 
+### 166. Ricette: comando HMI e recupero senza replay (2026-10-23)
+
+- **Comando operativo distinto** nell’Archivio ricette: verifica canale solo HTTP, revisione dei
+  valori archiviati, dichiarazione e conferma. Zero/false/testo vuoto e unità conservati; nessuna
+  bozza o payload valori dal browser. Selettori, modifica/importazione e cattura non cambiano
+  silenziosamente la revisione durante la conferma. Capacità server recipes.apply/ACL/CSRF.
+- **Client dedicato**: solo same-origin, limite risposta, timeout, validazione rigorosa di
+  ricevuta e identità di richiesta/registro. Checkpoint sessionStorage solo metadati (ID,
+  schema/ricetta, hash revisione, ledgerId); niente valori, credenziali o retry automatico.
+  Cambio utente/progetto e risposte tardive non ripristinano dati del precedente utente.
+- **Esito incerto**: verifica GET e, se necessario, solo status. ID non trovato conserva il
+  checkpoint; chiusura esplicita richiede rifiuto persistente nello stesso ledger, cache fresca
+  buona/coerente e nessuna scrittura PLC. Richieste già dentro il confine d’invio non sono
+  cancellate né dichiarate non inviate. Un apply in attesa dell’archivio ricontrolla l’ID e
+  non supera il rifiuto registrato nel frattempo. Sopravvive al riavvio; sequenze con salti.
+- **Identità ledger**: UUID pubblico non segreto, incluso in current/ricevute e checkpoint;
+  obbligatorio per fence, confrontato anche sull’apply HMI. Copia del progetto senza registro
+  originale non chiude una vecchia richiesta. Il formato dati del ledger e quello PLC v1 non
+  cambiano. Rollback di backup con la stessa identità resta da riconciliare/collaudare.
+- **Chiarezza**: conferma storica della ricetta/ID indicati, non valori macchina attuali o
+  conferma di un’altra ricetta selezionata. Rifiuto/interlock/scadenza/riavvio PLC spiegati;
+  audit recipes.fence distinto. Vecchia conferma rimossa prima di un nuovo invio.
+- **Pipeline**: moduli client/controllo e riferimenti corretti nei nuovi pannelli. Modifica
+  resta segnaposto senza rete; Runtime esistenti richiedono aggiornamento esplicito. Nessun
+  nuovo pacchetto e nessuna modifica Rust; AI e WIP trend/profili esclusi dal commit.
+- **Verifiche finali**: 138 casi unici mirati su 15 file, tutti con esito finale verde
+  (motore, store, riferimento PLC, gateway MQTT/OPC UA, audit, client, UI e generatore).
+  Sei scadenze iniziali delle fixture corrette senza cambiare i tempi del protocollo;
+  ripetuti solo i tre file interessati, 23 casi verdi. Typecheck e build editor riusciti
+  sullo snapshot dell’indice pubblico, senza export privati o WIP AI/trend; restano gli avvisi
+  preesistenti sugli import misti. Dipendenze locali via junction, non clean install.
+  Edge headless con launcher emesso, veri account server sintetici e broker MQTT locale:
+  tre POST intenzionali, due applicazioni del riferimento PLC e quattro frame prepare/apply;
+  risposta persa recuperata senza reinvio, richiesta mai arrivata conservata dopo refresh,
+  chiusura protetta e originale tardivo rifiutato, nessun comando PLC aggiuntivo.
+  Controllo tipi e build production dell’entry QA generata riusciti. Layout 1440/768/375 px
+  senza overflow orizzontale, target almeno 48 px (checkbox nella label da 48 px), immagini
+  desktop/mobile esaminate; zero richieste esterne o errori pagina. È un riferimento PLC
+  software, non una CPU fisica. Nessun agente e nessuna suite generale a ogni modifica.
+- **Gate rimasti**: CPU reale, TLS/carico/ritenzione, confronto PLC coordinato prima dell’apply,
+  migrazione canali, backup/restore e firme; non è un’approvazione al rilascio industriale.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

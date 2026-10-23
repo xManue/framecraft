@@ -51,8 +51,8 @@ export function parseRecipeApplyConfig(input, catalog, variables) {
   return { version: 1, schemas: profiles.sort((a, b) => order(a.schemaId, b.schemaId)) };
 }
 export function parseRecipeApplyCommand(raw) {
-  if (!recipeKeys(raw, ["id", "expectedRevision", "schemaId", "recordId"]) || !recipeApplyId(raw.id) || !recipeApplyHash(raw.expectedRevision) || !recipeId(raw.schemaId) || !recipeId(raw.recordId)) fail("RECIPE_APPLY_INPUT");
-  return { id: raw.id, expectedRevision: raw.expectedRevision, schemaId: raw.schemaId, recordId: raw.recordId };
+  if (!recipeKeys(raw, ["id", "expectedRevision", "schemaId", "recordId"], ["ledgerId"]) || !recipeApplyId(raw.id) || !recipeApplyHash(raw.expectedRevision) || !recipeId(raw.schemaId) || !recipeId(raw.recordId) || raw.ledgerId !== undefined && !recipeApplyNamespace(raw.ledgerId)) fail("RECIPE_APPLY_INPUT");
+  return { id: raw.id, expectedRevision: raw.expectedRevision, schemaId: raw.schemaId, recordId: raw.recordId, ...(raw.ledgerId !== undefined ? { ledgerId: raw.ledgerId } : {}) };
 }
 export function parseRecipeApplyLookup(raw) {
   if (!recipeKeys(raw, ["id", "schemaId"]) || !recipeApplyId(raw.id) || !recipeId(raw.schemaId)) fail("RECIPE_APPLY_INPUT"); return { id: raw.id, schemaId: raw.schemaId };

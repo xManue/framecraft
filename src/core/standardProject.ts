@@ -86,6 +86,8 @@ import gatewayProxySource from "../../runtime/vite-gateway.mjs?raw";
 import gatewayProxyTypes from "../../runtime/vite-gateway.d.mts?raw";
 import gatewayClientSource from "./hmiGateway.ts?raw";
 import recipeClientSource from "./hmiRecipeClient.ts?raw";
+import recipeApplyClientSource from "./hmiRecipeApplyClient.ts?raw";
+import recipeApplyControlSource from "./hmiRecipeApply.ts?raw";
 import recipeControlSource from "./hmiRecipeControl.ts?raw";
 import hmiTagBindingSource from "./hmiTagBinding.ts?raw";
 import hmiExpressionSource from "./hmiExpression.ts?raw";
@@ -1930,8 +1932,10 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "framecraft.templates.json", content: JSON.stringify({ version: 1, scope: "bundled-template-base-contracts", templates: [...standardPageTemplates.map(template => template.behavior), ...Object.values(guidedTemplateBehaviors())] }, null, 2) + "\n" },
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },
     { path: "src/framecraftGateway.ts", content: gatewayClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
-    { path: "src/framecraftHmiRecipeClient.ts", content: recipeClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
-    { path: "src/framecraftHmiRecipeControl.ts", content: recipeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiRecipeExchange"', '"./framecraftHmiRecipeExchange"').replaceAll('"./hmiRecipePlc"', '"./framecraftHmiRecipePlc"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
+    { path: "src/framecraftHmiRecipeClient.ts", content: recipeClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiRecipeApplyClient"', '"./framecraftHmiRecipeApplyClient"') },
+    { path: "src/framecraftHmiRecipeApplyClient.ts", content: recipeApplyClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
+    { path: "src/framecraftHmiRecipeApply.ts", content: recipeApplyControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiRecipeApplyClient"', '"./framecraftHmiRecipeApplyClient"') },
+    { path: "src/framecraftHmiRecipeControl.ts", content: recipeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiRecipeExchange"', '"./framecraftHmiRecipeExchange"').replaceAll('"./hmiRecipePlc"', '"./framecraftHmiRecipePlc"').replaceAll('"./hmiRecipeApply"', '"./framecraftHmiRecipeApply"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiRecipePlc.ts", content: recipePlcControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiRecipeExchange.ts", content: recipeExchangeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiAuditControl.ts", content: auditControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },

@@ -4,6 +4,7 @@ import { HmiRecipeError, type HmiRecipeClient } from "./hmiRecipeClient";
 import { hmiAlarmElementBlocked } from "./hmiAlarmControl";
 import { createHmiRecipeExchange } from "./hmiRecipeExchange";
 import { createHmiRecipePlc } from "./hmiRecipePlc";
+import { createHmiRecipeApply } from "./hmiRecipeApply";
 import { operatorSessionProfile } from "./hmiOperatorSession";
 
 const navigationGuards = new Set<() => boolean>();
@@ -31,6 +32,8 @@ const css = `
 [data-hmi-recipe-root] [role=alert] { border-left:4px solid #a32626; padding:12px; background:#fff0f0; }
 [data-hmi-recipe-root] .recipe-review { border:2px solid #1261a0; padding:16px; margin-top:16px; }
 [data-hmi-recipe-root] .recipe-plc-runtime { border-top:1px solid #a6b0bc; padding-top:20px; margin-top:20px; }
+[data-hmi-recipe-root] .recipe-apply-ack { display:flex; gap:12px; align-items:center; min-height:48px; margin:16px 0; cursor:pointer; }
+[data-hmi-recipe-root] .recipe-apply-ack input { width:22px; min-height:22px; height:22px; padding:0; flex-shrink:0; }
 [data-hmi-recipe-root] .recipe-plc-comparison { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr)); gap:12px; margin:16px 0; }
 [data-hmi-recipe-root] .recipe-plc-comparison article { border:1px solid #8795a5; border-radius:4px; padding:12px; min-width:0; overflow-wrap:anywhere; }
 [data-hmi-recipe-root] .recipe-plc-comparison h3 { font-size:17px; margin:0 0 8px; }
@@ -56,8 +59,10 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
   let controller = new AbortController(), epoch = 0;
   const identity = () => { const user = operatorSessionProfile(); return user ? JSON.stringify([user.id, user.capabilities]) : ""; };
   let userKey = identity();
-  const exchange = client ? createHmiRecipeExchange({ document, client, snapshot: () => snapshot, schema: () => schema(), blocked: () => !active || !!draft || hmiAlarmElementBlocked(host), changed: render, saved: next => { snapshot = next; recordId = schema()?.records.find(item => item.id === recordId)?.id ?? schema()?.records[0]?.id ?? ""; } }) : undefined;
-  const plc = client ? createHmiRecipePlc({ document, client, snapshot: () => snapshot, schema: () => schema(), record: () => record(), blocked: () => !active || !!draft || !!exchange?.dirty || hmiAlarmElementBlocked(host), changed: render, create: (values, capturedAt) => start("create", values, capturedAt) }) : undefined;
+  let apply: ReturnType<typeof createHmiRecipeApply> | undefined;
+  const exchange = client ? createHmiRecipeExchange({ document, client, snapshot: () => snapshot, schema: () => schema(), blocked: () => !active || !!draft || !!apply?.dirty || !!client.apply?.pending || !!client.apply?.damaged || hmiAlarmElementBlocked(host), changed: render, saved: next => { snapshot = next; recordId = schema()?.records.find(item => item.id === recordId)?.id ?? schema()?.records[0]?.id ?? ""; } }) : undefined;
+  const plc = client ? createHmiRecipePlc({ document, client, snapshot: () => snapshot, schema: () => schema(), record: () => record(), blocked: () => !active || !!draft || !!exchange?.dirty || !!apply?.dirty || !!client.apply?.pending || !!client.apply?.damaged || hmiAlarmElementBlocked(host), changed: render, create: (values, capturedAt) => start("create", values, capturedAt) }) : undefined;
+  if (client?.apply) apply = createHmiRecipeApply({ host, client: client.apply, snapshot: () => snapshot, schema: () => schema(), record: () => record(), blocked: () => !active || !!draft || !!client.pending || !!exchange?.dirty || hmiAlarmElementBlocked(host), changed: render, confirm });
   const make = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; };
   const button = (text: string, action: () => void, disabled = false) => { const node = make("button", text); node.type = "button"; node.disabled = disabled || !!client?.busy || hmiAlarmElementBlocked(host); node.addEventListener("click", () => { if (active && !node.disabled && !hmiAlarmElementBlocked(host)) action(); }); return node; };
   const group = () => { const node = make("div"); node.className = "recipe-toolbar"; return node; };
@@ -65,11 +70,12 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
   const record = () => schema()?.records.find(item => item.id === recordId);
   const canLeave = () => {
     if (client?.busy) { message = "Attendi il termine dell’operazione prima di cambiare pagina."; render(); return false; }
+    if (client?.apply?.pending || client?.apply?.damaged) return confirm("L’applicazione al PLC resta da verificare. I riferimenti della richiesta resteranno nella sessione; nessun comando sarà ripetuto. Vuoi uscire comunque?");
     if (client?.pending) return confirm("L’esito del salvataggio non è verificato. L’ID resterà nella sessione del browser; uscendo la bozza non sarà conservata. Vuoi uscire comunque?");
-    return !draft && !exchange?.dirty || confirm("La bozza o il confronto di importazione non sono salvati. Vuoi uscire e scartarli?");
+    return !draft && !exchange?.dirty && !apply?.dirty || confirm("La bozza, il confronto o la revisione di applicazione non sono salvati. Vuoi uscire e scartarli?");
   };
   navigationGuards.add(canLeave);
-  const unload = (event: BeforeUnloadEvent) => { if (draft || exchange?.dirty || client?.pending || client?.busy) { event.preventDefault(); event.returnValue = ""; } };
+  const unload = (event: BeforeUnloadEvent) => { if (draft || exchange?.dirty || apply?.dirty || client?.pending || client?.apply?.pending || client?.apply?.damaged || client?.busy) { event.preventDefault(); event.returnValue = ""; } };
   view.addEventListener("beforeunload", unload);
   function fail(reason: unknown) {
     error = reason instanceof HmiRecipeError || reason instanceof RecipeStoreError ? reason : new HmiRecipeError("RECIPE_CLIENT_RESPONSE", "Operazione ricette non completata", "Rileggi l’archivio e controlla il servizio. La bozza non è stata eliminata.");
@@ -87,7 +93,7 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
     } catch (reason) { if (active && currentEpoch === epoch) fail(reason); }
   }
   function start(mode: Mode, values?: Record<string, RecipeScalar>, capturedAt?: number) {
-    const selected = schema(), current = record(); if (!snapshot || !selected || mode !== "create" && !current || client?.pending || exchange?.dirty) return;
+    const selected = schema(), current = record(); if (!snapshot || !selected || mode !== "create" && !current || client?.pending || exchange?.dirty || apply?.dirty || client?.apply?.pending || client?.apply?.damaged) return;
     if (draft && !confirm("Scartare la bozza ricetta non salvata?")) return;
     draft = { mode, schema: structuredClone(selected), record: current && structuredClone(current), revision: snapshot.revision, targetId: "r_" + crypto.randomUUID().replaceAll("-", ""), name: mode === "create" || mode === "copy" ? "" : current!.name, raw: mode === "create" ? {} : Object.fromEntries(selected.fields.map(field => [field.id, String(current!.values[field.id])])) };
     if (values) { draft.raw = Object.fromEntries(selected.fields.map(field => [field.id, String(values[field.id])])); draft.capturedAt = capturedAt; }
@@ -127,7 +133,7 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
   function selector(label: string, value: string, entries: { id: string; name: string }[], select: (id: string) => void) {
     const wrap = make("label", label), node = make("select"); node.setAttribute("aria-label", label);
     for (const item of entries) { const option = make("option", item.name); option.value = item.id; node.append(option); }
-    node.value = value; node.disabled = !!client?.busy || !!draft || !!exchange?.dirty || hmiAlarmElementBlocked(host);
+    node.value = value; node.disabled = !!client?.busy || !!draft || !!exchange?.dirty || !!apply?.dirty || hmiAlarmElementBlocked(host);
     node.addEventListener("change", () => { select(node.value); review = undefined; error = undefined; render(); }); wrap.append(node); return wrap;
   }
   function fieldInput(field: RecipeField, current: Draft) {
@@ -152,7 +158,7 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
     if (!active) return;
     const focus = (document.activeElement as HTMLElement | null)?.dataset.recipeFocus;
     const style = make("style"); style.textContent = css;
-    const notice = make("p", "Archivio ricette · salvare qui non applica la ricetta alla macchina e non scrive al PLC.");
+    const notice = make("p", "Archivio ricette · salvare o importare non scrive al PLC. L’applicazione alla macchina è un comando distinto nella sezione Applicazione al PLC.");
     const status = make("p", client?.busy ? "Operazione in corso… Attendi il termine prima di uscire." : error ? error.message + ". " + error.remedy : message); status.setAttribute("role", error && !client?.busy ? "alert" : "status");
     const toolbar = group(); toolbar.append(button(client?.busy ? "Operazione in corso…" : "Rileggi archivio", () => { void load(); }, !client));
     host.replaceChildren(style, notice, toolbar, status); host.setAttribute("aria-busy", String(!!client?.busy));
@@ -172,10 +178,10 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
     const selected = schema(); if (!selected) return;
     if (selected.records.length) selectors.append(selector("Ricetta archiviata", recordId, selected.records, id => { recordId = id; })); host.append(selectors);
     const actions = group();
-    for (const mode of ["create", "update", "copy", "rename", "delete"] as const) actions.append(button(actionNames[mode], () => start(mode), !!pending || !!exchange?.dirty || mode !== "create" && !record()));
+    for (const mode of ["create", "update", "copy", "rename", "delete"] as const) actions.append(button(actionNames[mode], () => start(mode), !!pending || !!exchange?.dirty || !!apply?.dirty || !!client.apply?.pending || !!client.apply?.damaged || mode !== "create" && !record()));
     host.append(actions);
     if (record()) host.append(details("Valori attuali nell’archivio · " + record()!.name, selected, record()));
-    if (!draft) { if (plc) host.append(plc.render()); if (exchange) host.append(exchange.render()); if (focus) [...host.querySelectorAll<HTMLElement>("[data-recipe-focus]")].find(node => node.dataset.recipeFocus === focus)?.focus({ preventScroll: true }); return; }
+    if (!draft) { if (apply) host.append(apply.render()); if (plc) host.append(plc.render()); if (exchange) host.append(exchange.render()); if (focus) [...host.querySelectorAll<HTMLElement>("[data-recipe-focus]")].find(node => node.dataset.recipeFocus === focus)?.focus({ preventScroll: true }); return; }
     const current = draft, form = make("form"); form.noValidate = true;
     form.addEventListener("submit", event => { event.preventDefault(); if (!client.busy && !client.pending) prepare(); });
     form.append(make("h2", actionNames[current.mode]), make("p", "Bozza locale: non cambia l’archivio finché non confermi. Non sopravvive alla chiusura della pagina."));
@@ -201,8 +207,8 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
     }
     if (focus) [...host.querySelectorAll<HTMLElement>("[data-recipe-focus]")].find(node => node.dataset.recipeFocus === focus)?.focus();
   }
-  const userChanged = () => { const next = identity(); if (next === userKey) return; userKey = next; epoch++; controller.abort(); controller = new AbortController(); snapshot = undefined; draft = undefined; review = undefined; exchange?.reset(); plc?.reset(); client?.discardRetryBody(); error = undefined; message = "Accesso cambiato: i dati precedenti sono stati rimossi. Rileggi l’archivio."; render(); };
+  const userChanged = () => { const next = identity(); if (next === userKey) return; userKey = next; epoch++; controller.abort(); controller = new AbortController(); snapshot = undefined; draft = undefined; review = undefined; exchange?.reset(); plc?.reset(); apply?.reset(); client?.discardRetryBody(); error = undefined; message = "Accesso cambiato: i dati precedenti sono stati rimossi. Rileggi l’archivio."; render(); };
   view.addEventListener("framecraft:user-changed", userChanged);
-  const unsubscribe = client?.subscribe(render); render();
+  const unhook = client?.subscribe(render), unsubscribe = () => { unhook?.(); apply?.dispose(); }; render();
   return { canLeave, refresh: render, dispose() { if (!active) return; active = false; unsubscribe?.(); controller.abort(); exchange?.dispose(); plc?.dispose(); navigationGuards.delete(canLeave); view.removeEventListener("beforeunload", unload); view.removeEventListener("framecraft:user-changed", userChanged); delete host.dataset.hmiRecipeRoot; host.removeAttribute("aria-busy"); if (oldRole === null) host.removeAttribute("role"); else host.setAttribute("role", oldRole); if (oldLabel === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", oldLabel); host.replaceChildren(...original); } };
 }

@@ -712,8 +712,8 @@ tipi analogici 64 bit, generazione di prove di carico e collaudo sulla macchina.
 
 ## Decisione: applicazione ricette con protocollo Framecraft (23 ottobre 2026)
 
-Stato: backend opt-in, riferimento virtuale e GUI di configurazione; comando HMI e collaudo
-industriale ancora aperti.
+Stato: backend opt-in, riferimento virtuale, GUI di configurazione e comando HMI;
+collaudo industriale e migrazione ancora aperti.
 L’utente richiede conferma PLC obbligatoria e sceglie un’interfaccia Framecraft documentata,
 non l’adattamento implicito a un contratto di macchina sconosciuto. Il canale usa due tag
 String/WString sulla stessa connessione MQTT o OPC UA: richiesta e risposta. La preparazione
@@ -748,12 +748,19 @@ blocca la modifica dei canali: non esiste ancora una migrazione guidata capace d
 le richieste irrisolte e mantenere identità/contatori. Servizio fermo dichiarato dall’utente;
 questo non è un lock distribuito contro l’avvio simultaneo da un processo esterno.
 
-Prima del comando HMI restano client con journal dei soli metadati, revisione/conferma e
-recupero su risposta HTTP persa. Un caso da chiudere esplicitamente: POST mai registrata dal
-servizio ma potenzialmente ritardata. Un semplice GET «ID non trovato» non autorizza né replay
-né cancellazione del checkpoint nel browser. Serve un rifiuto persistente per quell’ID che
-impedisca anche un invio originale tardivo, senza inviare prepare/apply al PLC. Il backend
-attuale non espone ancora questa operazione; non presentarla come già implementata.
+Il client HMI conserva solo metadati della richiesta, inclusa l’identità immutabile del ledger,
+prima della POST. Non offre retry apply o cancellazione manuale del checkpoint. Il recupero
+legge la ricevuta e usa eventualmente status. Per una POST mai registrata, un semplice GET
+«ID non trovato» non autorizza nuovi invii: l’operatore può chiedere un rifiuto persistente
+dell’ID sul registro originale. Questa operazione non scrive al PLC, richiede cache coerente
+e fresca e non annulla una richiesta già registrata. Il motore ricontrolla l’ID anche dopo
+l’await dell’archivio: un originale ritardato non supera un rifiuto registrato nel frattempo.
+
+L’ID ledger è restituito da current e ricevute e confrontato dal browser prima del recupero.
+Non protegge un rollback completo del ledger che ne conserva l’identità: restore e
+riconciliazione col PLC restano gate industriali separati. La revisione mostra i valori
+archiviati, non un confronto coordinato col ciclo PLC. La conferma è storica e riferita alla
+ricetta/ID indicati, non alla ricetta che l’operatore seleziona successivamente.
 
 ## Flusso di verifica
 
