@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { OperatorAuthError } from "./operator-policy.mjs";
 import { RecipeStoreError } from "./recipe-catalog.mjs";
+import { RecipeApplyError } from "./recipe-apply.mjs";
 import { ConnectionOperationError } from "./connection-diagnostics.mjs";
 
 export const auditContext = (operation, resource, commandId = null, actor = null) => ({ traceId: randomUUID(), actor, operation, resource, commandId });
@@ -15,7 +16,7 @@ export async function runAudited(audit, context, execute, describe, allowed = ()
     if (!allowed()) throw new OperatorAuthError("AUTH_CONFIG");
     result = await execute(); ({ outcome, code } = describe(result));
   } catch (error) {
-    const known = error instanceof OperatorAuthError || error instanceof RecipeStoreError || error instanceof ConnectionOperationError;
+    const known = error instanceof OperatorAuthError || error instanceof RecipeStoreError || error instanceof RecipeApplyError || error instanceof ConnectionOperationError;
     outcome = known && error.code !== "RECIPE_UNCERTAIN" && error.outcome !== "uncertain" ? "rejected" : "uncertain";
     code = known ? error.code ?? error.diagnostic?.code ?? "OPERATION_UNCERTAIN" : "OPERATION_UNCERTAIN";
     try { await appendAudit(audit, context, outcome, code); } catch { throw new OperatorAuthError("AUTH_AUDIT_UNCERTAIN"); } throw error;

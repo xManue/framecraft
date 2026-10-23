@@ -1,4 +1,4 @@
-export const operatorCapabilities = Object.freeze(["recipes.read", "recipes.capture", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "alarms.acknowledge", "alarms.confirm", "alarms.history.read", "tags.write", "audit.read"]);
+export const operatorCapabilities = Object.freeze(["recipes.read", "recipes.capture", "recipes.apply", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "alarms.acknowledge", "alarms.confirm", "alarms.history.read", "tags.write", "audit.read"]);
 const messages = {
   AUTH_AUDIT_CHANGED: [409, "Il registro è cambiato", "Ricarica la prima pagina del registro. Le pagine di archivi diversi non vengono mescolate."],
   AUTH_AUDIT_RESPONSE: [502, "Risposta del registro non valida", "Non fidarti di questi dati. Controlla versione, servizio e proxy con il responsabile; nessun comando viene ripetuto."],

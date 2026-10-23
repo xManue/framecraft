@@ -9,7 +9,7 @@ const maxBytes = 64 * 1024 * 1024, maxRecords = 100000, zero = "0".repeat(64);
 const fail = (code = "AUTH_AUDIT") => { throw new OperatorAuthError(code); };
 const hash = value => createHash("sha256").update(value).digest("hex");
 const uuid = value => typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
-const operations = ["tags.write", "alarms.acknowledge", "alarms.confirm", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "session.login", "session.logout"];
+const operations = ["tags.write", "alarms.acknowledge", "alarms.confirm", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "recipes.apply", "recipes.check", "session.login", "session.logout"];
 const outcomes = ["requested", "applied", "delivered", "duplicate", "rejected", "uncertain", "authenticated", "logged-out"];
 export function auditSqliteSupported(value) {
   if (typeof value !== "string" || !/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)) return false;

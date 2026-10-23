@@ -1083,10 +1083,13 @@ wizard Pubblica e backup/restore/ACL Windows verificati restano da completare.
 ## Lettura e confronto dei valori ricetta dal PLC
 
 Questa funzione legge soltanto: non applica ricette e non esegue scritture singole, batch o comandi
-di attivazione. Decisione del 22 ottobre 2026: l’applicazione futura richiederà **sempre una conferma
+di attivazione. Decisione del 22 ottobre 2026: l’applicazione richiede **sempre una conferma
 del programma PLC**, correlata alla singola richiesta. ACK MQTT e risposta OPC UA Write Good
-non sono una conferma di applicazione. Area di preparazione, handshake, timeout, rifiuto,
-interlock, concorrenza e recupero dell’esito incerto restano da implementare e collaudare.
+non sono una conferma di applicazione. Il backend opt-in del 23 ottobre implementa preparazione,
+handshake, timeout, rifiuto, concorrenza e recupero esplicito senza replay. L’utente ha scelto
+un’interfaccia Framecraft da implementare nel PLC: il [contratto v1](RECIPE-APPLY-PROTOCOL.md)
+descrive canali, buffer, ritenzione, interlock e messa in servizio. Restano GUI di configurazione
+e comando, programma della CPU reale e collaudo industriale. Questa lettura resta indipendente.
 
 Preparazione nell’editor, senza AI:
 

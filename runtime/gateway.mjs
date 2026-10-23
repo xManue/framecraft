@@ -5,12 +5,14 @@ import { createOpcUaPlcConnection } from "./opcua-driver.mjs";
 import { validateConnectionCatalog } from "./connection-config.mjs";
 import { createAlarmEngine } from "./alarm-engine.mjs";
 import { ConnectionOperationError, connectionDiagnostic, createDiagnosticReporter, diagnosticText, safeNotify } from "./connection-diagnostics.mjs";
-import { RecipeStoreError, parseRecipeCommand, recipeActor } from "./recipe-catalog.mjs";
+import { RecipeStoreError, parseRecipeCommand, recipeActor, recipeId } from "./recipe-catalog.mjs";
 import { OperatorAuthError, operatorText } from "./operator-policy.mjs";
 import { auditContext, appendAudit as persistAuditEvent, runAudited as auditOperation } from "./audit-operation.mjs";
 import { parseAuditQuery, parseAuditSnapshot } from "./audit-query.mjs";
 import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot } from "./alarm-history.mjs";
 import { RecipePlcError, captureRecipePlc, emptyRecipePlcConfig, parseRecipePlcConfig, parseRecipePlcQuery } from "./recipe-plc.mjs";
+import { RecipeApplyError, emptyRecipeApplyConfig, parseRecipeApplyConfig, parseRecipeApplyCommand, parseRecipeApplyLookup } from "./recipe-apply.mjs";
+import { createRecipeApplyEngine } from "./recipe-apply-engine.mjs";
 
 const api = "/_framecraft/plc/v1";
 function failure(status, code = "GATEWAY_REQUEST") { return Object.assign(new ConnectionOperationError(connectionDiagnostic(code, { protocol: "gateway" })), { status }); }
@@ -53,6 +55,10 @@ export function createPlcGateway(catalog, variables, options = {}) {
   const recipePlc = parseRecipePlcConfig(options.recipePlcCatalog ?? emptyRecipePlcConfig(), undefined, variables);
   const recipePlcRevision = createHash("sha256").update(JSON.stringify(recipePlc)).digest("hex"); let nextRecipePlcRead = 0;
   const recipeRead = async task => { let timer; try { return await Promise.race([task, new Promise((_, reject) => { timer = setTimeout(() => reject(new RecipePlcError("RECIPE_PLC_UNAVAILABLE")), 5000); })]); } finally { clearTimeout(timer); } };
+  const applyConfig = parseRecipeApplyConfig(options.recipeApplyConfig ?? emptyRecipeApplyConfig(), undefined, variables);
+  const protectedTags = new Set(applyConfig.schemas.flatMap(profile => [profile.requestTag, profile.responseTag]));
+  let protectionFault = false;
+  const applyRead = async task => { let timer; try { return await Promise.race([task, new Promise((_, reject) => { timer = setTimeout(() => reject(new RecipeApplyError("RECIPE_APPLY_OFFLINE")), 5000); })]); } finally { clearTimeout(timer); } };
   let nextAuditRead = 0, nextHistoryRead = 0, historyError = options.historyUnavailable ? new AlarmHistoryError(options.historyUnavailable.code) : undefined, historyMissed = 0, historyRunning = false, alarmInstanceId;
   const archiveEnabled = options.alarmCatalog?.archive?.enabled === true;
   const historyFault = error => { if (!historyError) { historyError = error instanceof AlarmHistoryError ? error : new AlarmHistoryError("ALARM_HISTORY_STORAGE"); safeNotify(options.onHistoryDiagnostic, { type: "alarm-history", code: historyError.code, error: historyError.message, remedy: historyError.remedy }); } };
@@ -79,12 +85,25 @@ export function createPlcGateway(catalog, variables, options = {}) {
     }
     states.set(connection.id, { id: connection.id, state: "stopped" }); return driver;
   });
+  const endpoint = (connection, binding, write) => {
+    const url = new URL(connection.url); let address = url.href;
+    if (connection.protocol === "mqtt") { const port = url.port || ({ "mqtt:": "1883", "mqtts:": "8883", "ws:": "80", "wss:": "443" })[url.protocol]; address = url.protocol + "//" + url.hostname.toLowerCase() + ":" + port + (["mqtt:", "mqtts:"].includes(url.protocol) ? "" : url.pathname || "/"); }
+    return JSON.stringify([connection.protocol, address, connection.protocol === "mqtt" ? write ? binding.writeTopic : binding.topic : binding.namespaceUri, connection.protocol === "mqtt" ? "" : binding.nodeId?.startsWith("g=") ? binding.nodeId.toLowerCase() : binding.nodeId]);
+  };
+  const protectedEndpoints = new Set();
+  for (const connection of catalog.connections) for (const binding of Array.isArray(connection.bindings) ? connection.bindings : []) if (protectedTags.has(binding?.tag)) try { protectedEndpoints.add(endpoint(connection, binding, false)); if (connection.protocol !== "mqtt" || binding.writeTopic) protectedEndpoints.add(endpoint(connection, binding, true)); } catch { protectionFault = true; }
+  for (const connection of enabled) for (const binding of connection.bindings) if (protectedEndpoints.has(endpoint(connection, binding, true))) protectedTags.add(binding.tag);
+  const applyEngine = options.recipeApplyStore && options.recipeStore ? createRecipeApplyEngine({ namespace: options.recipeApplyNamespace, config: applyConfig, store: options.recipeApplyStore, recipes: { snapshot: () => applyRead(Promise.resolve(options.recipeStore.snapshot())) }, channel: profile => {
+    const request = owners.get(profile.requestTag), response = owners.get(profile.responseTag);
+    if (!request?.writable || !response || response.access === "write" || request.connectionId !== response.connectionId) return;
+    return { connected: () => request.driver.state === "connected" && response.driver.state === "connected", read: () => response.driver.read(profile.responseTag), write: frame => request.driver.write(profile.requestTag, frame) };
+  } }) : undefined;
   const snapshot = () => ({ version: 1, allowWrites: config.allowWrites === true,
     alarmHistory: historyCapture(),
     ...(alarms ? { alarms: { ...alarms.snapshot(), actionsEnabled: !!options.operatorAuth || typeof options.authorizeAlarmAction === "function" } } : {}),
     diagnostics: diagnostics.map((event) => ({ ...event })),
     connections: [...states.values()].map((state) => ({ ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) })),
-    tags: [...owners.values()].map(({ name, dataType, access, connectionId, writable }) => ({ name, dataType, access, connectionId, writable })),
+    tags: [...owners.values()].map(({ name, dataType, access, connectionId, writable }) => ({ name, dataType, access, connectionId, writable: writable && !protectedTags.has(name) && !options.recipeApplyUnavailable && !protectionFault })),
     samples: [...owners.values()].flatMap(({ name, driver, connectionId }) => { const sample = driver.read(name); return sample ? [{ ...sample, connectionId }] : []; }),
   });
   const respond = (response, status, value) => {
@@ -149,6 +168,31 @@ export function createPlcGateway(catalog, variables, options = {}) {
         const result = request.url.endsWith("/login") ? await options.operatorAuth.login(request, input) : await options.operatorAuth.logout(request);
         if (stopping || request.aborted || response.destroyed) throw new OperatorAuthError("AUTH_CONFIG");
         response.setHeader("Set-Cookie", result.cookie); respond(response, 200, result.body); return;
+      }
+      if (request.url === api + "/recipe-apply" || request.url === api + "/recipe-apply/check" || request.url?.startsWith(api + "/recipe-apply?") || request.url?.startsWith(api + "/recipe-apply/current?")) {
+        const mutation = request.method === "POST", checking = request.url === api + "/recipe-apply/check", current = request.url?.startsWith(api + "/recipe-apply/current?");
+        if (checking && !mutation || !["GET", "POST"].includes(request.method) || mutation && request.url.includes("?")) throw new RecipeApplyError("RECIPE_APPLY_INPUT");
+        if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
+        if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;
+        let command;
+        if (mutation) {
+          if ((request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw new RecipeApplyError("RECIPE_APPLY_INPUT");
+          const input = await body(request, 4096); command = checking ? parseRecipeApplyLookup(input) : parseRecipeApplyCommand(input);
+        } else {
+          if (request.url.length > 2048) throw new RecipeApplyError("RECIPE_APPLY_INPUT"); const params = new URL(request.url, "http://localhost").searchParams;
+          if (current) { if ([...params].length !== 1 || !params.has("schemaId") || !recipeId(params.get("schemaId"))) throw new RecipeApplyError("RECIPE_APPLY_INPUT"); command = { schemaId: params.get("schemaId") }; }
+          else { if ([...params].length !== 2 || new Set(params.keys()).size !== 2) throw new RecipeApplyError("RECIPE_APPLY_INPUT"); command = parseRecipeApplyLookup(Object.fromEntries(params)); }
+        }
+        const authorize = () => applyRead(options.operatorAuth.authorize(request, "recipes.apply", mutation, { schemaId: command.schemaId }));
+        const actor = await authorize(); if (!recipeActor(actor) || actor === token || actor === "Bearer " + token) throw new OperatorAuthError("AUTH_PERMISSION");
+        if (stopping || request.aborted || response.destroyed) throw new RecipeApplyError("RECIPE_APPLY_UNCERTAIN");
+        if (options.recipeApplyUnavailable) throw options.recipeApplyUnavailable; if (!applyEngine) throw new RecipeApplyError("RECIPE_APPLY_DISABLED");
+        if (!mutation) { respond(response, 200, current ? applyEngine.current(command.schemaId) : applyEngine.status(command)); return; }
+        const target = checking ? applyEngine.status(command) : command;
+        auditScope = auditContext(checking ? "recipes.check" : "recipes.apply", { kind: "recipe-schema", id: command.schemaId, recordId: target.recordId, targetId: null }, command.id, actor); auditStarted = true;
+        const task = runAudited(options.audit, auditScope, () => applyEngine[checking ? "check" : "apply"](command, { actor, authorize, alive: () => !stopping && !request.aborted && !response.destroyed }), result => ({ outcome: result.duplicate ? "duplicate" : result.outcome === "pending" ? "uncertain" : result.outcome, code: result.duplicate ? result.plcConfirmed ? "RECIPE_APPLY_DUPLICATE_CONFIRMED" : result.outcome === "rejected" ? "RECIPE_APPLY_DUPLICATE_REJECTED" : "RECIPE_APPLY_DUPLICATE_UNCERTAIN" : result.code }), () => !stopping && !request.aborted && !response.destroyed);
+        recipeTasks.add(task); try { const result = await task; respond(response, result.outcome === "applied" ? 200 : result.outcome === "rejected" ? 422 : result.outcome === "pending" ? 202 : 503, result); } finally { recipeTasks.delete(task); }
+        return;
       }
       if (request.url === api + "/recipe-plc" || request.url?.startsWith(api + "/recipe-plc?")) {
         if (request.method !== "GET") throw new RecipePlcError("RECIPE_PLC_QUERY");
@@ -232,7 +276,8 @@ export function createPlcGateway(catalog, variables, options = {}) {
         || Object.keys(command).some((key) => !["id", "tag", "value"].includes(key))) throw failure(400);
       if (!operatorText(command.tag, 200)) throw failure(400);
       auditScope = auditContext("tags.write", { kind: "tag", id: command.tag }, command.id);
-      const owner = owners.get(command.tag); if (!owner?.writable) throw failure(403, "WRITE_DENIED");
+      if (options.recipeApplyUnavailable) throw options.recipeApplyUnavailable; if (protectionFault) throw new RecipeApplyError("RECIPE_APPLY_CONFIG");
+      const owner = owners.get(command.tag); if (!owner?.writable || protectedTags.has(command.tag)) throw failure(403, "WRITE_DENIED");
       try { normalizeMqttTagValue(command.value, owner.dataType); } catch { throw failure(400, "WRITE_INVALID"); }
       let actor, authorizationTimer;
       try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "tags.write", true, { tag: command.tag }) : options.authorizeTagWrite?.(request, { ...command }), new Promise(resolve => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); }
@@ -269,6 +314,10 @@ export function createPlcGateway(catalog, variables, options = {}) {
       }
       if (error instanceof AlarmHistoryError) { respond(response, error.status, { type: "alarm-history", code: error.code, error: error.message, remedy: error.remedy }); return; }
       if (error instanceof OperatorAuthError) { respond(response, error.status, { type: "operator", code: error.code, error: error.message, remedy: error.remedy, outcome: error.outcome, plcConfirmed: false }); return; }
+      if (error instanceof RecipeApplyError) {
+        const diagnostic = { type: "recipe-apply", code: error.code, error: error.message, remedy: error.remedy };
+        safeNotify(options.onRecipeApplyDiagnostic, diagnostic); respond(response, error.status, { ...diagnostic, outcome: error.outcome, effect: "plc-recipe", plcConfirmed: false }); return;
+      }
       if (error instanceof RecipePlcError) {
         const diagnostic = { type: "recipe-plc", code: error.code, error: error.message, remedy: error.remedy, ...(error.fieldId ? { fieldId: error.fieldId } : {}) };
         safeNotify(options.onRecipePlcDiagnostic, diagnostic); respond(response, error.status, { ...diagnostic, effect: "plc-read-only", plcConfirmed: false }); return;
@@ -301,7 +350,9 @@ export function createPlcGateway(catalog, variables, options = {}) {
       if (stopTask) return stopTask; stopping = true; options.operatorAuth?.close();
       stopTask = (async () => {
         server.closeAllConnections();
+        const applyStopped = applyEngine?.stop();
         await Promise.allSettled(connections.map((driver) => driver.stop()));
+        await applyStopped;
         await Promise.allSettled([...recipeTasks]);
         await Promise.allSettled([...commands.values()].map(entry => entry.result));
         await Promise.allSettled([...auditTasks]);

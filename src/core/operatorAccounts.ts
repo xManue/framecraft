@@ -12,6 +12,7 @@ export const operatorCapabilityLabels: Record<OperatorCapability, string> = {
   "alarms.history.read": "Consultare tutto l’archivio storico degli allarmi",
   "recipes.import": "Importare più ricette da file (creazione e sostituzione)",
   "recipes.capture": "Leggere i valori PLC dei campi ricetta autorizzati",
+  "recipes.apply": "Applicare ricette e verificarne l’esito con conferma del programma PLC",
   "recipes.read": "Leggere l’archivio ricette", "recipes.create": "Creare ricette", "recipes.update": "Modificare ricette", "recipes.copy": "Copiare ricette", "recipes.rename": "Rinominare ricette", "recipes.delete": "Eliminare ricette",
   "alarms.acknowledge": "Prendere visione degli allarmi", "alarms.confirm": "Confermare gli allarmi", "tags.write": "Scrivere le variabili PLC abilitate",
 };

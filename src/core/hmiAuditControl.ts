@@ -8,6 +8,7 @@ const operations: Record<string, string> = {
   "tags.write": "Scrittura variabile", "alarms.acknowledge": "Presa visione allarme", "alarms.confirm": "Conferma allarme",
   "recipes.create": "Creazione ricetta", "recipes.update": "Modifica ricetta", "recipes.copy": "Copia ricetta", "recipes.rename": "Rinomina ricetta", "recipes.delete": "Eliminazione ricetta", "session.login": "Accesso operatore", "session.logout": "Uscita operatore",
   "recipes.import": "Importazione ricette · gruppo di record",
+  "recipes.apply": "Applicazione ricetta al PLC", "recipes.check": "Verifica esito ricetta sul PLC",
 };
 const outcomes: Record<string, string> = { requested: "Richiesta registrata", applied: "Applicato al servizio", delivered: "Consegnato al trasporto, non confermato dal PLC", duplicate: "Richiesta già gestita", rejected: "Rifiutato", uncertain: "Esito incerto: da verificare", authenticated: "Accesso riuscito", "logged-out": "Accesso chiuso" };
 const css = `
@@ -129,7 +130,8 @@ export function createHmiAuditControl(host: HTMLElement, options: HmiAuditContro
     for (const event of snapshot.events) {
       const row = make("li"); row.append(make("strong", `#${event.seq} · ${new Date(event.timestamp).toLocaleString()}`)); const values = make("dl");
       const resource = event.resource ? event.resource.id + (event.resource.kind === "recipe-schema" ? "/" + event.resource.recordId + (event.resource.targetId ? " → " + event.resource.targetId : "") : "") : "Sessione";
-      const outcome = event.outcome === "duplicate" && event.code.endsWith("UNCERTAIN") ? "Richiesta già gestita con esito incerto: verifica, non ripetere" : outcomes[event.outcome];
+      const plcOperation = ["recipes.apply", "recipes.check"].includes(event.operation);
+      const outcome = event.outcome === "applied" && plcOperation ? "Applicazione confermata dal programma PLC" : event.outcome === "duplicate" && event.code === "RECIPE_APPLY_DUPLICATE_CONFIRMED" ? "Esito PLC già confermato; nessuna nuova applicazione" : event.outcome === "duplicate" && event.code === "RECIPE_APPLY_DUPLICATE_REJECTED" ? "Richiesta già rifiutata; nessuna nuova applicazione" : event.outcome === "duplicate" && event.code.endsWith("UNCERTAIN") ? "Richiesta già gestita con esito incerto: verifica, non ripetere" : outcomes[event.outcome];
       for (const [label, value] of [["Operazione", operations[event.operation]], ["Esito", outcome], ["ID operatore registrato", event.actor ?? "Identità non verificata"], ["Risorsa", resource]]) { const group = make("div"); group.append(make("dt", label), make("dd", value)); values.append(group); }
       if (["rejected", "uncertain"].includes(event.outcome) && event.code.startsWith("AUTH_")) { const reason = new OperatorAuthError(event.code); if (reason.code === event.code) row.append(make("p", `${reason.message}. ${reason.remedy}`)); }
       row.append(values); const details = make("details"); details.append(make("summary", `Dettagli evento #${event.seq}`), make("code", `UTC: ${event.timestamp}\nCodice: ${event.code}\nTraccia: ${event.traceId}\nRichiesta: ${event.commandId ?? "Non presente"}`)); row.append(details); list.append(row);

@@ -284,7 +284,7 @@ Browser layout checks are not physical-device or live-PLC commissioning.
 
 Generated panels include `framecraft.recipes.json` (empty unless explicitly supplied) and a Node recipe store with typed
 schemas, create/update/copy/rename/delete, persistent operation receipts and content-revision
-conflict checks. No sample machine values, automatic schema migrations or PLC writes are added.
+conflict checks. Archive operations add no sample machine values, automatic schema migrations or PLC writes.
 Gateway recipe operations require a verified server operator session. The standard launcher
 supports explicitly provisioned local accounts; the gateway token and browser PIN do not grant access. A damaged recipe
 store does not stop unrelated PLC monitoring. See [runtime configuration and recovery](runtime/README.md#ricette-archivio-dati-server-non-trasferimento-plc).
@@ -299,8 +299,13 @@ needs a declared, readable, type-compatible tag. In the Runtime control, **Leggi
 compares fresh, good-quality cached samples with the selected recipe. A complete acquisition can
 prefill a new local draft; naming, review and archive confirmation remain explicit. It requires
 `recipes.capture` plus the schema ACL, and `recipes.create` to save the new recipe. Nothing is
-sent to the PLC. Applying a recipe will require a request-correlated confirmation from the PLC
-program; there is no direct-write recipe bypass. See the [operator procedure](runtime/README.md#lettura-e-confronto-dei-valori-ricetta-dal-plc).
+sent to the PLC. A separate opt-in backend now implements **Framecraft Recipe Apply v1**:
+full preparation, request-correlated PLC confirmation, durable intent and explicit recovery without
+command replay. The PLC implementation and editor/runtime apply controls still need commissioning
+and integration; this does not enable an Apply button yet. The config is off by default, no tags
+are invented, and there is no direct-write recipe bypass. The generated Runtime includes the
+[PLC interface contract](runtime/RECIPE-APPLY-PROTOCOL.md) and a read-only `recipe-interface`
+commissioning command. See also the [read/capture procedure](runtime/README.md#lettura-e-confronto-dei-valori-ricetta-dal-plc).
 Project chat can also request and propose edits to the initial `framecraft.recipes.json`.
 Recipe context is read only when requested, with typed validation, a human-readable value
 comparison, explicit approval and the existing project backup. Applying or restoring a recipe

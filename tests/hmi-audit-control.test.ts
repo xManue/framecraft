@@ -29,6 +29,10 @@ it("richiede il permesso server dedicato e offre il normale accesso operatore", 
   auth.user = { ...user(), capabilities: [] }; const request = vi.fn<typeof fetch>(); mount(request);
   expect(button("Carica registro").disabled).toBe(true); button("Apri accesso operatore").click(); expect(auth.open).toHaveBeenCalledOnce(); expect(request).not.toHaveBeenCalled();
 });
+it("distingue conferma PLC delle ricette da modifica dell’archivio e da consegna driver", async () => {
+  const value = snapshot(); value.events[0] = { ...value.events[0], operation: "recipes.apply", resource: { kind: "recipe-schema", id: "s", recordId: "r", targetId: null }, outcome: "applied", code: "RECIPE_APPLY_CONFIRMED" };
+  const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(value))); mount(request); button("Carica registro").click(); await loaded(); expect(host.textContent).toContain("Applicazione confermata dal programma PLC"); expect(host.querySelector("ol")?.textContent).not.toContain("Applicato al servizio");
+});
 it("rispetta configurazione disabilitata e blocchi ereditati senza leggere dati", () => {
   const request = vi.fn<typeof fetch>(); mount(request, false); button("Carica registro").click(); expect(request).not.toHaveBeenCalled();
   control!.dispose(); mount(request); host.dataset.fcUserRequires = "maintenance"; button("Carica registro").click(); expect(request).not.toHaveBeenCalled();

@@ -710,6 +710,32 @@ mantengono il batch d’archiviazione già esistente; nessun replay o nuovo coma
 Restano conversioni/unità tipizzate, limiti multipli e livelli esclusivi/non esclusivi,
 tipi analogici 64 bit, generazione di prove di carico e collaudo sulla macchina.
 
+## Decisione: applicazione ricette con protocollo Framecraft (23 ottobre 2026)
+
+Stato: backend opt-in e riferimento virtuale; GUI e collaudo industriale ancora aperti.
+L’utente richiede conferma PLC obbligatoria e sceglie un’interfaccia Framecraft documentata,
+non l’adattamento implicito a un contratto di macchina sconosciuto. Il canale usa due tag
+String/WString sulla stessa connessione MQTT o OPC UA: richiesta e risposta. La preparazione
+contiene tutti i campi tipizzati; il comando separato applica solo quella preparazione.
+Il [contratto](runtime/RECIPE-APPLY-PROTOCOL.md) definisce namespace, sequenza crescente ritenuta,
+identità/hash, TTL, interlock, stato incerto e status che non ripete il comando.
+
+Prima di ogni possibile effetto viene registrata l’intenzione in un ledger SQLite separato.
+Un canale irrisolto resta bloccato anche dopo riavvio. Nessun reinvio automatico o recupero
+del contatore; una risposta driver positiva non è applicazione. Il controllo di stato può
+confermare soltanto una richiesta già inviata con identità esatta. Anche una richiesta mai
+vista viene marcata rifiutata nel PLC prima di rispondere, per bloccare consegne ritardate.
+I tag del canale e i loro alias di binding non accettano le normali scritture del gateway.
+
+Alternative escluse: scritture scalari dirette, commit affidato al browser, ACK MQTT/Write Good
+come successo, cancellazione del ledger per ripartire o nuova richiesta dopo timeout. Il formato
+JSON ASCII richiede un buffer di almeno 512 caratteri; STRING[254] non basta. Non si promettono
+frammentazione, UDT binari, atomicità del programma macchina o resistenza a un amministratore
+locale ostile. Il riferimento Node illustra il contratto, non è un programma SCL certificato.
+Retention effettiva, blocco dei comandi concorrenti nel PLC, backup/restore, TLS e carico sul
+target restano gate di rilascio. Config vuota e moduli/documento entrano nei nuovi pannelli;
+i progetti esistenti richiedono aggiornamento esplicito, senza migrazioni o scritture automatiche.
+
 ## Flusso di verifica
 
 1. Collegare il template a una foto e alla schermata esportata.

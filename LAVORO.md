@@ -5783,6 +5783,45 @@ Verifiche del 5 ottobre 2026:
   coordinate, provenienza/storico valori certificati, audit delle letture, validazione fisica,
   TLS/carico/recovery e bridge WebView2 reale. AI e modifiche trend/profili preesistenti esclusi.
 
+### 164. Ricette: contratto Framecraft e backend apply confermato (2026-10-23)
+
+- **Decisione dell’utente**: definire un’interfaccia Framecraft documentata da implementare
+  nel PLC. Conferma obbligatoria del programma macchina; nessun percorso ricetta con
+  scritture scalari dirette e nessuna equivalenza con ACK MQTT o OPC UA Write Good.
+- **Contratto v1**: due tag String/WString della stessa connessione, preparazione JSON ASCII
+  completa e comando apply separato. Namespace, ID, sequenza crescente ritenuta, hash schema
+  e fingerprint correlano le risposte; TTL e interlock vanno applicati nel PLC. Buffer minimo
+  512 caratteri: STRING[254] non supportato, niente frammentazione o UDT binari nascosti.
+- **Persistenza**: ledger SQLite distinto con intenzione prima di ogni scrittura, ordine
+  delle fasi, lock per canale, identità verificata, limiti e blocco in caso di guasto. Non
+  conserva valori ricetta. Riavvio/timeout/disconnessione non ripetono prepare o apply;
+  gli esiti incerti mantengono il canale occupato. Stato esplicito e sola richiesta status
+  per recupero; il PLC registra anche il rifiuto di richieste mai viste, contro invii tardivi.
+- **Servizio**: capability esplicita `recipes.apply`, account server/CSRF/ACL schema,
+  autorizzazione e revisione archivio ricontrollate prima del commit, audit senza valori.
+  Tag del protocollo e alias fisici di binding esclusi dalle normali scritture gateway.
+  Config corrotta/ledger indisponibile non fermano monitoraggi indipendenti e non aprono bypass.
+- **Pipeline**: config separata `framecraft.recipe-apply.json`, vuota per default; moduli,
+  tipi, riferimento PLC virtuale e guida entrano nei nuovi pannelli. `recipe-interface`
+  stampa namespace/hash/campi per il programmatore PLC, senza record/valori/credenziali,
+  inizializzare storage o aprire connessioni. Nessun tag/programma macchina inventato.
+- **Verifiche finali**: 125 casi unici mirati su 16 file con esito finale verde: 87 nei file
+  già verdi e 38 ripetuti nei quattro file con timeout dell’harness. Inclusi protocollo,
+  ledger, reference, coordinator, concorrenza, registro indisponibile dopo il comando,
+  autorizzazioni/revoca/ACL, audit, generazione e trasporti MQTT/OPC UA locali reali con dati
+  sintetici. Il launcher emesso completa prepare/apply/conferma; recupero con solo status,
+  zero replay. Prima esecuzione sotto carico: otto timeout, non asserzioni funzionali fallite;
+  avvio isolato misurato 13,7 s contro budget fixture di 10–15 s. Adeguati solo i budget di
+  test e corretto un tipo della fixture reference; nessun timeout/check PLC di produzione
+  allargato. Typecheck e build editor riusciti sullo snapshot dell’indice pubblico, senza
+  export privati o WIP AI/trend. Restano warning preesistenti sugli import misti. Dipendenze
+  locali riusate via junction, non clean install; nessun nuovo pacchetto né suite nativa generale.
+- **Limiti espliciti**: backend non significa funzionalità grafica finita. Restano finestra
+  di configurazione e comando HMI con revisione/conferma, adapter nel PLC reale, ritenzione
+  e atomicità effettive, backup/restore, TLS/carico e prove di guasto sul target. Il riferimento
+  Node è un modello del contratto, non SCL né certificazione industriale. AI e lavori trend/
+  profili preesistenti restano esclusi. Roadmap Unified/Optix aggiornate a parziale, non completo.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

@@ -65,6 +65,16 @@ import recipeCatalogSource from "../../runtime/recipe-catalog.mjs?raw";
 import recipeCatalogTypes from "../../runtime/recipe-catalog.d.mts?raw";
 import recipePlcSource from "../../runtime/recipe-plc.mjs?raw";
 import recipePlcTypes from "../../runtime/recipe-plc.d.mts?raw";
+import recipeApplySource from "../../runtime/recipe-apply.mjs?raw";
+import recipeApplyTypes from "../../runtime/recipe-apply.d.mts?raw";
+import recipeApplyStoreSource from "../../runtime/recipe-apply-store.mjs?raw";
+import recipeApplyStoreTypes from "../../runtime/recipe-apply-store.d.mts?raw";
+import recipeApplyEngineSource from "../../runtime/recipe-apply-engine.mjs?raw";
+import recipeApplyEngineTypes from "../../runtime/recipe-apply-engine.d.mts?raw";
+import recipePlcReferenceSource from "../../runtime/recipe-plc-reference.mjs?raw";
+import recipePlcReferenceTypes from "../../runtime/recipe-plc-reference.d.mts?raw";
+import recipeInterfaceSource from "../../runtime/print-recipe-interface.mjs?raw";
+import recipeApplyGuide from "../../runtime/RECIPE-APPLY-PROTOCOL.md?raw";
 import recipeStoreSource from "../../runtime/recipe-store.mjs?raw";
 import recipeStoreTypes from "../../runtime/recipe-store.d.mts?raw";
 import recipeExchangeSource from "../../runtime/recipe-exchange.mjs?raw";
@@ -1877,6 +1887,17 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/recipe-catalog.mjs", content: recipeCatalogSource },
     { path: "runtime/recipe-catalog.d.mts", content: recipeCatalogTypes },
     { path: "runtime/recipe-plc.mjs", content: recipePlcSource },
+    { path: "runtime/recipe-apply.mjs", content: recipeApplySource },
+    { path: "runtime/recipe-apply.d.mts", content: recipeApplyTypes },
+    { path: "runtime/recipe-apply-store.mjs", content: recipeApplyStoreSource },
+    { path: "runtime/recipe-apply-store.d.mts", content: recipeApplyStoreTypes },
+    { path: "runtime/recipe-apply-engine.mjs", content: recipeApplyEngineSource },
+    { path: "runtime/recipe-apply-engine.d.mts", content: recipeApplyEngineTypes },
+    { path: "runtime/recipe-plc-reference.mjs", content: recipePlcReferenceSource },
+    { path: "runtime/recipe-plc-reference.d.mts", content: recipePlcReferenceTypes },
+    { path: "runtime/print-recipe-interface.mjs", content: recipeInterfaceSource },
+    { path: "runtime/RECIPE-APPLY-PROTOCOL.md", content: recipeApplyGuide },
+    { path: "framecraft.recipe-apply.json", content: JSON.stringify({ version: 1, schemas: [] }, null, 2) + "\n" },
     { path: "runtime/recipe-plc.d.mts", content: recipePlcTypes },
     { path: "framecraft.recipe-plc.json", content: JSON.stringify({ version: 1, schemas: [] }, null, 2) + "\n" },
     { path: "runtime/recipe-store.mjs", content: recipeStoreSource },
@@ -1904,7 +1925,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/vite-gateway.mjs", content: gatewayProxySource },
     { path: "runtime/vite-gateway.d.mts", content: gatewayProxyTypes },
     { path: "runtime/README.md", content: mqttReadmeSource },
-    { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs", operators: "node manage-operators.mjs", audit: "node read-audit.mjs" }, dependencies: { mqtt: "5.16.0", "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } }, null, 2) + "\n" },
+    { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs", operators: "node manage-operators.mjs", audit: "node read-audit.mjs", "recipe-interface": "node print-recipe-interface.mjs" }, dependencies: { mqtt: "5.16.0", "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } }, null, 2) + "\n" },
     { path: "framecraft.connections.json", content: JSON.stringify({ version: 1, connections: [] }, null, 2) + "\n" },
     { path: "framecraft.templates.json", content: JSON.stringify({ version: 1, scope: "bundled-template-base-contracts", templates: [...standardPageTemplates.map(template => template.behavior), ...Object.values(guidedTemplateBehaviors())] }, null, 2) + "\n" },
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },
