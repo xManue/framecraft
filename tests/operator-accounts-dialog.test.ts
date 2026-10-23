@@ -29,6 +29,7 @@ describe("account locali nell’editor", () => {
     vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue({ generation: 8, source: null, plc: null }); vi.mocked(desktopBridge.readRecipeConfiguration).mockResolvedValue({ generation: 8, source: null, initialized: false });
     await mount(); await act(async () => document.querySelector<HTMLButtonElement>("aside button")!.click()); await click("Risorse consentite");
     const picker = document.querySelectorAll<HTMLSelectElement>("select")[1]; expect(picker.disabled).toBe(false); expect(picker.textContent).toContain("Velocità · Speed");
+    expect(document.body.textContent).toContain("Schemi ricetta: lettura PLC e modifiche"); expect(document.body.textContent).toContain("anche per la lettura dei loro valori PLC");
     await act(async () => { picker.value = "Speed"; picker.dispatchEvent(new Event("change", { bubbles: true })); }); expect(document.querySelector("textarea")!.value).toBe("Speed");
     await click("Rivedi limiti risorse"); expect(document.body.textContent).not.toContain("aggiornamento esplicito"); await click("Conferma salvataggio"); expect(vi.mocked(desktopBridge.updateOperatorAccounts).mock.calls[0][2]).toMatchObject({ action: "resources", limits: { tagWrites: { mode: "selected", ids: ["Speed"] } } });
   });

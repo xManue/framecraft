@@ -5,7 +5,7 @@ import { parseRecipeCatalog } from "../../runtime/recipe-catalog.mjs";
 import { parsePlcCatalog } from "../core/plcVariables";
 import { desktopBridge } from "../filesystem/desktopBridge";
 
-export const operatorResourceLabels = { tagWrites: "Scritture sulle variabili PLC", alarmActions: "Azioni sugli allarmi", recipeChanges: "Modifiche agli schemi ricetta" };
+export const operatorResourceLabels = { tagWrites: "Scritture sulle variabili PLC", alarmActions: "Azioni sugli allarmi", recipeChanges: "Schemi ricetta: lettura PLC e modifiche" };
 export function OperatorResourcesEditor({ value, onChange, root, generation }: { value: OperatorResources; onChange(value: OperatorResources): void; root: string; generation: number }) {
   const prefix = useId();
   const [catalog, setCatalog] = useState<Partial<Record<OperatorResourceKind, { id: string; label: string }[]>>>({}), [loading, setLoading] = useState(true);
@@ -24,7 +24,7 @@ export function OperatorResourcesEditor({ value, onChange, root, generation }: {
     return () => { active = false; };
   }, [root, generation]);
   return <>
-    <p>Questi limiti si aggiungono alle capacità server: non concedono capacità mancanti. Le letture e il monitoraggio non vengono filtrati. Le ricette sono limitate per schema, non per singola ricetta.</p>
+    <p>Questi limiti si aggiungono alle capacità server: non concedono capacità mancanti. Le ricette sono limitate per schema, anche per la lettura dei loro valori PLC, non per singola ricetta. La lettura dell’archivio ricette e il monitoraggio generale PLC non vengono filtrati.</p>
     {operatorResourceKinds.map(kind => {
       const filter = value[kind], label = operatorResourceLabels[kind], id = prefix + kind;
       const mode = filter.mode === "all" ? "all" : filter.ids.length ? "selected" : "none";

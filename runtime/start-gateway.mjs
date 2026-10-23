@@ -11,6 +11,7 @@ import { openRuntimeAudit } from "./audit-store.mjs";
 import { openAlarmHistory } from "./alarm-history-store.mjs";
 import { AlarmHistoryError } from "./alarm-history.mjs";
 import { parseAlarmCatalog } from "./alarm-engine.mjs";
+import { RecipePlcError, emptyRecipePlcConfig, parseRecipePlcConfig } from "./recipe-plc.mjs";
 
 const root = new URL("../", import.meta.url);
 const json = process.argv.includes("--json");
@@ -32,7 +33,11 @@ try {
   try { recipes = parseRecipeCatalog(await readFile(new URL("framecraft.recipes.json", root), "utf8")); } catch (error) { if (error.code !== "ENOENT") recipeUnavailable = reportRecipe(error); }
   if (catalog.gateway?.enabled !== true) process.stdout.write((json ? JSON.stringify({ type: "gateway", state: "disabled" }) : "Gateway disabilitato; nessuna connessione PLC avviata.") + "\n");
   else {
-    let recipeStore, operatorAuth, operatorUnavailable, authConfig, historyUnavailable;
+    let recipeStore, operatorAuth, operatorUnavailable, authConfig, historyUnavailable, recipePlcUnavailable;
+    let recipePlcCatalog = emptyRecipePlcConfig();
+    const reportRecipePlc = event => process.stderr.write(JSON.stringify(event) + "\n");
+    try { recipePlcCatalog = parseRecipePlcConfig(await readFile(new URL("framecraft.recipe-plc.json", root), "utf8"), recipes, plc.variables); }
+    catch (error) { if (error.code !== "ENOENT") { recipePlcUnavailable = error instanceof RecipePlcError ? error : new RecipePlcError("RECIPE_PLC_CONFIG"); reportRecipePlc({ type: "recipe-plc", code: recipePlcUnavailable.code, error: recipePlcUnavailable.message, remedy: recipePlcUnavailable.remedy }); } }
     try {
       const auth = parseOperatorAuthConfig(JSON.parse(await readFile(new URL("framecraft.auth.json", root), "utf8")));
       authConfig = auth;
@@ -58,7 +63,7 @@ try {
       } catch (error) { recipeUnavailable = reportRecipe(error); }
     }
     if (recipeUnavailable) recipeUnavailable.status = 503;
-    gateway = createPlcGateway(catalog, plc.variables, { alarmCatalog, alarmHistory, historyUnavailable, onHistoryDiagnostic: event => process.stderr.write(JSON.stringify(event) + "\n"), recipeStore, recipeUnavailable, operatorAuth, operatorUnavailable, audit: runtimeAudit, onDiagnostic: (event) => logger.write(event),
+    gateway = createPlcGateway(catalog, plc.variables, { alarmCatalog, alarmHistory, historyUnavailable, onHistoryDiagnostic: event => process.stderr.write(JSON.stringify(event) + "\n"), recipeStore, recipeUnavailable, recipePlcCatalog, recipePlcUnavailable, onRecipePlcDiagnostic: reportRecipePlc, operatorAuth, operatorUnavailable, audit: runtimeAudit, onDiagnostic: (event) => logger.write(event),
       onRecipeDiagnostic: event => process.stderr.write((json ? JSON.stringify(event) : event.error + ". " + event.remedy) + "\n"),
       onState: (state) => process.stdout.write(JSON.stringify({ type: "connection", ...state }) + "\n") });
     if (!stopping) {

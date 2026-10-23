@@ -1,0 +1,16 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Collegamenti ricette QA</title></head><body><div id="root"></div><script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import '../../src/styles/global.css';
+import { RecipePlcDialog } from '../../src/editor/RecipePlcDialog';
+import { desktopBridge } from '../../src/filesystem/desktopBridge';
+import { useEditorStore } from '../../src/state/editorStore';
+const recipes = { version: 1, schemas: [{ id: 's', name: 'Formato principale', fields: [{ id: 'speed', name: 'Velocità', type: 'number', unit: 'pz/min' }], records: [] }, { id: 'more', name: 'Formato esteso', fields: Array.from({length: 12}, (_, i) => ({id: 'p' + i, name: 'Parametro ' + i, type: 'number'})), records: [] }] };
+const plc = { version: 1, variables: [{name: 'Speed', dataType: 'Real', access: 'read'}, {name: 'NotNumeric', dataType: 'Bool', access: 'read'}] };
+let snapshot = { generation: 1, source: null, recipes: JSON.stringify(recipes), plc: JSON.stringify(plc) };
+window.recipePlcQa = { reads: 0, saves: 0 };
+desktopBridge.readRecipePlcConfiguration = async () => { window.recipePlcQa.reads++; return snapshot; };
+desktopBridge.saveRecipePlcConfiguration = async (_root, expected, source) => { if (expected !== snapshot) throw new Error('Snapshot cambiato'); snapshot = {...snapshot, source}; window.recipePlcQa.saves++; window.recipePlcQa.saved = JSON.parse(source); return snapshot; };
+useEditorStore.setState({project: {root:'C:/synthetic-recipe-plc', name:'QA', framework:'vite', language:'typescript', packageManager:'npm', entryFiles:[],files:[],scripts:{},dependencies:[],hasNodeModules:true,missingDependencies:[]}});
+createRoot(document.getElementById('root')).render(React.createElement(RecipePlcDialog, {onClose(){}}));
+</script></body></html>

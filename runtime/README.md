@@ -785,8 +785,9 @@ Preparazione da parte del responsabile, nella cartella `runtime` del progetto ge
    etichetta ruolo, capacità server e permessi grafici. Password di almeno 12 caratteri,
    nascosta e richiesta due volte; conferma con SALVA. Nessuna password da argomenti,
    variabili d’ambiente o chat. Non esistono amministratore, password o concessioni predefinite.
-2. Le capacità sono `recipes.read/create/update/copy/rename/delete`, `alarms.acknowledge`,
-   `alarms.confirm`, `tags.write`. Inserisci gli ID completi separati da virgola oppure
+2. Le capacità ricette sono `recipes.read/capture/create/update/copy/rename/delete/import`;
+   sono disponibili anche `alarms.acknowledge`, `alarms.confirm`, `alarms.history.read`,
+   `tags.write` e `audit.read`. Inserisci gli ID completi separati da virgola oppure
    `nessuno`. Il ruolo è solo un’etichetta. I permessi grafici (`comandi`, `parametri`,
    `manutenzione` o ID personalizzati) controllano visibilità/reazione, non concedono capacità
    server. Tutti i consensi gateway/connessione/mapping restano necessari per scrivere tag.
@@ -991,8 +992,9 @@ sul target. Cataloghi non leggibili non concedono permessi né cancellano gli ID
 
 - Scritture tag: nome esatto della variabile, fino a 200 caratteri.
 - Azioni allarmi: ID dell’allarme; vale per presa visione e conferma.
-- Modifiche ricette: ID dello **schema**, vale per create/update/copy/rename/delete.
-  Non distingue singoli record e non filtra letture/cataloghi/monitoraggio.
+- Modifiche ricette: ID dello **schema**, vale per capture/create/update/copy/rename/delete/import.
+    Include la lettura PLC dedicata `recipes.capture`. Non distingue singoli record e non
+    filtra la lettura dell’archivio ricette o il monitoraggio PLC generale.
 
 Sono limiti aggiuntivi: la capacità generale resta necessaria, così come tutti i consensi
 di scrittura PLC. Permessi grafici, ruolo descrittivo e account ChatGPT non concedono accesso.
@@ -1077,6 +1079,76 @@ non è un backup degli utenti o una pubblicazione delle credenziali. Preparali e
 target, con CLI o Framecraft aperto sulla cartella corretta. Firma/audit amministrativo,
 policy password avanzate, autorizzazione amministrativa centralizzata, provisioning nel futuro
 wizard Pubblica e backup/restore/ACL Windows verificati restano da completare.
+
+## Lettura e confronto dei valori ricetta dal PLC
+
+Questa funzione legge soltanto: non applica ricette e non esegue scritture singole, batch o comandi
+di attivazione. Decisione del 22 ottobre 2026: l’applicazione futura richiederà **sempre una conferma
+del programma PLC**, correlata alla singola richiesta. ACK MQTT e risposta OPC UA Write Good
+non sono una conferma di applicazione. Area di preparazione, handshake, timeout, rifiuto,
+interlock, concorrenza e recupero dell’esito incerto restano da implementare e collaudare.
+
+Preparazione nell’editor, senza AI:
+
+1. Salva schema e campi in **Pannello → Ricette**. Dichiara i tag in **Variabili PLC**, poi
+   collega i segnali reali in **Connessioni PLC**. Dichiarare un tag non avvia una connessione.
+2. Apri **Ricette → Collegamenti PLC**. Abilita esplicitamente ogni schema necessario e scegli
+   un tag leggibile e compatibile per **ciascun** campo, senza duplicati. Imposta età massima
+   e distanza massima tra campioni secondo il ciclo reale. Non aumentare i tempi per nascondere
+   problemi di aggiornamento. Unità e fattori di scala non vengono convertiti automaticamente.
+3. **Salva collegamenti** scrive solo `framecraft.recipe-plc.json`. Confronta contemporaneamente
+   mapping, schema e catalogo tag letti dal disco; un conflitto conserva la bozza. Funziona anche
+   con archivio operativo esistente, senza reseeding, migrazione o modifica dei dati salvati.
+4. Riavvia manualmente il servizio per caricare i collegamenti. Assegna esplicitamente
+   `recipes.read` e `recipes.capture` all’operatore. Negli account formato 2 limita gli schemi
+   in **Schemi ricetta: lettura PLC e modifiche** (`recipeChanges`); nel formato 1 il permesso vale per tutti gli schemi.
+   Nessun account esistente riceve automaticamente la nuova capacità. Usa `recipes.create`
+   solo se deve poter salvare una nuova ricetta dai valori letti.
+
+Nel controllo **Archivio ricette** del pannello:
+
+1. Accedi, premi **Rileggi archivio** e scegli schema e ricetta da confrontare.
+2. Premi **Leggi valori PLC**. Il servizio restituisce gli ultimi campioni già ricevuti dai
+   driver, **non** forza una lettura simultanea del PLC né garantisce lo stesso ciclo macchina.
+   Mostra data di acquisizione/ricezione, tag, tipo, valori e differenze. Non c’è polling:
+   quanto mostrato è una fotografia della cache e non si aggiorna da solo.
+3. Ogni campo richiede connessione attiva, campione presente, qualità buona conosciuta, nessun
+   errore driver, tipo/limiti validi, ricezione non futura e non troppo vecchia. I retained MQTT
+   iniziali vengono rifiutati. Se un campo fallisce, oppure i campioni sono ricevuti troppo
+   distanti, puoi leggere le cause ma non copiare un insieme parziale con valori sostitutivi.
+4. Solo un’acquisizione completa abilita **Crea bozza dai valori letti**. Inserisci un nuovo nome,
+   controlla i valori e usa **Verifica operazione → Conferma salvataggio**. È una normale creazione
+   nell’archivio con revisione attesa, ACL e audit del salvataggio: nessuna sovrascrittura o
+   applicazione automatica. La data della lettura è mostrata nella bozza, ma non è una provenienza
+   certificata o uno storico regolamentato dei valori. Logout e cambio schema/revisione rimuovono
+   il confronto; le risposte tardive non ripristinano dati dell’utente precedente.
+
+API: `GET /_framecraft/plc/v1/recipe-plc?schemaId=<id>&expectedRevision=<sha256>`.
+Richiede token/origine del gateway e sessione server con `recipes.capture` e ACL sullo schema,
+ricontrollata dopo la lettura asincrona dell’archivio. Non accetta tag arbitrari o callback legacy
+come identità. Al massimo una richiesta ogni 200 ms per servizio e 32 richieste HTTP attive;
+letture/autorizzazioni hanno un limite di 5 s. Una revisione diversa richiede rilettura manuale.
+La risposta dichiara `effect: "plc-read-only"`, `simultaneous: false`, `plcConfirmed: false`;
+solo `complete: true` contiene l’insieme `values`. Errori e log non contengono valori o credenziali.
+Le letture non sono registrate come operazioni ricetta applicate nell’audit.
+
+Il file è separato dall’import/export ricette, versione 1, vuoto per default:
+
+```json
+{"version":1,"schemas":[]}
+```
+
+Ogni schema abilitato contiene `schemaId`, `maxAgeMs` (250–600000), `maxSkewMs` (0–maxAgeMs)
+e `fields: [{"fieldId":"<campo>","tag":"<tag dichiarato>"}]`. Massimo 32 schemi, 64 campi/schema,
+1 MB. Interi fino a 32 bit, numeri reali, booleani e testo; nessuna approssimazione di interi 64 bit,
+array/UDT, conversione unità o binding dedotto. Configurazione corrotta blocca la lettura ricette
+senza azzerare il file, fermare il monitoraggio indipendente o riseminare l’archivio.
+
+Riferimenti funzionali, non formati o contratti di trasferimento compatibili:
+[Unified V21 Parameter control](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-parameter-sets-rt-unified/basics-rt-unified/basics-of-parameter-control-rt-unified)
+e [Optix 1.8 Recipes editor](https://www.rockwellautomation.com/en-pr/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes/recipesx-editor.html).
+Entrambi distinguono gestione dei set, lettura dal controller e applicazione; Framecraft implementa
+qui soltanto la lettura scalare dalla cache e il salvataggio esplicito nell’archivio.
 
 ## Prima della produzione
 

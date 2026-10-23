@@ -18,6 +18,10 @@ ACL schema e commit atomico (LAVORO 160). Non è il CSV/NetLogic RecipeImportExp
 22 ottobre 2026: confronti analogici e soglia variabile nel nucleo Framecraft (LAVORO 162).
 Riletto Limit alarm 1.3.2: livelli esclusivi/non esclusivi e tipi Optix restano separati e aperti.
 
+22 ottobre 2026: lettura/confronto dei parametri dalla cache MQTT/OPC UA e nuova bozza ricetta
+(LAVORO 163), confrontati con Recipes editor `current` (1.8.0). Apply non implementato:
+obbligatoria conferma del programma PLC correlata alla richiesta, mai ACK del driver.
+
 Questa roadmap registra fin da ora tutto ciò che Framecraft dovrà coprire dopo la roadmap WinCC
 Unified. I contratti Rockwell restano separati da quelli Siemens: il nucleo comune viene riusato
 solo quando il comportamento è realmente equivalente. Un componente React simile a un oggetto
@@ -159,7 +163,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-RCP-01 | Recipe schema object-aware | DA FARE | Catalogo scalare Framecraft v1 al punto 144, non TargetNode/Item/DataItem o UDT | Generazione dal tipo con diff tra revisioni |
 | FTX-RCP-02 | Configurator e anteprima schema | PARZIALE | Editor iniziale scalare condiviso tra progetto e wizard (145/150), con bozza e approvazione; non selezione TargetNode/Item/DataItem Optix | Impatto visibile prima di cambiare lo schema |
 | FTX-RCP-03 | Store, edit, delete e rename ricetta | PARZIALE | Servizio e configurazione iniziale (144–150), form Runtime scalare (151) con conferme, conflitti e marker; account locali server (152), ACL per ricetta e collaudo produzione restano gate | Undo e validazione campo per campo |
-| FTX-RCP-04 | Load/apply da e verso controller | DA FARE | Nessun trasferimento ricetta implementato, nessuna conferma PLC presunta | Confronto controller/ricetta/modifiche prima di applicare |
+| FTX-RCP-04 | Load/apply da e verso controller | PARZIALE | Apply tramite area preparazione e conferma PLC obbligatoria, lettura coordinata, UDT/array e collaudo target | Lettura manuale scalare dalla cache, qualità/età/skew, confronto e nuova ricetta confermata nell’archivio; niente apply diretto (163) |
 | FTX-RCP-05 | Recipe editor e Recipe application example | PARZIALE | Widget archivio dagli schemi, pagina guidata e palette (151), login server locale nel launcher (152); nessun TargetNode/Item/DataItem o trasferimento PLC | Form generato ma completamente personalizzabile |
 | FTX-RCP-06 | Ricette concorrenti e metadati | PARZIALE | Revisione contenuto, lock esclusivo e ultime 256 ricevute persistenti con soggetto/data al punto 144 | Merge guidato e storico delle revisioni completo |
 | FTX-RCP-07 | Tabelle database delle ricette | DA FARE | Schema store e query | Migrazione dati testata insieme al progetto |
@@ -237,7 +241,7 @@ Queste capacità non sono semplice parità: rendono Framecraft più verificabile
 | FC-OPT-MORE-05 | Impact analysis controller tag -> link -> UI/logger/allarme/ricetta | DA FARE |
 | FC-OPT-MORE-06 | Test automatici generati con AutomationId stabili | DA FARE |
 | FC-OPT-MORE-07 | Static analysis e sandbox per Runtime/Design-time NetLogic | DA FARE |
-| FC-OPT-MORE-08 | Diff ricetta-controller prima di ogni apply | DA FARE |
+| FC-OPT-MORE-08 | Diff ricetta-controller prima di ogni apply | PARZIALE: confronto cache PLC/archivio al punto 163; apply e riconferma valori target restano aperti |
 | FC-OPT-MORE-09 | Playback sincronizzato di tag, allarmi, audit e sessioni | DA FARE |
 | FC-OPT-MORE-10 | Stima query, storage, retention e carico client | DA FARE |
 | FC-OPT-MORE-11 | Scadenza e trust di tutti i certificati in una sola vista | DA FARE |

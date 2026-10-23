@@ -59,13 +59,13 @@ async function main() {
   if (command === "resources") {
     if (!account) throw new OperatorAuthError("AUTH_INPUT");
     const limits = {};
-    for (const [kind, label] of [["tagWrites", "Scritture tag"], ["alarmActions", "Azioni allarmi"], ["recipeChanges", "Modifiche schemi ricetta"]]) {
+    for (const [kind, label] of [["tagWrites", "Scritture tag"], ["alarmActions", "Azioni allarmi"], ["recipeChanges", "Schemi ricetta (lettura PLC e modifiche)"]]) {
       const mode = await ask(label + ": tutte, nessuna oppure elenco? ");
       if (!["tutte", "nessuna", "elenco"].includes(mode)) throw new OperatorAuthError("AUTH_INPUT");
       const ids = []; if (mode === "elenco") { process.stdout.write("Un ID esatto per riga; riga vuota per terminare. Nessun jolly.\n"); for (;;) { const id = await ask("ID: "); if (!id) break; ids.push(id); if (ids.length > 256) throw new OperatorAuthError("AUTH_INPUT"); } }
       limits[kind] = mode === "tutte" ? { mode: "all" } : { mode: "selected", ids };
     }
-    parseOperatorResources(limits); process.stdout.write(JSON.stringify(limits) + "\nNon filtra letture/monitoraggio. Capacità generali sempre necessarie. Revoca tutte le sessioni.\n");
+    parseOperatorResources(limits); process.stdout.write(JSON.stringify(limits) + "\nLimita anche la lettura dei valori PLC delle ricette; non filtra archivio ricette o monitoraggio PLC generale. Capacità generali sempre necessarie. Revoca tutte le sessioni.\n");
     if (store.version === 1) process.stdout.write("Aggiornamento esplicito al formato 2 con backup privato operators-v1-REVISIONE.json. Altri account invariati; nuovi account senza risorse. Richiede Runtime aggiornato, le versioni precedenti rifiutano l’archivio.\n");
     if (await ask("Scrivi SALVA per confermare: ") !== "SALVA") return;
     await manageLocalOperators({ root, action: "resources", expectedRevision: current.revision, id: account.id, limits }); process.stdout.write("Limiti risorse salvati. Nessun comando PLC inviato.\n"); return;

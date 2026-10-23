@@ -8,6 +8,7 @@ import type { AlarmConfigurationSnapshot } from "../core/hmiAlarms";
 import type { AiInterviewDraftSnapshot } from "../ai/aiInterviewDraft";
 import type { AiProjectChange } from "../ai/aiProjectEdits";
 import type { RecipeConfigurationSnapshot } from "../core/recipeConfiguration";
+import type { RecipePlcConfigurationSnapshot } from "../core/recipePlcConfiguration";
 import type { OperatorAccountsSnapshot, OperatorAdminCommand } from "../core/operatorAccounts";
 
 export const desktopAvailable = isTauri();
@@ -17,6 +18,12 @@ function requireDesktop() {
 }
 
 export const desktopBridge = {
+  async readRecipePlcConfiguration(root: string): Promise<RecipePlcConfigurationSnapshot> {
+    requireDesktop(); return invoke("read_recipe_plc_configuration", { root });
+  },
+  async saveRecipePlcConfiguration(root: string, expected: RecipePlcConfigurationSnapshot, source: string): Promise<RecipePlcConfigurationSnapshot> {
+    requireDesktop(); return invoke("save_recipe_plc_configuration", { root, expected, source });
+  },
   async readOperatorAccounts(root: string): Promise<OperatorAccountsSnapshot> { requireDesktop(); return invoke("read_operator_accounts", { root }); },
   async updateOperatorAccounts(root: string, expected: OperatorAccountsSnapshot, command: OperatorAdminCommand): Promise<OperatorAccountsSnapshot> { requireDesktop(); return invoke("update_operator_accounts", { root, generation: expected.generation, revision: expected.revision, command }); },
   async saveOperatorConfiguration(root: string, expected: OperatorAccountsSnapshot, source: string): Promise<void> {

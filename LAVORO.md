@@ -5734,6 +5734,55 @@ Verifiche del 5 ottobre 2026:
   pannelli includono i sorgenti; Runtime già esportati richiedono aggiornamento esplicito.
   AI e modifiche trend/profili preesistenti restano fuori dalla tranche.
 
+### 163. Ricette: collegamenti PLC, lettura e confronto (2026-10-22)
+
+- **Decisione dell’utente**: applicare una ricetta richiederà sempre la conferma del programma
+  PLC. Nessuna modalità ricetta con scritture dirette alternative. ACK MQTT o Write Good UA
+  non dimostrano l’applicazione. Restano da definire/implementare area di preparazione,
+  comando/risposta correlati alla richiesta, interlock, timeout, concorrenza e recovery incerto.
+- **Configurazione senza AI**: Pannello → Ricette → Collegamenti PLC, finestra ampia stabile,
+  corpo scrollabile, schema e campi associati esplicitamente a tag leggibili/compatibili.
+  File separato `framecraft.recipe-plc.json`, vuoto per default; nessun tag, indirizzo o valore
+  macchina inventato. Età/skew configurati e unità non convertite automaticamente.
+- **Archivio preservato**: mapping modificabile anche dopo inizializzazione delle ricette,
+  senza sbloccare la modifica dello schema o riseminare dati. Salvataggio nativo atomico con
+  sessione/progetto e CAS su mapping, schema e tag; conflitti mantengono la bozza. Nessun
+  avvio connessione, riavvio editor/servizio o scrittura PLC come effetto del salvataggio.
+- **Runtime**: GET dedicata con `recipes.capture` esplicita, sessione operatore server e ACL
+  dello schema, ricontrollata dopo lettura asincrona dell’archivio. Token/PIN/ruolo browser e
+  callback ricette legacy non bastano. Revisione attesa, limiti richieste e tempo, errori
+  strutturati con rimedi senza valori/credenziali. Config corrotta isola questa funzione.
+- **Acquisizione**: solo campioni reali già ricevuti dai driver, con connessione attiva,
+  qualità buona conosciuta, età non futura/entro budget, niente retained MQTT, errore driver
+  o valori fuori tipo/limiti. Distanza tra ricezioni controllata; non è lettura atomica dello
+  stesso ciclo PLC. Diagnostica parziale visibile ma insieme copiabile soltanto se completo.
+- **Operatore**: confronto manuale PLC/ricetta per campo, data della fotografia e nessun
+  polling. Un’acquisizione completa può riempire una nuova bozza: nome, verifica e conferma
+  del normale salvataggio archivio restano espliciti, con `recipes.create` e ACL. Niente
+  sovrascrittura/apply automatici. Logout/scadenza/cambio schema o revisione rimuovono il
+  confronto; risposte tardive ignorate. Nessun valore della lettura in browser storage.
+- **Pipeline**: moduli, dichiarazioni, client, UI e file vuoto entrano nei nuovi pannelli
+  standard. Progetti già esportati richiedono aggiornamento esplicito, non migrazione nascosta.
+- **Verifiche finali (23 ottobre)**: 97 test mirati in 10 file, su snapshot dell’indice con
+  solo codice pubblico e senza export privati, tutti verdi. Inclusi codec, form/client,
+  GUI/account, sessioni/ACL/revoca, launcher realmente generato e driver locali MQTT/OPC UA.
+  Due test Rust mirati verdi per sessione/CAS/preservazione archivio; non l’intera suite nativa.
+  Typecheck e build editor riusciti; restano i warning preesistenti sugli import misti.
+  Browser Edge headless: launcher emesso, broker MQTT e account reali sintetici, due letture,
+  un salvataggio esplicito, zero scritture PLC/richieste esterne/errori pagina. Retained negato;
+  zero, false e testo vuoto conservati; logout ripulisce i dati. Editor e Runtime a 375/768/1440
+  px senza overflow orizzontale, target HMI di almeno 48 px, finestra mapping stabile e bridge
+  editor mockato. Typecheck e build production dell’entry QA generata riusciti. Il test QA usa
+  ora la porta effettiva al build, senza rilassare la validazione proxy di produzione.
+  Dipendenze locali riusate via junction: non è una clean install o un collaudo industriale.
+- **Chiarezza permessi**: GUI e CLI distinguono gli schemi per lettura PLC/modifiche ricette
+  dalla lettura dell’archivio e dal monitoraggio PLC generale. Nessun nuovo pacchetto aggiunto.
+- **Riferimenti riletti**: Unified V21 Parameter control e Optix Recipes editor `current`
+  1.8.0, link nella guida Runtime. Non si importa la semantica o il formato vendor.
+- **Limiti**: apply con handshake PLC resta aperto, così come UDT/array/64 bit, letture
+  coordinate, provenienza/storico valori certificati, audit delle letture, validazione fisica,
+  TLS/carico/recovery e bridge WebView2 reale. AI e modifiche trend/profili preesistenti esclusi.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { createMqttPlcConnection, normalizeMqttTagValue } from "./mqtt-driver.mjs";
 import { createOpcUaPlcConnection } from "./opcua-driver.mjs";
 import { validateConnectionCatalog } from "./connection-config.mjs";
@@ -10,6 +10,7 @@ import { OperatorAuthError, operatorText } from "./operator-policy.mjs";
 import { auditContext, appendAudit as persistAuditEvent, runAudited as auditOperation } from "./audit-operation.mjs";
 import { parseAuditQuery, parseAuditSnapshot } from "./audit-query.mjs";
 import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot } from "./alarm-history.mjs";
+import { RecipePlcError, captureRecipePlc, emptyRecipePlcConfig, parseRecipePlcConfig, parseRecipePlcQuery } from "./recipe-plc.mjs";
 
 const api = "/_framecraft/plc/v1";
 function failure(status, code = "GATEWAY_REQUEST") { return Object.assign(new ConnectionOperationError(connectionDiagnostic(code, { protocol: "gateway" })), { status }); }
@@ -49,6 +50,9 @@ export function createPlcGateway(catalog, variables, options = {}) {
     safeNotify(options.onDiagnostic, { ...diagnostic });
   };
   const report = createDiagnosticReporter(record, { protocol: "gateway" });
+  const recipePlc = parseRecipePlcConfig(options.recipePlcCatalog ?? emptyRecipePlcConfig(), undefined, variables);
+  const recipePlcRevision = createHash("sha256").update(JSON.stringify(recipePlc)).digest("hex"); let nextRecipePlcRead = 0;
+  const recipeRead = async task => { let timer; try { return await Promise.race([task, new Promise((_, reject) => { timer = setTimeout(() => reject(new RecipePlcError("RECIPE_PLC_UNAVAILABLE")), 5000); })]); } finally { clearTimeout(timer); } };
   let nextAuditRead = 0, nextHistoryRead = 0, historyError = options.historyUnavailable ? new AlarmHistoryError(options.historyUnavailable.code) : undefined, historyMissed = 0, historyRunning = false, alarmInstanceId;
   const archiveEnabled = options.alarmCatalog?.archive?.enabled === true;
   const historyFault = error => { if (!historyError) { historyError = error instanceof AlarmHistoryError ? error : new AlarmHistoryError("ALARM_HISTORY_STORAGE"); safeNotify(options.onHistoryDiagnostic, { type: "alarm-history", code: historyError.code, error: historyError.message, remedy: historyError.remedy }); } };
@@ -146,6 +150,32 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (stopping || request.aborted || response.destroyed) throw new OperatorAuthError("AUTH_CONFIG");
         response.setHeader("Set-Cookie", result.cookie); respond(response, 200, result.body); return;
       }
+      if (request.url === api + "/recipe-plc" || request.url?.startsWith(api + "/recipe-plc?")) {
+        if (request.method !== "GET") throw new RecipePlcError("RECIPE_PLC_QUERY");
+        if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
+        if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;
+        if (request.url.length > 2048) throw new RecipePlcError("RECIPE_PLC_QUERY");
+        const params = new URL(request.url, "http://localhost").searchParams;
+        if ([...params].length !== 2 || new Set(params.keys()).size !== 2) throw new RecipePlcError("RECIPE_PLC_QUERY");
+        const query = parseRecipePlcQuery(Object.fromEntries(params));
+        const authorize = () => recipeRead(options.operatorAuth.authorize(request, "recipes.capture", false, { schemaId: query.schemaId }));
+        const actor = await authorize();
+        if (!operatorText(actor, 200) || actor === token || actor === "Bearer " + token) throw new OperatorAuthError("AUTH_PERMISSION");
+        if (stopping || request.aborted || response.destroyed) throw new RecipePlcError("RECIPE_PLC_UNAVAILABLE");
+        if (options.recipePlcUnavailable) throw options.recipePlcUnavailable;
+        if (!options.recipeStore || options.recipeUnavailable) throw new RecipePlcError("RECIPE_PLC_UNAVAILABLE");
+        if (performance.now() < nextRecipePlcRead) throw new OperatorAuthError("AUTH_BUSY"); nextRecipePlcRead = performance.now() + 200;
+        const current = await recipeRead(Promise.resolve(options.recipeStore.snapshot()));
+        if (current.revision !== query.expectedRevision) throw new RecipePlcError("RECIPE_PLC_SCHEMA");
+        const mapping = parseRecipePlcConfig(recipePlc, { version: 1, schemas: current.schemas }, variables).schemas.find(item => item.schemaId === query.schemaId), schema = current.schemas.find(item => item.id === query.schemaId);
+        if (!mapping || !schema) throw new RecipePlcError("RECIPE_PLC_MAPPING");
+        if (await authorize() !== actor) throw new OperatorAuthError("AUTH_PERMISSION");
+        if (stopping || request.aborted || response.destroyed) throw new RecipePlcError("RECIPE_PLC_UNAVAILABLE");
+        let result;
+        try { result = captureRecipePlc(mapping, schema, current.revision, recipePlcRevision, variables, tag => { const owner = owners.get(tag); return owner ? { connectionId: owner.connectionId, protocol: owner.protocol, state: owner.driver.state, sample: owner.driver.read(tag) } : undefined; }); }
+        catch (error) { throw error instanceof RecipePlcError ? error : new RecipePlcError("RECIPE_PLC_UNAVAILABLE"); }
+        respond(response, 200, result); return;
+      }
       if (request.url === api + "/recipes") {
         if (!options.recipeStore) throw options.recipeUnavailable instanceof RecipeStoreError ? options.recipeUnavailable : new RecipeStoreError("RECIPE_STORAGE");
         if (!options.operatorAuth && typeof options.authorizeRecipeAction !== "function") throw options.operatorUnavailable ?? new RecipeStoreError("RECIPE_AUTH");
@@ -239,6 +269,10 @@ export function createPlcGateway(catalog, variables, options = {}) {
       }
       if (error instanceof AlarmHistoryError) { respond(response, error.status, { type: "alarm-history", code: error.code, error: error.message, remedy: error.remedy }); return; }
       if (error instanceof OperatorAuthError) { respond(response, error.status, { type: "operator", code: error.code, error: error.message, remedy: error.remedy, outcome: error.outcome, plcConfirmed: false }); return; }
+      if (error instanceof RecipePlcError) {
+        const diagnostic = { type: "recipe-plc", code: error.code, error: error.message, remedy: error.remedy, ...(error.fieldId ? { fieldId: error.fieldId } : {}) };
+        safeNotify(options.onRecipePlcDiagnostic, diagnostic); respond(response, error.status, { ...diagnostic, effect: "plc-read-only", plcConfirmed: false }); return;
+      }
       if (error instanceof RecipeStoreError) {
         const diagnostic = { type: "recipe", code: error.code, error: error.message, remedy: error.remedy, ...(error.fieldId ? { fieldId: error.fieldId } : {}) };
         safeNotify(options.onRecipeDiagnostic, diagnostic);

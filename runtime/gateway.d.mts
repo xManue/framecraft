@@ -11,6 +11,7 @@ import type { OperatorAuthError } from "./operator-policy.mjs";
 import type { RuntimeAudit, RuntimeAuditReader } from "./audit-store.mjs";
 import type { AlarmHistoryStore } from "./alarm-history-store.mjs";
 import type { AlarmHistoryCapture, AlarmHistoryError } from "./alarm-history.mjs";
+import type { RecipePlcConfig, RecipePlcError } from "./recipe-plc.mjs";
 export interface GatewayConfig {
   enabled: boolean; host?: "127.0.0.1"; port: number; tokenEnv: string; allowedOrigins: string[]; allowWrites?: boolean;
 }
@@ -28,6 +29,9 @@ export function createPlcGateway(
   variables: readonly { name: string; dataType: string; access: "read" | "write" | "read-write" }[],
   options?: Pick<MqttConnectionCallbacks, "resolveSecret" | "onState" | "onError" | "onDiagnostic"> & { alarmCatalog?: AlarmCatalog; onAlarmEvent?: (event: AlarmEvent) => void; authorizeAlarmAction?: (request: IncomingMessage, command: AlarmCommand) => string | undefined | Promise<string | undefined>;
     recipeStore?: RecipeStore;
+    recipePlcCatalog?: RecipePlcConfig;
+    recipePlcUnavailable?: RecipePlcError;
+    onRecipePlcDiagnostic?: (event: { type: "recipe-plc"; code: string; error: string; remedy: string; fieldId?: string }) => void;
     alarmHistory?: AlarmHistoryStore;
     historyUnavailable?: AlarmHistoryError;
     onHistoryDiagnostic?: (event: { type: "alarm-history"; code: string; error: string; remedy: string }) => void;

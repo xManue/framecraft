@@ -1,4 +1,5 @@
-import { parseRecipeCatalog, parseRecipeCommand, recipeKeys, RecipeStoreError, type RecipeCommand } from "../../runtime/recipe-catalog.mjs";
+import { parseRecipeCatalog, parseRecipeCommand, recipeKeys, RecipeStoreError, type RecipeCommand, type RecipeSchema } from "../../runtime/recipe-catalog.mjs";
+import { RecipePlcError, parseRecipePlcCapture, parseRecipePlcQuery, type RecipePlcCapture } from "../../runtime/recipe-plc.mjs";
 import type { RecipeMutationResult, RecipeSnapshot } from "../../runtime/recipe-store.mjs";
 import { OperatorAuthError } from "../../runtime/operator-policy.mjs";
 import { operatorSessionHeaders } from "./hmiOperatorSession";
@@ -51,13 +52,13 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
     catch { throw localError("journal"); }
     pending = undefined; reviewed = false;
   }
-  async function json(command: RecipeCommand | undefined, signal?: AbortSignal) {
+  async function json(command: RecipeCommand | undefined, signal?: AbortSignal, suffix = "/recipes") {
     const controller = new AbortController(); controllers.add(controller);
     const abort = () => controller.abort(); signal?.addEventListener("abort", abort, { once: true });
     if (disposed || signal?.aborted) controller.abort();
     const timer = setTimeout(abort, timeoutMs);
     try {
-      const response = await (options.request ?? fetch)(path + "/recipes", {
+      const response = await (options.request ?? fetch)(path + suffix, {
         method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal,
         ...(command ? { headers: { "Content-Type": "application/json", ...operatorSessionHeaders() }, body: JSON.stringify(command) } : {}),
       });
@@ -78,6 +79,9 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
           const error = new RecipeStoreError(value.code, typeof value.fieldId === "string" ? value.fieldId : undefined);
           throw new HmiRecipeError(error.code, error.message, error.remedy, value.outcome === "uncertain", error.fieldId);
         }
+        if (!command && value?.type === "recipe-plc" && typeof value.code === "string" && new RecipePlcError(value.code).code === value.code && value.effect === "plc-read-only" && value.plcConfirmed === false) {
+          const error = new RecipePlcError(value.code, typeof value.fieldId === "string" ? value.fieldId : undefined); throw new HmiRecipeError(error.code, error.message, error.remedy, false, error.fieldId);
+        }
         throw localError([401, 403].includes(response.status) ? "access" : response.status === 429 ? "busy" : "network", !!command);
       }
       return raw;
@@ -88,6 +92,15 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
     try { const snapshot = parseHmiRecipeSnapshot(await json(undefined, signal)); if (pending) reviewed = true; return snapshot; }
     catch (error) { const safe = error instanceof HmiRecipeError ? error : localError("network"); report(safe); throw safe; }
     finally { busy = false; notify(); }
+  }
+  async function capture(schema: RecipeSchema, revision: string, signal?: AbortSignal): Promise<RecipePlcCapture> {
+    if (busy || disposed) throw localError("busy"); if (pending) throw localError("pending"); busy = true; notify();
+    try {
+      const query = parseRecipePlcQuery({ schemaId: schema.id, expectedRevision: revision });
+      return parseRecipePlcCapture(await json(undefined, signal, "/recipe-plc?" + new URLSearchParams(query)), schema, revision);
+    } catch (error) {
+      const safe = error instanceof HmiRecipeError ? error : error instanceof RecipePlcError ? new HmiRecipeError(error.code, error.message, error.remedy, false, error.fieldId) : localError("network"); report(safe); throw safe;
+    } finally { busy = false; notify(); }
   }
   async function perform(command: RecipeCommand, signal?: AbortSignal, retry = false): Promise<RecipeMutationResult> {
     if (busy || disposed) throw localError("busy");
@@ -116,6 +129,7 @@ export function createHmiRecipeClient(options: HmiRecipeClientOptions) {
   }
   return {
     read,
+    capture,
     send: (command: RecipeCommand, signal?: AbortSignal) => perform(command, signal),
     retry: (signal?: AbortSignal) => pending?.command ? perform(pending.command, signal, true) : Promise.reject(localError("pending")),
     acknowledgeReviewed() { if (busy || !pending || !reviewed) throw localError("pending"); forget(); notify(); },

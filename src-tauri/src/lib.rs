@@ -17,6 +17,7 @@ use walkdir::WalkDir;
 mod editor_draft;
 mod connection_config;
 mod recipe_config;
+mod recipe_plc_config;
 mod operator_admin;
 mod ai_codex;
 mod ai_interview_draft;
@@ -1322,7 +1323,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(RuntimeState::default())
         .manage(ai_codex::AiCodexState::default())
-        .invoke_handler(tauri::generate_handler![operator_admin::read_operator_accounts, operator_admin::update_operator_accounts, operator_admin::save_operator_configuration, recipe_config::read_recipe_configuration, recipe_config::save_recipe_configuration, get_editor_session, ai_project::read_ai_project_file, ai_project::apply_ai_project_changes, ai_project::restore_ai_project_changes, ai_interview_draft::read_ai_interview_draft, ai_interview_draft::write_ai_interview_draft, ai_codex::ai_codex_connect, ai_codex::ai_codex_login, ai_codex::ai_codex_logout, ai_codex::ai_codex_models, ai_codex::ai_codex_sandbox_status, ai_codex::ai_codex_setup_sandbox, ai_codex::ai_codex_propose, ai_codex::ai_codex_cancel, editor_draft::read_editor_draft, editor_draft::write_editor_draft, editor_draft::clear_editor_draft, connection_config::read_connection_configuration, connection_config::save_connection_configuration, connection_config::read_alarm_configuration, connection_config::save_alarm_configuration, create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, list_project_source_files, import_project_asset, export_project, start_preview, stop_preview, close_project, create_vite_project])
+        .invoke_handler(tauri::generate_handler![operator_admin::read_operator_accounts, operator_admin::update_operator_accounts, operator_admin::save_operator_configuration, recipe_config::read_recipe_configuration, recipe_config::save_recipe_configuration, recipe_plc_config::read_recipe_plc_configuration, recipe_plc_config::save_recipe_plc_configuration, get_editor_session, ai_project::read_ai_project_file, ai_project::apply_ai_project_changes, ai_project::restore_ai_project_changes, ai_interview_draft::read_ai_interview_draft, ai_interview_draft::write_ai_interview_draft, ai_codex::ai_codex_connect, ai_codex::ai_codex_login, ai_codex::ai_codex_logout, ai_codex::ai_codex_models, ai_codex::ai_codex_sandbox_status, ai_codex::ai_codex_setup_sandbox, ai_codex::ai_codex_propose, ai_codex::ai_codex_cancel, editor_draft::read_editor_draft, editor_draft::write_editor_draft, editor_draft::clear_editor_draft, connection_config::read_connection_configuration, connection_config::save_connection_configuration, connection_config::read_alarm_configuration, connection_config::save_alarm_configuration, create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, list_project_source_files, import_project_asset, export_project, start_preview, stop_preview, close_project, create_vite_project])
         .build(tauri::generate_context!())
         .expect("error while building Framecraft");
     app.run(|app_handle, event| {
