@@ -151,7 +151,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-ALM-02 | Tipi allarme personalizzati | DA FARE | Ereditarietà e proprietà estese | Diff del tipo e migrazione delle istanze |
 | FTX-ALM-03 | Stato active, acknowledged e confirmed | PARZIALE | Tipi/condizioni/metodi Optix completi e ack al PLC | Motore scalare Framecraft e metodi singoli con identità server; transizioni storiche salvate, stato attuale separato (106/161) |
 | FTX-ALM-04 | AlarmGrid, AlarmWidget e filtri | PARZIALE | Query, toolbar, selezione e operazioni | Filtri salvabili e collegamento alla causa macchina |
-| FTX-ALM-05 | Storico allarmi e Event Logger | PARZIALE | Logger e tipi Optix generici, multilingua, correlazione e manutenzione industriali | Eventi del motore Framecraft persistenti, avvii/occorrenze separati, filtri/pagine e permesso server di sola lettura; nessun replay o ripristino degli allarmi attivi (161) |
+| FTX-ALM-05 | Storico allarmi e Event Logger | PARZIALE | Logger e tipi Optix generici, multilingua, correlazione e manutenzione industriali | Eventi persistenti con avvii/occorrenze e consultazione protetta (161); CSV multi-pagina dei risultati filtrati, ancorato ad archivio/sequenza con riepilogo e annullamento, senza SQL libero o replay (167) |
 | FTX-ALM-06 | Import allarmi OPC UA | DA FARE | Tipi, condizioni e mapping OPC UA | Anteprima collisioni e normalizzazione controllata |
 | FTX-ALM-07 | Polling e aggiornamento allarmi | DA FARE | Frequenze e prestazioni Runtime | Carico stimato e diagnostica dei ritardi |
 | FTX-ALM-08 | Eventi progetto nel logger | DA FARE | Selezione eventi e campi | Schema evento esplicito e query generate |
@@ -182,7 +182,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-DAT-07 | Trend real-time e storico | DA FARE | Penne, assi, modalità e interazione | Playback sincronizzato e confronto periodi |
 | FTX-DAT-08 | Trend da query database | DA FARE | Modello SQL e refresh | Costo query e volume dati visualizzati prima dell'esecuzione |
 | FTX-DAT-09 | Report PDF localizzati | DA FARE | Header, section, footer, GeneratePdf ed evento | Preview fedele, test visuale e accessibilità PDF |
-| FTX-DAT-10 | Export dati e report pianificati | DA FARE | Metodi, file system e scheduler | Nome, checksum, retention ed esito tracciati |
+| FTX-DAT-10 | Export dati e report pianificati | PARZIALE | Export generici, metodi/file system server, scheduler, checksum e retention | Export manuale dello storico allarmi in CSV e dettagli JSON, download esplicito e nessun file parziale (167); non un Generic Table Exporter Optix |
 | FTX-DAT-11 | Manutenzione store e retention | DA FARE | Rotazione, purge e limiti | Allarme predittivo su spazio e prova di restore |
 
 ## 11. Utenti, sicurezza e audit

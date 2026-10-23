@@ -159,7 +159,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-ALM-05 | Active, historical e logged alarms | PARZIALE | Recovery/retention/backup industriali, multilingua e collaudo target | Motore condiviso, storico di sessione e archivio SQLite per eventi supportati; batch per valutazione, riavvii distinti, lacune segnalate e nessun ripristino dello stato attivo dallo storico (106/161) |
 | WCU-ALM-06 | Acknowledge, confirm e shelving | PARZIALE | Batch, shelving, motivazioni, ack PLC e collaudo target | Presa visione/conferma singola nel servizio senza scrittura PLC, account/capacità/ACL e audit server (152–155); occorrenza/revisione verificate dopo await, nessun replay |
 | WCU-ALM-07 | Filtri, ordinamento e statistiche | PARZIALE | Filtri salvabili, query complete e statistiche | Filtri nella lista attiva; nuova vista storica con classe/zona/ID/stato/date sul server e pagine ancorate ad archivio/sequenza (161) |
-| WCU-ALM-08 | Logging, import/export e CSV | PARZIALE | CSV/import e manutenzione industriale | Persistenza locale SQLite opzionale e consultazione HMI protetta; niente replay, troncamento o false conferme (161) |
+| WCU-ALM-08 | Logging, import/export e CSV | PARZIALE | Import vendor, job server per grandi export e manutenzione industriale | Archivio SQLite e vista HMI protetta (161); CSV di tutte le pagine filtrate con identità/sequenza fissate, riepilogo JSON, avanzamento/annulla, protezione formule e nessun parziale o comando PLC (167) |
 | WCU-ALM-09 | Security events | DA FARE | Eventi sicurezza nel controllo allarmi | Correlazione con login, cambi e audit |
 | WCU-ALM-10 | Notifica email allarme | DA FARE | Trigger, destinatari e stato invio | Deduplica, escalation e test della regola |
 

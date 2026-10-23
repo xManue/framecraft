@@ -5903,6 +5903,38 @@ Verifiche del 5 ottobre 2026:
 - **Gate rimasti**: CPU reale, TLS/carico/ritenzione, confronto PLC coordinato prima dell’apply,
   migrazione canali, backup/restore e firme; non è un’approvazione al rilascio industriale.
 
+### 167. Storico allarmi: CSV completo dei risultati filtrati (2026-10-23)
+
+- **Uso HMI**: preparazione esplicita, avanzamento/annulla, download CSV e riepilogo JSON
+  separati. Tutte le pagine dei filtri applicati, non solo la pagina visibile; sequenza limite
+  e identità archivio/progetto fissate, nuovi arrivi esclusi fino all’aggiornamento.
+- **Protezione**: stesso GET e permesso server alarms.history.read per pagina, senza grant,
+  SQL libero o comandi PLC. Errore, annullamento, limite, cambio utente o risposta tardiva
+  non rendono scaricabile un parziale. Link invalidati anche al cambio filtri/lettura/dispose.
+- **Formato**: UTF-8 BOM, `;`, quote/CRLF, UTC e ID/stati/testi storici; celle formula trattate
+  come testo. JSON con filtri/conteggio/identità e avvisi/registrazione osservati, anche per
+  zero risultati. Non backup, firma, formato di importazione o garanzia di assenza di lacune.
+- **Budget**: CSV 64 MiB, massimo 500.000 eventi/cinque minuti, pagine da 500 con pausa di
+  250 ms e timeout per lettura. Nessun retry automatico o download a sorpresa.
+- **Pipeline e fonti**: modulo esportatore incluso nei nuovi pannelli; vecchi Runtime da
+  aggiornare esplicitamente. Documentazione funzionale Siemens V21 e Optix consultata;
+  codice originale, nessuna nuova dipendenza o sorgente vendor copiato. AI e WIP trend esclusi.
+- **Verifiche finali**: 45 casi mirati verdi su cinque file (raccolta, UI, generazione,
+  gateway e store). Inclusi cambio operatore/risposte tardive, annullamento, timeout senza
+  retry, permessi, budget, cursore/identità/filtro e protezione formule. Typecheck e build
+  editor riusciti sullo snapshot dell’indice pubblico, senza export privati o WIP AI/trend;
+  restano gli avvisi preesistenti sugli import misti. Dipendenze locali via junction, non
+  clean install. Nessuna modifica Rust, nessun agente e nessuna suite generale.
+  Edge headless sul pannello generato, launcher emesso e account server reali sintetici:
+  archivio SQLite con eventi di avvii precedenti, broker MQTT locale e acquisizione reale;
+  50 righe visibili, 520 esportate in due GET ancorate, download CSV/JSON effettivamente letti,
+  formule/quote/UTF-8 e conteggi verificati, link rimossi al logout. Zero comandi o scritture
+  PLC, richieste esterne ed errori pagina. Layout 375/768/1024/1440 px senza overflow, target
+  almeno 48 px; immagini desktop/mobile esaminate. Typecheck e build production dell’entry
+  QA generata riusciti. Non è collaudo touch/WebView2/CPU o di grandi archivi industriali.
+- **Restano**: job server/streaming per export grandi, import vendor, query/statistiche,
+  firme/backup/restore e collaudo industriale/target. Roadmap lasciate parziali.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

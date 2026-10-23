@@ -816,6 +816,16 @@ replaying it. This is not an electronic signature or regulated-release certifica
 restore, full security/admin coverage and a graphical Viewer remain open. See
 [Runtime audit setup and limits](runtime/README.md#registro-persistente-delle-operazioni-runtime).
 
+## Alarm history exports
+
+The **Storico allarmi su disco** control can prepare a CSV of all applied-filter results,
+not just the visible page. Registration sequence and archive identity remain pinned while
+the service is read in pages; new events require a fresh first-page read. Downloads are
+explicit and include an optional JSON summary of filters and capture warnings. Cancellation,
+permission errors and changed identity discard partial results. Text that could be a
+spreadsheet formula is prefixed with an apostrophe; timestamps are UTC. This is a read-only
+report, not a backup or vendor import format. See [usage and limits](runtime/README.md#esportazione-csv-dello-storico).
+
 ## Files, workspace and local test values
 
 **File** opens JS/JSX/TS/TSX sources beside the graphical page; **Torna alla grafica** returns

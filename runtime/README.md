@@ -281,6 +281,43 @@ dopo ogni variazione dei filtri. Le pagine più vecchie restano ancorate all’i
 e alla sequenza iniziale: nuovi eventi non vi si mescolano. Il cambio utente rimuove i dati letti
 e invalida le risposte in ritardo. Nessun evento viene scritto in localStorage/sessionStorage.
 
+### Esportazione CSV dello storico
+
+Dopo **Carica storico**, applica i filtri desiderati e premi **Prepara CSV dei risultati
+filtrati**. Vengono lette tutte le pagine filtrate, comprese quelle più recenti se stavi
+consultando una pagina vecchia. Il limite è la sequenza fissata all’ultima prima pagina letta:
+nuovi eventi non si aggiungono durante la preparazione. Per includerli, aggiorna dalla prima
+pagina prima di preparare il file. La preparazione è annullabile e non avvia download da sola.
+
+Al termine scegli **Scarica CSV** e **Scarica dettagli dell’esportazione**. Il JSON conserva
+identità archivio/progetto, limite di sequenza, filtri, conteggio, formato, avvisi e stati della
+registrazione osservati. Anche un risultato vuoto ha intestazioni e dettagli espliciti.
+Il browser gestisce nome/cartella e disponibilità dei download; nessun percorso del PC server
+viene esposto o scritto. **Scarta file preparati** libera i file temporanei in memoria, non
+cancella quelli già scaricati. Cambio utente, modifica filtri, nuova lettura o uscita dal
+controllo invalidano i link. Gli eventi non sono salvati in storage persistente del browser.
+
+Il CSV Framecraft v1 usa UTF-8 con BOM, separatore `;`, campi fra virgolette e CRLF. Contiene
+archivio, namespace, sequenza limite/globale/per-avvio, avvio/occorrenza/allarme, testo e nome
+storici, classe, priorità, zona, stato, date UTC di evento/registrazione e ID operatore se
+presente. I testi che iniziano con una possibile formula, anche dopo spazi, ricevono un
+apostrofo protettivo. Non è un formato di round-trip, una firma o un backup del database.
+Conserva il JSON insieme al CSV; gli orari evento sono valutazioni nel servizio, non tempi PLC.
+
+Limiti browser: 64 MiB di CSV, 500.000 righe, cinque minuti totali e timeout per pagina del
+controllo. Le pagine sono sequenziali, massimo 500 eventi e intervallo minimo 250 ms per
+rispettare la protezione del servizio; altri lettori possono comunque causare un rifiuto.
+Permesso `alarms.history.read` verificato dal server a ogni GET, senza nuove capacità o grant.
+Errore di rete/permesso/identità, timeout o limite superato non offrono un file troncato:
+controlla la causa, restringi i filtri e riprova manualmente. Nessun retry o comando PLC.
+L’export completo dei risultati registrati **non certifica** che la registrazione non abbia
+lacune. Restano da collaudare carico, grandi archivi, target nativi/touch e backup/restore.
+
+Riferimenti funzionali: [Unified V21 — export allarmi](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/configuring-the-alarm-control-rt-unified/configuring-the-export-of-alarms-rt-unified)
+e [Optix — esportazione tabella CSV](https://help.optix.cloud.rockwellautomation.com/1.4.1.7/en/creating-projects/database/Export-a-table-to-a-CSV-file.html).
+Implementazione Framecraft originale: nessun NetLogic o sorgente vendor copiato, nessun SQL
+libero nel browser e nessuna dichiarazione di compatibilità con il loro formato file.
+
 Il servizio registra Incoming/Outgoing/Acknowledged/Confirmed dal motore Framecraft, indipendente
 dalla pagina aperta, in `.framecraft-runtime/alarm-history/alarms.sqlite` con `identity.json`.
 Ogni valutazione del segnale salva insieme i propri eventi, con sequenze globali e per avvio,

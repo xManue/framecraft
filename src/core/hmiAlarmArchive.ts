@@ -2,6 +2,7 @@ import { AlarmHistoryError, alarmHistoryStates, parseAlarmHistoryQuery, parseAla
 import { OperatorAuthError } from "../../runtime/operator-policy.mjs";
 import { hmiAlarmElementBlocked } from "./hmiAlarmControl";
 import { operatorSessionProfile, openOperatorSession } from "./hmiOperatorSession";
+import { AlarmHistoryExportError, collectAlarmHistoryCsv } from "./hmiAlarmHistoryExport";
 
 const names: Record<string, string> = { Incoming: "Attivato", Outgoing: "Rientrato", Acknowledged: "Presa visione registrata", Confirmed: "Rientro confermato" };
 const css = `
@@ -16,6 +17,8 @@ const css = `
 [data-hmi-alarm-archive-root] ol{margin:12px 0;padding:0;list-style:none}[data-hmi-alarm-archive-root] li{border:1px solid #8a98a8;padding:12px;margin-bottom:12px;background:#fff}
 [data-hmi-alarm-archive-root] dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px;margin:8px 0 0}[data-hmi-alarm-archive-root] dd{margin:0;white-space:pre-wrap}[data-hmi-alarm-archive-root] dt{font-size:14px;color:#445566}
 [data-hmi-alarm-archive-root] [role=alert]{padding:12px;border-left:4px solid #a32626;background:#fff0f0}
+[data-hmi-alarm-archive-root] a[download]{display:inline-flex;align-items:center;min-height:48px;max-width:100%;padding:8px 10px;border:1px solid #66788b;border-radius:4px;background:#fff;color:#172331;text-decoration:none;cursor:pointer}
+[data-hmi-alarm-archive-root] a[download]:hover{background:#e2edf7}
 `;
 export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boolean; path?: string; timeoutMs?: number; request?: typeof fetch }) {
   const path = options.path ?? "/_framecraft/plc/v1", timeout = options.timeoutMs ?? 10000;
@@ -26,42 +29,66 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
   let active = true, busy = false, epoch = 0, filtersOpen = false, helpOpen = false, changed = false, failed = false;
   let snapshot: AlarmHistorySnapshot | undefined, applied: AlarmHistoryQuery = {}, draft: Record<string, string> = {}, controller: AbortController | undefined, focusKey: string | undefined;
   let notice = "Carica lo storico per consultare gli eventi salvati dal servizio. Nessuna lettura automatica.";
+  let exporting = false, exported: { csv: string; info: string; basename: string; rows: number; through: number } | undefined;
+  const releaseExport = () => { if (exported) { view.URL.revokeObjectURL(exported.csv); view.URL.revokeObjectURL(exported.info); exported = undefined; } };
   const identity = () => { const user = operatorSessionProfile(); return user ? JSON.stringify([user.id, user.capabilities]) : ""; }; let userKey = identity();
   const permitted = () => !!operatorSessionProfile()?.capabilities.includes("alarms.history.read");
   const blocked = () => !active || !options.enabled || !permitted() || hmiAlarmElementBlocked(host);
   const make = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; };
-  function resetUser() { const who = identity(); if (who === userKey) return; userKey = who; epoch++; controller?.abort(); snapshot = undefined; draft = {}; applied = {}; changed = false; busy = false; failed = false; notice = "Utente cambiato: i dati precedenti sono stati rimossi. Carica lo storico con il nuovo accesso."; }
+  function resetUser() { const who = identity(); if (who === userKey) return; userKey = who; epoch++; controller?.abort(); releaseExport(); exporting = false; snapshot = undefined; draft = {}; applied = {}; changed = false; busy = false; failed = false; notice = "Utente cambiato: i dati precedenti sono stati rimossi. Carica lo storico con il nuovo accesso."; }
   function button(text: string, action: () => void, disabled = false) { const node = make("button", text); node.type = "button"; node.disabled = busy || blocked() || disabled; node.addEventListener("click", () => { if (!node.disabled && !busy && !blocked()) action(); }); return node; }
   function query() {
     const raw: Record<string, unknown> = { limit: 50 }; for (const [key, value] of Object.entries(draft)) if (value) { if (key === "from" || key === "to") { const date = new Date(value); if (!Number.isFinite(date.getTime())) throw new AlarmHistoryError("ALARM_HISTORY_QUERY"); raw[key] = date.toISOString(); } else raw[key] = value; }
     return parseAlarmHistoryQuery(raw);
   }
-  function change(key: string, value: string) { draft[key] = value; changed = true; const status = host.querySelector('[data-archive-status]'); if (status) status.textContent = "Filtri modificati: carica dalla prima pagina. Le eventuali righe mostrate usano ancora i filtri precedenti."; const older = host.querySelector<HTMLButtonElement>('[data-archive-older]'); if (older) older.disabled = true; }
+  function change(key: string, value: string) { draft[key] = value; changed = true; releaseExport(); host.querySelector('[data-archive-export]')?.remove(); notice = "Filtri modificati: carica dalla prima pagina. Le eventuali righe mostrate usano ancora i filtri precedenti."; const status = host.querySelector('[data-archive-status]'); if (status) status.textContent = notice; for (const selector of ['[data-archive-older]', '[data-archive-prepare-export]']) { const button = host.querySelector<HTMLButtonElement>(selector); if (button) button.disabled = true; } }
+  async function read(input: AlarmHistoryQuery, signal: AbortSignal) {
+    const params = new URLSearchParams(Object.entries(input).map(([key, value]) => [key, String(value)]));
+    const response = await (options.request ?? fetch)(path + "/alarm-history?" + params, { method: "GET", credentials: "same-origin", cache: "no-store", redirect: "error", signal });
+    let text = ""; const reader = response.body?.getReader();
+    if (reader) { const decoder = new TextDecoder("utf-8", { fatal: true }); let bytes = 0; try { while (true) { const chunk = await reader.read(); if (chunk.done) break; bytes += chunk.value.byteLength; if (bytes > 4_500_000) { await reader.cancel(); throw new AlarmHistoryError("ALARM_HISTORY_RESPONSE"); } text += decoder.decode(chunk.value, { stream: true }); } text += decoder.decode(); } finally { reader.releaseLock(); } }
+    else { text = await response.text(); if (text.length > 4_500_000) throw new AlarmHistoryError("ALARM_HISTORY_RESPONSE"); }
+    signal.throwIfAborted(); let raw; try { raw = JSON.parse(text); } catch { throw new AlarmHistoryError("ALARM_HISTORY_RESPONSE"); }
+    if (!response.ok) {
+      if (raw?.type === "operator" && typeof raw.code === "string" && new OperatorAuthError(raw.code).code === raw.code) throw new OperatorAuthError(raw.code);
+      throw new AlarmHistoryError(raw?.type === "alarm-history" && typeof raw.code === "string" && new AlarmHistoryError(raw.code).code === raw.code ? raw.code : "ALARM_HISTORY_RESPONSE");
+    }
+    return parseAlarmHistorySnapshot(raw, input);
+  }
   async function load(older = false) {
     resetUser(); if (busy || blocked() || older && changed) return;
     let input: AlarmHistoryQuery;
     try { input = older && snapshot?.nextBefore ? { ...applied, archiveId: snapshot.id, through: applied.through ?? snapshot.sequence, before: snapshot.nextBefore } : query(); }
     catch (error) { const safe = error instanceof AlarmHistoryError ? error : new AlarmHistoryError("ALARM_HISTORY_QUERY"); failed = true; notice = safe.message + ". " + safe.remedy; render(); return; }
-    const current = epoch, who = userKey, abort = new AbortController(); controller = abort; busy = true; failed = false; render();
+    releaseExport(); const current = epoch, who = userKey, abort = new AbortController(); controller = abort; busy = true; failed = false; render();
     const timer = view.setTimeout(() => abort.abort(), timeout);
     try {
-      const params = new URLSearchParams(Object.entries(input).map(([key, value]) => [key, String(value)]));
-      const response = await (options.request ?? fetch)(path + "/alarm-history?" + params, { method: "GET", credentials: "same-origin", cache: "no-store", redirect: "error", signal: abort.signal });
-      let text = ""; const reader = response.body?.getReader();
-      if (reader) { const decoder = new TextDecoder("utf-8", { fatal: true }); let bytes = 0; try { while (true) { const chunk = await reader.read(); if (chunk.done) break; bytes += chunk.value.byteLength; if (bytes > 4_500_000) { await reader.cancel(); throw new AlarmHistoryError("ALARM_HISTORY_RESPONSE"); } text += decoder.decode(chunk.value, { stream: true }); } text += decoder.decode(); } finally { reader.releaseLock(); } }
-      else { text = await response.text(); if (text.length > 4_500_000) throw new AlarmHistoryError("ALARM_HISTORY_RESPONSE"); }
-      if (abort.signal.aborted) throw new Error("timeout");
-      let raw; try { raw = JSON.parse(text); } catch { throw new AlarmHistoryError("ALARM_HISTORY_RESPONSE"); }
-      if (!response.ok) {
-        if (raw?.type === "operator" && typeof raw.code === "string" && new OperatorAuthError(raw.code).code === raw.code) throw new OperatorAuthError(raw.code);
-        throw new AlarmHistoryError(raw?.type === "alarm-history" && typeof raw.code === "string" && new AlarmHistoryError(raw.code).code === raw.code ? raw.code : "ALARM_HISTORY_RESPONSE");
-      }
-      const next = parseAlarmHistorySnapshot(raw, input); if (!active || current !== epoch || who !== identity() || abort.signal.aborted) return;
+      const next = await read(input, abort.signal); if (!active || current !== epoch || who !== identity() || abort.signal.aborted) return;
       snapshot = next; applied = input; changed = false; notice = next.events.length ? "Eventi storici letti dal servizio. Nessun comando eseguito." : "Nessun evento per questi filtri.";
     } catch (error) {
       if (!active || current !== epoch || who !== identity()) return; snapshot = undefined; failed = true;
       notice = error instanceof AlarmHistoryError || error instanceof OperatorAuthError ? error.message + ". " + error.remedy : "Storico non raggiungibile o lettura scaduta. Controlla servizio, rete e proxy, poi riprova manualmente. Nessun comando viene inviato.";
     } finally { view.clearTimeout(timer); if (controller === abort) controller = undefined; if (active && current === epoch) { busy = false; render(); } }
+  }
+  async function prepareExport() {
+    resetUser(); if (busy || blocked() || changed || !snapshot) return;
+    releaseExport(); const current = epoch, who = userKey, seed = snapshot, input = { ...applied }, abort = new AbortController();
+    controller = abort; busy = true; exporting = true; failed = false; notice = "Preparazione CSV: lettura di tutti gli eventi filtrati, non solo della pagina visibile…"; render();
+    let expired = false; const timer = view.setTimeout(() => { expired = true; abort.abort(); }, 300000);
+    try {
+      const result = await collectAlarmHistoryCsv({ snapshot: seed, applied: input, signal: abort.signal, read: async (query, signal) => {
+        if (blocked() || current !== epoch || who !== identity()) { abort.abort(); signal.throwIfAborted(); }
+        const deadline = view.setTimeout(() => { expired = true; abort.abort(); }, timeout); try { return await read(query, signal); } finally { view.clearTimeout(deadline); }
+      }, progress: rows => { if (active && current === epoch) { notice = `${rows} eventi letti per il CSV. Attendi il completamento o annulla.`; render(); } } });
+      if (!active || current !== epoch || who !== identity() || abort.signal.aborted || blocked()) return;
+      const csv = view.URL.createObjectURL(new Blob(result.parts, { type: "text/csv;charset=utf-8" }));
+      try { exported = { csv, info: view.URL.createObjectURL(new Blob([JSON.stringify(result.manifest, null, 2) + "\n"], { type: "application/json;charset=utf-8" })), basename: result.basename, rows: result.manifest.rows, through: result.manifest.through }; }
+      catch (error) { view.URL.revokeObjectURL(csv); throw error; }
+      notice = `CSV pronto: ${exported.rows} eventi corrispondenti ai filtri, fino alla sequenza ${exported.through}. Scegli Scarica CSV; il browser gestirà il salvataggio.`;
+    } catch (error) {
+      if (!active || current !== epoch || who !== identity()) return; releaseExport(); failed = !abort.signal.aborted || expired;
+      notice = error instanceof AlarmHistoryError || error instanceof OperatorAuthError || error instanceof AlarmHistoryExportError ? error.message + ". " + error.remedy : abort.signal.aborted ? expired ? "Preparazione CSV scaduta. Restringi il periodo o verifica servizio e rete. Nessun file parziale." : "Preparazione CSV annullata. Nessun file parziale è stato conservato." : "CSV non preparato. Controlla servizio, rete e supporto ai download del browser. Nessun file parziale; riprova manualmente.";
+    } finally { view.clearTimeout(timer); if (controller === abort) controller = undefined; if (active && current === epoch) { busy = false; exporting = false; render(); } }
   }
   function render() {
     if (!active) return; const focused = document.activeElement, scroll = host.scrollTop;
@@ -78,14 +105,27 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
     }
     const toolbar = make("div"); toolbar.className = "archive-toolbar";
     const read = button(snapshot ? "Aggiorna dalla prima pagina" : "Carica storico", () => {}); read.type = "submit"; read.dataset.archiveFocus = "read";
-    const older = button("Eventi precedenti", () => void load(true), !snapshot?.nextBefore || changed); older.dataset.archiveOlder = ""; older.dataset.archiveFocus = "older"; toolbar.append(read, older); form.append(filters, toolbar); form.addEventListener("submit", event => { event.preventDefault(); void load(); }); host.append(form);
-    const status = make("p", busy ? "Lettura dello storico…" : notice); status.dataset.archiveStatus = ""; status.setAttribute("role", failed ? "alert" : "status"); host.append(status);
+    const older = button("Eventi precedenti", () => void load(true), !snapshot?.nextBefore || changed); older.dataset.archiveOlder = ""; older.dataset.archiveFocus = "older";
+    const prepare = button("Prepara CSV dei risultati filtrati", () => void prepareExport(), !snapshot || changed); prepare.dataset.archivePrepareExport = ""; prepare.dataset.archiveFocus = "prepare-export"; toolbar.append(read, older, prepare);
+    if (exporting) { const cancel = make("button", "Annulla preparazione CSV"); cancel.type = "button"; cancel.dataset.archiveFocus = "cancel-export"; cancel.disabled = blocked(); cancel.addEventListener("click", () => { if (!blocked()) controller?.abort(); }); toolbar.append(cancel); }
+    form.append(filters, toolbar); form.addEventListener("submit", event => { event.preventDefault(); void load(); }); host.append(form);
+    const status = make("p", busy && !exporting ? "Lettura dello storico…" : notice); status.dataset.archiveStatus = ""; status.setAttribute("role", failed ? "alert" : "status"); host.append(status);
+    if (exported) {
+      const section = make("section"), downloads = make("div"); section.dataset.archiveExport = ""; section.setAttribute("aria-label", "File dello storico preparati"); downloads.className = "archive-toolbar";
+      section.append(make("p", `${exported.rows} eventi · sequenza massima ${exported.through}. Il CSV comprende tutte le pagine filtrate fino a quel limite, non solo le righe visibili.`));
+      for (const [title, url, suffix] of [["Scarica CSV", exported.csv, ".csv"], ["Scarica dettagli dell’esportazione", exported.info, ".json"]]) {
+        const link = make("a", title); link.href = url; link.download = exported.basename + suffix; link.dataset.archiveFocus = suffix;
+        link.setAttribute("aria-disabled", String(busy || blocked())); link.tabIndex = busy || blocked() ? -1 : 0;
+        link.addEventListener("click", event => { if (busy || blocked() || changed || !exported || whoChanged()) event.preventDefault(); }); downloads.append(link);
+      }
+      downloads.append(button("Scarta file preparati", () => { releaseExport(); notice = "File temporanei scartati. Gli eventuali file già scaricati non sono stati cancellati."; render(); })); section.append(downloads); host.append(section);
+    }
     if (snapshot) {
       const capture = snapshot.capture, state = capture.state === "recording" ? "Registrazione su disco attiva" : capture.state === "disabled" ? "Registrazione disattivata · dati esistenti in sola lettura" : capture.state === "stopped" ? "Servizio di registrazione arrestato" : "Registrazione non disponibile: storico potenzialmente incompleto";
       const message = make("p", "Stato del servizio all’ultima lettura: " + state + (capture.unconfirmedInThisRun ? `. Eventi senza conferma di registrazione in questo avvio: ${capture.unconfirmedInThisRun}.` : ".")); if (capture.state === "error") message.setAttribute("role", "alert"); host.append(message);
       if (capture.code) { const error = new AlarmHistoryError(capture.code); host.append(make("p", error.message + ". " + error.remedy)); }
       host.append(make("p", `${snapshot.count} eventi totali nell’archivio. Avvii precedenti incompleti: ${snapshot.incompleteRuns}.`));
-      const help = make("details"); help.open = helpOpen; help.append(make("summary", "Come leggere lo storico"), make("p", "I totali riguardano tutto l’archivio, non soltanto il filtro. Durante uno stop o una perdita di qualità gli eventi possono mancare, anche con zero avvii incompleti; non vengono ricostruiti."), make("p", "Ordine di registrazione; data evento = valutazione del segnale sul servizio, non timestamp del PLC. Testo e classe sono quelli salvati all’epoca. Orari nel fuso di questo dispositivo; UTC e identificativi nei dettagli."), make("p", "Qui non si prendono visione o confermano allarmi: usa la lista degli allarmi attuali. Gli eventi senza conferma di registrazione potrebbero essere arrivati su disco prima di un errore; il contatore non certifica perdite esatte.")); help.addEventListener("toggle", () => { if (help.isConnected) helpOpen = help.open; }); host.append(help);
+      const help = make("details"); help.open = helpOpen; help.append(make("summary", "Come leggere lo storico"), make("p", "I totali riguardano tutto l’archivio, non soltanto il filtro. Durante uno stop o una perdita di qualità gli eventi possono mancare, anche con zero avvii incompleti; non vengono ricostruiti."), make("p", "Ordine di registrazione; data evento = valutazione del segnale sul servizio, non timestamp del PLC. Testo e classe sono quelli salvati all’epoca. Orari nel fuso di questo dispositivo; UTC e identificativi nei dettagli."), make("p", "CSV: tutti i risultati dei filtri applicati, ordine dal più recente, limite di sequenza fissato all’ultima prima pagina letta. Gli eventi nuovi restano fuori fino a un aggiornamento. UTF-8, separatore punto e virgola, date UTC; un apostrofo protegge i testi che potrebbero essere formule nei fogli di calcolo. I dettagli JSON conservano filtri e avvisi: scaricali insieme al CSV. Non è un backup o un formato di importazione vendor. Limite 64 MiB / 500.000 eventi / 5 minuti; se superato, restringi i filtri. Nessun parziale scaricabile."), make("p", "Qui non si prendono visione o confermano allarmi: usa la lista degli allarmi attuali. Gli eventi senza conferma di registrazione potrebbero essere arrivati su disco prima di un errore; il contatore non certifica perdite esatte.")); help.addEventListener("toggle", () => { if (help.isConnected) helpOpen = help.open; }); host.append(help);
       const list = make("ol"); list.setAttribute("aria-label", "Eventi storici degli allarmi");
       for (const row of snapshot.events) {
         const item = make("li"); item.append(make("h3", names[row.event.state] + " · " + row.event.name), make("p", row.event.text));
@@ -96,6 +136,7 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
     }
     host.scrollTop = scroll; if (focusKey) { const node = [...host.querySelectorAll<HTMLElement>("[data-archive-focus]")].find(node => node.dataset.archiveFocus === focusKey); if (node && !node.hasAttribute("disabled")) node.focus({ preventScroll: true }); }
   }
+  const whoChanged = () => identity() !== userKey;
   const changedUser = () => { resetUser(); render(); }; view.addEventListener("framecraft:user-changed", changedUser); render();
-  return { refresh: render, dispose() { if (!active) return; active = false; epoch++; controller?.abort(); view.removeEventListener("framecraft:user-changed", changedUser); style.remove(); delete host.dataset.hmiAlarmArchiveRoot; host.removeAttribute("aria-busy"); if (role === null) host.removeAttribute("role"); else host.setAttribute("role", role); if (label === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", label); host.replaceChildren(...original); } };
+  return { refresh: render, dispose() { if (!active) return; active = false; epoch++; controller?.abort(); releaseExport(); view.removeEventListener("framecraft:user-changed", changedUser); style.remove(); delete host.dataset.hmiAlarmArchiveRoot; host.removeAttribute("aria-busy"); if (role === null) host.removeAttribute("role"); else host.setAttribute("role", role); if (label === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", label); host.replaceChildren(...original); } };
 }

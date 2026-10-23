@@ -762,6 +762,22 @@ riconciliazione col PLC restano gate industriali separati. La revisione mostra i
 archiviati, non un confronto coordinato col ciclo PLC. La conferma è storica e riferita alla
 ricetta/ID indicati, non alla ricetta che l’operatore seleziona successivamente.
 
+## Esportazione dello storico allarmi
+
+`hmiAlarmHistoryExport.ts` raccoglie solo pagine validate dal GET storico esistente. Filtri,
+UUID archivio/namespace e sequenza limite sono fissati alla vista letta; il cursore visibile
+non limita l’export alla pagina corrente. Ordine decrescente e cursori verificati, nessun
+retry, SQL libero o comando PLC. L’autorizzazione server viene ripetuta per ogni pagina.
+Non cambia lo schema SQLite e non aggiunge capacità implicite agli account.
+
+Il controllo offre avanzamento e annullamento, poi link espliciti a CSV e riepilogo JSON.
+Fallimenti, scadenze e cambio utente non pubblicano risultati parziali. Link e Blob sono
+revocati a cambio filtri/lettura/utente, scarto o dispose; niente storage persistente browser.
+CSV con quote/BOM/UTC e protezione formule, 64 MiB/500.000 eventi/cinque minuti, pagine da
+500 con pausa 250 ms e timeout per GET. È un report dei record disponibili, non una prova
+di registrazione senza lacune, un backup, una firma o un round-trip vendor. Carico e
+target/backup industriali restano separati dal collaudo browser su fixture sintetiche.
+
 ## Flusso di verifica
 
 1. Collegare il template a una foto e alla schermata esportata.

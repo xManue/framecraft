@@ -55,6 +55,7 @@ import auditQuerySource from "../../runtime/audit-query.mjs?raw";
 import auditQueryTypes from "../../runtime/audit-query.d.mts?raw";
 import auditControlSource from "./hmiAuditControl.ts?raw";
 import alarmArchiveSource from "./hmiAlarmArchive.ts?raw";
+import alarmHistoryExportSource from "./hmiAlarmHistoryExport.ts?raw";
 import alarmHistorySource from "../../runtime/alarm-history.mjs?raw";
 import alarmHistoryTypes from "../../runtime/alarm-history.d.mts?raw";
 import alarmHistoryStoreSource from "../../runtime/alarm-history-store.mjs?raw";
@@ -1939,7 +1940,8 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/framecraftHmiRecipePlc.ts", content: recipePlcControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiRecipeExchange.ts", content: recipeExchangeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiAuditControl.ts", content: auditControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
-    { path: "src/framecraftHmiAlarmArchive.ts", content: alarmArchiveSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
+    { path: "src/framecraftHmiAlarmHistoryExport.ts", content: alarmHistoryExportSource.replaceAll('"../../runtime/', '"../runtime/') },
+    { path: "src/framecraftHmiAlarmArchive.ts", content: alarmArchiveSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiAlarmHistoryExport"', '"./framecraftHmiAlarmHistoryExport"') },
     { path: "framecraft.recipes-ui.json", content: JSON.stringify({ version: 1, namespace: crypto.randomUUID() }, null, 2) + "\n" },
     { path: "vite.config.ts", content: panelViteConfigSource },
     { path: "src/framecraftScriptRuntime.ts", content: hmiScriptRuntimeModuleSource() },

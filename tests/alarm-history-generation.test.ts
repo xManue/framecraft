@@ -7,7 +7,8 @@ import { componentRegistry } from "../src/components/registry";
 import { parseSource } from "../src/source-parser/parseSource";
 it("includes the archive control and services without enabling logging, accounts or connections", () => {
   const files = standardProjectFiles({ machineName: "Allarmi QA", layout: "desktop", sections: ["main"] }), read = (file: string) => files.find(item => item.path === file)!.content;
-  for (const file of ["runtime/alarm-history.mjs", "runtime/alarm-history.d.mts", "runtime/alarm-history-store.mjs", "runtime/alarm-history-store.d.mts", "src/framecraftHmiAlarmArchive.ts"]) expect(read(file).length).toBeGreaterThan(100);
+  for (const file of ["runtime/alarm-history.mjs", "runtime/alarm-history.d.mts", "runtime/alarm-history-store.mjs", "runtime/alarm-history-store.d.mts", "src/framecraftHmiAlarmArchive.ts", "src/framecraftHmiAlarmHistoryExport.ts"]) expect(read(file).length).toBeGreaterThan(100);
+  expect(read("src/framecraftHmiAlarmArchive.ts")).toContain('from "./framecraftHmiAlarmHistoryExport"'); expect(read("src/framecraftHmiAlarmHistoryExport.ts")).toContain('from "../runtime/alarm-history.mjs"');
   expect(JSON.parse(read("framecraft.alarms.json")).archive?.enabled).not.toBe(true); expect(JSON.parse(read("framecraft.auth.json")).enabled).toBe(false); expect(JSON.parse(read("framecraft.connections.json")).connections).toEqual([]);
   expect(read("src/framecraftHmiRuntime.ts")).toContain("createHmiAlarmArchive"); expect(read("runtime/start-gateway.mjs")).toContain("openAlarmHistory");
   const entry = componentRegistry.get("hmi-alarm-archive")!; expect(entry).toBeDefined(); const parsed = parseSource("Archive.tsx", `export function Archive(){return (${entry.createJsx()});}`); expect(Object.values(parsed.nodes).some(node => node.props["data-hmi-type"] === "HmiAlarmArchiveControl")).toBe(true);

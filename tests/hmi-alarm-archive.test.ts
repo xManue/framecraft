@@ -7,7 +7,7 @@ vi.mock("../src/core/hmiOperatorSession", () => ({ operatorSessionProfile: () =>
 const id = "7618fc24-79c4-4657-9139-56ad520cb1fa", instance = "6618fc24-79c4-4657-9139-56ad520cb1fa";
 const data = () => ({ version: 1, id, namespace: id, sequence: 3, count: 3, incompleteRuns: 0, nextBefore: 2, capture: { state: "recording", unconfirmedInThisRun: 0 }, events: [3, 2].map(seq => ({ seq, instanceId: instance, recordedAt: "2026-10-21T10:00:00.000Z", event: { sequence: seq, id: "a", occurrence: "occurrence", name: "Motor", text: "<img src=x onerror=alert(1)>", alarmClass: "Guasto", area: "Linea", priority: 1, state: "Incoming", time: Date.parse("2026-10-21T10:00:00.000Z") } })) });
 const cleanup: (() => void)[] = [];
-afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); document.body.replaceChildren(); user.id = "synthetic"; user.permitted = true; vi.restoreAllMocks(); vi.useRealTimers(); open.mockClear(); });
+afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); document.body.replaceChildren(); user.id = "synthetic"; user.permitted = true; vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); open.mockClear(); });
 const button = (host: HTMLElement, text: string) => [...host.querySelectorAll("button")].find(node => node.textContent === text)!;
 function fixture(request = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(data()))), enabled = true, timeoutMs = 10000) { const host = document.createElement("div"); host.textContent = "Segnaposto"; document.body.append(host); const control = createHmiAlarmArchive(host, { enabled, request, timeoutMs }); cleanup.push(() => control.dispose()); return { host, request, control }; }
 const load = async (test: ReturnType<typeof fixture>) => { button(test.host, "Carica storico").click(); await vi.waitFor(() => expect(test.host.querySelector('[aria-label="Eventi storici degli allarmi"]')).not.toBeNull()); };
@@ -42,4 +42,36 @@ it("honors inherited interaction gates even for an already rendered button and r
 it("times out without retrying or keeping the view busy forever", async () => {
   vi.useFakeTimers(); const request = vi.fn<typeof fetch>((_url, options) => new Promise((_resolve, reject) => options?.signal?.addEventListener("abort", () => reject(new Error("timeout"))))), test = fixture(request, true, 250);
   button(test.host, "Carica storico").click(); await vi.advanceTimersByTimeAsync(251); expect(test.host.textContent).toContain("lettura scaduta"); expect(test.host.getAttribute("aria-busy")).toBe("false"); expect(request).toHaveBeenCalledOnce();
+});
+function downloadSupport() { const blobs: Blob[] = [], create = vi.fn((blob: Blob) => { blobs.push(blob); return "blob:archive-" + blobs.length; }), revoke = vi.fn(); Object.defineProperty(URL, "createObjectURL", { configurable: true, value: create }); Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revoke }); return { blobs, create, revoke }; }
+const prepared = async (test: ReturnType<typeof fixture>) => { button(test.host, "Prepara CSV dei risultati filtrati").click(); await vi.waitFor(() => expect(test.host.querySelector('a[download$=".csv"]')).not.toBeNull(), { timeout: 10000 }); };
+it("prepares all pages only on demand, exposes explicit downloads and releases URLs", async () => {
+  const files = downloadSupport(), test = fixture(); expect(button(test.host, "Prepara CSV dei risultati filtrati").disabled).toBe(true); await load(test);
+  test.request.mockResolvedValueOnce(new Response(JSON.stringify(data()))).mockResolvedValueOnce(new Response(JSON.stringify({ ...data(), nextBefore: null, events: [{ ...data().events[0], seq: 1, event: { ...data().events[0].event, sequence: 1 } }] })));
+  await prepared(test); expect(test.request).toHaveBeenCalledTimes(3); expect(test.host.textContent).toContain("CSV pronto: 3 eventi"); expect(files.blobs.map(blob => blob.type)).toEqual(["text/csv;charset=utf-8", "application/json;charset=utf-8"]); expect(files.create).toHaveBeenCalledTimes(2);
+  expect(test.host.querySelector('a[download$=".csv"]')?.getAttribute("href")).toBe("blob:archive-1"); for (const [, options] of test.request.mock.calls) expect(options?.method).toBe("GET");
+  button(test.host, "Scarta file preparati").click(); expect(files.revoke.mock.calls).toEqual([["blob:archive-1"], ["blob:archive-2"]]); expect(test.host.querySelector("a[download]")).toBeNull();
+});
+it("invalidates exports and blocks stale links when filters or user identity change", async () => {
+  const files = downloadSupport(), test = fixture(); await load(test); test.request.mockImplementation(async () => new Response(JSON.stringify({ ...data(), nextBefore: null }))); await prepared(test);
+  const link = test.host.querySelector<HTMLAnchorElement>("a[download]")!, event = new MouseEvent("click", { cancelable: true }); user.id = "different"; link.dispatchEvent(event); expect(event.defaultPrevented).toBe(true); window.dispatchEvent(new CustomEvent("framecraft:user-changed")); expect(test.host.querySelector("a[download]")).toBeNull(); expect(files.revoke).toHaveBeenCalledTimes(2);
+  await load(test); await prepared(test); const field = test.host.querySelector<HTMLInputElement>('[aria-label="Zona (nome esatto)"]')!; field.value = "Other"; field.dispatchEvent(new Event("input")); expect(test.host.querySelector("a[download]")).toBeNull(); expect(button(test.host, "Prepara CSV dei risultati filtrati").disabled).toBe(true); expect(files.revoke).toHaveBeenCalledTimes(4);
+});
+it("allows cancellation while busy and never exposes a partial export after denial", async () => {
+  downloadSupport(); const test = fixture(); await load(test); button(test.host, "Prepara CSV dei risultati filtrati").click(); expect(button(test.host, "Annulla preparazione CSV").disabled).toBe(false); button(test.host, "Annulla preparazione CSV").click(); await vi.waitFor(() => expect(test.host.textContent).toContain("Preparazione CSV annullata")); expect(test.request).toHaveBeenCalledTimes(1); expect(test.host.querySelector("a[download]")).toBeNull();
+  test.request.mockResolvedValue(new Response(JSON.stringify({ type: "operator", code: "AUTH_PERMISSION", error: "PRIVATE_ERROR" }), { status: 403 })); button(test.host, "Prepara CSV dei risultati filtrati").click(); await vi.waitFor(() => expect(test.host.textContent).toContain("permess")); expect(test.host.textContent).not.toContain("PRIVATE_ERROR"); expect(test.host.querySelector("a[download]")).toBeNull(); expect(test.host.getAttribute("aria-busy")).toBe("false");
+});
+it("releases prepared files on disposal and preserves the placeholder", async () => {
+  const files = downloadSupport(), test = fixture(); await load(test); test.request.mockImplementation(async () => new Response(JSON.stringify({ ...data(), nextBefore: null }))); await prepared(test); test.control.dispose(); expect(files.revoke).toHaveBeenCalledTimes(2); expect(test.host.textContent).toBe("Segnaposto");
+});
+it("ignores a completed export page from the previous operator", async () => {
+  const files = downloadSupport(), test = fixture(); await load(test); let release!: (response: Response) => void;
+  test.request.mockImplementation(() => new Promise(resolve => { release = resolve; })); button(test.host, "Prepara CSV dei risultati filtrati").click(); await vi.waitFor(() => expect(test.request).toHaveBeenCalledTimes(2));
+  user.id = "another"; window.dispatchEvent(new CustomEvent("framecraft:user-changed")); release(new Response(JSON.stringify({ ...data(), nextBefore: null }))); await vi.waitFor(() => expect(test.host.getAttribute("aria-busy")).toBe("false")); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(files.create).not.toHaveBeenCalled(); expect(test.host.querySelectorAll("li")).toHaveLength(0); expect(test.host.querySelector("a[download]")).toBeNull();
+});
+it("times out a CSV page without retrying or exposing temporary files", async () => {
+  const files = downloadSupport(), test = fixture(undefined, true, 250); await load(test); vi.useFakeTimers();
+  test.request.mockImplementation((_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(Error("timeout")))));
+  button(test.host, "Prepara CSV dei risultati filtrati").click(); await vi.advanceTimersByTimeAsync(501); expect(test.host.textContent).toContain("Preparazione CSV scaduta"); expect(test.host.getAttribute("aria-busy")).toBe("false"); expect(test.request).toHaveBeenCalledTimes(2); expect(files.create).not.toHaveBeenCalled();
 });
