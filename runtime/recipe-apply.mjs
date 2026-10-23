@@ -43,7 +43,7 @@ export function parseRecipeApplyConfig(input, catalog, variables) {
       const matches = variables.filter(variable => !variable.detected && variable.name === profile[key]);
       if (matches.length !== 1 || ![access, "read-write"].includes(matches[0].access) || !["string", "wstring"].includes(matches[0].dataType?.toLowerCase())) fail("RECIPE_APPLY_CONFIG");
     }
-    const channel = JSON.stringify(Object.fromEntries(Object.entries(profile).filter(([key]) => key !== "schemaId")));
+    const channel = JSON.stringify({ channelId: profile.channelId, requestTag: profile.requestTag, responseTag: profile.responseTag, maxPayloadBytes: profile.maxPayloadBytes, maxAgeMs: profile.maxAgeMs, prepareTimeoutMs: profile.prepareTimeoutMs, applyTimeoutMs: profile.applyTimeoutMs, stageLifetimeMs: profile.stageLifetimeMs });
     if (channels.has(profile.channelId) && channels.get(profile.channelId) !== channel) fail("RECIPE_APPLY_CONFIG"); channels.set(profile.channelId, channel);
     for (const tag of [profile.requestTag, profile.responseTag]) { if (tags.has(tag) && tags.get(tag) !== profile.channelId) fail("RECIPE_APPLY_CONFIG"); tags.set(tag, profile.channelId); }
     return { ...profile };

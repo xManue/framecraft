@@ -9,6 +9,7 @@ import type { AiInterviewDraftSnapshot } from "../ai/aiInterviewDraft";
 import type { AiProjectChange } from "../ai/aiProjectEdits";
 import type { RecipeConfigurationSnapshot } from "../core/recipeConfiguration";
 import type { RecipePlcConfigurationSnapshot } from "../core/recipePlcConfiguration";
+import type { RecipeApplyConfigurationSnapshot } from "../core/recipeApplyConfiguration";
 import type { OperatorAccountsSnapshot, OperatorAdminCommand } from "../core/operatorAccounts";
 
 export const desktopAvailable = isTauri();
@@ -18,6 +19,12 @@ function requireDesktop() {
 }
 
 export const desktopBridge = {
+  async readRecipeApplyConfiguration(root: string): Promise<RecipeApplyConfigurationSnapshot> {
+    requireDesktop(); return invoke("read_recipe_apply_configuration", { root });
+  },
+  async saveRecipeApplyConfiguration(root: string, expected: RecipeApplyConfigurationSnapshot, source: string): Promise<RecipeApplyConfigurationSnapshot> {
+    requireDesktop(); return invoke("save_recipe_apply_configuration", { root, expected, source });
+  },
   async readRecipePlcConfiguration(root: string): Promise<RecipePlcConfigurationSnapshot> {
     requireDesktop(); return invoke("read_recipe_plc_configuration", { root });
   },

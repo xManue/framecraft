@@ -1,7 +1,8 @@
 # Framecraft Recipe Apply v1 — contratto del programma PLC
 
 Stato: nucleo del servizio e riferimento eseguibile implementati il 23 ottobre 2026.
-Configurazione guidata e comando nel controllo HMI ancora da collegare. Nessuna abilitazione
+Configurazione guidata disponibile in Pannello → Ricette → Applicazione al PLC;
+comando operativo nel controllo HMI ancora da collegare. Nessuna abilitazione
 automatica nei progetti. Non è un protocollo Siemens/Rockwell, un programma PLC certificato o
 una garanzia di sicurezza funzionale. Richiede implementazione e collaudo sul controller scelto.
 
@@ -40,7 +41,14 @@ riuscita l’applicazione. Interi oltre la precisione del catalogo JS, array e U
 
 1. Configurare e salvare schemi/ricette e le variabili del canale. Il catalogo iniziale e
    l’archivio operativo non vengono modificati da questa funzione.
-2. Preparare esplicitamente `framecraft.recipe-apply.json`. Il file generato è vuoto:
+2. Aprire **Pannello → Ricette → Applicazione al PLC**, con il servizio fermo. Selezionare lo
+   schema e abilitarne esplicitamente la configurazione. Inserire ID canale concordato, tag
+   richiesta/risposta, capacità effettiva del buffer e tempi. Non vengono creati tag o consensi.
+   Per condividere un’area tra schemi usare **Riprendi un canale già configurato**: tag e tempi
+   restano gli stessi. Per cambiarli solo per uno schema occorre separarlo in un nuovo canale.
+   **Verifica configurazione** mostra il riepilogo; la successiva dichiarazione di servizio
+   fermo/protocollo concordato e **Conferma salvataggio interfaccia** salvano soltanto
+   `framecraft.recipe-apply.json`. Il file generato è vuoto:
 
    ```json
    {"version":1,"schemas":[]}
@@ -51,6 +59,14 @@ riuscita l’applicazione. Interi oltre la precisione del catalogo JS, array e U
    `stageLifetimeMs`. Non ci sono nomi tag o consensi predefiniti. `channelId` identifica
    stabilmente un’area di preparazione del PLC. Più schemi possono usare lo stesso canale
    soltanto con identici tag e budget; un tag non può appartenere a due canali.
+   Errori o conflitti conservano la bozza. Il salvataggio nativo controlla sessione/progetto e
+   contenuto di interfaccia, schema, tag, connessioni e accessi senza riscrivere gli altri file.
+   Un archivio ricette operativo non impedisce questa prima configurazione; la presenza del
+   registro `recipe-apply`, anche incompleto, rende invece la finestra in sola lettura.
+   Non è ancora disponibile una migrazione guidata dei canali già messi in servizio: servono
+   verifica delle richieste pendenti e backup/restore, senza cancellare il registro. Non avviare
+   il servizio da un altro terminale durante il salvataggio: i controlli del progetto non sono
+   un lock distribuito con un processo di deployment esterno o un amministratore locale.
 3. I due tag devono essere associati alla stessa connessione attiva. Per scrivere servono i
    consensi del gateway, della connessione e del binding. La risposta richiede qualità buona
    conosciuta e aggiornamento reale, non valori di fallback o retained MQTT iniziali.
@@ -220,5 +236,6 @@ Le funzioni di gestione/trasferimento sono confrontate con
 e [Optix 1.8 — Recipes editor](https://www.rockwellautomation.com/en-pr/docs/factorytalk-optix/current/contents-ditamap/creating-projects/recipes/recipesx-editor.html).
 La separazione preparazione/applicazione con conferma obbligatoria è il contratto Framecraft
 richiesto dall’utente, non una dichiarazione di identità con i protocolli vendor.
-Non completa ancora GUI di configurazione/comando, adapter CPU, collaudo hardware/TLS/carico,
+La GUI configura l’interfaccia ma non completa ancora comando operativo HMI, migrazione dei
+canali commissionati, adapter CPU, collaudo hardware/TLS/carico,
 backup/restore industriale, firme o sicurezza funzionale della macchina.

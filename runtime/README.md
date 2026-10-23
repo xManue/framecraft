@@ -1088,8 +1088,12 @@ del programma PLC**, correlata alla singola richiesta. ACK MQTT e risposta OPC U
 non sono una conferma di applicazione. Il backend opt-in del 23 ottobre implementa preparazione,
 handshake, timeout, rifiuto, concorrenza e recupero esplicito senza replay. L’utente ha scelto
 un’interfaccia Framecraft da implementare nel PLC: il [contratto v1](RECIPE-APPLY-PROTOCOL.md)
-descrive canali, buffer, ritenzione, interlock e messa in servizio. Restano GUI di configurazione
-e comando, programma della CPU reale e collaudo industriale. Questa lettura resta indipendente.
+descrive canali, buffer, ritenzione, interlock e messa in servizio. La configurazione è disponibile
+in **Pannello → Ricette → Applicazione al PLC**: revisione e conferma salvano solo l’interfaccia,
+senza avviare connessioni. La presenza del registro trasferimenti rende la configurazione in sola
+lettura, per non perdere il recupero degli esiti incerti; migrazione guidata ancora da implementare.
+Restano comando operativo HMI, programma della CPU reale e collaudo industriale. Questa lettura
+resta indipendente dall’applicazione.
 
 Preparazione nell’editor, senza AI:
 

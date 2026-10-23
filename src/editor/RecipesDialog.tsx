@@ -9,9 +9,11 @@ import "./recipes.css";
 import { RecipeCatalogEditor } from "./RecipeCatalogEditor";
 import { useRecipeDialog } from "./useRecipeDialog";
 import { RecipePlcDialog } from "./RecipePlcDialog";
+import { RecipeApplyDialog } from "./RecipeApplyDialog";
 
 export function RecipesDialog({ onClose }: { onClose(): void }) {
   const [bindingsOpen, setBindingsOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
   const project = useEditorStore(state => state.project), [initial] = useState(project);
   const [snapshot, setSnapshot] = useState<RecipeConfigurationSnapshot>(), [catalog, setCatalog] = useState<RecipeCatalog>(emptyRecipeCatalog), [base, setBase] = useState("");
   const [epoch, setEpoch] = useState(0);
@@ -54,10 +56,10 @@ export function RecipesDialog({ onClose }: { onClose(): void }) {
       if (mounted.current && request === sequence.current && useEditorStore.getState().project === initial) setImported(parsed);
     } catch { if (mounted.current && request === sequence.current) { setImported(undefined); setError("Importazione non valida. Serve un catalogo Framecraft v1 entro 2 MB, con tipi e valori corretti. La configurazione attuale resta invariata."); } }
   }
-  return createPortal(<div className="alarm-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}><section ref={dialog} className="alarm-dialog recipe-dialog" role="dialog" aria-modal="true" aria-labelledby={title} tabIndex={-1}>
+  return createPortal(<div className="alarm-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}><section ref={dialog} className="alarm-dialog recipe-dialog" role="dialog" aria-modal="true" aria-labelledby={title} aria-hidden={bindingsOpen || applyOpen ? true : undefined} inert={bindingsOpen || applyOpen} tabIndex={-1}>
     <header><div><small>CONFIGURAZIONE DEL PROGETTO</small><h2 id={title}><Database size={22} /> Ricette</h2></div><button type="button" aria-label="Chiudi ricette" disabled={phase === "saving"} onClick={close}><X size={20} /></button></header>
     <p>Uno schema definisce i parametri; ogni ricetta contiene i suoi valori. Qui prepari la configurazione iniziale, non cambi i valori della macchina.</p>
-    <div className="recipe-toolbar"><button type="button" disabled={phase !== "ready" || dirty} onClick={() => setBindingsOpen(true)}>Collegamenti PLC</button><small>{dirty ? "Salva prima lo schema per configurare i collegamenti." : "Configura la lettura dei valori PLC senza cambiare l’archivio operativo."}</small></div>
+    <div className="recipe-toolbar"><button type="button" disabled={phase !== "ready" || dirty} onClick={() => setBindingsOpen(true)}>Collegamenti PLC</button><button type="button" disabled={phase !== "ready" || dirty} onClick={() => setApplyOpen(true)}>Applicazione al PLC</button><small>{dirty ? "Salva prima lo schema per configurare l’interfaccia PLC." : "Lettura dei valori e applicazione con conferma PLC sono configurazioni separate."}</small></div>
     {error && <p className="alarm-error" role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {phase === "loading" ? <p role="status">Lettura della configurazione ricette…</p> : phase === "error" ? <><p>I file esistenti non vengono sostituiti con un catalogo vuoto.</p><button type="button" onClick={() => void load()}>Riprova lettura</button></> : <>
       {snapshot?.initialized && <p className="alarm-error" role="status">Archivio operativo già presente: configurazione in sola lettura. Serve una migrazione con backup per cambiare lo schema o i valori iniziali. Non eliminare l’archivio per sbloccare il salvataggio.</p>}
@@ -67,5 +69,5 @@ export function RecipesDialog({ onClose }: { onClose(): void }) {
       {!!issues.length && <div className="alarm-error" role="alert"><strong>Prima di salvare</strong><ul>{issues.slice(0, 12).map((issue, index) => <li key={index}>{issue}</li>)}</ul>{issues.length > 12 && <p>Altri {issues.length - 12} valori da controllare nelle ricette.</p>}</div>}
     </>}
     <footer>{confirmClose ? <><span>Hai una bozza non salvata. Vuoi scartarla?</span><button type="button" onClick={() => setConfirmClose(false)}>Continua modifica</button><button type="button" onClick={onClose}>Scarta e chiudi</button></> : <><span>Salva solo {"framecraft.recipes.json"}. Nessuna scrittura PLC. Il servizio la legge al prossimo avvio manuale. Archivio operativo e collegamenti PLC sono separati; nessuna migrazione automatica.</span><button type="button" disabled={phase !== "ready" || !dirty || !!issues.length || snapshot?.initialized} onClick={() => void save()}><Save size={16} />{phase === "saving" ? "Salvataggio…" : "Salva configurazione ricette"}</button></>}</footer>
-  </section>{bindingsOpen && <RecipePlcDialog onClose={() => setBindingsOpen(false)} />}</div>, document.body);
+  </section>{bindingsOpen && <RecipePlcDialog onClose={() => setBindingsOpen(false)} />}{applyOpen && <RecipeApplyDialog onClose={() => setApplyOpen(false)} />}</div>, document.body);
 }

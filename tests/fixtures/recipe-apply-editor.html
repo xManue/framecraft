@@ -1,0 +1,15 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Interfaccia ricette PLC QA</title></head><body><div id="root"></div><script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import '../../src/styles/global.css';
+import { RecipeApplyDialog } from '../../src/editor/RecipeApplyDialog';
+import { desktopBridge } from '../../src/filesystem/desktopBridge';
+import { useEditorStore } from '../../src/state/editorStore';
+import { applySnapshot } from './recipeApplyConfiguration';
+let snapshot = applySnapshot();
+window.recipeApplyQa = {reads: 0, saves: 0};
+desktopBridge.readRecipeApplyConfiguration = async () => { window.recipeApplyQa.reads++; return snapshot; };
+desktopBridge.saveRecipeApplyConfiguration = async (_root, expected, source) => { if (expected !== snapshot) throw new Error('Snapshot cambiato'); snapshot = {...snapshot, source}; window.recipeApplyQa.saves++; window.recipeApplyQa.saved = JSON.parse(source); return snapshot; };
+useEditorStore.setState({project: {root:'C:/synthetic-recipe-apply', name:'QA', framework:'vite', language:'typescript', packageManager:'npm', entryFiles:[],files:[],scripts:{},dependencies:[],hasNodeModules:true,missingDependencies:[]}});
+createRoot(document.getElementById('root')).render(React.createElement(RecipeApplyDialog, {onClose(){}}));
+</script></body></html>

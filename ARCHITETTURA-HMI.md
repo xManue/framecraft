@@ -712,7 +712,8 @@ tipi analogici 64 bit, generazione di prove di carico e collaudo sulla macchina.
 
 ## Decisione: applicazione ricette con protocollo Framecraft (23 ottobre 2026)
 
-Stato: backend opt-in e riferimento virtuale; GUI e collaudo industriale ancora aperti.
+Stato: backend opt-in, riferimento virtuale e GUI di configurazione; comando HMI e collaudo
+industriale ancora aperti.
 L’utente richiede conferma PLC obbligatoria e sceglie un’interfaccia Framecraft documentata,
 non l’adattamento implicito a un contratto di macchina sconosciuto. Il canale usa due tag
 String/WString sulla stessa connessione MQTT o OPC UA: richiesta e risposta. La preparazione
@@ -735,6 +736,24 @@ locale ostile. Il riferimento Node illustra il contratto, non è un programma SC
 Retention effettiva, blocco dei comandi concorrenti nel PLC, backup/restore, TLS e carico sul
 target restano gate di rilascio. Config vuota e moduli/documento entrano nei nuovi pannelli;
 i progetti esistenti richiedono aggiornamento esplicito, senza migrazioni o scritture automatiche.
+
+### Configurazione e recupero nel browser (23 ottobre 2026)
+
+La nuova finestra Applicazione al PLC è separata dalla lettura/cattura dei valori. Mantiene
+dimensioni stabili e corpo scrollabile, seleziona solo tag di testo dichiarati, verifica
+consensi di trasporto/account senza modificarli e richiede revisione e conferma. Il ponte
+nativo usa sessione/progetto e confronto su interfaccia, schemi, tag, connessioni e accessi.
+L’archivio operativo non viene toccato. Un registro trasferimenti già presente, anche parziale,
+blocca la modifica dei canali: non esiste ancora una migrazione guidata capace di verificare
+le richieste irrisolte e mantenere identità/contatori. Servizio fermo dichiarato dall’utente;
+questo non è un lock distribuito contro l’avvio simultaneo da un processo esterno.
+
+Prima del comando HMI restano client con journal dei soli metadati, revisione/conferma e
+recupero su risposta HTTP persa. Un caso da chiudere esplicitamente: POST mai registrata dal
+servizio ma potenzialmente ritardata. Un semplice GET «ID non trovato» non autorizza né replay
+né cancellazione del checkpoint nel browser. Serve un rifiuto persistente per quell’ID che
+impedisca anche un invio originale tardivo, senza inviare prepare/apply al PLC. Il backend
+attuale non espone ancora questa operazione; non presentarla come già implementata.
 
 ## Flusso di verifica
 

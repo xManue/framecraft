@@ -5822,6 +5822,45 @@ Verifiche del 5 ottobre 2026:
   Node è un modello del contratto, non SCL né certificazione industriale. AI e lavori trend/
   profili preesistenti restano esclusi. Roadmap Unified/Optix aggiornate a parziale, non completo.
 
+### 165. Ricette: configurazione grafica dell’interfaccia apply (2026-10-23)
+
+- **Editor senza AI**: Pannello → Ricette → Applicazione al PLC apre una finestra ampia stabile
+  con corpo scrollabile. Schema, ID canale esplicito, tag String/WString, buffer e tempi.
+  Riutilizzo di un canale solo su scelta esplicita; tag/tempi condivisi non vengono modificati
+  da un solo schema. Separazione in nuovo canale conserva gli altri profili. Nessun tag o valore
+  dimostrativo inventato. Guida inline con namespace e contratto consegnato nel Runtime.
+- **Prerequisiti visibili**: accesso server abilitato, tag dichiarati con accesso corretto,
+  stessa connessione attiva e tutti i consensi di scrittura. MQTT richiede richiesta testo,
+  risposta con qualità esplicita e budget del trasporto sufficiente; OPC UA richiede consenso
+  del nodo. La finestra non cambia permessi, connessioni o account per far passare la verifica.
+- **Salvataggio**: revisione, dichiarazione di servizio fermo/protocollo concordato e conferma
+  separata, solo framecraft.recipe-apply.json. Validazione nativa di struttura, ID, tag, tempi
+  e canali; sessione/progetto e CAS su cinque file. Conflitti o risposta del vecchio progetto
+  non cancellano né sostituiscono la bozza. Nessuna scrittura PLC o inizializzazione del ledger.
+- **Protezione esercizio**: archivio ricette operativo preservato; registro trasferimenti
+  esistente, anche incompleto, rende la configurazione in sola lettura. Migrazione guidata
+  ancora aperta; non eliminare file per sbloccare. L’operatore conferma servizio fermo, ma il
+  controllo non è un lock distribuito con avvii concorrenti da terminali esterni.
+- **Codec**: condivisione dello stesso canale indipendente dall’ordine delle chiavi JSON,
+  senza cambiare la serializzazione o la revisione dei profili esistenti. Test di regressione
+  per canali compatibili con proprietà in ordine inverso.
+- **Verifiche finali**: 53 casi unici mirati su sei file, tutti con esito finale verde;
+  quattro test Rust mirati verdi (validazione, sessione, CAS su cinque file e protezione
+  registro), non l’intera suite nativa. Typecheck e build editor riusciti sullo snapshot
+  dell’indice pubblico, senza export privati o WIP AI/trend; restano gli avvisi preesistenti
+  sugli import misti. Corretto il solo tipo di una fixture UA e un export mancante del mock;
+  ripetuti soltanto i test interessati, incluso il percorso menu e il ritorno del focus.
+  Il dialogo sottostante è inert/aria-hidden quando la finestra figlia è aperta.
+  Edge headless a 1440/1024/768/375 px: nessun overflow orizzontale, target almeno 44 px,
+  dimensioni stabili tra schemi, revisione/conferma prima dell’unico salvataggio esplicito,
+  zero chiamate PLC/richieste esterne/errori pagina. Esaminate anche le immagini desktop e
+  mobile. Ponte nativo del browser mockato; IPC/WebView2 reale e CPU restano da collaudare.
+  Dipendenze locali riusate via junction, non clean install. Nessun agente usato.
+- **Da proseguire**: comando operativo nel pannello con revisione/conferma e recupero HTTP
+  senza replay; il caso richiesta mai registrata richiede un rifiuto persistente dell’ID,
+  non la cancellazione arbitraria dell’avviso. Migrazione canali, CPU reale e prove industriali
+  restano aperte. AI e WIP trend/profili preesistenti non toccati.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

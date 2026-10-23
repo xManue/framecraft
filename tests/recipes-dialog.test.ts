@@ -2,12 +2,13 @@
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-vi.mock("../src/filesystem/desktopBridge", () => ({ desktopAvailable: true, desktopBridge: { readRecipeConfiguration: vi.fn(), saveRecipeConfiguration: vi.fn(), readRecipePlcConfiguration: vi.fn(), saveRecipePlcConfiguration: vi.fn() } }));
+vi.mock("../src/filesystem/desktopBridge", () => ({ desktopAvailable: true, desktopBridge: { readRecipeConfiguration: vi.fn(), saveRecipeConfiguration: vi.fn(), readRecipePlcConfiguration: vi.fn(), saveRecipePlcConfiguration: vi.fn(), readRecipeApplyConfiguration: vi.fn(), saveRecipeApplyConfiguration: vi.fn() } }));
 import { desktopBridge } from "../src/filesystem/desktopBridge";
 import { RecipesDialog } from "../src/editor/RecipesDialog";
 import { TopBar } from "../src/editor/TopBar";
 import { useEditorStore } from "../src/state/editorStore";
 import { type RecipeConfigurationSnapshot } from "../src/core/recipeConfiguration";
+import { applySnapshot } from "./fixtures/recipeApplyConfiguration";
 const project = { root: "C:/recipe-test", name: "Ricette", framework: "vite" as const, language: "typescript" as const, packageManager: "npm" as const, entryFiles: [], files: [], scripts: {}, dependencies: [], hasNodeModules: true, missingDependencies: [] };
 const initial = (): RecipeConfigurationSnapshot => ({ generation: 8, source: null, initialized: false });
 const seed = { version: 1, schemas: [{ id: "s", name: "Schema", fields: [{ id: "p", name: "Parametro", type: "number" }], records: [{ id: "r", name: "Formato", values: { p: 10 } }] }] };
@@ -21,6 +22,13 @@ async function createRecipe() { await click("Nuovo schema"); await click("Aggiun
 beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); useEditorStore.setState({ project, loading: false, dirty: false, previewRestarting: false, previewUrl: undefined, consoleEntries: [], history: [], future: [], multiSelection: [] }); vi.mocked(desktopBridge.readRecipeConfiguration).mockResolvedValue(initial()); vi.mocked(desktopBridge.saveRecipeConfiguration).mockImplementation(async (_root, expected, source) => ({ ...expected, source })); });
 afterEach(async () => { if (root) await act(async () => root.unmount()); host?.remove(); vi.restoreAllMocks(); });
 describe("Ricette nell’editor, non comandi PLC", () => {
+  it("apre l’interfaccia apply senza salvare il catalogo e restituisce il focus alla chiusura", async () => {
+    vi.mocked(desktopBridge.readRecipeConfiguration).mockResolvedValue({ ...initial(), source: JSON.stringify(seed), initialized: true });
+    vi.mocked(desktopBridge.readRecipeApplyConfiguration).mockResolvedValue(applySnapshot({ recipes: JSON.stringify(seed) }));
+    await mount(); const trigger = button("Applicazione al PLC"); trigger.focus(); await click("Applicazione al PLC");
+    const dialogs = document.querySelectorAll('[role="dialog"]'); expect(dialogs).toHaveLength(2); expect(dialogs[0].hasAttribute("inert")).toBe(true); expect(document.body.textContent).toContain("Applicazione ricette al PLC"); expect(desktopBridge.saveRecipeConfiguration).not.toHaveBeenCalled(); expect(desktopBridge.saveRecipeApplyConfiguration).not.toHaveBeenCalled();
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))); expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1); expect(close).not.toHaveBeenCalled(); expect(document.activeElement).toBe(trigger); expect(document.querySelector('[role="dialog"]')?.hasAttribute("inert")).toBe(false);
+  });
   it("apre i collegamenti anche con archivio operativo senza sbloccare o salvare il catalogo", async () => {
     vi.mocked(desktopBridge.readRecipeConfiguration).mockResolvedValue({ ...initial(), source: JSON.stringify(seed), initialized: true });
     vi.mocked(desktopBridge.readRecipePlcConfiguration).mockResolvedValue({ generation: 8, source: null, recipes: JSON.stringify(seed), plc: null });

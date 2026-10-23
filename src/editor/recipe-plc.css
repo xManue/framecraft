@@ -22,4 +22,19 @@
 .recipe-plc-error { color:#f0b5a9; margin-top:16px !important; }
 .recipe-plc-confirm { margin-top:20px; padding:16px; border:1px solid #9d8960; border-radius:3px; }
 .recipe-plc-confirm button + button { margin-left:12px; }
+.recipe-apply-dialog button { min-height:44px; transition:background-color 150ms,border-color 150ms; }
+.recipe-apply-dialog input:not([type=checkbox]),.recipe-apply-dialog select { min-height:44px; }
+.recipe-apply-dialog .recipe-plc-check { min-height:44px; }
+.recipe-apply-dialog button:hover:not(:disabled) { background:#3b3b3b; border-color:#aaa; }
+.recipe-apply-dialog h3 { font-size:14px; margin:0 0 12px; }
+.recipe-apply-dialog .recipe-apply-channel { margin:16px 0; }
+.recipe-apply-channel > label { margin-bottom:20px; }
+.recipe-apply-budgets,.recipe-apply-guide { margin:20px 0; }
+.recipe-apply-dialog summary { cursor:pointer; min-height:44px; padding:10px 0; }
+.recipe-apply-dialog code { overflow-wrap:anywhere; white-space:normal; }
+.recipe-apply-dialog ul { padding-left:22px; overflow-wrap:anywhere; }
+.recipe-apply-dialog li { margin-bottom:10px; }
+.recipe-apply-actions { display:flex; flex-wrap:wrap; gap:12px; }
+.recipe-apply-actions button + button { margin-left:0; }
+@media(prefers-reduced-motion:reduce) { .recipe-apply-dialog button { transition:none; } }
 @media(max-width:600px) { .recipe-plc-backdrop { padding:8px; }.recipe-plc-dialog { height:calc(100dvh - 16px); font-size:14px; }.recipe-plc-dialog header,.recipe-plc-dialog footer,.recipe-plc-body { padding:14px; }.recipe-plc-dialog footer { flex-wrap:wrap; }.recipe-plc-fields label,.recipe-plc-timing { grid-template-columns:1fr; gap:8px; }.recipe-plc-dialog input,.recipe-plc-dialog select { font-size:16px; }.recipe-plc-dialog button { min-height:44px; } }
