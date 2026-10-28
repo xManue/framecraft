@@ -5969,6 +5969,40 @@ Verifiche del 5 ottobre 2026:
   revisione dei mapping senza grant impliciti; non eseguire dal renderer lo script del
   progetto. Restano packaging Node/SDK, array/UDT, carico/CPU e collaudi industriali.
 
+### 169. OPC UA: bozza import e catalogo variabili protetto (2026-10-23; verifica 2026-10-28)
+
+- **Core, non selettore grafico completato**: preparazione pura di mapping da nodo locale
+  scalare, tipo/accesso noti, variabile esistente compatibile oppure nuova con nome e accesso
+  espliciti. Accumula più scelte; nessun socket, salvataggio o comando durante la preparazione.
+- **Vincoli**: Namespace URI/NodeId validati, niente conversioni/indirizzi/valori inventati,
+  array/custom/metodi/remoti esclusi; vecchi nomi validi preservati. Mapping nuovo o sostituito
+  con comandi disabilitati, staleness/estensioni precedenti conservate e conflitti di sorgente
+  non rimossi automaticamente. Massimo 5000 mapping/50000 variabili/4 MiB; niente suffissi
+  o troncamenti automatici. Endpoint/sicurezza/tempi devono coincidere col profilo salvato.
+- **Salvataggio desktop**: terzo file PLC opzionale e retrocompatibile. Solo aggiunte, senza
+  eliminare, riordinare o modificare definizioni/metadata PLC preesistenti. Sessione e CAS
+  sui tre cataloghi; verifica finale e rollback del solo contenuto scritto dall’app, anche
+  dopo errore tardivo o file diventato illeggibile. Modifiche esterne preservate e risultato
+  parziale dichiarato; sostituzioni singole atomiche, gruppo non crash-atomico né backup.
+- **Browse**: confronto opzionale del testo atteso prima di creare il client, oltre al CAS
+  finale. Certificato/chiave/PKI relativi risolti dalla cartella progetto, fallback PKI solo
+  per profilo None già consentito. Nessun downgrade, auto-trust o grant; nessuna nuova
+  dipendenza, API operatori HMI o esecuzione di script progetto dal renderer.
+- **Verifiche**: 123 casi JS mirati su cinque file e 22 test nativi di connection_config,
+  verdi. Incluse 12 combinazioni di guasto prima/dopo ogni sostituzione, conflitti esterni,
+  budget/metadati/compatibilità e sessioni di progetto obsolete. Server SDK loopback reale
+  con 232 nodi: trust esplicito, credenziali rifiutate/corrette, percorsi relativi sicuri/None,
+  PKI derivata, CAS prima della connessione e CLI generata. Zero letture di processo, comandi
+  o Method nell’esplorazione; sessioni chiuse. Typecheck e build editor riusciti sullo snapshot
+  dell’indice pubblico, senza export privati o WIP AI/trend; avvisi preesistenti sugli import
+  misti. Dipendenze locali via junction, non clean install. I processi della prima verifica
+  non erano più recuperabili dopo l’interruzione: ripetuti solo i cinque file interessati,
+  connection_config e build. Nessun agente o suite generale.
+- **Restano**: helper desktop fidato e relativo packaging Node/SDK, selettore grafico con
+  revisione/focus/annulla e refresh catalogo dopo salvataggio. Questa tranche non introduce
+  un nuovo comando browse Tauri non implementato. Restano recovery crash, array/UDT,
+  collaudo WebView2/CPU/rete aziendale e gate industriali/licenze; AI e WIP trend esclusi.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

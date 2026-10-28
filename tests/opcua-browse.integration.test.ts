@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile, symlink, rename, link } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, symlink, rename, link, stat } from "node:fs/promises";
 import { appendFileSync } from "node:fs";
 import path from "node:path";
 import { createServer } from "node:net";
@@ -34,7 +34,9 @@ it("browses real continuation pages and scalar/array/method metadata without rea
   }finally{await test.close();}
 },60000);
 it("keeps unknown trust rejected, then browses only after explicit mutual trust",async()=>{
-  const test=await fixture(true);try{const options={root:test.root,connectionId:test.config.id,query:{namespaceUri,nodeId:"s=Plant",limit:5}};await expect(browseConfiguredOpcUa(options)).rejects.toMatchObject({diagnostic:{code:"OPC_UA_CERTIFICATE"}});await test.trust();expect((await browseConfiguredOpcUa(options)).page.nodes).toHaveLength(5);expect(test.reads).toBe(0);expect(test.writes).toBe(0);expect(test.calls).toBe(0);
+  const test=await fixture(true);try{const options={root:test.root,connectionId:test.config.id,query:{namespaceUri,nodeId:"s=Plant",limit:5}};await expect(browseConfiguredOpcUa(options)).rejects.toMatchObject({diagnostic:{code:"OPC_UA_CERTIFICATE"}});await test.trust();
+    await test.save({certificateFile:path.relative(test.root,test.config.certificateFile!),privateKeyFile:path.relative(test.root,test.config.privateKeyFile!),pkiDirectory:path.relative(test.root,test.config.pkiDirectory!)});
+    expect((await browseConfiguredOpcUa(options)).page.nodes).toHaveLength(5);expect(test.reads).toBe(0);expect(test.writes).toBe(0);expect(test.calls).toBe(0);
     await test.save({usernameEnv:"SYNTHETIC_BROWSE_USER",passwordEnv:"SYNTHETIC_BROWSE_PASSWORD"});await expect(browseConfiguredOpcUa({...options,resolveSecret:(key:string)=>key.endsWith("USER")?"synthetic-user":"wrong-secret"})).rejects.toMatchObject({diagnostic:{code:"OPC_UA_AUTH"}});
     const resolveSecret=(key:string)=>key.endsWith("USER")?"synthetic-user":"synthetic-password";expect((await browseConfiguredOpcUa({...options,resolveSecret})).page.total).toBe(232);
     let changed=false;await expect(browseConfiguredOpcUa({...options,resolveSecret:(key:string)=>{if(!changed){changed=true;appendFileSync(path.join(test.root,"framecraft.connections.json"),"\n");}return resolveSecret(key);}})).rejects.toMatchObject({code:"OPC_UA_BROWSE_CHANGED"});expect(test.reads).toBe(0);expect(test.writes).toBe(0);
@@ -42,6 +44,19 @@ it("keeps unknown trust rejected, then browses only after explicit mutual trust"
 },60000);
 it("requires explicit active config, validates input and never starts the normal bindings",async()=>{
   const test=await fixture();try{await test.save({enabled:false});await expect(browseConfiguredOpcUa({root:test.root,connectionId:test.config.id})).rejects.toMatchObject({code:"OPC_UA_BROWSE_CONFIG"});await test.save();const abort=new AbortController();abort.abort();await expect(browseConfiguredOpcUa({root:test.root,connectionId:test.config.id,signal:abort.signal})).rejects.toMatchObject({code:"OPC_UA_BROWSE_CANCELLED"});const driver=createOpcUaPlcConnection({...test.config,bindings:[]},[]);try{await expect(driver.browse()).rejects.toMatchObject({code:"OPC_UA_BROWSE_OFFLINE"});}finally{await driver.stop();}await rename(path.join(test.root,"framecraft.connections.json"),path.join(test.root,"saved.json"));await link(path.join(test.root,"saved.json"),path.join(test.root,"framecraft.connections.json"));await expect(browseConfiguredOpcUa({root:test.root,connectionId:test.config.id})).rejects.toMatchObject({code:"OPC_UA_BROWSE_CONFIG"});expect(test.reads).toBe(0);expect(test.server.engine.currentSessionCount).toBe(0);
+  }finally{await test.close();}
+},60000);
+it("pins the exact configuration before connecting and resolves relative/default PKI from the project",async()=>{
+  const test=await fixture();try{
+    const file=path.join(test.root,"framecraft.connections.json"),options={root:test.root,connectionId:test.config.id,query:{namespaceUri,nodeId:"s=Plant",limit:5}};
+    const expectedConfiguration=await readFile(file,"utf8");await test.save({url:"opc.tcp://127.0.0.1:1"});
+    await expect(browseConfiguredOpcUa({...options,expectedConfiguration})).rejects.toMatchObject({code:"OPC_UA_BROWSE_CHANGED"});expect(test.server.engine.currentSessionCount).toBe(0);
+    await test.save({pkiDirectory:undefined});const withoutPki=await readFile(file,"utf8");
+    expect((await browseConfiguredOpcUa({...options,expectedConfiguration:withoutPki})).page.nodes).toHaveLength(5);
+    await test.save({pkiDirectory:"relative/client-pki"});const relative=await readFile(file,"utf8");
+    expect((await browseConfiguredOpcUa({...options,expectedConfiguration:relative})).page.nodes).toHaveLength(5);
+    await expect(stat(path.join(test.root,"relative/client-pki"))).resolves.toBeDefined();
+    expect(test.reads).toBe(0);expect(test.writes).toBe(0);expect(test.calls).toBe(0);await vi.waitFor(()=>expect(test.server.engine.currentSessionCount).toBe(0));
   }finally{await test.close();}
 },60000);
 it("emits a working explicit CLI with portable mapping data and no secrets or process values",async()=>{

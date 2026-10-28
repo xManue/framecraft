@@ -667,6 +667,15 @@ alternative e non abilita il profilo. La normale acquisizione del gateway non vi
 dal comando. L’inizializzazione PKI può creare file locali o registrare certificati rifiutati,
 come il driver esistente; non è un’operazione senza effetti sul filesystem.
 
+I percorsi relativi di certificato, chiave e PKI sono risolti rispetto alla cartella del
+pannello, non rispetto alla directory corrente del terminale/helper. Solo un profilo `None`
+già esplicitamente consentito può omettere la PKI: in tal caso viene usata
+`.framecraft-runtime/opcua/<hash ID connessione>`. Per i profili sicuri tutti i percorsi e
+l’Application URI restano obbligatori; nessun certificato sconosciuto viene accettato.
+L’API interna `browseConfiguredOpcUa` può ricevere `expectedConfiguration`: il testo esatto
+del catalogo deve coincidere **prima** di creare il client, oltre al controllo finale già
+previsto. Un cambio di endpoint o anche solo del file richiede una nuova scelta esplicita.
+
 Budget: 5000 riferimenti / 4 MiB per cartella, 120 richieste e 60 secondi nella navigazione,
 oltre ai timeout per operazione della connessione/chiusura. Nessun risultato troncato o
 retry del browse. Continuazioni rilasciate a errore/annullamento, incluse risposte tardive;
@@ -679,6 +688,23 @@ protetto. Il futuro ponte desktop deve usare un helper fidato dell’app, contro
 progetto e CAS, e proporre tag/mapping con revisione e comandi inizialmente disabilitati.
 Non deve eseguire alla cieca lo script modificabile presente nel progetto. Servono ancora
 selettore/import, packaging fidato Node/SDK, UDT/array e collaudo su CPU/rete aziendale.
+
+La base dell’importazione offline è ora implementata nel core editor (`opcUaBrowser.ts`),
+**non ancora esposta nel selettore grafico**. Un nodo scalare con tipo e accesso noti può
+essere associato a una variabile compatibile, oppure creare una variabile con nome/tipo/
+accesso espliciti. URI e NodeId vengono dai metadati; non sono inventati indirizzi PLC,
+valori iniziali o conversioni. Un mapping nuovo o sostituito parte con `writeEnabled:false`,
+anche se connessione e tag ammettono comandi. Sorgenti attive in conflitto richiedono una
+correzione esplicita; nessuna rimozione automatica.
+
+La bozza accumula più scelte prima del salvataggio. Il ponte desktop può salvare insieme
+connessioni, Runtime e l’aggiunta di variabili: i vecchi oggetti PLC e i metadati del catalogo
+devono restare semanticamente invariati. Limiti: 5000 mapping, 50000 variabili e 4 MiB per
+file. La sessione e i contenuti attesi di tutti e tre i file sono ricontrollati; errori ordinari
+tentano il ripristino solo dei contenuti esatti scritti dall’app, senza sovrascrivere modifiche
+esterne. Esito parziale/incerto richiede verifica manuale prima di avviare il servizio.
+Le singole sostituzioni sono atomiche, **il gruppo di tre file non è crash-atomico**: questo
+non è un sistema di backup/recovery né una configurazione dinamica del gateway in esecuzione.
 
 Fonti: [servizi Browse e continuazioni OPC Foundation](https://reference.opcfoundation.org/specs/OPC-10000-4/5)
 e [API ClientSession Node OPC UA](https://node-opcua.github.io/api_doc/latest/interfaces/node-opcua.ClientSession.html).

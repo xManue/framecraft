@@ -17,15 +17,19 @@ async function configuration(root) {
 }
 export async function browseConfiguredOpcUa(options) {
   if (!options || typeof options.root !== "string" || !path.isAbsolute(options.root) || typeof options.connectionId !== "string" || !options.connectionId.trim() || options.connectionId.length > 200 || /[\u0000-\u001f\u007f]/.test(options.connectionId)) fail();
+  if (options.expectedConfiguration !== undefined && (typeof options.expectedConfiguration !== "string" || Buffer.byteLength(options.expectedConfiguration) > 4 * 1024 * 1024)) fail();
   const query = parseOpcUaBrowseQuery(options.query); if (options.signal?.aborted) throw new OpcUaBrowseError("OPC_UA_BROWSE_CANCELLED");
   let root; try { root = await realpath(options.root); } catch { fail(); }
   const source = await configuration(root); let catalog;
+  if (options.expectedConfiguration !== undefined && source !== options.expectedConfiguration) throw new OpcUaBrowseError("OPC_UA_BROWSE_CHANGED");
   try { catalog = JSON.parse(source); } catch { fail(); }
   if (catalog?.version !== 1 || !Array.isArray(catalog.connections) || catalog.connections.length > 1000) fail();
   const profiles = catalog.connections.filter(profile => profile?.id === options.connectionId);
   if (profiles.length !== 1 || profiles[0].protocol !== "opcua" || profiles[0].enabled !== true) fail();
   const config = { ...profiles[0], bindings: [], allowWrites: false };
   try { validateOpcUaConnection(config, []); } catch { fail(); }
+  for (const key of ["certificateFile", "privateKeyFile", "pkiDirectory"]) if (config[key]) config[key] = path.resolve(root, config[key]);
+  if (!config.pkiDirectory) config.pkiDirectory = path.join(root, ".framecraft-runtime", "opcua", createHash("sha256").update(config.id).digest("hex").slice(0, 24));
   const connection = createOpcUaPlcConnection(config, [], { resolveSecret: options.resolveSecret });
   const abort = () => { void connection.stop().catch(() => {}); };
   options.signal?.addEventListener("abort", abort, { once: true });

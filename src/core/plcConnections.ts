@@ -12,7 +12,7 @@ export interface RuntimeConnectionConfiguration {
   version: 1;
   gateway: { enabled: boolean; path: string; pollMs: number; timeoutMs?: number };
 }
-export interface ConnectionEditorModel { catalog: ConnectionCatalog; runtime: RuntimeConnectionConfiguration; variables: PlcVariableDefinition[] }
+export interface ConnectionEditorModel { catalog: ConnectionCatalog; runtime: RuntimeConnectionConfiguration; variables: PlcVariableDefinition[]; plcSource?: string }
 export interface ConnectionIssue { path: string; message: string }
 
 export function defaultConnectionCatalog(): ConnectionCatalog {
@@ -98,7 +98,11 @@ export function connectionConfigurationIssues(model: ConnectionEditorModel): Con
   if (client.enabled && (!catalog.gateway.enabled || !catalog.connections.some((c) => c.enabled && c.bindings.length))) issues.push({ path: "runtime.gateway.enabled", message: "Il client richiede il servizio abilitato e almeno una connessione attiva con tag associati." });
   return issues;
 }
-export function serializeConnectionConfiguration(model: ConnectionEditorModel): { connections: string; runtime: string } {
+export function serializeConnectionConfiguration(model: ConnectionEditorModel): { connections: string; runtime: string; plc?: string } {
   const issues = connectionConfigurationIssues(model); if (issues.length) throw new Error(issues[0].message);
-  return { connections: JSON.stringify(normalizedCatalog(model), null, 2) + "\n", runtime: JSON.stringify(model.runtime, null, 2) + "\n" };
+  if (model.plcSource !== undefined) {
+    const plc = parseObject(model.plcSource, "framecraft.plc.json");
+    if (JSON.stringify(plc.variables) !== JSON.stringify(model.variables)) throw new Error("La bozza del catalogo PLC non corrisponde alle variabili della configurazione. Ricarica prima di salvare.");
+  }
+  return { connections: JSON.stringify(normalizedCatalog(model), null, 2) + "\n", runtime: JSON.stringify(model.runtime, null, 2) + "\n", ...(model.plcSource !== undefined ? { plc: model.plcSource } : {}) };
 }

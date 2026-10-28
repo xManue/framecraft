@@ -68,7 +68,7 @@ export const desktopBridge = {
     requireDesktop();
     return invoke("read_connection_configuration", { root });
   },
-  async saveConnectionConfiguration(root: string, expected: ConnectionConfigurationSnapshot, next: { connections: string; runtime: string }): Promise<ConnectionConfigurationSnapshot> {
+  async saveConnectionConfiguration(root: string, expected: ConnectionConfigurationSnapshot, next: { connections: string; runtime: string; plc?: string }): Promise<ConnectionConfigurationSnapshot> {
     requireDesktop();
     return invoke("save_connection_configuration", { root, expected, next });
   },

@@ -29,6 +29,7 @@ pub struct ConfigurationSnapshot {
 pub struct ConfigurationUpdate {
     pub connections: String,
     pub runtime: String,
+    pub plc: Option<String>,
 }
 
 pub(super) fn target(root: &Path, name: &str) -> Result<PathBuf, String> {
@@ -99,29 +100,73 @@ pub(super) fn persist(file: NamedTempFile, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// Each replacement is atomic; ordinary I/O errors roll back. Not a crash-atomic two-file transaction.
-fn save_with(root: &Path, expected: &ConfigurationFiles, next: &ConfigurationUpdate, mut commit: impl FnMut(NamedTempFile, &Path) -> Result<(), String>) -> Result<ConfigurationFiles, String> {
-    let connections = stage(root, CONNECTIONS, &next.connections)?;
-    let runtime = stage(root, RUNTIME, &next.runtime)?;
-    if &read_files(root)? != expected { return Err("I cataloghi sono cambiati sul disco. Ricarica prima di salvare; nessun file è stato sovrascritto.".into()); }
-    let connections_path = target(root, CONNECTIONS)?;
-    commit(connections, &connections_path)?;
-    let second = read_one(root, RUNTIME).and_then(|actual| {
-        if actual != expected.runtime { return Err("Il catalogo Runtime è cambiato durante il salvataggio.".into()); }
-        commit(runtime, &target(root, RUNTIME)?)
-    });
-    if let Err(error) = second {
-        if read_one(root, CONNECTIONS)? != Some(next.connections.clone()) {
-            return Err("Salvataggio parziale: il primo catalogo è cambiato durante il ripristino. Verifica entrambi i JSON prima di avviare il servizio.".into());
-        }
-        let rollback = match &expected.connections {
-            Some(source) => crate::write_atomic(&connections_path, source),
-            None => fs::remove_file(&connections_path).map_err(|_| "Ripristino fallito.".into()),
-        };
-        if rollback.is_err() { return Err("Salvataggio parziale: ripristino non riuscito. Verifica entrambi i JSON prima di avviare il servizio.".into()); }
-        return Err(format!("{error} La configurazione precedente è stata ripristinata."));
+fn validate_plc_append(previous: Option<&str>, source: &str) -> Result<(), String> {
+    use serde_json::Value;
+    if source.len() > LIMIT { return Err("framecraft.plc.json: catalogo troppo grande (massimo 4 MiB).".into()); }
+    let old: Value = serde_json::from_str(previous.unwrap_or(r#"{"version":1,"variables":[]}"#)).map_err(|_| "Catalogo PLC precedente non valido.")?;
+    let next: Value = serde_json::from_str(source).map_err(|_| "Nuovo catalogo PLC non valido.")?;
+    let before = old["variables"].as_array().ok_or("Catalogo PLC precedente non valido.")?;
+    let after = next["variables"].as_array().ok_or("Nuovo catalogo PLC non valido.")?;
+    let mut old_meta = old.as_object().ok_or("Catalogo PLC non valido.")?.clone(); old_meta.remove("variables");
+    let mut new_meta = next.as_object().ok_or("Catalogo PLC non valido.")?.clone(); new_meta.remove("variables");
+    if next["version"] != 1 || old_meta != new_meta || after.len() <= before.len() || after.len() > 50000 || after[..before.len()] != before[..] { return Err("L’importazione può solo aggiungere variabili: definizioni e metadati esistenti devono restare invariati.".into()); }
+    let mut names = std::collections::HashSet::new();
+    for item in before { let name = item["name"].as_str().ok_or("Nome PLC precedente non valido.")?; if !names.insert(name) { return Err("Nomi PLC duplicati.".into()); } }
+    for item in &after[before.len()..] {
+        let object = item.as_object().ok_or("Nuova variabile non valida.")?;
+        let name = item["name"].as_str().unwrap_or(""); let bytes = name.as_bytes();
+        let valid_name = !bytes.is_empty() && bytes.len() <= 200 && name.trim() == name && (bytes[0].is_ascii_alphabetic() || bytes[0] == b'_') && bytes.iter().all(|b| b.is_ascii_alphanumeric() || b"_.-&{}[]()/: ".contains(b));
+        if !valid_name || !names.insert(name) || !object.keys().all(|key| ["name","dataType","access","address","description","connection"].contains(&key.as_str())) || !["Bool","SInt","USInt","Int","UInt","DInt","UDInt","Real","LReal","String","WString"].contains(&item["dataType"].as_str().unwrap_or("")) || !["read","write","read-write"].contains(&item["access"].as_str().unwrap_or("")) || item["address"].as_str() != Some("") || !item["description"].as_str().is_some_and(|text| text.len()<=1000) || item.get("connection").is_some_and(|value| !value.as_str().is_some_and(|text| !text.trim().is_empty() && text.len()<=200 && !text.chars().any(char::is_control))) { return Err("Nuova variabile PLC non valida o duplicata. Nessun valore iniziale o indirizzo è inventato.".into()); }
     }
-    Ok(ConfigurationFiles { connections: Some(next.connections.clone()), runtime: Some(next.runtime.clone()), plc: expected.plc.clone() })
+    Ok(())
+}
+// Each replacement is atomic; ordinary errors roll back, not a crash-atomic group transaction.
+fn save_with(root: &Path, expected: &ConfigurationFiles, next: &ConfigurationUpdate, mut commit: impl FnMut(NamedTempFile, &Path) -> Result<(), String>) -> Result<ConfigurationFiles, String> {
+    if let Some(source) = &next.plc { validate_plc_append(expected.plc.as_deref(), source)?; }
+    let mut entries = vec![(CONNECTIONS,&next.connections,&expected.connections),(RUNTIME,&next.runtime,&expected.runtime)];
+    if let Some(source) = &next.plc { entries.push((PLC,source,&expected.plc)); }
+    let mut staged = Vec::new(); for (name,source,_) in &entries { staged.push(stage(root,name,source)?); }
+    if &read_files(root)? != expected { return Err("I cataloghi sono cambiati sul disco. Ricarica prima di salvare; nessun file è stato sovrascritto.".into()); }
+    let mut intermediate = expected.clone();
+    for (index, ((name,source,_), file)) in entries.iter().zip(staged).enumerate() {
+        let mut attempted = false;
+        let result = (|| {
+            if read_files(root)? != intermediate { return Err("Un catalogo è cambiato durante il salvataggio.".into()); }
+            let path = target(root,name)?;
+            attempted = true;
+            commit(file,&path)
+        })();
+        if let Err(error) = result {
+            restore_configuration(root, &entries[..index + usize::from(attempted)]);
+            return Err(save_failure(root,expected,&error));
+        }
+        match *name { CONNECTIONS=>intermediate.connections=Some((*source).clone()),RUNTIME=>intermediate.runtime=Some((*source).clone()),_=>intermediate.plc=Some((*source).clone()) }
+    }
+    if read_files(root).ok().as_ref() != Some(&intermediate) {
+        restore_configuration(root,&entries);
+        return Err(save_failure(root,expected,"I cataloghi sono cambiati prima della verifica finale."));
+    }
+    Ok(intermediate)
+}
+
+fn restore_configuration(root: &Path, entries: &[(&str, &String, &Option<String>)]) {
+    for (name,written,original) in entries.iter().rev() {
+        // Restore only our exact content, including a commit that wrote then returned an error.
+        if read_one(root,name).ok().as_ref() != Some(&Some((*written).clone())) { continue; }
+        let restored = (|| {
+            let path = target(root,name)?;
+            match original {
+                Some(old) => persist(stage(root,name,old)?,&path),
+                None => fs::remove_file(path).map_err(|_| "Ripristino fallito.".into()),
+            }
+        })();
+        let _: Result<(),String> = restored;
+    }
+}
+
+fn save_failure(root: &Path, expected: &ConfigurationFiles, error: &str) -> String {
+    if read_files(root).ok().as_ref() == Some(expected) { format!("{error} La configurazione precedente è stata ripristinata.") }
+    else { "Salvataggio parziale o modifica esterna: non sovrascrivere i cataloghi. Verifica connessioni, Runtime e variabili PLC prima di avviare il servizio.".into() }
 }
 
 #[tauri::command]
@@ -210,7 +255,7 @@ mod tests {
         assert_eq!(read_one(&root, "framecraft.alarms.json").unwrap().as_deref(), Some(source));
     }
     fn update() -> ConfigurationUpdate {
-        ConfigurationUpdate { connections: "{\"version\":1,\"connections\":[]}".into(), runtime: "{\"version\":1,\"gateway\":{\"enabled\":false}}".into() }
+        ConfigurationUpdate { connections: "{\"version\":1,\"connections\":[]}".into(), runtime: "{\"version\":1,\"gateway\":{\"enabled\":false}}".into(), plc: None }
     }
     #[test]
     fn missing_files_are_distinct_from_errors_and_creation_does_not_touch_plc() {
@@ -302,6 +347,101 @@ mod tests {
         let result = save_with(&root, &expected, &update(), |file, path| {
             persist(file, path)?; fs::create_dir(root.join(RUNTIME)).unwrap(); Ok(())
         });
-        assert!(result.unwrap_err().contains("ripristinata")); assert!(!root.join(CONNECTIONS).exists()); assert!(root.join(RUNTIME).is_dir());
+        assert!(result.unwrap_err().contains("parziale")); assert!(!root.join(CONNECTIONS).exists()); assert!(root.join(RUNTIME).is_dir());
+    }
+    fn appended_catalog() -> String {
+        r#"{"version":1,"variables":[{"name":"New.Speed","dataType":"Real","access":"read","address":"","description":"","connection":"opcua-1"}]}"#.into()
+    }
+    #[test]
+    fn optional_plc_update_is_backward_compatible_and_can_create_all_three_catalogs() {
+        let legacy: ConfigurationUpdate = serde_json::from_str(r#"{"connections":"{}","runtime":"{}"}"#).unwrap(); assert!(legacy.plc.is_none());
+        let dir = tempfile::tempdir().unwrap(); let root = fs::canonicalize(dir.path()).unwrap();
+        let expected = read_files(&root).unwrap(); let mut next = update(); next.plc = Some(appended_catalog());
+        let result = save_with(&root,&expected,&next,persist).unwrap();
+        assert_eq!(read_files(&root).unwrap(),result); assert_eq!(result.plc,next.plc);
+    }
+    #[test]
+    fn imported_variables_preserve_old_catalog_metadata_and_definitions_exactly() {
+        let dir = tempfile::tempdir().unwrap(); let root = fs::canonicalize(dir.path()).unwrap();
+        let original = r#"{"version":1,"custom":{"keep":true},"variables":[{"name":"Velocità","dataType":"Real","access":"read","address":"%OLD","vendor":{"nested":[1,2]}}]}"#;
+        fs::write(root.join(PLC),original).unwrap(); let expected = read_files(&root).unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(original).unwrap();
+        value["variables"].as_array_mut().unwrap().push(serde_json::from_str::<serde_json::Value>(&appended_catalog()).unwrap()["variables"][0].clone());
+        let mut next = update(); next.plc = Some(serde_json::to_string_pretty(&value).unwrap());
+        save_with(&root,&expected,&next,persist).unwrap();
+        let saved: serde_json::Value = serde_json::from_str(&read_one(&root,PLC).unwrap().unwrap()).unwrap(); assert_eq!(saved,value);
+        let old: serde_json::Value = serde_json::from_str(original).unwrap(); assert_eq!(old["variables"][0],saved["variables"][0]);
+    }
+    #[test]
+    fn imported_variables_cannot_edit_delete_or_reorder_old_definitions_or_root_metadata() {
+        use serde_json::{json,Value};
+        let original = json!({"version":1,"custom":{"keep":true},"variables":[{"name":"A","dataType":"Real","extra":7},{"name":"B","access":"read"}]}).to_string();
+        let mut valid: Value = serde_json::from_str(&original).unwrap();
+        valid["variables"].as_array_mut().unwrap().push(serde_json::from_str::<Value>(&appended_catalog()).unwrap()["variables"][0].clone());
+        assert!(validate_plc_append(Some(&original),&valid.to_string()).is_ok());
+        for index in 0..6 {
+            let mut changed=valid.clone();
+            match index {
+                0=>changed["custom"]=json!({"keep":false}),
+                1=>changed["variables"][0]["name"]=json!("Changed"),
+                2=>{changed["variables"][0].as_object_mut().unwrap().remove("extra");},
+                3=>{changed["variables"].as_array_mut().unwrap().remove(0);},
+                4=>changed["variables"].as_array_mut().unwrap().swap(0,1),
+                _=>changed["version"]=json!(2),
+            }
+            assert!(validate_plc_append(Some(&original),&changed.to_string()).is_err(),"mutation {index}");
+        }
+        assert!(validate_plc_append(Some(&original),&original).is_err());
+    }
+    #[test]
+    fn invalid_new_variable_fields_are_rejected_before_any_catalog_is_written() {
+        use serde_json::{json,Value};
+        let invalid = [("name",json!("1Wrong")),("name",json!("bad\nname")),("name",json!("Velocità")),("name",json!("x".repeat(201))),
+            ("dataType",json!("Int64")),("access",json!("admin")),("address",json!("%DB10")),("initialValue",json!(99)),("description",json!(null)),("connection",json!("bad\nprofile"))];
+        for (key,value) in invalid {
+            let dir=tempfile::tempdir().unwrap(); let root=fs::canonicalize(dir.path()).unwrap(); let expected=read_files(&root).unwrap();
+            let mut plc:Value=serde_json::from_str(&appended_catalog()).unwrap(); plc["variables"][0][key]=value;
+            let mut next=update(); next.plc=Some(plc.to_string()); assert!(save_with(&root,&expected,&next,persist).is_err(),"field {key}");
+            assert_eq!(read_files(&root).unwrap(),expected);
+        }
+    }
+    #[test]
+    fn duplicate_names_and_variable_budget_are_rejected() {
+        let mut source:serde_json::Value=serde_json::from_str(&appended_catalog()).unwrap(); let variable=source["variables"][0].clone();
+        source["variables"].as_array_mut().unwrap().push(variable.clone()); assert!(validate_plc_append(None,&source.to_string()).is_err());
+        source["variables"]=serde_json::Value::Array(vec![variable;50001]); assert!(validate_plc_append(None,&source.to_string()).is_err());
+        assert!(validate_plc_append(None,&"x".repeat(LIMIT+1)).unwrap_err().contains("4 MiB"));
+    }
+    #[test]
+    fn three_catalog_writes_roll_back_at_each_failure_position_including_a_late_error() {
+        for existing in [false,true] { for failure in 1..=3 { for fail_after_write in [false,true] {
+            let dir=tempfile::tempdir().unwrap(); let root=fs::canonicalize(dir.path()).unwrap();
+            if existing { for (name,source) in [(CONNECTIONS,r#"{"version":1,"connections":[],"custom":true}"#),(RUNTIME,r#"{"version":1,"gateway":{},"custom":true}"#),(PLC,r#"{"version":1,"variables":[]}"#)] {fs::write(root.join(name),source).unwrap();} }
+            let expected=read_files(&root).unwrap(); let mut next=update(); next.plc=Some(appended_catalog()); let mut calls=0;
+            let result=save_with(&root,&expected,&next,|file,path| {
+                calls+=1; if calls==failure&&!fail_after_write { return Err("Test I/O failure".into()); }
+                persist(file,path)?; if calls==failure {Err("Test I/O late failure".into())}else{Ok(())}
+            });
+            assert!(result.unwrap_err().contains("ripristinata"),"existing {existing}, failure {failure}, late {fail_after_write}");
+            assert_eq!(read_files(&root).unwrap(),expected);
+        } } }
+    }
+    #[test]
+    fn third_target_read_error_still_restores_the_two_written_catalogs() {
+        let dir=tempfile::tempdir().unwrap(); let root=fs::canonicalize(dir.path()).unwrap(); let expected=read_files(&root).unwrap(); let mut next=update(); next.plc=Some(appended_catalog()); let mut calls=0;
+        let result=save_with(&root,&expected,&next,|file,path| {calls+=1;persist(file,path)?;if calls==2 {fs::create_dir(root.join(PLC)).unwrap();}Ok(())});
+        assert!(result.unwrap_err().contains("parziale")); assert!(!root.join(CONNECTIONS).exists()); assert!(!root.join(RUNTIME).exists()); assert!(root.join(PLC).is_dir());
+    }
+    #[test]
+    fn final_verification_preserves_external_edits_and_restores_only_our_content() {
+        let dir=tempfile::tempdir().unwrap(); let root=fs::canonicalize(dir.path()).unwrap(); let expected=read_files(&root).unwrap(); let mut next=update(); next.plc=Some(appended_catalog()); let mut calls=0;
+        let result=save_with(&root,&expected,&next,|file,path| {calls+=1;persist(file,path)?;if calls==3 {fs::write(root.join(PLC),"external edit").unwrap();}Ok(())});
+        assert!(result.unwrap_err().contains("parziale")); assert!(!root.join(CONNECTIONS).exists()); assert!(!root.join(RUNTIME).exists()); assert_eq!(fs::read_to_string(root.join(PLC)).unwrap(),"external edit");
+    }
+    #[test]
+    fn a_concurrent_catalog_edit_between_writes_is_not_clobbered() {
+        let dir=tempfile::tempdir().unwrap(); let root=fs::canonicalize(dir.path()).unwrap(); let expected=read_files(&root).unwrap(); let mut next=update(); next.plc=Some(appended_catalog()); let mut calls=0;
+        let result=save_with(&root,&expected,&next,|file,path| {calls+=1;persist(file,path)?;fs::write(root.join(PLC),"external edit").unwrap();Ok(())});
+        assert!(result.unwrap_err().contains("parziale")); assert_eq!(calls,1); assert!(!root.join(CONNECTIONS).exists()); assert!(!root.join(RUNTIME).exists()); assert_eq!(fs::read_to_string(root.join(PLC)).unwrap(),"external edit");
     }
 }
