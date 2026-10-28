@@ -89,6 +89,55 @@ invalida i pulsanti selezionati prima del cambiamento. Il modello deriva da
 [stati Unified](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/basics-rt-unified/alarm-states-rt-unified)
 e [presa visione](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/basics-rt-unified/acknowledgment-model-rt-unified).
 
+### Colonne della lista allarmi
+
+Nell'editor seleziona **Lista allarmi → PLC e dati → Colonne allarmi**. Scegli la colonna,
+imposta visibilità, titolo, larghezza, posizione e orario locale/UTC, poi **Applica colonne
+al progetto**. I campi restano una bozza fino ad Applica: puoi correggerli senza alterare
+la configurazione valida. Le modifiche appartengono all'elemento nella pagina e usano
+Annulla/Ripristina dell'editor. Controlla il risultato con **Usa il pannello**.
+
+Campi disponibili: nome, stato, messaggio, zona, ora di attivazione/evento, ID, classe,
+priorità, qualità, presa visione, conferma del rientro, ultimo rientro e occorrenza.
+Nome e stato restano sempre visibili, anche dopo un riordino. La posizione è quella finale
+nell'elenco completo, comprese le colonne nascoste. Titoli di 1–60 caratteri, senza controlli
+o direzioni di testo nascoste; larghezze intere 64–1200 px. Su desktop la tabella scorre
+orizzontalmente quando serve; sotto 600 px di larghezza del controllo diventa una serie
+di schede con le stesse etichette, senza imporre le larghezze desktop. Le ore UTC includono
+esplicitamente UTC; quelle locali seguono il dispositivo.
+
+Nel pannello **Colonne e orario → Applica visualizzazione** permette gli stessi adattamenti
+per la sola apertura corrente del controllo. **Ripristina colonne del progetto** torna alle
+impostazioni della pagina. Cambio effettivo di utente, ricaricamento o aggiornamento della
+configurazione nel progetto rimuovono gli adattamenti temporanei; rinnovare la stessa sessione
+non li azzera. Le viste salvate conservano i filtri, non le colonne. Per una configurazione
+permanente usa l'editor. Nessun comando PLC, modifica degli allarmi o cambio di permessi.
+
+Il riordino non cambia l'ID usato per selezione e comandi. Durante revisione/esecuzione di
+un'operazione, i campi delle colonne sono bloccati. Se la configurazione della pagina cambia
+durante un invio multiplo, i prossimi invii vengono fermati e gli esiti già ricevuti rimangono
+nel riepilogo; l'invio in corso può completarsi. La diagnostica di un segnale/soglia resta
+apribile nello stato anche se nascondi la colonna del messaggio.
+
+Nel vecchio storico di sessione le colonne usano solo i dati dell'evento registrato. Qualità,
+presa visione/conferma come stato corrente e ultimo rientro non sono ricostruiti dai singoli
+eventi: la cella indica che il dato non è registrato. La configurazione riguarda Lista allarmi;
+storico su disco e statistiche hanno i controlli descritti nelle loro sezioni.
+
+Il contratto è `data-hmi-alarm-columns`, JSON versione 1 con `timeZone` e tredici elementi
+unici in `columns`, ciascuno con `key`, `label`, `width`, `visible`. Attributo assente = colonne
+iniziali. Dati non validi/versioni ignote restano conservati: il pannello segnala il problema,
+mostra le colonne iniziali e blocca i comandi. Nell'Inspector una configurazione calcolata
+nel codice o corrotta richiede una sostituzione esplicita per essere modificata graficamente.
+
+Incluso nei nuovi Runtime, nella prova locale e nei dettagli dei riepiloghi. I controlli
+dei dettagli partono con le colonne iniziali; l'eventuale personalizzazione è temporanea.
+I pannelli esistenti richiedono aggiornamento esplicito del Runtime. Riferimenti funzionali:
+[colonne del controllo Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/overview-of-screen-objects-rt-unified/controls-rt-unified/alarm-control-rt-unified)
+e [creazione delle colonne Alarm grid Optix 1.3](https://www.rockwellautomation.com/en-mde/docs/factorytalk-optix/1-3-0/contents-ditamap/creating-projects/alarms/alarm-grid/create-an-alarm-grid.html).
+Restano query/espressioni vendor, colonne immagine/editabili, altre proprietà evento,
+profili persistenti delle colonne, fusi IANA del controllo allarmi e collaudo target.
+
 ### Filtri, ordinamento e viste salvate
 
 Nella lista **Allarmi operativi → Filtra allarmi** puoi combinare ricerca per nome/messaggio/ID,

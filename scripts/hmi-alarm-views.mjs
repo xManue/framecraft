@@ -2,6 +2,45 @@ export function createAlarmViewsLibrary() {
 const activeAlarmViewDefaults = Object.freeze({ search: "", area: "", alarmClass: "", state: "all", quality: "all", minimumPriority: "", order: "priority-desc" });
 const keys = (value, names) => value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === names.length && names.every(name => Object.hasOwn(value, name));
 const safeText = (value, maximum, empty = true) => typeof value === "string" && value.length <= maximum && (empty || value.trim() === value && !!value) && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value);
+const alarmColumnsAttribute = "data-hmi-alarm-columns";
+const alarmColumnDefinitions = Object.freeze([
+    ["name", "Allarme", 180, true], ["state", "Stato", 150, true], ["message", "Messaggio", 400, true], ["area", "Zona", 140, true], ["time", "Ora", 180, true],
+    ["id", "ID", 120, false], ["alarmClass", "Classe", 160, false], ["priority", "Priorità", 90, false], ["quality", "Qualità", 160, false], ["acknowledged", "Presa visione", 170, false], ["confirmed", "Conferma rientro", 180, false], ["clearedAt", "Ultimo rientro", 180, false], ["occurrence", "Occorrenza", 220, false],
+].map(([key, label, width, visible]) => Object.freeze({ key, label, width, visible })));
+function defaultAlarmColumns() { return { version: 1, timeZone: "local", columns: alarmColumnDefinitions.map(item => ({ ...item })) }; }
+function parseAlarmColumns(input) {
+    if (input === null || input === undefined) return defaultAlarmColumns();
+    const invalid = () => { throw new Error("Colonne allarmi non valide. Servono nome e stato visibili, campi unici, titoli di 1–60 caratteri, larghezze intere 64–1200 px e orario locale o UTC. Correggi Colonne allarmi nell’editor; la configurazione esistente è conservata."); };
+    let value = input;
+    try { if (typeof input === "string") { if (input.length > 12000) invalid(); value = JSON.parse(input); } } catch { invalid(); }
+    if (!keys(value, ["version", "timeZone", "columns"]) || value.version !== 1 || !["local", "UTC"].includes(value.timeZone) || !Array.isArray(value.columns) || value.columns.length !== alarmColumnDefinitions.length) invalid();
+    const seen = new Set();
+    for (const column of value.columns) {
+        if (!keys(column, ["key", "label", "width", "visible"]) || !alarmColumnDefinitions.some(item => item.key === column.key) || seen.has(column.key) || !safeText(column.label, 60, false) || !Number.isInteger(column.width) || column.width < 64 || column.width > 1200 || typeof column.visible !== "boolean" || ["name", "state"].includes(column.key) && !column.visible) invalid();
+        seen.add(column.key);
+    }
+    return { version: 1, timeZone: value.timeZone, columns: value.columns.map(item => ({ ...item })) };
+}
+function serializeAlarmColumns(value) { return JSON.stringify(parseAlarmColumns(value)); }
+function alarmColumnValue(key, item, history, state, timeZone) {
+    const date = value => !Number.isFinite(value) || !Number.isFinite(new Date(value).getTime()) ? "—" : timeZone === "UTC" ? new Date(value).toISOString().replace("T", " ").replace("Z", " UTC") : new Date(value).toLocaleString();
+    switch (key) {
+        case "name": return item.name;
+        case "state": return state;
+        case "message": return item.text;
+        case "area": return item.area ?? "";
+        case "time": return date(history ? item.time : item.activatedAt);
+        case "id": return item.id;
+        case "alarmClass": return history ? item.alarmClass : item.className;
+        case "priority": return String(item.priority);
+        case "quality": return history ? "Non registrata" : ({ good: "Valida", bad: "Non valida", unknown: "Sconosciuta" }[item.quality] ?? "Sconosciuta");
+        case "acknowledged": return history ? "Non registrata come stato" : item.acknowledgment === "none" ? "Non richiesta" : !item.occurrence ? "Nessuna occorrenza" : item.acknowledged ? "Registrata" : "Non registrata";
+        case "confirmed": return history ? "Non registrata come stato" : item.acknowledgment !== "reset" ? "Non richiesta" : !item.occurrence ? "Nessuna occorrenza" : item.confirmed ? "Registrata" : "Non registrata";
+        case "clearedAt": return history ? "Non registrato come stato" : date(item.clearedAt);
+        case "occurrence": return item.occurrence ?? "—";
+        default: return "—";
+    }
+}
 class AlarmViewError extends Error {
     constructor(code) { const messages = {
         invalid: "Vista non valida. Controlla nome e filtri: non vengono usati valori predefiniti al posto di quelli errati.",
@@ -114,7 +153,7 @@ function createAlarmSavedViews(options) {
     window.addEventListener("storage", changed);
     return { render, reset() { selected = ""; name = ""; lastKey = undefined; resetAsked = false; error = false; status = "Accesso cambiato. Le viste di questo utente non vengono applicate automaticamente."; }, dispose() { disposed = true; window.removeEventListener("storage", changed); } };
 }
-return { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews };
+return { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews, alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, alarmColumnValue };
 }
-export const { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews } = createAlarmViewsLibrary();
-export function alarmViewsRuntimeModuleSource() { return `const { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews } = (${String(createAlarmViewsLibrary)})();`; }
+export const { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews, alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, alarmColumnValue } = createAlarmViewsLibrary();
+export function alarmViewsRuntimeModuleSource() { return `const { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews, alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, alarmColumnValue } = (${String(createAlarmViewsLibrary)})();`; }

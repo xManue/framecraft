@@ -15,6 +15,7 @@ import { plcTagsInSource } from "../core/plcVariables";
 import { plcVariablesMatching } from "../core/tagImport";
 import { availableDynamizedProperties, hmiDynamizationAttribute, newHmiDynamization, parseHmiDynamizations, removeHmiDynamization, replaceHmiDynamization, serializeHmiDynamizations } from "../core/hmiDynamizations";
 import { HmiIndirectTagEditor } from "./HmiIndirectTagEditor";
+import { HmiAlarmColumnsSection } from "./HmiAlarmColumnsSection";
 import { hmiFlashingContrast, hmiFlashingProperties } from "../core/hmiFlashing";
 import { defaultHmiAlarmSummaryConfig, hmiAlarmSummaryAttribute, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, type HmiAlarmSummaryConfig } from "../core/hmiAlarmSummary";
 import { inspectHmiExpression } from "../core/hmiExpression";
@@ -1907,6 +1908,7 @@ export function Inspector() {
       <HmiFaceplateSection node={node} expandSignal={expandSignal} />
       <HmiTrendSection node={node} expandSignal={expandSignal} />
       <HmiAlarmSummarySection key={node.id} node={node} expandSignal={expandSignal} />
+      <HmiAlarmColumnsSection key={node.id + ":columns"} node={node} expandSignal={expandSignal} />
       <HmiFunctionTrendSection node={node} expandSignal={expandSignal} />
     </div>
     <div key={`${selectionKey}:details`} id="element-panel-details" role="tabpanel" aria-labelledby="element-tab-details" hidden={tab !== "details"}>

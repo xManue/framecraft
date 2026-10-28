@@ -1,0 +1,6 @@
+.alarm-columns-fields { display: grid; gap: 10px; min-width: 0; }
+.alarm-columns-fields fieldset { display: grid; gap: 10px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.alarm-columns-fields label { display: grid; gap: 5px; min-width: 0; }
+.alarm-columns-fields input:not([type="checkbox"]), .alarm-columns-fields select, .alarm-columns-fields button { min-height: 36px; width: 100%; min-width: 0; box-sizing: border-box; }
+.alarm-columns-fields .alarm-columns-check { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.alarm-columns-fields p { margin: 0; line-height: 1.5; }

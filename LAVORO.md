@@ -6204,6 +6204,46 @@ Verifiche del 5 ottobre 2026:
   AlarmMetricsType/Reset, stress su CPU/storage reali, PLC fisico, touch/WebView2 e distribuzione
   restano aperti. Roadmap ancora PARZIALE, AI rinviata, WIP precedente conservato fuori dal commit.
 
+## 175. Colonne allarmi configurabili nell'editor e nel pannello (28 ottobre 2026)
+
+- **Progetto**: seleziona Lista allarmi → PLC e dati → Colonne allarmi. Tredici campi del
+  modello Framecraft: nome, stato, messaggio, zona, ora, ID, classe, priorità, qualità, presa
+  visione, conferma rientro, ultimo rientro e occorrenza. Titoli, visibilità, larghezze,
+  posizione finale e locale/UTC applicati esplicitamente all'elemento, con undo/redo.
+  Nome e stato obbligatori; titoli 1–60 caratteri, larghezze intere 64–1200 px. I campi errati
+  restano bozze. Contratto calcolato/corrotto conservato fino a sostituzione esplicita.
+- **Pannello**: Colonne e orario permette modifiche per l'apertura corrente, senza scrivere
+  il progetto o il PLC. Ripristino del progetto, cambio effettivo utente o ricaricamento
+  azzerano le modifiche temporanee; rinnovo della stessa sessione le conserva. Le viste
+  salvate restano filtri, senza migrazione o cambio del loro formato. Preferenze persistenti
+  delle colonne separate e ancora da implementare. Controlli bloccati durante revisione/invio.
+- **Render e comandi**: intestazioni/celle/diagnostica seguono chiavi del campo, non posizioni
+  fisse. Nascondere il messaggio non nasconde la diagnosi del segnale. Selezione e richieste
+  continuano per ID/occorrenza/revisione. Un cambio delle colonne del progetto durante batch
+  ferma gli invii successivi, conservando gli esiti già ricevuti e quello dell'invio in corso.
+  Configurazione non valida: avviso esplicito, colonne iniziali visibili e comandi bloccati;
+  nessuna riparazione silenziosa. Nel vecchio storico non sono inventati qualità o stati
+  correnti da un singolo evento. Letture UTC distinte dagli orari locali del dispositivo.
+- **Grafica e pipeline**: larghezze/scroll sul desktop, schede sotto 600 px del controllo,
+  editor compatto e pannello richiudibile. Helpers nella factory già condivisa con il ponte
+  serializzato; Inspector, prova incorporata, nuovi Runtime e dettagli dei riepiloghi ricevono
+  il comportamento. Scaffolding del vero standard e JSON locali conservati. Pannelli già
+  generati da aggiornare esplicitamente; nessuna dipendenza o risorsa nativa nuova.
+- **Verifiche**: 86 casi distinti in sette file mirati, senza contare le ripetizioni: nuovo
+  contratto/controllo, Inspector reale con scrittura JSX/undo, comandi singoli/batch, riepiloghi,
+  viste e ponte canvas. Corretto il test che pretendeva l'ID del parser identico dopo l'aumento
+  del testo: verificati elemento selezionato e posizione iniziale. Riletti poi solo i file
+  interessati dalle ultime correzioni, compreso cambio colonne durante richiesta pendente.
+  Typecheck/build sullo snapshot pubblico con WIP escluso. Browser sul Runtime generato con
+  account/ACL, SQLite audit e MQTT loopback: priorità rinominata in prima colonna, UTC, nessun
+  comando dalla configurazione, ripristino al logout; cinque comandi allarmi già previsti,
+  zero scritture PLC/richieste esterne. Controllati 375/768/1024/1440 px e immagini desktop/mobile.
+- **Restano**: colonne immagine/editabili, proprietà evento aggiuntive e query/espressioni
+  vendor, profili persistenti delle colonne, fusi IANA per questo controllo, controllo grafico
+  completo in Modifica e collaudo touch/WebView2/PLC reali. Riletti Alarm control Unified V21
+  e Create an Alarm grid Optix 1.3; documentata la differenza fra modello Framecraft e vendor.
+  Roadmap PARZIALE, AI rinviata e precedenti modifiche trend/AI preservate fuori dal commit.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.
