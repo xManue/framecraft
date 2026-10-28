@@ -87,6 +87,8 @@ import recipeStoreSource from "../../runtime/recipe-store.mjs?raw";
 import recipeStoreTypes from "../../runtime/recipe-store.d.mts?raw";
 import recipeExchangeSource from "../../runtime/recipe-exchange.mjs?raw";
 import recipeExchangeTypes from "../../runtime/recipe-exchange.d.mts?raw";
+import recipeTableSource from "../../runtime/recipe-table.mjs?raw";
+import recipeTableTypes from "../../runtime/recipe-table.d.mts?raw";
 import recipeExchangeControlSource from "./hmiRecipeExchange.ts?raw";
 import recipePlcControlSource from "./hmiRecipePlc.ts?raw";
 import gatewayStartSource from "../../runtime/start-gateway.mjs?raw";
@@ -1921,6 +1923,8 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/recipe-store.d.mts", content: recipeStoreTypes },
     { path: "runtime/recipe-exchange.mjs", content: recipeExchangeSource },
     { path: "runtime/recipe-exchange.d.mts", content: recipeExchangeTypes },
+    { path: "runtime/recipe-table.mjs", content: recipeTableSource },
+    { path: "runtime/recipe-table.d.mts", content: recipeTableTypes },
     { path: "framecraft.recipes.json", content: JSON.stringify(config.guided?.recipes !== undefined ? parseRecipeCatalog(config.guided.recipes) : emptyRecipeCatalog(), null, 2) + "\n" },
     { path: "runtime/alarm-labels.mjs", content: alarmLabelSource },
     { path: "runtime/alarm-labels.d.mts", content: alarmLabelTypes },

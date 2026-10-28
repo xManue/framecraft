@@ -6050,6 +6050,48 @@ Verifiche del 5 ottobre 2026:
   collaudo WebView2/CPU e gate licenze/CSP/audit industriali. Nessuna suite generale o agente;
   AI e WIP trend conservati fuori dalla tranche. Guide/roadmap mantengono PARZIALE.
 
+## 171. Scambio ricette TSV e abbinamento colonne nel pannello (28 ottobre 2026)
+
+- **Flusso completo**: Archivio ricette → Scambio ricette con file ora offre export TSV e
+  import JSON/TSV. Una tabella passa da abbinamento colonne con esempi a confronto per ID,
+  poi conferma esplicita nell’archivio. Ritorno agli abbinamenti, annullamento, focus su
+  confronto/errori e protezione della bozza durante navigazione/cambio utente. La pipeline
+  nuovo pannello include parser, dichiarazioni e controllo; nessuna AI necessaria.
+- **Contratto**: TSV generico con prima riga di intestazioni, oppure Framecraft v1 con
+  marcatore/schema. Colonne diverse per ID, nome e ogni campo; esclusione di colonne extra
+  solo esplicita. Separatori decimali selezionati, booleani true/false, interi sicuri senza
+  arrotondamenti nascosti, limiti di schema e controllo duplicati. Errori di valore con riga
+  dati/colonna, senza valore nel messaggio. UTF-8 entro 2 MB, 500 ricette, 128 colonne,
+  quotatura TAB/CR/LF/virgolette e nessun troncamento o default.
+- **Export reversibile**: testi `text:` + stringa JSON, poi quotatura TSV; preserva vuoti,
+  Unicode, TAB, ritorni a capo, backslash e stringhe simili a formule senza esporle come
+  formule nel file esportato. TSV non certifica revisione, provenienza, struttura del
+  catalogo o conferma PLC. I testi generici restano letterali, senza decodifica implicita.
+- **Stesso confine server**: capacità `recipes.import`, ACL schema, revisione attesa,
+  validazione completa e merge atomico già esistenti; nessun nuovo endpoint, nessuna
+  eliminazione delle ricette omesse. Conflitti richiedono nuova lettura/confronto; risposte
+  perse conservano ID e recupero già previsti. Nessun nuovo comando PLC. L’applicazione
+  continua a richiedere l’interfaccia Framecraft con conferma PLC dei punti 164–166.
+- **Verifiche mirate**: 67 casi distinti su cinque file pertinenti, compreso un solo caso
+  selezionato del generatore (gli altri non contati come passati). Typecheck/build dello
+  snapshot pubblico con dipendenze locali via junction. Edge headless sul pannello generato:
+  download JSON/TSV e round-trip valori, abbinamenti personalizzati/colonne extra, revisione
+  e ritorno, due importazioni con account locali, archivio reale e audit SQLite; una lettura,
+  zero comandi diversi dagli import e zero richieste esterne/errori pagina. 375/768/1024/1440 px,
+  testi lunghi senza overflow e target almeno 48 px, immagini controllate. Selettori ad altezza
+  uniforme anche accanto a esempi su più righe.
+  Una prova intermedia si è fermata per EBUSY del watcher sul download: corretto solo
+  l’harness (file scaricati fuori dal progetto servito e ignore esplicito di tutti i file),
+  poi ripetuto con successo quel percorso senza rilanciare le altre suite. L’harness
+  aspetta anche il popolamento asincrono dei dettagli, invece di leggerli subito dopo il click.
+  Non è un collaudo nella finestra Tauri/WebView2, su touch fisico o PLC. Nessuna suite generale,
+  agente o nuova dipendenza.
+- **Documentazione/limiti**: guide e roadmap aggiornate, voci ancora PARZIALE. Riletti TSV
+  Parameter Set Unified V21 e RecipeImportExport Optix 1.2 (CSV); nessuna compatibilità
+  automatica vendor o rivalutazione integrale current dichiarata. Restano CSV, checksum,
+  lingue vendor, UDT/migrazioni, provenienza e target industriale. WIP trend/AI conservati
+  fuori dal commit; i progetti esistenti richiedono aggiornamento esplicito del Runtime.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

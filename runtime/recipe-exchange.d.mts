@@ -6,3 +6,4 @@ export function exportRecipeFile(schema: RecipeSchema, source: RecipeFile["sourc
 export function parseRecipeFile(input: string): RecipeFile;
 export function mergeRecipeRecords(schema: RecipeSchema, fields: RecipeField[], records: RecipeRecord[]): RecipeRecord[];
 export function previewRecipeImport(schema: RecipeSchema, file: RecipeFile): RecipeImportPreview;
+export function previewRecipeRecords(schema: RecipeSchema, fields: RecipeField[], records: RecipeRecord[]): RecipeImportPreview;

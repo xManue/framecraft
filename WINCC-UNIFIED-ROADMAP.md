@@ -8,6 +8,10 @@ Aggiornamento mirato 21 ottobre 2026: consultazione HMI del registro attività F
 21 ottobre 2026: scambio ricette Framecraft JSON con confronto e importazione atomica nel servizio
 (LAVORO 160). Il riferimento Unified usa TSV; non viene dichiarata compatibilità del file vendor.
 
+28 ottobre 2026: TSV Framecraft v1 e tabella TSV con abbinamento colonne, confronto e importazione
+atomica nel pannello (LAVORO 171). Riletto import/export parameter set V21: preamboli, lingue e
+checksum Unified restano distinti; nessun round-trip vendor dichiarato.
+
 21 ottobre 2026: archivio allarmi Framecraft su disco e vista protetta separata dallo stato attivo
 (LAVORO 161). Restano multilingua storica, manutenzione industriale e collaudo target.
 
@@ -171,7 +175,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-PAR-02 | Creazione/modifica/eliminazione ricette | PARZIALE | UDT, cronologia valori completa, Undo operativo e collaudo target | Archivio scalare, form Runtime (151), account/ACL server (152–154) e importazione di gruppo con confronto/revisione (160) |
 | WCU-PAR-03 | Trasferimento HMI-PLC | PARZIALE | Migrazione/restore, confronto target coordinato, adapter CPU e collaudo retention/TLS/carico; nessun apply diretto | Backend confermato (164), configurazione grafica (165), comando HMI con revisione/conferma, checkpoint metadati legato al ledger e recovery senza replay/invii tardivi (166) |
 | WCU-PAR-04 | Lettura ricetta dal PLC | PARZIALE | Lettura coordinata dello stesso ciclo, UDT/array e collaudo target | Tag espliciti, cache MQTT/OPC UA con qualità/età/skew, confronto per campo, copia completa in nuova bozza e salvataggio confermato; capacità/ACL schema (163) |
-| WCU-PAR-05 | Import/export TSV | PARZIALE | TSV e mapping colonne non implementati; nessun round-trip vendor dichiarato | Scambio JSON Framecraft v1, tipi esatti, confronto per ID, importazione atomica senza eliminazioni, capacità/ACL e recupero richiesta (160) |
+| WCU-PAR-05 | Import/export TSV | PARZIALE | Preamboli/checksum/lingue Unified, array/UDT, migrazioni e collaudo target; nessun round-trip vendor dichiarato | JSON v1 (160), TSV Framecraft v1 e generico con colonne esplicite, tipi/limiti, codifica reversibile dei testi esportati, confronto per ID, merge atomico senza eliminazioni, capacità/ACL e recupero richiesta (171) |
 | WCU-PAR-06 | Array e strutture versionate | DA FARE | Migrazione UDT e valori | Migrazione assistita senza perdere campi |
 | WCU-PAR-07 | Maschere personalizzate | PARZIALE | UDT, composizione libera dei singoli campi e trasferimenti PLC | Controllo Runtime e pagina guidata dagli schemi scalari, errori per campo, confronto e conferma; editor manuale senza AI obbligatoria (151/160) |
 | WCU-PAR-08 | Audit delle operazioni ricetta | PARZIALE | Storico esatto valori prima/dopo, firme/commenti, conformità e collaudo target | Audit persistente di richieste/esiti del servizio, compresa importazione di gruppo, senza valori nei log (155/160) |

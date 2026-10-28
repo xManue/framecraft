@@ -11,7 +11,7 @@ const token = 'synthetic_recipe_browser_token_01234567890123456789', password = 
 let editor, panel, gateway, audit, browser;
 try {
   await mkdir(base, { recursive: true }); const generated = await mkdtemp(path.join(base, 'recipe-exchange-browser-')); assert.equal(path.dirname(generated), base);
-  editor = await createServer({ root, configLoader: 'runner', cacheDir: path.join(base, 'recipe-exchange-qa-editor/node_modules/.vite'), server: { watch: null, warmup: { clientFiles: [] } }, logLevel: 'error' });
+  editor = await createServer({ root, configLoader: 'runner', cacheDir: path.join(base, 'recipe-exchange-qa-editor/node_modules/.vite'), server: { watch: { ignored: () => true }, warmup: { clientFiles: [] } }, logLevel: 'error' });
   const { standardProjectFiles } = await editor.ssrLoadModule('/src/core/standardProject.ts');
   const files = standardProjectFiles({ machineName: 'Ricette QA sintetiche', layout: 'desktop', sections: ['main'] });
   for (const file of files) { const target = path.resolve(generated, file.path); assert.ok(target.startsWith(generated + path.sep)); await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, file.content); }
@@ -27,7 +27,7 @@ try {
   const module = name => import(pathToFileURL(path.join(generated, 'runtime', name)).href);
   const { createPlcGateway } = await module('gateway.mjs'), { createLocalOperatorAuth } = await module('operator-auth.mjs'), { openRuntimeAudit } = await module('audit-store.mjs');
   const { writeOperatorStore, hashOperatorPassword } = await module('operator-store.mjs'), { openRecipeStore } = await module('recipe-store.mjs'), { parseRecipeFile } = await module('recipe-exchange.mjs');
-  panel = await createServer({ root: generated, configLoader: 'runner', cacheDir: path.join(generated, '.qa/node_modules/.vite'), server: { host: '127.0.0.1', port: 0, strictPort: false, watch: null, warmup: { clientFiles: [] } }, logLevel: 'error' }); await panel.listen(); const origin = 'http://127.0.0.1:' + panel.httpServer.address().port;
+  panel = await createServer({ root: generated, configLoader: 'runner', cacheDir: path.join(generated, '.qa/node_modules/.vite'), server: { host: '127.0.0.1', port: 0, strictPort: false, watch: { ignored: () => true }, warmup: { clientFiles: [] } }, logLevel: 'error' }); await panel.listen(); const origin = 'http://127.0.0.1:' + panel.httpServer.address().port;
   const security = path.join(generated, '.framecraft-runtime/security'); await mkdir(security, { recursive: true }); const accountFile = path.join(security, 'operators.json');
   await writeOperatorStore(accountFile, { version: 1, id: randomUUID(), accounts: [{ id: randomUUID(), username: 'operator', name: 'Operatore QA', role: 'Operatore', disabled: false, capabilities: ['recipes.read', 'recipes.import'], permissions: [], password: await hashOperatorPassword(password) }] }, undefined);
   audit = openRuntimeAudit({ root: generated, namespace: config.namespace });
@@ -48,7 +48,8 @@ try {
   await page.getByRole('button', { name: 'Rileggi archivio', exact: true }).click(); await page.getByRole('heading', { name: 'Scambio ricette con file', exact: true }).waitFor(); assert.equal(reads, 1);
   const downloadEvent = page.waitForEvent('download', { timeout: 10000 }); await page.getByRole('button', { name: 'Esporta schema JSON', exact: true }).click();
   const download = await downloadEvent.catch(async reason => { await page.screenshot({ path: path.join(generated, 'download-failure.png'), fullPage: true }); throw new Error(reason.message + '\nControl: ' + await page.locator('main').innerText() + '\nErrors: ' + JSON.stringify(errors)); });
-  const downloaded = path.join(generated, 'download.framecraft.json'); await download.saveAs(downloaded);
+  const downloads = await mkdtemp(path.join(base, 'recipe-exchange-downloads-'));
+  const downloaded = path.join(downloads, 'download.framecraft.json'); await download.saveAs(downloaded);
   const file = parseRecipeFile(await readFile(downloaded, 'utf8')); assert.equal(file.schema.records.length, 2); assert.equal(imports, 0); assert.equal(reads, 1);
   file.schema.records = [{ id: 'a', name: 'Formato A', values: { speed: 0, enabled: false, note: '' } }, { id: 'new', name: 'Formato nuovo', values: { speed: 30, enabled: true, note: '<img src=x onerror=alert(1)>\t\n=SUM(1)' } }];
   await page.getByLabel('File ricette Framecraft', { exact: true }).setInputFiles({ name: 'ricette.framecraft.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
@@ -62,7 +63,32 @@ try {
   }
   const confirm = page.getByRole('button', { name: 'Conferma importazione nell’archivio', exact: true }); await confirm.focus(); await page.keyboard.press('Enter'); await page.getByText('Importazione salvata in un’unica operazione nell’archivio. Nessuna ricetta eliminata e nessun trasferimento al PLC.', { exact: true }).waitFor();
   const saved = await store.snapshot(); assert.equal(saved.sequence, 1); assert.equal(saved.schemas[0].records.length, 3); assert.deepEqual(saved.schemas[0].records.find(item => item.id === 'a').values, { speed: 0, enabled: false, note: '' }); assert.ok(saved.schemas[0].records.find(item => item.id === 'keep'));
-  assert.deepEqual(audit.read({ operation: 'recipes.import' }).events.map(event => event.outcome), ['applied', 'requested']); assert.equal(imports, 1); assert.equal(otherCommands, 0); assert.equal(external, 0); assert.deepEqual(errors, []);
+  const { parseRecipeTable, mapRecipeTable, suggestRecipeTableMapping } = await module('recipe-table.mjs');
+  const tsvEvent = page.waitForEvent('download', { timeout: 10000 }); await page.getByRole('button', { name: 'Esporta schema TSV', exact: true }).click();
+  const tsvDownload = await tsvEvent, tsvFile = path.join(downloads, 'download.framecraft.tsv'); await tsvDownload.saveAs(tsvFile);
+  const table = parseRecipeTable(await readFile(tsvFile, 'utf8')); assert.deepEqual(mapRecipeTable(saved.schemas[0], table, suggestRecipeTableMapping(saved.schemas[0], table)), saved.schemas[0].records); assert.equal(imports, 1);
+  const note = '=SUM(1)' + 'x'.repeat(170), tabular = 'Codice\tTitolo\tVelocita\tAttivo\tNota\tExtra\r\na\tFormato A\t11\tfalse\t' + note + '\tSYNTHETIC_IGNORED\r\n';
+  await page.getByLabel('File ricette Framecraft', { exact: true }).setInputFiles({ name: 'tabella.tsv', mimeType: 'text/tab-separated-values', buffer: Buffer.from(tabular) });
+  await page.getByRole('heading', { name: '1. Abbina le colonne', exact: true }).waitFor(); assert.equal(imports, 1);
+  assert.equal(await page.locator('[aria-label="Abbinamento colonne ricette"]').evaluate(node => node === document.activeElement), true);
+  for (const [label, column] of [['ID ricetta', '0'], ['Nome ricetta', '1'], ['Velocità · integer · pz/min', '2'], ['Abilitato · boolean', '3'], ['Nota · string', '4']]) await page.getByLabel('Colonna per ' + label, { exact: true }).selectOption(column);
+  await page.getByRole('button', { name: 'Genera confronto', exact: true }).click(); await page.getByText(/Abbinamento colonne incompleto o ambiguo/).waitFor(); assert.equal(imports, 1);
+  assert.equal(await page.locator('[data-recipe-file-status]').evaluate(node => node === document.activeElement), true);
+  await page.getByLabel('Ignora le colonne che non ho abbinato.', { exact: false }).check();
+  assert.equal(await page.locator('[data-recipe-file-status]').getAttribute('role'), 'status');
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const mapping = page.getByRole('region', { name: 'Abbinamento colonne ricette', exact: true }); await mapping.scrollIntoViewIfNeeded();
+    const layout = await mapping.evaluate(host => ({ overflow: host.scrollWidth > host.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth + 1, controls: [...host.querySelectorAll('button,select,label.recipe-apply-ack')].filter(node => node.getClientRects().length).map(node => node.getBoundingClientRect().height), selects: [...host.querySelectorAll('select')].map(node => node.getBoundingClientRect().height) }));
+    assert.equal(layout.overflow, false); assert.ok(layout.controls.every(height => height >= 47.9)); assert.ok(layout.selects.every(height => height <= 49)); await page.screenshot({ path: path.join(shots, `tsv-mapping-${width}.png`), fullPage: true });
+  }
+  await page.getByRole('button', { name: 'Genera confronto', exact: true }).click(); assert.equal(await page.locator('[aria-label="Confronto importazione ricette"]').evaluate(node => node === document.activeElement), true); assert.equal(imports, 1);
+  await page.getByText('Sostituisce: Formato A · ID a', { exact: true }).click(); await page.locator('[aria-label="Confronto importazione ricette"] dd').filter({ hasText: /^0 → 11$/ }).waitFor();
+  await page.getByRole('button', { name: 'Rivedi colonne', exact: true }).click(); assert.equal(await page.getByLabel('Colonna per ID ricetta', { exact: true }).inputValue(), '0');
+  await page.getByRole('button', { name: 'Genera confronto', exact: true }).click();
+  await page.getByRole('button', { name: 'Conferma importazione nell’archivio', exact: true }).click(); await page.getByText('Importazione salvata in un’unica operazione nell’archivio. Nessuna ricetta eliminata e nessun trasferimento al PLC.', { exact: true }).waitFor();
+  const afterTsv = await store.snapshot(); assert.equal(afterTsv.sequence, 2); assert.equal(afterTsv.schemas[0].records.length, 3); assert.deepEqual(afterTsv.schemas[0].records.find(item => item.id === 'a').values, { speed: 11, enabled: false, note });
+  assert.deepEqual(audit.read({ operation: 'recipes.import' }).events.map(event => event.outcome), ['applied', 'requested', 'applied', 'requested']); assert.equal(imports, 2); assert.equal(otherCommands, 0); assert.equal(external, 0); assert.deepEqual(errors, []);
   await page.getByRole('button', { name: 'Account operatore', exact: true }).click(); await page.getByRole('button', { name: 'Esci / cambia utente', exact: true }).click(); await page.getByRole('button', { name: 'Accedi al pannello', exact: true }).waitFor(); await page.getByRole('button', { name: 'Chiudi accesso', exact: true }).click(); assert.equal(await page.locator('[data-recipe-exchange]').count(), 0);
   await build({ root: generated, configLoader: 'runner', logLevel: 'error', build: { rollupOptions: { input: path.join(generated, 'recipe-qa.html') } } });
   console.log(JSON.stringify({ passed: true, generated, shots, reads, imports, otherCommands, external, realLocalAccounts: true, realSqliteAudit: true, realArchive: true, plcConnections: 0, runtimeTypecheck: true, qaEntryProductionBuild: true, nativeScaffolding: false }));

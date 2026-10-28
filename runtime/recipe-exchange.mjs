@@ -35,10 +35,13 @@ export function mergeRecipeRecords(schema, fields, records) {
 export function previewRecipeImport(schema, file) {
   const current = normalized(schema);
   if (file.schema.id !== current.id) fail("RECIPE_FILE_SCHEMA");
-  const merged = mergeRecipeRecords(current, file.schema.fields, file.schema.records);
-  const changes = file.schema.records.map(after => {
+  return previewRecipeRecords(current, file.schema.fields, file.schema.records);
+}
+export function previewRecipeRecords(schema, fields, records) {
+  const current = normalized(schema), merged = mergeRecipeRecords(current, fields, records);
+  const changes = records.map(after => {
     const before = current.records.find(record => record.id === after.id);
     return { id: after.id, kind: !before ? "create" : recordKey(before, current.fields) === recordKey(after, current.fields) ? "unchanged" : "update", before, after };
   });
-  return { records: structuredClone(file.schema.records), changes: structuredClone(changes), kept: current.records.filter(record => !changes.some(change => change.id === record.id)).length, total: merged.length };
+  return { records: structuredClone(records), changes: structuredClone(changes), kept: current.records.filter(record => !changes.some(change => change.id === record.id)).length, total: merged.length };
 }

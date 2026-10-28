@@ -878,10 +878,67 @@ Il formato è `{"format":"framecraft.recipes","version":1,"source":{...},"schema
 Framecraft, **non** il CSV del RecipeImportExport Optix né il TSV del Parameter Set Unified.
 Non è un backup completo di `store.id`, ricevute, audit o progetto, e non ne ripristina le identità.
 Il registro server annota richiesta/esito, soggetto e schema (`recordId: "batch"`), non i valori.
-CSV/TSV con mapping, firma/verifica di provenienza e migrazione fra schemi restano da implementare.
+TSV e abbinamento colonne sono descritti sotto. CSV, firma/verifica di provenienza e migrazione
+fra schemi restano da implementare.
 Vecchi pannelli richiedono un aggiornamento esplicito del Runtime, non solo l’inserimento del div.
 Un Runtime precedente che non conosce l’azione `import` non va riutilizzato dopo nuove importazioni:
 aggiornare insieme servizio e interfaccia; provare backup/restore e aggiornamento sul target finale.
+
+### Tabelle TSV: abbinare, confrontare e importare
+
+Dal 28 ottobre 2026 **Esporta schema TSV** scarica la stessa copia letta senza contattare il PLC.
+**Importa ricette** accetta anche `.tsv` UTF-8, massimo 2.000.000 byte, 500 righe dati e 128 colonne.
+Il TSV non include una revisione del servizio, una firma o una prova di applicazione alla macchina.
+Il JSON resta il formato con struttura completa e metadati di origine.
+
+1. Scegli lo schema, rileggi l’archivio e seleziona il file. Il pannello mostra **Abbina le colonne**:
+   assegna colonne diverse a ID ricetta, nome e ogni campo, con un esempio della prima riga.
+   Gli abbinamenti iniziali riguardano solo intestazioni esatte (`id`/`name`/ID campo oppure
+   `recipe.id`/`recipe.name`/`value.<ID campo>`); nomi simili non vengono indovinati.
+2. Per una tabella generica scegli esplicitamente punto o virgola decimale. Usa `true`/`false`
+   per i booleani e cifre senza frazione/esponente per gli interi entro il range sicuro di
+   JavaScript. I numeri reali sono IEEE 754; overflow e underflow a zero sono rifiutati.
+   Non usare separatori delle migliaia. Testi vuoti, spazi e formule sono testo letterale;
+   gli altri campi vuoti sono invalidi. Unità e valori non vengono convertiti.
+3. Le colonne aggiuntive richiedono **Ignora le colonne che non ho abbinato**. Gli ID o nomi
+   duplicati, intestazioni ambigue, tipi e limiti invalidi bloccano tutto. Un errore di valore
+   indica la riga dati (prima ricetta = 1) e la colonna, senza riportare il suo contenuto.
+4. Premi **Genera confronto**. Il focus passa al confronto, senza inviare nulla. Puoi tornare a
+   **Rivedi colonne**, oppure verificare le differenze e **Conferma importazione nell’archivio**.
+   Restano obbligatori `recipes.import`, ACL schema e revisione attuale: è la stessa transazione
+   JSON, senza eliminare ricette omesse. Nessun trasferimento PLC. Conflitti e risposte perse
+   usano rilettura/confronto e recupero della stessa richiesta; nessun replay automatico.
+
+Tabella generica: la prima riga contiene intestazioni uniche, le successive una ricetta ciascuna.
+Il separatore è TAB; terminatori LF/CRLF/CR. I campi con TAB, ritorni a capo o virgolette sono
+racchiusi fra virgolette doppie; quelle interne sono raddoppiate. Non vengono saltate righe
+vuote, preamboli vendor o righe difettose. Le celle decodificate hanno limite 8192 caratteri;
+valgono inoltre i limiti dei campi del catalogo. Nessun troncamento o default automatico.
+
+Il **TSV Framecraft v1** aggiunge una prima riga `framecraft.recipes.tsv<TAB>1<TAB><ID schema>`.
+Segue l’intestazione `recipe.id<TAB>recipe.name<TAB>value.<ID campo>...`. Il formato mantiene
+gli ID, tutti i valori e il collegamento allo schema, ma non ne contiene tipi/unità/limiti:
+sono quelli della destinazione e devono essere verificati dall’operatore.
+
+Nomi e valori stringa sono celle `text:` seguite da una stringa JSON, ad esempio `text:"=SUM(1)"`:
+non togliere il prefisso. Si applica poi la quotatura TSV alle virgolette della cella. Questa
+codifica conserva esattamente tabulazioni, ritorni a capo, Unicode e backslash e impedisce che
+un testo esportato inizi come formula in un foglio di calcolo, anche dopo la rimozione delle
+virgolette TSV. Numeri/booleani restano scalari, con punto decimale. Il parser riconosce il
+marcatore e decodifica i testi; un TSV generico conserva invece i suoi testi senza decodificarli.
+Nessun prefisso viene aggiunto/rimosso silenziosamente dai valori salvati nell’archivio.
+
+Decisione: riusare importazione/ACL/audit già verificati, senza endpoint o scritture PLC nuovi.
+Il JSON offre la struttura completa; il TSV permette riordino e abbinamento esplicito. La codifica
+reversibile dei testi esportati evita sia formule attive sia alterazioni dei valori che un semplice
+prefisso apostrofo potrebbe introdurre. Non sono supportati CSV, array/UDT, conversioni di schema,
+checksum vendor o traduzione delle intestazioni proprietarie. I vecchi progetti richiedono
+l’aggiornamento esplicito del Runtime; i nuovi includono parser, tipi e interfaccia nella pipeline.
+
+Riferimenti funzionali: [Unified V21, import/export parameter set](https://docs.tia.siemens.cloud/r/en-us/v21/operating-unified-pc-rt-unified/controls-rt-unified/parameter-set-control-rt-unified/operate-parameter-set-control-rt-unified/exporting-and-importing-parameter-sets-rt-unified),
+con preambolo e intestazioni propri; [Optix RecipeImportExport](https://www.rockwellautomation.com/en-au/docs/factorytalk-optix/1-2-0/contents-ditamap/creating-projects/recipes/recipes-editor/design-a-recipes-management-interface/import-or-export-recipes-at-runtime.html),
+con CSV e colonne coerenti con il database. Il formato Framecraft resta autonomo, senza round-trip
+vendor dichiarato. La verifica Optix qui riguarda questa pagina 1.2, non l’intera versione current.
 
 ## Form operatore ricette
 

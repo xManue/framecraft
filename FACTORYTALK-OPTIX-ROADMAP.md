@@ -12,6 +12,10 @@ Framecraft (LAVORO 159). Non importa oggetti Optix e non completa l’Event Logg
 21 ottobre 2026: import/export ricette Framecraft JSON con confronto, capacità server dedicata,
 ACL schema e commit atomico (LAVORO 160). Non è il CSV/NetLogic RecipeImportExport Optix.
 
+28 ottobre 2026: scambio TSV Framecraft/generico con colonne esplicite e stessa transazione
+confermata (LAVORO 171). Riletto RecipeImportExport 1.2 per formato/colonne: CSV Optix e round-trip
+vendor restano aperti; nessuna rivalutazione integrale della release current.
+
 21 ottobre 2026: storico allarmi Framecraft SQLite e controllo di sola lettura con capacità dedicata
 (LAVORO 161), confrontati con Alarm Event Logger nella guida `current` (1.8.0), non parità completa.
 
@@ -167,7 +171,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-RCP-05 | Recipe editor e Recipe application example | PARZIALE | Widget archivio dagli schemi, pagina guidata e palette (151), login server locale nel launcher (152); nessun TargetNode/Item/DataItem o trasferimento PLC | Form generato ma completamente personalizzabile |
 | FTX-RCP-06 | Ricette concorrenti e metadati | PARZIALE | Revisione contenuto, lock esclusivo e ultime 256 ricevute persistenti con soggetto/data al punto 144 | Merge guidato e storico delle revisioni completo |
 | FTX-RCP-07 | Tabelle database delle ricette | DA FARE | Schema store e query | Migrazione dati testata insieme al progetto |
-| FTX-RCP-08 | Import/export delle ricette | PARZIALE | CSV, mapping colonne, UDT e migrazione fra schemi; nessuna compatibilità Optix dichiarata | File Framecraft JSON v1, anteprima ID/valori, merge atomico senza eliminazioni, revisione/permessi/ACL e audit di gruppo (160) |
+| FTX-RCP-08 | Import/export delle ricette | PARZIALE | CSV Optix, UDT e migrazione fra schemi; nessuna compatibilità Optix dichiarata | JSON v1 (160), TSV Framecraft/generico con abbinamento colonne, anteprima ID/valori, merge atomico senza eliminazioni, revisione/permessi/ACL e audit di gruppo (171) |
 
 ## 10. Logger, database, trend e report
 
