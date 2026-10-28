@@ -143,20 +143,22 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
     start() { if (running) return; running = true; const token = ++generation; changeState("connecting"); void poll(token); },
     stop() { running = false; generation++; clearTimeout(timer); for (const controller of pending) controller.abort(); snapshot = undefined; last = ""; changeState("stopped"); },
     async alarmAction(command: AlarmCommand, signal?: AbortSignal): Promise<AlarmSnapshot> {
-      if (!running || state !== "connected" || !snapshot?.alarms?.actionsEnabled || signal?.aborted) throw new Error("Presa visione non disponibile. Controlla servizio, sessione e autorizzazioni dell'operatore.");
+      if (!running || state !== "connected" || !snapshot?.alarms?.actionsEnabled || signal?.aborted) throw new HmiGatewayCommandError("Presa visione non disponibile. Controlla servizio, sessione e autorizzazioni dell'operatore.", "rejected");
       const generationBefore = generation;
       const instanceBefore = snapshot.alarms.instanceId;
       let result;
       try { result = await json("/alarm-action", { method: "POST", headers: { "Content-Type": "application/json", ...operatorSessionHeaders() }, body: JSON.stringify(command) }, signal); }
-      catch { throw new Error("Esito presa visione non noto: aggiorna gli allarmi prima di riprovare. Nessun invio automatico."); }
-      if (!running || generationBefore !== generation) throw new Error("Sessione cambiata: aggiorna gli allarmi prima di agire di nuovo.");
+      catch { throw new HmiGatewayCommandError("Esito presa visione non noto: aggiorna gli allarmi prima di riprovare. Nessun invio automatico.", "uncertain"); }
+      if (!running || generationBefore !== generation) throw new HmiGatewayCommandError("Sessione cambiata: aggiorna gli allarmi prima di agire di nuovo.", "uncertain");
       if (!result.ok) {
         const data = result.data as Record<string, unknown>;
-        if (data?.type === "operator" && typeof data.code === "string" && new OperatorAuthError(data.code).code === data.code) { const error = new OperatorAuthError(data.code); throw new Error(error.message + ". " + error.remedy); }
-        throw new Error(result.status === 403 ? "Operatore non autorizzato: verifica accesso e permessi nel servizio." : result.status === 409 ? "L'allarme è cambiato o non permette questa operazione. Aggiorna la vista e selezionalo di nuovo." : "Operazione non completata: controlla la diagnostica del servizio.");
+        if (data?.type === "operator" && typeof data.code === "string" && new OperatorAuthError(data.code).code === data.code) { const error = new OperatorAuthError(data.code); throw new HmiGatewayCommandError(error.message + ". " + error.remedy, data.code === "AUTH_AUDIT_UNCERTAIN" ? "uncertain" : "rejected"); }
+        throw new HmiGatewayCommandError(result.status === 403 ? "Operatore non autorizzato: verifica accesso e permessi nel servizio." : result.status === 409 ? "L'allarme è cambiato o non permette questa operazione. Aggiorna la vista e selezionalo di nuovo." : "Esito non verificato: controlla lo stato e la diagnostica del servizio.", [400, 401, 403, 404, 409, 413, 415, 422, 429].includes(result.status) ? "rejected" : "uncertain");
       }
-      const next = parseAlarmSnapshot((result.data as { alarms?: unknown })?.alarms);
-      if (next.instanceId !== instanceBefore || snapshot?.alarms?.instanceId !== instanceBefore) throw new Error("Il servizio allarmi è cambiato. Aggiorna la vista prima di agire di nuovo.");
+      let next: AlarmSnapshot;
+      try { next = parseAlarmSnapshot((result.data as { alarms?: unknown })?.alarms); }
+      catch { throw new HmiGatewayCommandError("Risposta allarmi non valida: verifica lo stato nel servizio prima di agire di nuovo.", "uncertain"); }
+      if (next.instanceId !== instanceBefore || snapshot?.alarms?.instanceId !== instanceBefore) throw new HmiGatewayCommandError("Il servizio allarmi è cambiato. Aggiorna la vista prima di agire di nuovo.", "uncertain");
       if (snapshot.alarms.revision > next.revision) return structuredClone(snapshot.alarms);
       if (snapshot) snapshot.alarms = next;
       return next;

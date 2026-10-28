@@ -1,0 +1,60 @@
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, writeFile, copyFile, symlink } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createServer as createVite, build } from 'vite';
+import { createServer } from 'node:net';
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { Aedes } from 'aedes';
+import { connectAsync } from 'mqtt';
+const { chromium } = await import(process.env.FRAMECRAFT_PLAYWRIGHT_MODULE || 'playwright');
+const root = fileURLToPath(new URL('../../', import.meta.url)), base = path.join(root, '.hmi-preview');
+const token = 'synthetic_alarm_batch_token_01234567890123456789', password = 'SYNTHETIC-batch-password-012345';
+const until = async check => { const end = Date.now() + 30000; while (!check()) { if (Date.now() > end) throw Error('Synthetic samples unavailable'); await new Promise(resolve => setTimeout(resolve, 50)); } };
+let editor, panel, gateway, audit, browser, publisher, broker, tcp;
+try {
+  await mkdir(base, { recursive: true }); const generated = await mkdtemp(path.join(base, 'alarm-batch-browser-'));
+  editor = await createVite({ root, configLoader: 'runner', cacheDir: path.join(base, 'alarm-batch-qa-editor/node_modules/.vite'), server: { watch: { ignored: () => true }, warmup: { clientFiles: [] } }, logLevel: 'error' });
+  const { standardProjectFiles } = await editor.ssrLoadModule('/src/core/standardProject.ts'), files = standardProjectFiles({ machineName: 'Allarmi QA sintetici', layout: 'desktop', sections: ['main'] });
+  for (const file of files) { const target = path.resolve(generated, file.path); assert.ok(target.startsWith(generated + path.sep)); await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, file.content); }
+  await symlink(path.join(root, 'node_modules'), path.join(generated, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+  await copyFile(new URL('../fixtures/alarm-batch-panel.html', import.meta.url), path.join(generated, 'batch-qa.html')); await copyFile(new URL('../fixtures/audit-runtime-tsconfig.json', import.meta.url), path.join(generated, 'tsconfig.batch-qa.json'));
+  execFileSync(process.execPath, [path.join(root, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.batch-qa.json'], { cwd: generated, encoding: 'utf8', windowsHide: true });
+  const authConfig = { ...JSON.parse(files.find(file => file.path === 'framecraft.auth.json').content), enabled: true, allowHttpLoopback: true };
+  await writeFile(path.join(generated, 'framecraft.auth.json'), JSON.stringify(authConfig)); await writeFile(path.join(generated, 'framecraft.runtime.json'), JSON.stringify({ version: 1, gateway: { enabled: true, path: '/_framecraft/plc/v1', pollMs: 250, timeoutMs: 5000 } }));
+  const variables = Array.from({ length: 3 }, (_, i) => ({ name: 'Signal' + i, dataType: 'Bool', access: 'read' }));
+  const catalog = { version: 1, maxHistory: 100, classes: [{ name: 'Guasto', acknowledgment: 'reset' }], alarms: variables.map((tag, i) => ({ id: 'a' + i, name: 'Motore ' + i, text: 'Controllo della macchina <img src=x> ' + 'x'.repeat(170), tag: tag.name, className: 'Guasto', enabled: true, priority: 3 - i, area: 'Linea QA', trigger: { kind: 'bit', bit: 0, activeWhen: 'set' } })) };
+  await writeFile(path.join(generated, 'framecraft.alarms.json'), JSON.stringify(catalog)); await writeFile(path.join(generated, 'framecraft.plc.json'), JSON.stringify({ version: 1, variables }));
+  const module = name => import(pathToFileURL(path.join(generated, 'runtime', name)).href);
+  const { createPlcGateway } = await module('gateway.mjs'), { createLocalOperatorAuth } = await module('operator-auth.mjs'), { writeOperatorStore, hashOperatorPassword } = await module('operator-store.mjs'), { openRuntimeAudit } = await module('audit-store.mjs');
+  const accountId = randomUUID(), security = path.join(generated, '.framecraft-runtime/security'); await mkdir(security, { recursive: true }); const accountFile = path.join(security, 'operators.json');
+  await writeOperatorStore(accountFile, { version: 2, id: randomUUID(), accounts: [{ id: accountId, username: 'operator', name: 'Operatore QA', role: 'Operatore', disabled: false, capabilities: ['alarms.acknowledge', 'alarms.confirm'], permissions: [], password: await hashOperatorPassword(password) }], resourceRules: [{ accountId, limits: { alarmActions: { mode: 'selected', ids: ['a0', 'a1'] }, tagWrites: { mode: 'selected', ids: [] }, recipeChanges: { mode: 'selected', ids: [] } } }] }, undefined);
+  panel = await createVite({ root: generated, configLoader: 'runner', cacheDir: path.join(generated, '.qa/node_modules/.vite'), server: { host: '127.0.0.1', port: 0, strictPort: false, watch: { ignored: () => true }, warmup: { clientFiles: [] } }, logLevel: 'error' }); await panel.listen(); const origin = 'http://127.0.0.1:' + panel.httpServer.address().port;
+  audit = openRuntimeAudit({ root: generated, namespace: authConfig.namespace }); const auth = createLocalOperatorAuth({ file: accountFile, config: authConfig, allowedOrigins: [origin], audit });
+  broker = await Aedes.createBroker(); tcp = createServer(broker.handle); await new Promise(resolve => tcp.listen(0, '127.0.0.1', resolve)); const mqttUrl = 'mqtt://127.0.0.1:' + tcp.address().port;
+  publisher = await connectAsync(mqttUrl, { reconnectPeriod: 0 }); let plcWrites = 0; broker.on('publish', packet => { if (packet.topic.startsWith('command')) plcWrites++; });
+  gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: 'SYNTHETIC_BATCH_TOKEN', allowedOrigins: [origin], allowWrites: false }, connections: [{ id: 'mqtt-qa', protocol: 'mqtt', enabled: true, url: mqttUrl, clientId: 'batch-browser-qa', allowInsecure: true, allowWrites: false, timeoutMs: 3000, bindings: variables.map((tag, i) => ({ tag: tag.name, topic: 'signal/' + i, valuePath: '/value', qualityPath: '/quality' })) }] }, variables, { resolveSecret: () => token, operatorAuth: auth, audit, alarmCatalog: catalog }); await gateway.start();
+  for (let i = 0; i < 3; i++) await publisher.publishAsync('signal/' + i, JSON.stringify({ value: true, quality: 192 }), { qos: 1, retain: true }); await until(() => gateway.snapshot().alarms.rows.every(row => row.active));
+  browser = await chromium.launch({ channel: process.platform === 'win32' ? 'msedge' : undefined, headless: true }); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }), page = await context.newPage(); const errors = []; let commands = 0, external = 0;
+  page.on('pageerror', error => errors.push(error.message));
+  await context.route('**/*', async route => {
+    const request = route.request(), url = new URL(request.url()); if (url.origin !== origin) { external++; return route.abort(); }
+    if (!url.pathname.startsWith('/_framecraft/plc/v1/')) return route.continue();
+    if (url.pathname.endsWith('/alarm-action')) commands++;
+    const response = await route.fetch({ url: gateway.address + url.pathname + url.search, headers: { ...request.headers(), authorization: 'Bearer ' + token, origin, host: new URL(gateway.address).host } }); return route.fulfill({ response });
+  });
+  await page.goto(origin + '/batch-qa.html'); await page.getByRole('region', { name: 'Allarmi operativi', exact: true }).waitFor({ timeout: 60000 });
+  await page.getByRole('button', { name: 'Account operatore', exact: true }).click(); await page.getByLabel('Nome utente', { exact: true }).fill('operator'); await page.getByLabel('Password', { exact: true }).fill(password); await page.getByRole('button', { name: 'Accedi al pannello', exact: true }).click(); await page.getByRole('button', { name: 'Esci / cambia utente', exact: true }).waitFor(); await page.getByRole('button', { name: 'Chiudi accesso', exact: true }).click();
+  const multi = page.getByRole('button', { name: 'Più allarmi', exact: true }); await multi.click(); await page.getByRole('button', { name: 'Scegli solo questa pagina', exact: true }).click(); await page.getByRole('button', { name: 'Rivedi presa visione', exact: true }).click();
+  const review = page.getByRole('region', { name: 'Operazione su più allarmi', exact: true }); assert.equal(await review.evaluate(node => node === document.activeElement), true); assert.equal(commands, 0); assert.equal(await page.locator('main img').count(), 0);
+  const shots = path.join(base, 'alarm-batch-shots'); await mkdir(shots, { recursive: true });
+  for (const width of [375, 768, 1024, 1440]) { await page.setViewportSize({ width, height: 1000 }); await review.scrollIntoViewIfNeeded(); const layout = await page.locator('[data-hmi-alarm-root]').evaluate(host => ({ overflow: host.scrollWidth > host.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth + 1, targets: [...host.querySelectorAll('button,summary,label')].filter(node => node.getClientRects().length).map(node => node.getBoundingClientRect().height) })); assert.equal(layout.overflow, false); assert.ok(layout.targets.every(height => height >= 43.9)); await page.screenshot({ path: path.join(shots, 'review-' + width + '.png') }); }
+  await review.getByRole('button', { name: 'Conferma invio agli allarmi scelti', exact: true }).click(); await review.getByRole('heading', { name: 'Risultati dell’operazione', exact: true }).waitFor(); assert.equal(commands, 3); assert.match(await review.locator('li').nth(2).innerText(), /Rifiutato/); assert.deepEqual(gateway.snapshot().alarms.rows.map(row => row.acknowledged), [true, true, false]);
+  await review.getByRole('button', { name: 'Chiudi risultati', exact: true }).click(); for (let i = 0; i < 2; i++) await publisher.publishAsync('signal/' + i, JSON.stringify({ value: false, quality: 192 }), { qos: 1 }); await until(() => gateway.snapshot().alarms.rows.slice(0, 2).every(row => row.active === false));
+  for (let i = 0; i < 2; i++) await page.getByLabel('Includi Motore ' + i, { exact: true }).check(); await page.getByRole('button', { name: 'Rivedi conferma rientro', exact: true }).click(); await review.getByRole('button', { name: 'Conferma invio agli allarmi scelti', exact: true }).click(); await review.getByRole('heading', { name: 'Risultati dell’operazione', exact: true }).waitFor(); assert.equal(commands, 5); assert.deepEqual(gateway.snapshot().alarms.rows.map(row => row.confirmed), [true, true, false]);
+  const events = audit.read().events; assert.equal(events.filter(event => event.operation === 'alarms.acknowledge' && event.outcome === 'applied').length, 2); assert.equal(events.filter(event => event.operation === 'alarms.confirm' && event.outcome === 'applied').length, 2); assert.ok(events.some(event => event.operation === 'alarms.acknowledge' && event.outcome === 'rejected' && event.resource.id === 'a2')); assert.equal(plcWrites, 0); assert.equal(external, 0); assert.deepEqual(errors, []);
+  await page.getByRole('button', { name: 'Account operatore', exact: true }).click(); await page.getByRole('button', { name: 'Esci / cambia utente', exact: true }).click(); await page.getByRole('button', { name: 'Accedi al pannello', exact: true }).waitFor(); await page.getByRole('button', { name: 'Chiudi accesso', exact: true }).click(); assert.equal(await review.isVisible(), false); assert.equal(await multi.getAttribute('aria-pressed'), 'false');
+  await build({ root: generated, configLoader: 'runner', logLevel: 'error', build: { rollupOptions: { input: path.join(generated, 'batch-qa.html') } } });
+  console.log(JSON.stringify({ passed: true, generated, shots, commands, plcWrites, external, realAccounts: true, perAlarmAcl: true, sqliteAudit: true, mqttLoopback: true, runtimeTypecheck: true, generatedEntryBuild: true }));
+} finally { await browser?.close(); await panel?.close(); await gateway?.stop(); audit?.close(); await publisher?.endAsync(true); if (broker) await new Promise(resolve => broker.close(resolve)); if (tcp) await new Promise(resolve => tcp.close(() => resolve())); await editor?.close(); }

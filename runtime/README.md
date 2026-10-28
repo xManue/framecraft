@@ -89,7 +89,53 @@ invalida i pulsanti selezionati prima del cambiamento. Il modello deriva da
 [stati Unified](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/basics-rt-unified/alarm-states-rt-unified)
 e [presa visione](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/basics-rt-unified/acknowledgment-model-rt-unified).
 
-### Autorizzazione degli operatori: bloccata per impostazione iniziale
+### Operazioni su più allarmi
+
+Nel controllo **Allarmi operativi** scegli **Più allarmi**. Spunta le righe oppure usa
+**Scegli solo questa pagina**, che sostituisce la selezione con le righe utilizzabili della
+pagina corrente (massimo 100). Puoi scegliere singole righe su più pagine, sempre entro 100.
+Una selezione vuota non significa mai “tutti”. Le righe che non possono richiedere presa
+visione né conferma restano escluse; lo storico di sessione è di sola consultazione.
+
+1. Premi **Rivedi presa visione** o **Rivedi conferma rientro**. Controlla nomi, ID e messaggi
+   di tutte le righe nel riepilogo. Questo passaggio non invia comandi.
+2. Se una riga è cambiata o non consente l’azione scelta, la conferma è bloccata. Torna alla
+   selezione, confronta lo stato attuale e seleziona di nuovo. Le righe escluse da un filtro
+   non vengono comunque autorizzate dalla selezione precedente. Filtri/paginazione sono
+   bloccati mentre il riepilogo è aperto; non vengono aggiunti nuovi allarmi automaticamente.
+3. **Conferma invio agli allarmi scelti** esegue richieste singole in sequenza. Per ciascuna
+   il server verifica capacità, ACL sull’ID, occorrenza e revisione dopo l’autorizzazione,
+   poi registra richiesta/esito nell’audit. Non è una transazione atomica: le prime righe
+   possono essere registrate anche se una successiva viene rifiutata. Nessuna scrittura PLC.
+4. Il riepilogo indica **Registrato**, **Rifiutato**, **Non inviato** o **Esito da verificare**
+   per ogni riga. Un errore ferma gli invii successivi. Le risposte di rifiuto note mostrano
+   il rimedio statico del servizio; errori di rete, risposte non valide, cambio servizio o
+   audit incerto restano da verificare. Nessuna ripetizione automatica o deduzione di
+   successo dal solo cambiamento successivo della lista.
+5. **Interrompi i prossimi invii**, prima dell’elenco durante l’esecuzione, ferma le richieste
+   ancora da iniziare. Il focus resta sul riepilogo operativo. Quella già partita
+   può completarsi: il comando non promette annullamento o rollback delle prese visioni.
+   Stato, filtri, identità servizio e accesso dell’elemento sono ricontrollati dopo ogni
+   risposta. Cambio utente o distruzione della vista interrompono la sequenza e rimuovono
+   selezione/riepilogo; nessun payload viene conservato per un replay. I risultati sono locali
+   alla vista: prima di riprovare dopo uscita o esito incerto confronta lo stato e l’audit.
+
+Confermare il rientro resta disponibile solo per modelli `reset`, dopo rientro valido,
+qualità buona e presa visione. Le operazioni non eliminano la causa macchina. Non ci sono
+nuovi permessi impliciti: servono `alarms.acknowledge`/`alarms.confirm` e i limiti per ID del
+server. La lista può contenere allarmi consultabili ma non comandabili dall’account.
+Il client espone `HmiGatewayCommandError.outcome` anche per queste operazioni, distinguendo
+un rifiuto certo da un esito incerto; testo grezzo del server e stack non vengono mostrati.
+
+La pipeline dei nuovi pannelli include il controllo aggiornato, anche nei dettagli dei
+riepiloghi allarmi e nella prova locale. I progetti esistenti richiedono un aggiornamento
+esplicito del Runtime. Nessuna compatibilità con oggetti/metodi vendor viene dichiarata.
+Riferimenti funzionali: [WinCC Unified V21, acknowledge singolo e collettivo](https://docs.tia.siemens.cloud/r/en-us/v21/operating-unified-pc-rt-unified/controls-rt-unified/operating-alarms-rt-unified/alarm-control-rt-unified/acknowledging-rt-unified/acknowledging-alarms-rt-unified)
+e [Optix 1.10, acknowledge/confirm](https://www.rockwellautomation.com/en-nl/docs/factorytalk-optix/1-10/contents-ditamap/using-the-software/alarms/confirm-and-acknowledge-alarms.html).
+Le regole vendor della selezione e dei modelli di riconoscimento restano distinte dal
+contratto Framecraft descritto qui; shelving, motivazioni e conferma al PLC restano aperti.
+
+### Autorizzazione server delle operazioni allarmi
 
 `start-gateway.mjs` integra gli account locali descritti sotto quando configurati esplicitamente;
 senza identità server gli allarmi sono consultabili ma presa visione/conferma sono bloccate.

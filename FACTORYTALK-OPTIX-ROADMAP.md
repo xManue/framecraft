@@ -16,6 +16,10 @@ ACL schema e commit atomico (LAVORO 160). Non è il CSV/NetLogic RecipeImportExp
 confermata (LAVORO 171). Riletto RecipeImportExport 1.2 per formato/colonne: CSV Optix e round-trip
 vendor restano aperti; nessuna rivalutazione integrale della release current.
 
+28 ottobre 2026: selezione e operazioni HMI su più allarmi con esiti per riga (LAVORO 172).
+Riletto acknowledge/confirm Optix 1.10: semantica degli oggetti e modelli vendor distinta;
+nessuna rivalutazione integrale della release.
+
 21 ottobre 2026: storico allarmi Framecraft SQLite e controllo di sola lettura con capacità dedicata
 (LAVORO 161), confrontati con Alarm Event Logger nella guida `current` (1.8.0), non parità completa.
 
@@ -153,8 +157,8 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 |---|---|---|---|---|
 | FTX-ALM-01 | Digital, ExclusiveLevel e NonExclusiveLevel Alarm | PARZIALE | Tipi/stati Optix e livelli multipli esclusivi/non esclusivi, deadband specifica del tipo | Motore scalare Framecraft con bit e sei confronti, soglia fissa/PLC, isteresi, qualità delle dipendenze e prova; non importa né emula l’oggetto Optix (106/162) |
 | FTX-ALM-02 | Tipi allarme personalizzati | DA FARE | Ereditarietà e proprietà estese | Diff del tipo e migrazione delle istanze |
-| FTX-ALM-03 | Stato active, acknowledged e confirmed | PARZIALE | Tipi/condizioni/metodi Optix completi e ack al PLC | Motore scalare Framecraft e metodi singoli con identità server; transizioni storiche salvate, stato attuale separato (106/161) |
-| FTX-ALM-04 | AlarmGrid, AlarmWidget e filtri | PARZIALE | Query, toolbar, selezione e operazioni | Filtri salvabili e collegamento alla causa macchina |
+| FTX-ALM-03 | Stato active, acknowledged e confirmed | PARZIALE | Tipi/condizioni/metodi Optix completi e ack al PLC | Motore scalare Framecraft e metodi singoli con identità server; transizioni storiche salvate (106/161), più richieste HMI con revisione/esiti separati e nessun replay (172) |
+| FTX-ALM-04 | AlarmGrid, AlarmWidget e filtri | PARZIALE | Query/colonne complete, filtri salvabili e shelving | Lista e dettagli riepiloghi con filtri, selezione esplicita fino a 100 righe, revisione e risultati di acknowledge/confirm, stop solo dei prossimi invii (172) |
 | FTX-ALM-05 | Storico allarmi e Event Logger | PARZIALE | Logger e tipi Optix generici, multilingua, correlazione e manutenzione industriali | Eventi persistenti con avvii/occorrenze e consultazione protetta (161); CSV multi-pagina dei risultati filtrati, ancorato ad archivio/sequenza con riepilogo e annullamento, senza SQL libero o replay (167) |
 | FTX-ALM-06 | Import allarmi OPC UA | DA FARE | Tipi, condizioni e mapping OPC UA | Anteprima collisioni e normalizzazione controllata |
 | FTX-ALM-07 | Polling e aggiornamento allarmi | DA FARE | Frequenze e prestazioni Runtime | Carico stimato e diagnostica dei ritardi |

@@ -6092,6 +6092,44 @@ Verifiche del 5 ottobre 2026:
   lingue vendor, UDT/migrazioni, provenienza e target industriale. WIP trend/AI conservati
   fuori dal commit; i progetti esistenti richiedono aggiornamento esplicito del Runtime.
 
+## 172. Presa visione e conferma di più allarmi dal pannello (28 ottobre 2026)
+
+- **Flusso operativo**: in Allarmi operativi, Più allarmi apre la selezione esplicita tramite
+  checkbox; massimo 100 righe, anche da più pagine. Scegli solo questa pagina sostituisce la
+  selezione, rispettando filtri e azioni disponibili. Selezione vuota non significa tutti.
+  Rivedi presa visione/conferma mostra ID, nome e messaggio prima di un secondo comando di
+  invio. Filtri e paginazione bloccati durante revisione/esecuzione; storico non comandabile.
+- **Esiti per riga**: richieste singole e sequenziali allo stesso endpoint, capacità/ACL e
+  occorrenza/revisione verificate per ogni allarme dal server, audit esistente riusato.
+  Non è una transazione atomica: registrati, rifiutati, non inviati e incerti restano distinti.
+  Un errore ferma i successivi; nessuna ripetizione automatica, cancellazione degli esiti già
+  registrati o scrittura PLC. Conferma solo dopo rientro valido/presa visione per modelli reset.
+- **Interruzione e contesto**: il comando per fermare i prossimi invii resta prima dell’elenco
+  durante l’esecuzione, con focus nel riepilogo. L’invio già partito può completarsi. Prima
+  di ogni successivo sono ricontrollati stato, filtri, identità servizio, connessione e blocchi
+  dell’elemento. Logout/dispose rimuovono selezione e riepilogo e impediscono continuazioni
+  tardive; nessun payload persistito. Dopo uscita/esito incerto serve confronto con stato/audit.
+- **Client e interfaccia**: HmiGatewayCommandError.outcome anche per alarmAction; rifiuti noti
+  distinti da rete/risposta malformata/audit incerto, rimedi statici senza stack del server.
+  Colonne leggibili sul desktop, schede sotto 600 px, target touch e focus visibile. Nuovi
+  pannelli/prova locale/dettagli dei riepiloghi ricevono il controllo dalla pipeline esistente;
+  vecchi pannelli richiedono aggiornamento esplicito del Runtime. Nessuna AI o dipendenza nuova.
+- **Verifiche**: 70 casi distinti su cinque file mirati, inclusi controlli singoli e riepiloghi,
+  errori client e servizio MQTT/HTTP. Coperti cambi dopo await, annullamento, risultati parziali,
+  limiti/pagine/filtri, permessi, logout/dispose e nessun replay. Corretta la simulazione di
+  due cambi contesto nel test, senza allargare i timeout. Typecheck/build sullo snapshot pubblico
+  con dipendenze locali via junction. Edge headless sul pannello generato con account locali
+  formato 2, ACL per ID, SQLite audit e broker MQTT loopback: due prese visioni consentite,
+  terza rifiutata dall’ACL, due rientri confermati; cinque richieste, zero scritture PLC,
+  zero richieste esterne/errori pagina. Verificati 375/768/1024/1440 px senza overflow, target
+  almeno 44 px, focus/immagini e typecheck/build dell’entry generata. La ripetizione finale
+  riguarda solo il controllo modificato e il percorso browser; nessuna suite generale o agente.
+- **Limiti**: non collaudato su PLC fisico, touch reale o WebView2/installer. Shelving, motivi,
+  modelli vendor completi, ack PLC, storage/manutenzione industriale e integrazione eventi
+  restano aperti. Riletti acknowledge collettivo Unified V21 e acknowledge/confirm Optix 1.10,
+  senza importare oggetti vendor né rivalutare l’inventario completo. Guide e roadmap ancora
+  PARZIALE; WIP trend/AI conservato fuori dal commit.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

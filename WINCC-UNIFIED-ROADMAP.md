@@ -12,6 +12,10 @@ Aggiornamento mirato 21 ottobre 2026: consultazione HMI del registro attività F
 atomica nel pannello (LAVORO 171). Riletto import/export parameter set V21: preamboli, lingue e
 checksum Unified restano distinti; nessun round-trip vendor dichiarato.
 
+28 ottobre 2026: operazioni HMI su più allarmi con selezione esplicita, revisione, esiti per
+riga e interruzione dei soli invii futuri (LAVORO 172). Riletto acknowledge collettivo V21:
+contratto Framecraft con richieste separate, senza transazione o ack PLC impliciti.
+
 21 ottobre 2026: archivio allarmi Framecraft su disco e vista protetta separata dallo stato attivo
 (LAVORO 161). Restano multilingua storica, manutenzione industriale e collaudo target.
 
@@ -161,7 +165,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-ALM-03 | Allarmi PLC e multi-instance | DA FARE | Ricezione/struttura dal controller | Collegamento automatico a gerarchia e faceplate |
 | WCU-ALM-04 | Classi, priorità, aree e testi | PARZIALE | Multilingua, altri modelli Unified, colori/classi completi e identità/RBAC server | Editor di classi e tre modelli di chiusura, messaggi, zone e priorità; nessun dato macchina precompilato |
 | WCU-ALM-05 | Active, historical e logged alarms | PARZIALE | Recovery/retention/backup industriali, multilingua e collaudo target | Motore condiviso, storico di sessione e archivio SQLite per eventi supportati; batch per valutazione, riavvii distinti, lacune segnalate e nessun ripristino dello stato attivo dallo storico (106/161) |
-| WCU-ALM-06 | Acknowledge, confirm e shelving | PARZIALE | Batch, shelving, motivazioni, ack PLC e collaudo target | Presa visione/conferma singola nel servizio senza scrittura PLC, account/capacità/ACL e audit server (152–155); occorrenza/revisione verificate dopo await, nessun replay |
+| WCU-ALM-06 | Acknowledge, confirm e shelving | PARZIALE | Shelving, motivazioni, modelli vendor restanti, ack PLC e collaudo target | Comandi singoli (152–155) e HMI su più allarmi con selezione/revisione, richieste separate autorizzate/auditate per riga, risultati parziali espliciti e stop senza replay; nessuna scrittura PLC (172) |
 | WCU-ALM-07 | Filtri, ordinamento e statistiche | PARZIALE | Filtri salvabili, query complete e statistiche | Filtri nella lista attiva; nuova vista storica con classe/zona/ID/stato/date sul server e pagine ancorate ad archivio/sequenza (161) |
 | WCU-ALM-08 | Logging, import/export e CSV | PARZIALE | Import vendor, job server per grandi export e manutenzione industriale | Archivio SQLite e vista HMI protetta (161); CSV di tutte le pagine filtrate con identità/sequenza fissate, riepilogo JSON, avanzamento/annulla, protezione formule e nessun parziale o comando PLC (167) |
 | WCU-ALM-09 | Security events | DA FARE | Eventi sicurezza nel controllo allarmi | Correlazione con login, cambi e audit |
