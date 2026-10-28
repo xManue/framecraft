@@ -1,4 +1,4 @@
-import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot, type AlarmHistoryQuery, type AlarmHistorySnapshot } from "../../runtime/alarm-history.mjs";
+import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot, parseAlarmStatisticsSnapshot, type AlarmHistoryQuery, type AlarmHistorySnapshot, type AlarmStatisticsQuery, type AlarmStatisticsSnapshot } from "../../runtime/alarm-history.mjs";
 
 const maxBytes = 64 * 1024 * 1024, maxRows = 500000;
 export class AlarmHistoryExportError extends Error {
@@ -9,6 +9,12 @@ const cell = (value: string | number) => {
   return '"' + safe.replaceAll('"', '""') + '"';
 };
 const line = (values: (string | number)[]) => values.map(cell).join(";") + "\r\n";
+export function alarmStatisticsCsv(value: AlarmStatisticsSnapshot, query: AlarmStatisticsQuery) {
+  const data = parseAlarmStatisticsSnapshot(value, query);
+  let csv = "\uFEFF" + line(["archive_id", "namespace", "through", "order", "matched_events", "all_alarms", "alarm_id", "name", "text", "class", "area", "events", "activations", "outgoing", "acknowledged", "confirmed", "first_event_utc", "last_event_utc", ...["active", "ack", "interval"].flatMap(key => [key + "_pairs", key + "_total_ms", key + "_average_ms", key + "_invalid_pairs", key + "_unpaired", key + "_unmatched_transitions"])]);
+  for (const row of data.rows) csv += line([data.id, data.namespace, data.through, data.order, data.matchedEvents, data.alarms, row.id, row.name, row.text, row.alarmClass, row.area, row.events, row.incoming, row.outgoing, row.acknowledged, row.confirmed, new Date(row.firstTime).toISOString(), new Date(row.lastTime).toISOString(), ...(["active", "ack", "interval"] as const).flatMap(key => { const m = row[key]; return [m.pairs, m.totalMs, m.averageMs ?? "", m.invalidPairs, m.unpaired, m.unmatchedTransitions]; })]);
+  return csv;
+}
 function pause(signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const abort = () => { clearTimeout(timer); signal.removeEventListener("abort", abort); reject(signal.reason); };

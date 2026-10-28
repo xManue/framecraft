@@ -12,6 +12,7 @@ import { defaultOperatorResources, type OperatorCapability } from "../runtime/op
 import { hashOperatorPassword, writeOperatorStore, type OperatorPassword } from "../runtime/operator-store.mjs";
 import { openRuntimeAudit } from "../runtime/audit-store.mjs";
 import { emptyAlarmCatalog, type AlarmCommand } from "../runtime/alarm-engine.mjs";
+import { parseAlarmStatisticsSnapshot } from "../runtime/alarm-history.mjs";
 const origin = "http://127.0.0.1:4173", token = "synthetic_history_token_012345678901234567890", password = "SYNTHETIC-history-password-012345";
 let hash: OperatorPassword;
 beforeAll(async () => { hash = await hashOperatorPassword(password); }, 15000);
@@ -30,7 +31,7 @@ async function fixture(recordLimit = 1000) {
   const login = async (username = "operator") => { const response = await request("session/login", { username, password }); expect(response.status).toBe(200); const body = await response.json(); return { Cookie: response.headers.get("set-cookie")!.split(";")[0], "X-Framecraft-CSRF": body.csrfToken as string }; };
   const sample = async (value: boolean, quality = 192) => { await publisher.publishAsync("signal", JSON.stringify({ value, quality }), { qos: 1 }); if ((quality & 0xc0) === 0xc0) await vi.waitFor(() => expect(gateway.snapshot().samples[0]?.value).toBe(String(value))); await vi.waitFor(() => expect(gateway.snapshot().samples[0]?.qualityCode).toBe(quality)); };
   const action = async (kind: AlarmCommand["action"], headers: Record<string, string>) => { const row = gateway.snapshot().alarms!.rows[0]; const response = await request("alarm-action", { alarmId: row.id, occurrence: row.occurrence!, revision: row.revision, action: kind }, headers); expect(response.status).toBe(200); };
-  return { root, namespace, request, login, sample, action, operatorId, snapshot: () => gateway.snapshot(), history: () => history.read(), commands: () => plcCommands, advance: (time: number) => { now = time; }, restartReadOnly: async () => { await gateway.stop(); history.close(); history = openAlarmHistory({ root, namespace, readOnly: true }); gateway = make(true); await gateway.start(); }, close: async () => { await gateway.stop(); history.close(); audit.close(); await publisher.endAsync(true); await new Promise<void>(resolve => broker.close(resolve)); await new Promise<void>(resolve => tcp.close(() => resolve())); } };
+  return { root, namespace, request, login, sample, action, operatorId, snapshot: () => gateway.snapshot(), historyStore: () => history, history: () => history.read(), commands: () => plcCommands, advance: (time: number) => { now = time; }, restartReadOnly: async () => { await gateway.stop(); history.close(); history = openAlarmHistory({ root, namespace, readOnly: true }); gateway = make(true); await gateway.start(); }, close: async () => { await gateway.stop(); history.close(); audit.close(); await publisher.endAsync(true); await new Promise<void>(resolve => broker.close(resolve)); await new Promise<void>(resolve => tcp.close(() => resolve())); } };
 }
 it("persists actual MQTT transitions and operator actions across a clean restart without restoring live state", async () => {
   const test = await fixture(); try {
@@ -48,4 +49,21 @@ it("exposes an archive capacity failure without stopping acquisition or inventin
 });
 it("does not renew the operator idle timeout on an archive read", async () => {
   const test = await fixture(); try { const headers = await test.login(); test.advance(30000); expect((await test.request("alarm-history", undefined, headers)).status).toBe(200); test.advance(60001); expect((await test.request("alarm-history", undefined, headers)).status).toBe(401); } finally { await test.close(); }
+});
+it("protects full-history statistics with the read capability and validates parameters before calculating", async () => {
+  const test = await fixture(); try {
+    await test.sample(true); const headers = await test.login(); await test.action("acknowledge", headers); await test.sample(false);
+    expect((await test.request("alarm-statistics")).status).toBe(401); expect((await test.request("alarm-statistics", undefined, await test.login("viewer"))).status).toBe(403);
+    for (const route of ["alarm-statistics?order=sql", "alarm-statistics?before=1", "alarm-statistics?limit=1&limit=2", "alarm-statistics?limit=501", "alarm-statistics?sql=select"]) expect((await test.request(route, undefined, headers)).status).toBe(400);
+    const response = await test.request("alarm-statistics", undefined, headers); expect(response.status).toBe(200); const text = await response.text(), result = parseAlarmStatisticsSnapshot(JSON.parse(text));
+    expect(result).toMatchObject({ matchedEvents: 3, activations: 1, through: 3, capture: { state: "recording" } }); expect(result.rows[0]).toMatchObject({ active: { pairs: 1 }, ack: { pairs: 1 } }); for (const secret of [token, password, headers.Cookie]) expect(text).not.toContain(secret); expect(test.commands()).toBe(0);
+    await test.restartReadOnly(); const historical = await test.request("alarm-statistics", undefined, await test.login()); expect(historical.status).toBe(200); expect(await historical.json()).toMatchObject({ matchedEvents: 3, capture: { state: "disabled" } });
+  } finally { await test.close(); }
+});
+it("reauthorizes after calculation and does not renew the operator idle timeout", async () => {
+  const test = await fixture(); try {
+    const headers = await test.login(); test.advance(30000); const store = test.historyStore(), calculate = store.statistics.bind(store);
+    const pending = vi.spyOn(store, "statistics").mockImplementationOnce(async (...args) => { const result = await calculate(...args); test.advance(60001); return result; });
+    const response = await test.request("alarm-statistics", undefined, headers); expect(response.status).toBe(401); expect(await response.json()).toMatchObject({ type: "operator", code: "AUTH_REQUIRED" }); expect(pending).toHaveBeenCalledOnce(); pending.mockRestore(); expect(test.commands()).toBe(0);
+  } finally { await test.close(); }
 });

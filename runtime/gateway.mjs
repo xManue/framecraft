@@ -9,7 +9,7 @@ import { RecipeStoreError, parseRecipeCommand, recipeActor, recipeId } from "./r
 import { OperatorAuthError, operatorText } from "./operator-policy.mjs";
 import { auditContext, appendAudit as persistAuditEvent, runAudited as auditOperation } from "./audit-operation.mjs";
 import { parseAuditQuery, parseAuditSnapshot } from "./audit-query.mjs";
-import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot } from "./alarm-history.mjs";
+import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot, parseAlarmStatisticsQuery, parseAlarmStatisticsSnapshot } from "./alarm-history.mjs";
 import { RecipePlcError, captureRecipePlc, emptyRecipePlcConfig, parseRecipePlcConfig, parseRecipePlcQuery } from "./recipe-plc.mjs";
 import { RecipeApplyError, emptyRecipeApplyConfig, parseRecipeApplyConfig, parseRecipeApplyCommand, parseRecipeApplyLookup } from "./recipe-apply.mjs";
 import { createRecipeApplyEngine } from "./recipe-apply-engine.mjs";
@@ -121,7 +121,8 @@ export function createPlcGateway(catalog, variables, options = {}) {
       const actual = Buffer.from(typeof request.headers.authorization === "string" ? request.headers.authorization : ""); const expected = Buffer.from("Bearer " + token);
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw failure(401, "GATEWAY_AUTH");
       if (request.url === api + "/snapshot" && request.method === "GET") { respond(response, 200, snapshot()); return; }
-      if (request.url === api + "/alarm-history" || request.url?.startsWith(api + "/alarm-history?")) {
+      const statisticsRequest = request.url === api + "/alarm-statistics" || request.url?.startsWith(api + "/alarm-statistics?");
+      if (statisticsRequest || request.url === api + "/alarm-history" || request.url?.startsWith(api + "/alarm-history?")) {
         if (request.method !== "GET") throw new AlarmHistoryError("ALARM_HISTORY_QUERY");
         if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
         if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;
@@ -134,8 +135,17 @@ export function createPlcGateway(catalog, variables, options = {}) {
         const params = new URL(request.url, "http://localhost").searchParams;
         if ([...params].length > 10 || new Set(params.keys()).size !== [...params].length) throw new AlarmHistoryError("ALARM_HISTORY_QUERY");
         const raw = Object.fromEntries(params); for (const key of ["limit", "before", "through"]) if (raw[key] !== undefined) { if (!/^(0|[1-9]\d*)$/.test(raw[key])) throw new AlarmHistoryError("ALARM_HISTORY_QUERY"); raw[key] = Number(raw[key]); }
-        const query = parseAlarmHistoryQuery(raw); if (Date.now() < nextHistoryRead) throw new OperatorAuthError("AUTH_BUSY"); nextHistoryRead = Date.now() + 200;
-        respond(response, 200, parseAlarmHistorySnapshot({ ...options.alarmHistory.read(query), capture: historyCapture() }, query)); return;
+        const query = (statisticsRequest ? parseAlarmStatisticsQuery : parseAlarmHistoryQuery)(raw); if (Date.now() < nextHistoryRead) { if (statisticsRequest) throw new AlarmHistoryError("ALARM_HISTORY_STATISTICS_BUSY"); throw new OperatorAuthError("AUTH_BUSY"); } nextHistoryRead = Date.now() + 200;
+        if (statisticsRequest) {
+          const abort = new AbortController(), disconnected = () => abort.abort(); response.once("close", disconnected);
+          try {
+            const result = await options.alarmHistory.statistics(query, { signal: abort.signal });
+            if (stopping || request.aborted || response.destroyed || abort.signal.aborted) return;
+            await options.operatorAuth.authorize(request, "alarms.history.read", false);
+            if (stopping || response.destroyed || abort.signal.aborted) return;
+            respond(response, 200, parseAlarmStatisticsSnapshot({ ...result, capture: historyCapture() }, query));
+          } finally { response.off("close", disconnected); }
+        } else respond(response, 200, parseAlarmHistorySnapshot({ ...options.alarmHistory.read(query), capture: historyCapture() }, query)); return;
       }
       if (request.url === api + "/audit" || request.url?.startsWith(api + "/audit?")) {
         if (request.method !== "GET") throw new OperatorAuthError("AUTH_INPUT");

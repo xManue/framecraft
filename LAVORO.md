@@ -6165,6 +6165,45 @@ Verifiche del 5 ottobre 2026:
   Consultati i filtri allarmi Unified V21 e Alarm Grid Optix 1.3, senza rivalutare l'inventario
   completo né dichiarare parità. Guide e roadmap PARZIALE aggiornate; WIP trend/AI escluso.
 
+## 174. Statistiche degli allarmi registrati e CSV dal pannello (28 ottobre 2026)
+
+- **Funzione completa nella pipeline**: Storico allarmi su disco → Statistiche dello storico.
+  Dopo una lettura esplicita, calcolo su tutti gli eventi dei filtri applicati alla sequenza
+  fissata, oltre la pagina visibile. Attivazioni/eventi per ID, somme e medie fra attivazioni,
+  fino al rientro e alla presa visione. Cinque ordini applicati prima delle prime 50/100/500
+  righe, con conteggi totali e limite visibile. Nome/testo/classificazione dell'ultimo evento
+  filtrato; ordine per nome deterministico fra lingue diverse del browser e del servizio.
+- **Contratto delle misure**: coppie solo nel risultato filtrato; rientro/presa visione dalla
+  più recente attivazione dello stesso avvio/occorrenza. Coperta la riattivazione che riusa
+  un'occorrenza pendente. Intervalli fra due attivazioni dello stesso avvio, anche occorrenze
+  diverse. Mai attraverso un riavvio o fino a ora. Medie assenti distinte da durate realmente
+  zero; contatori separati per attivazioni senza coppia, transizioni senza inizio e orari
+  incoerenti. Lacune/qualità e stato di registrazione espliciti, senza stimare disponibilità.
+- **Servizio**: GET alarm-statistics protetto da token/origine e sessione con capacità dedicata
+  di lettura storico; autorizzazione ricontrollata dopo il calcolo, senza rinnovare l'inattività.
+  Parametri strutturati, niente SQL o cursor prima/dopo. Blocchi da 500 righe con rilascio
+  del ciclo eventi fra le letture, senza tenere una transazione aperta durante le pause.
+  Un calcolo per archivio, senza coda; annullamento alla disconnessione, massimo 10.000 ID,
+  500.000 eventi, somme rappresentabili e 30 secondi; errore senza risultati parziali.
+  Rifiuto per calcolo occupato distinto dai problemi di accesso o da un altro writer SQLite.
+- **HMI e download**: tabella desktop/schede mobile; calcolo e CSV solo su richiesta. CSV
+  delle righe mostrate con protezione formule, identificativi archivio/sequenza, date UTC,
+  millisecondi e medie assenti vuote. Filtri/ordine/limite/nuova lettura/logout invalidano
+  risultato e URL; annullamento e risposte tardive non ripristinano dati di un altro utente.
+  Nessun comando PLC, dipendenza o risorsa nativa nuova; vecchi Runtime da aggiornare esplicitamente.
+- **Verifiche mirate**: 50 casi distinti su cinque file, inclusi archivio SQLite, integrazione
+  MQTT/HTTP, UI e generazione. Due prove HTTP scadute durante esecuzioni concorrenti con
+  compilazione/browser: rieseguite isolate, senza aumentare i timeout; 38 casi passati sullo
+  snapshot pubblico e 14 del solo modulo ritoccato finale, con sovrapposizioni non ricontate.
+  Typecheck/build pubblici passati. Browser sul launcher e Runtime generati con account reali
+  sintetici, SQLite e MQTT loopback: 520 eventi/260 attivazioni/260 coppie di rientro, CSV,
+  logout e zero comandi PLC/richieste esterne. Provati 375/768/1024/1440 px; l'ispezione delle
+  immagini ha rilevato un caption verticale su mobile, corretto e coperto da controllo dimensioni.
+- **Stato**: riletti statistiche Unified V21 e contatori Optix 1.8; documentata la differenza
+  fra analisi storica filtrata e contatori correnti. Query/colonne vendor, report avanzati,
+  AlarmMetricsType/Reset, stress su CPU/storage reali, PLC fisico, touch/WebView2 e distribuzione
+  restano aperti. Roadmap ancora PARZIALE, AI rinviata, WIP precedente conservato fuori dal commit.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

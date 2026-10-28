@@ -143,6 +143,69 @@ e [Alarm grid Optix 1.3](https://www.rockwellautomation.com/en-mde/docs/factoryt
 Framecraft usa criteri dichiarati, non espressioni SQL o una conversione dei filtri vendor.
 Statistiche industriali, ordinamento storico multi-colonna e il resto del modello vendor restano aperti.
 
+### Statistiche dello storico allarmi
+
+In **Storico allarmi su disco**, carica i filtri desiderati e apri **Statistiche dello storico**.
+**Calcola statistiche dei risultati** legge sul servizio tutti gli eventi corrispondenti ai
+filtri applicati, fino alla sequenza fissata dalla lettura, anche se sono su altre pagine.
+Una vista salvata prepara solo i filtri: prima occorre caricare lo storico. Nessun calcolo,
+aggiornamento periodico o comando PLC automatico. Serve il permesso server
+`alarms.history.read`, che consente la consultazione dell'intero archivio; un filtro visivo
+non concede né limita quel permesso. Identità e permessi sono ricontrollati prima della risposta,
+senza rinnovare il timeout di inattività. Disponibile anche ad archivio disabilitato in sola lettura.
+
+Per ciascun ID allarme vengono mostrati eventi e attivazioni registrate, somma e media dei
+tempi fino al rientro, fino alla presa visione e fra due attivazioni. Nome, testo, classe e zona
+sono quelli dell'ultimo evento filtrato in ordine di registrazione; lo stesso ID è raggruppato
+anche se il testo è cambiato. L'ordinamento riguarda tutti gli allarmi calcolati prima del limite:
+più attivazioni, totale fino al rientro, totale fino alla presa visione, intervallo medio decrescente
+o nome A–Z. I nomi usano un ordine deterministico, senza distinguere maiuscole e accenti latini;
+l'ID risolve i pareggi. Sono mostrate le prime 50, 100 o 500 righe, indicando quante restano fuori.
+I totali comprendono tutti i risultati; per vedere gli altri ID restringi i filtri o cambia ordine.
+
+Le coppie sono definite così:
+
+- Rientro e presa visione: ultima attivazione precedente dello stesso ID, avvio e occorrenza.
+  Una riattivazione riapre le misure anche se l'occorrenza pendente è riutilizzata; ogni tipo di
+  chiusura viene contato al massimo una volta per attivazione. Non è il tempo fino a Confermato.
+- Fra attivazioni: due attivazioni consecutive filtrate dello stesso ID e avvio, anche di
+  occorrenze diverse. Non si misura attraverso un riavvio o fino all'ora corrente.
+- Tutti gli eventi della coppia devono essere nei filtri, incluse date ed Evento. Se scegli solo
+  Attivato, puoi contare le attivazioni ma non misurare rientri/prese visioni. Una chiusura senza
+  inizio abbinabile resta una transizione senza coppia; un inizio senza chiusura resta non abbinato.
+  Un orario finale precedente all'inizio è indicato come incoerente, escluso dalla somma/media.
+  Nessuna coppia valida significa media non disponibile; una coppia realmente istantanea vale zero.
+
+Sono tempi valutati dall'orologio del servizio, non timestamp PLC né disponibilità/MTBF/MTTR
+certificati della macchina. Stop, perdite di qualità ed errori possono lasciare lacune anche con
+contatori a zero. Il risultato riporta stato della registrazione, avvii incompleti ed eventi
+senza conferma; nessuna ricostruzione dello stato attivo o stima delle durate mancanti.
+
+**Prepara CSV delle statistiche mostrate → Scarica CSV statistiche** esporta solo le righe
+mostrate, senza ulteriori richieste. UTF-8, separatore punto e virgola, protezione formule,
+date UTC, durate esatte in millisecondi e medie ignote vuote. Include archivio, namespace,
+sequenza, ordine, conteggi e coppie valide/incoerenti/non abbinate. Non è un backup.
+Cambiare filtri, ordine, limite, utente o rileggere lo storico invalida risultato e download.
+Annullamento, errore o logout non lasciano un risultato parziale; nessuna ripetizione automatica.
+
+API: `GET /_framecraft/plc/v1/alarm-statistics`, con gli stessi filtri di `alarm-history`,
+`archiveId` e `through`; `before` non è ammesso. `limit` vale 1–500 (default 50), `order` è
+`frequency`, `active-total`, `ack-total`, `interval-average` o `name`. Nessun SQL libero.
+L'archivio viene letto a blocchi di 500 con pause per gli altri lavori del servizio, senza una
+transazione mantenuta durante le pause; gli eventi sono append-only e la sequenza è fissata.
+Un solo calcolo alla volta per archivio, senza coda. Limiti: 500.000 eventi, 10.000 ID distinti,
+totali numerici rappresentabili e 30 secondi sul servizio; attesa client massima 60 secondi.
+Un limite superato scarta tutto e chiede filtri più stretti. Non sono misure di throughput
+garantite: carico reale, storage e CPU target richiedono collaudo.
+
+Confronto funzionale: [statistiche Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/operating-unified-pc-rt-unified/controls-rt-unified/operating-alarms-rt-unified/alarm-control-rt-unified/displaying-alarm-statistics-rt-unified)
+descrive frequenze e tempi degli eventi registrati. Framecraft applica esplicitamente i filtri
+anche alle statistiche, mentre quella vista Unified documenta un comportamento diverso.
+I [contatori Optix](https://www.rockwellautomation.com/en-in/docs/factorytalk-optix/current/contents-ditamap/creating-projects/alarms/alarm-counters.html)
+descrivono stati correnti: non equivalgono a questa analisi storica. Non sono implementati
+gli oggetti OPC UA AlarmMetricsType/Reset, query vendor o report industriali completi.
+Nuovi pannelli inclusi nella pipeline; per quelli esistenti serve aggiornamento esplicito del Runtime.
+
 ### Operazioni su più allarmi
 
 Nel controllo **Allarmi operativi** scegli **Più allarmi**. Spunta le righe oppure usa

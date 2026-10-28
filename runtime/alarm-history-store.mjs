@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { lstatSync, realpathSync, mkdirSync, openSync, closeSync, fstatSync, readSync, writeFileSync, fsyncSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { auditSqliteSupported } from "./audit-store.mjs";
-import { AlarmHistoryError, historyKeys, historyUuid, parseHistoryEvent, parseAlarmHistoryQuery } from "./alarm-history.mjs";
+import { AlarmHistoryError, historyKeys, historyUuid, parseHistoryEvent, parseAlarmHistoryQuery, parseAlarmStatisticsQuery, createAlarmStatisticsAccumulator } from "./alarm-history.mjs";
 
 const bytesLimit = 256 * 1024 * 1024, maximumRecords = 500000;
 const fail = code => { throw new AlarmHistoryError(code); };
@@ -26,7 +26,7 @@ const safe = error => error instanceof AlarmHistoryError ? error : new AlarmHist
 
 /** One local service owns the SQLite handle; no replay, pruning or live-state restoration. */
 export function openAlarmHistory({ root, namespace, recordLimit = 100000, readOnly = false }) {
-  let db, initFd, initStat, initFile, currentRun, failed = false, closed = false;
+  let db, initFd, initStat, initFile, currentRun, failed = false, closed = false, statisticsBusy = false;
   try {
     if (typeof root !== "string" || !path.isAbsolute(root) || root.startsWith("\\\\") || root.startsWith("//") || !historyUuid(namespace) || !Number.isSafeInteger(recordLimit) || recordLimit < 1 || recordLimit > maximumRecords || typeof readOnly !== "boolean") fail("ALARM_HISTORY_CONFIG");
     folder(root); const parent = path.join(root, ".framecraft-runtime"), directory = path.join(parent, "alarm-history");
@@ -107,6 +107,27 @@ export function openAlarmHistory({ root, namespace, recordLimit = 100000, readOn
           const incompleteRuns = db.prepare("SELECT count(*) n FROM history_runs WHERE (ended IS NULL AND id<>?) OR missed>0").get(currentRun ?? "").n;
           db.exec("COMMIT"); return { version: 1, id: identity.id, namespace, sequence, count: sequence, incompleteRuns, events, nextBefore: rows.length > query.limit ? events.at(-1).seq : null };
         } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw safe(error); }
+      },
+      async statistics(input = {}, options = {}) {
+        if (statisticsBusy) fail("ALARM_HISTORY_STATISTICS_BUSY"); statisticsBusy = true;
+        try {
+          check(); const query = parseAlarmStatisticsQuery(input), sequence = tip(), through = query.through ?? sequence;
+          if (query.archiveId !== undefined && query.archiveId !== identity.id || through > sequence) fail("ALARM_HISTORY_CHANGED");
+          const where = ["seq<=?", "seq>?"], params = [];
+          for (const [key, column] of [["alarmId", "alarm_id"], ["alarmClass", "alarm_class"], ["area", "area"], ["state", "state"], ["from", "time"], ["to", "time"]]) if (query[key] !== undefined) { where.push(column + (key === "from" ? ">=?" : key === "to" ? "<=?" : "=?")); params.push(["from", "to"].includes(key) ? Date.parse(query[key]) : query[key]); }
+          const statement = db.prepare("SELECT * FROM history_events WHERE " + where.join(" AND ") + " ORDER BY seq ASC LIMIT 500"), accumulator = createAlarmStatisticsAccumulator(), started = performance.now(); let after = 0;
+          while (true) {
+            await new Promise(resolve => setImmediate(resolve));
+            if (options.signal?.aborted) fail("ALARM_HISTORY_STATISTICS_CANCELLED");
+            if (performance.now() - started > 30000) fail("ALARM_HISTORY_STATISTICS_LIMIT");
+            check(); const rows = statement.all(through, after, ...params);
+            for (const row of rows) accumulator.push(payloadRow(row));
+            if (rows.length < 500) break; after = rows.at(-1).seq;
+          }
+          const incompleteRuns = db.prepare("SELECT count(*) n FROM history_runs WHERE (ended IS NULL AND id<>?) OR missed>0").get(currentRun ?? "").n;
+          return { version: 1, id: identity.id, namespace, sequence, through, incompleteRuns, order: query.order, limit: query.limit, ...accumulator.finish(query.order, query.limit) };
+        } catch (error) { throw safe(error); }
+        finally { statisticsBusy = false; }
       },
       finish(sourceSequence, missed) {
         if (!currentRun || readOnly) return;
