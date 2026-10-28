@@ -625,10 +625,23 @@ l'intero grafo né sostituisce le notice. Il server SDK è soltanto una dipenden
 
 ### Esplorazione nodi OPC UA (engineering locale)
 
-Il Runtime include `browse-opcua.mjs` e un motore di navigazione read-only da collegare al
-selettore dell’editor. **Il selettore grafico e l’importazione dei tag non sono ancora
-disponibili**: questo comando è una funzione esplicita da terminale, non una nuova API
-accessibile agli operatori HMI e non avvia il gateway ordinario.
+Nell’editor desktop Windows apri **Pannello → Connessioni PLC → Esplora nodi OPC UA** su un
+profilo salvato e abilitato. Consenti esplicitamente la lettura dal PC dell’editor: richiede
+Node.js supportato (22.13 o successivo), certificati/PKI e variabili ambiente disponibili su
+quel PC. Non recupera credenziali o trust dal server Runtime remoto. Non è una nuova API
+degli operatori HMI e non avvia il gateway ordinario.
+
+Leggi una cartella, entra nei nodi con il pulsante cartella e usa le pagine da 100 risultati.
+La ricerca riguarda solo la pagina corrente, non tutto il server. Scegli un nodo scalare,
+una variabile esistente compatibile oppure un nome/accesso espliciti per una nuova; premi
+**Rivedi associazione → Aggiungi alla bozza**. Puoi accumulare più scelte. Poi torna alle
+connessioni e premi **Salva configurazione**: non viene abilitata alcuna scrittura del nodo.
+Gli array, i tipi complessi/remoti e i Method sono dichiarati, non convertiti o eseguiti.
+Se cambi endpoint/sicurezza/tempi, salva prima il profilo; se cambiano progetto o cataloghi
+durante la lettura, il risultato viene scartato. Annulla chiude la richiesta dedicata.
+
+Il Runtime include anche `browse-opcua.mjs`, comando esplicito da terminale che non importa
+tag o mapping. Per i vecchi progetti non viene aggiornato automaticamente il codice Runtime.
 
 Con un profilo OPC UA reale già salvato e abilitato in `framecraft.connections.json`, esegui
 dalla cartella del pannello, sostituendo il segnaposto con il suo ID esatto:
@@ -683,14 +696,33 @@ il comando chiude comunque la sua sessione. Ctrl+C richiede l’annullamento. Co
 cambiata durante la prova, file linkati/non regolari e profili assenti/disabilitati fanno
 scartare il risultato. Gli errori JSON hanno codice e rimedio statici, non stack SDK o segreti.
 
-Decisione: costruire sulla stessa implementazione TLS del driver, non un secondo client meno
-protetto. Il futuro ponte desktop deve usare un helper fidato dell’app, controllare sessione
-progetto e CAS, e proporre tag/mapping con revisione e comandi inizialmente disabilitati.
-Non deve eseguire alla cieca lo script modificabile presente nel progetto. Servono ancora
-selettore/import, packaging fidato Node/SDK, UDT/array e collaudo su CPU/rete aziendale.
+Il ponte desktop usa codice incorporato nell’app, non gli script Runtime o `node_modules`
+del pannello aperto. Controlla finestra principale, sessione progetto e contenuti dei tre
+cataloghi, con una sola richiesta attiva e cancellazione anche prima dell’avvio del worker.
+Il processo Node di sistema viene scelto fuori dal progetto, senza `NODE_OPTIONS`/`NODE_PATH`;
+la query non può fornire endpoint, programma o percorsi SDK alternativi. Nessun downgrade o
+auto-trust rispetto al driver. Non è una sandbox per eseguire codice HMI non fidato.
 
-La base dell’importazione offline è ora implementata nel core editor (`opcUaBrowser.ts`),
-**non ancora esposta nel selettore grafico**. Un nodo scalare con tipo e accesso noti può
+L’helper ha un limite complessivo di 180 secondi e, dopo l’annullamento, due secondi di
+chiusura cooperativa prima di terminare il suo albero di processi Windows tramite handle
+di Job Object, non tramite ricerca/kill di PID. Uscita dell’app e cambio progetto invalidano
+il lavoro. Restano da collaudare WebView2/installazione, rete e PKI aziendali e CPU fisiche.
+
+In sviluppo usa solo le dipendenze fisse del checkout editor. La build release include
+il grafo SDK dei tre pacchetti client/certificate-manager/debug: versioni confrontate col
+lockfile, manifest, file e notice conservati, nessun download o installazione npm dal pannello.
+L’SDK viene preparato nella cache privata dell’app solo alla prima esplorazione, non
+all’avvio di Framecraft; hash, dimensioni, percorsi normali e file extra vengono verificati
+prima di importarlo. File alterati/linkati vengono rifiutati, non riparati o sovrascritti.
+La cache contiene codice pubblico SDK, non password o tag dell’impianto. Letture/scritture
+di preparazione limitate a otto in parallelo; trasporto binario su stdin, non in argv.
+Node.js resta una dipendenza di sistema: questa tranche non è un installer autosufficiente.
+I gate licenze/notice citati sopra e l’audit dell’artefatto distribuito restano obbligatori.
+Una chiusura forzata durante l’estrazione può lasciare uno staging nella cache: retention e
+gestione guidata della cache restano da completare, senza cancellare cartelle del pannello.
+
+L’importazione offline del selettore è gestita dal core editor (`opcUaBrowser.ts`). Un nodo
+scalare con tipo e accesso noti può
 essere associato a una variabile compatibile, oppure creare una variabile con nome/tipo/
 accesso espliciti. URI e NodeId vengono dai metadati; non sono inventati indirizzi PLC,
 valori iniziali o conversioni. Un mapping nuovo o sostituito parte con `writeEnabled:false`,
@@ -706,9 +738,12 @@ esterne. Esito parziale/incerto richiede verifica manuale prima di avviare il se
 Le singole sostituzioni sono atomiche, **il gruppo di tre file non è crash-atomico**: questo
 non è un sistema di backup/recovery né una configurazione dinamica del gateway in esecuzione.
 
-Fonti: [servizi Browse e continuazioni OPC Foundation](https://reference.opcfoundation.org/specs/OPC-10000-4/5)
-e [API ClientSession Node OPC UA](https://node-opcua.github.io/api_doc/latest/interfaces/node-opcua.ClientSession.html).
-Implementazione originale senza nuovo pacchetto o codice vendor copiato.
+Fonti: [servizi Browse e continuazioni OPC Foundation](https://reference.opcfoundation.org/specs/OPC-10000-4/5),
+[API ClientSession Node OPC UA](https://node-opcua.github.io/api_doc/latest/interfaces/node-opcua.ClientSession.html)
+e [Job Objects Windows](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
+Codice Framecraft originale, nessun sorgente proprietario vendor copiato nel repository.
+Le dipendenze SDK vengono incluse nella release con i loro file di licenza/notice disponibili;
+`windows-sys 0.61.2`, già transitiva, è ora anche diretta per le API di gestione dei processi.
 
 ## Ricette: archivio dati server, non trasferimento PLC
 

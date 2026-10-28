@@ -11,6 +11,7 @@ import type { RecipeConfigurationSnapshot } from "../core/recipeConfiguration";
 import type { RecipePlcConfigurationSnapshot } from "../core/recipePlcConfiguration";
 import type { RecipeApplyConfigurationSnapshot } from "../core/recipeApplyConfiguration";
 import type { OperatorAccountsSnapshot, OperatorAdminCommand } from "../core/operatorAccounts";
+import type { OpcUaBrowseRequest, OpcUaBrowseReply } from "../core/opcUaBrowser";
 
 export const desktopAvailable = isTauri();
 
@@ -68,6 +69,8 @@ export const desktopBridge = {
     requireDesktop();
     return invoke("read_connection_configuration", { root });
   },
+  async browseOpcUa(request: OpcUaBrowseRequest): Promise<OpcUaBrowseReply> { requireDesktop(); return invoke("browse_opcua", { request }); },
+  async cancelOpcUaBrowse(id: string): Promise<boolean> { requireDesktop(); return invoke("cancel_opcua_browse", { id }); },
   async saveConnectionConfiguration(root: string, expected: ConnectionConfigurationSnapshot, next: { connections: string; runtime: string; plc?: string }): Promise<ConnectionConfigurationSnapshot> {
     requireDesktop();
     return invoke("save_connection_configuration", { root, expected, next });

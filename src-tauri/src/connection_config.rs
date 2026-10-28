@@ -60,11 +60,11 @@ pub(super) fn read_one(root: &Path, name: &str) -> Result<Option<String>, String
     String::from_utf8(bytes).map(Some).map_err(|_| format!("{name}: codifica UTF-8 richiesta."))
 }
 
-fn read_files(root: &Path) -> Result<ConfigurationFiles, String> {
+pub(super) fn read_files(root: &Path) -> Result<ConfigurationFiles, String> {
     Ok(ConfigurationFiles { connections: read_one(root, CONNECTIONS)?, runtime: read_one(root, RUNTIME)?, plc: read_one(root, PLC)? })
 }
 
-fn check_root<'a>(requested: &str, current: &'a Option<PathBuf>) -> Result<&'a Path, String> {
+pub(super) fn check_root<'a>(requested: &str, current: &'a Option<PathBuf>) -> Result<&'a Path, String> {
     let root = current.as_deref().ok_or("Nessun progetto aperto.")?;
     if fs::canonicalize(requested).map_err(|_| "Progetto non accessibile.")? != root {
         return Err("Il progetto aperto è cambiato. Riapri Connessioni PLC.".into());

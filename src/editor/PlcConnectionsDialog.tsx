@@ -1,5 +1,5 @@
 import { BookOpen, Cable, Check, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { normalizeMqttTagValue, type PlcConnectionConfig } from "../../runtime/connection-config.mjs";
 import type { MqttBinding } from "../../runtime/mqtt-driver.mjs";
@@ -12,6 +12,8 @@ import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
 import { PlcConnectionGuide } from "./PlcConnectionGuide";
 import { OpcUaConnectionEditor } from "./OpcUaConnectionEditor";
+import { OpcUaBrowserDialog } from "./OpcUaBrowserDialog";
+import { opcUaBrowseUnavailable } from "../core/opcUaBrowser";
 
 export type FieldProps = {
   label: string; path: string; value?: string | number; onChange(value: string): void;
@@ -50,6 +52,8 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
   const [status, setStatus] = useState("");
   const [confirm, setConfirm] = useState<"close" | "reload">();
   const [focusPath, setFocusPath] = useState<string>();
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const browserActive = useRef(false); browserActive.current = browseOpen;
   const dialog = useRef<HTMLElement>(null);
   const guide = useRef<HTMLDetailsElement>(null);
   const guideId = useId();
@@ -57,6 +61,7 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
   const onCloseRef = useRef(onClose); onCloseRef.current = onClose;
   const dirty = !!model && JSON.stringify(model) !== base;
   const issues = model ? connectionConfigurationIssues(model) : [];
+  const browseReason = useMemo(() => model && snapshot ? opcUaBrowseUnavailable(model, snapshot, selected) : undefined, [model, snapshot, selected]);
   const handlers = useRef({ close: () => {}, save: () => {} });
 
   async function load() {
@@ -77,6 +82,7 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
     const previous = document.activeElement as HTMLElement | null;
     dialog.current?.querySelector<HTMLButtonElement>("[data-close-connections]")?.focus();
     const keydown = (event: KeyboardEvent) => {
+      if (browserActive.current) return;
       if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); handlers.current.close(); return; }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); event.stopImmediatePropagation(); handlers.current.save(); return; }
       if (event.key === "Tab") {
@@ -119,7 +125,8 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
       if (!mounted.current || request !== sequence.current || useEditorStore.getState().project !== initialProject) return;
       const parsed = parseConnectionConfiguration(next);
       setSnapshot(next); setModel(parsed); setBase(JSON.stringify(parsed)); setPhase("ready");
-      setStatus("Configurazione salvata. Nessun collegamento o comando è stato avviato: prepara l’ambiente, poi avvia o riavvia il servizio e il server del pannello.");
+      if (model.plcSource !== undefined) void useEditorStore.getState().refreshPlcVariables();
+      setStatus("Configurazione salvata. Il salvataggio non avvia collegamenti o comandi: prepara l’ambiente, poi avvia o riavvia il servizio e il server del pannello.");
     } catch (e) {
       if (!mounted.current || request !== sequence.current || useEditorStore.getState().project !== initialProject) return;
       setPhase("ready"); setError(e instanceof Error ? e.message : String(e));
@@ -145,7 +152,7 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
   const toggle = (label: string, key: string, checked: boolean | undefined, onChange: (value: boolean) => void, hint?: string) => <Toggle label={label} path={key} checked={checked} onChange={onChange} issues={issues} hint={hint} />;
 
   return createPortal(<div className="connections-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
-    <section ref={dialog} className="connections-dialog" role="dialog" aria-modal="true" aria-labelledby="plc-connections-title" aria-describedby="plc-connections-purpose" aria-busy={phase === "loading" || phase === "saving"}>
+    <section ref={dialog} className="connections-dialog" inert={browseOpen || undefined} aria-hidden={browseOpen || undefined} role="dialog" aria-modal="true" aria-labelledby="plc-connections-title" aria-describedby="plc-connections-purpose" aria-busy={phase === "loading" || phase === "saving"}>
       <header><div><h2 id="plc-connections-title"><Cable size={20} aria-hidden="true" /> Connessioni PLC</h2><p id="plc-connections-purpose">{initialProject?.name} · configurazione offline MQTT / OPC UA e tag del pannello</p></div><div className="connection-header-actions"><button type="button" aria-controls={guideId} disabled={!!confirm} onClick={() => { if (guide.current) { guide.current.open = true; guide.current.scrollIntoView?.({ block: "nearest" }); guide.current.querySelector("summary")?.focus(); } }}><BookOpen size={18} aria-hidden="true" /> Guida rapida</button><button type="button" data-close-connections disabled={phase === "saving"} onClick={requestClose} aria-label="Chiudi Connessioni PLC"><X size={20} /></button></div></header>
       <div className="connections-body">
         <PlcConnectionGuide ref={guide} id={guideId} />
@@ -170,6 +177,7 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
           <section className="connection-section"><div className="connection-section-heading"><h3>2. Broker, server OPC UA e tag</h3><button type="button" disabled={model.catalog.connections.length >= 1000} onClick={() => { setSelected(model.catalog.connections.length); update((m) => ({ ...m, catalog: { ...m.catalog, connections: [...m.catalog.connections, newMqttConnection(m.catalog.connections)] } })); }}><Plus size={17} /> Aggiungi MQTT</button><button type="button" disabled={model.catalog.connections.length >= 1000} onClick={() => { setSelected(model.catalog.connections.length); update((m) => ({ ...m, catalog: { ...m.catalog, connections: [...m.catalog.connections, newOpcUaConnection(m.catalog.connections)] } })); }}><Plus size={17} /> Aggiungi OPC UA</button></div>
             {!!model.catalog.connections.length && <div className="connection-picker" role="group" aria-label="Scegli connessione PLC">{model.catalog.connections.map((c, index) => <button key={index} type="button" aria-pressed={selected === index} onClick={() => chooseConnection(index)}>{c.id || "Connessione " + (index + 1)}<small>{c.protocol === "opcua" ? "OPC UA" : "MQTT"} · {c.enabled ? "Abilitata" : "Disabilitata"} · {c.bindings.length} tag</small></button>)}</div>}
             {!selectedConnection && <p>Nessuna connessione configurata. Aggiungi MQTT oppure OPC UA e usa i tag già salvati in Variabili PLC.</p>}
+            {opcua && snapshot && <div className="connection-section-heading"><button type="button" disabled={!!browseReason} onClick={() => setBrowseOpen(true)}>Esplora nodi OPC UA</button><small>{browseReason || "Lettura esplicita dal PC dell’editor. Puoi rivedere i nodi e aggiungerli alla bozza senza inviare comandi."}</small></div>}
             {opcua && <OpcUaConnectionEditor key={selected} config={opcua} prefix={prefix} variables={model.variables} focusPath={focusPath} onFocusHandled={() => setFocusPath(undefined)} mappingLimit={model.catalog.connections.reduce((n, c) => n + c.bindings.length, 0) >= 5000} field={field} toggle={toggle} supportedType={supportedType} onRemove={removeConnection} onChange={(next) => update((m) => ({ ...m, catalog: { ...m.catalog, connections: m.catalog.connections.map((c, index) => index === selected ? next : c) } }))} />}
             {current && <><div className="connection-grid">
               {field("Nome connessione", prefix + "id", current.id, (id) => connection({ id }))}
@@ -217,5 +225,6 @@ export function PlcConnectionsDialog({ onClose }: { onClose(): void }) {
       </div>
       <footer><span>{phase === "saving" ? "Salvataggio dei cataloghi…" : dirty ? "Modifiche non salvate" : "Nessuna modifica da salvare"} · credenziali solo nel servizio</span><div><button type="button" disabled={phase === "saving" || phase === "loading" || !!confirm} onClick={requestReload}><RefreshCw size={16} /> Ricarica</button><button type="button" disabled={phase === "saving" || !!confirm} onClick={requestClose}>Chiudi</button><button type="button" className="connection-save" disabled={phase !== "ready" || !dirty || !!issues.length || !!confirm} onClick={() => void save()}><Save size={16} /> Salva configurazione</button></div></footer>
     </section>
+    {browseOpen && model && snapshot && initialProject && <OpcUaBrowserDialog root={initialProject.root} model={model} snapshot={snapshot} index={selected} onApply={next => update(() => next)} onClose={() => setBrowseOpen(false)} />}
   </div>, document.body);
 }

@@ -1,6 +1,33 @@
-import { parseOpcUaBrowseTarget, opcUaBrowseScalarTypes, opcUaStandardNamespace, type OpcUaBrowseNode } from "../../runtime/opcua-browse-policy.mjs";
+import { OpcUaBrowseError, parseOpcUaBrowseTarget, parseOpcUaBrowsePage, opcUaBrowseScalarTypes, opcUaStandardNamespace, type OpcUaBrowseNode, type OpcUaBrowsePage, type OpcUaBrowseQuery } from "../../runtime/opcua-browse-policy.mjs";
+import { connectionMessages, connectionDiagnostic } from "../../runtime/connection-diagnostics.mjs";
 import { isPlcVariableName, type PlcAccess, type PlcVariableDefinition } from "./plcVariables";
 import { connectionConfigurationIssues, parseConnectionConfiguration, type ConnectionConfigurationSnapshot, type ConnectionEditorModel } from "./plcConnections";
+
+export interface OpcUaBrowseRequest { id: string; root: string; expected: ConnectionConfigurationSnapshot; connectionId: string; query: OpcUaBrowseQuery; consent: true }
+export interface OpcUaBrowseReply { version: 1; connectionId: string; configurationRevision: string; page: OpcUaBrowsePage }
+export function parseOpcUaBrowseReply(value: unknown, request: OpcUaBrowseRequest): OpcUaBrowseReply {
+  const result = value as OpcUaBrowseReply;
+  if (!result || typeof result !== "object" || Object.keys(result).sort().join(",") !== "configurationRevision,connectionId,page,version" || result.version !== 1 || result.connectionId !== request.connectionId || typeof result.configurationRevision !== "string" || !/^[a-f0-9]{64}$/.test(result.configurationRevision)) throw new OpcUaBrowseError("OPC_UA_BROWSE_RESPONSE");
+  return { ...result, page: parseOpcUaBrowsePage(result.page, request.query) };
+}
+export function opcUaBrowseFailure(error: unknown): { code: string; message: string; remedy: string } {
+  const code = typeof error === "string" ? error : error instanceof OpcUaBrowseError ? error.code : "OPC_UA_DESKTOP_FAILED";
+  const desktop: Record<string, [string, string]> = {
+    OPC_UA_DESKTOP_NODE: ["Node.js non disponibile per esplorare il server", "Installa una versione supportata di Node.js (22.13 o successiva) sul PC dell’editor e riapri Framecraft."],
+    OPC_UA_DESKTOP_SDK: ["Componenti OPC UA dell’app non disponibili o modificati", "In sviluppo controlla le dipendenze dell’editor. Nell’app distribuita ripristina l’installazione o chiedi assistenza sulla cache OPC UA dell’app; non modificare il progetto HMI."],
+    OPC_UA_DESKTOP_PERMISSION: ["Esplorazione disponibile solo nell’editor", "Apri Connessioni PLC nella finestra principale di Framecraft."],
+    OPC_UA_DESKTOP_PLATFORM: ["Esplorazione desktop non supportata su questo sistema", "Questo helper è attualmente disponibile su Windows. Il Runtime e la CLI restano separati."],
+    OPC_UA_DESKTOP_PROCESS: ["Impossibile avviare l’esplorazione protetta", "Controlla le restrizioni Windows con il responsabile del PC. Non serve disattivare la sicurezza OPC UA."],
+    OPC_UA_DESKTOP_CHANGED: ["Progetto o cataloghi cambiati durante l’esplorazione", "Chiudi il selettore e ricarica Connessioni PLC. Nessun risultato della vecchia configurazione è stato inserito."],
+    OPC_UA_DESKTOP_TIMEOUT: ["Esplorazione non completata entro il tempo massimo", "Controlla rete, server e accesso alla PKI. Nessun mapping è stato aggiunto automaticamente; puoi riprovare manualmente."],
+    OPC_UA_DESKTOP_FAILED: ["Esplorazione OPC UA non completata", "Controlla Node.js e i componenti dell’app, poi riprova. Se ricapita conserva il codice tecnico; nessun comando PLC è stato inviato."],
+  };
+  if (Object.hasOwn(desktop, code)) return { code, message: desktop[code][0], remedy: desktop[code][1] };
+  const browse = new OpcUaBrowseError(code);
+  if (browse.code === code) return { code, message: browse.message, remedy: browse.remedy };
+  if (Object.hasOwn(connectionMessages, code)) { const diagnostic = connectionDiagnostic(code, { protocol: "opcua" }); return { code, message: diagnostic.title, remedy: diagnostic.action }; }
+  return opcUaBrowseFailure("OPC_UA_DESKTOP_FAILED");
+}
 
 export type OpcUaMappingChoice =
   | { mode: "existing"; name: string }

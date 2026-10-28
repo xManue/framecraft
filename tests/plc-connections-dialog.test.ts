@@ -69,7 +69,7 @@ describe("Connessioni PLC: interfaccia e persistenza reali", () => {
     const catalog = JSON.parse(next.connections), runtime = JSON.parse(next.runtime);
     expect(catalog.custom).toBe("keep"); expect(runtime.custom).toBe("keep"); expect(catalog.connections[0]).toMatchObject({ id: "machine-main", passwordEnv: "PLC_PASSWORD", enabled: true, allowWrites: true });
     expect(catalog.connections[0].bindings[0]).toMatchObject({ tag: "Motor.Speed", qualityPath: "/quality", timestampPath: "/time", timestampUnit: "s", writeTopic: "command" });
-    expect(runtime.gateway.enabled).toBe(true); expect(document.body.textContent).toContain("Nessun collegamento o comando è stato avviato"); expect(button("Salva configurazione").disabled).toBe(true);
+    expect(runtime.gateway.enabled).toBe(true); expect(document.body.textContent).toContain("Il salvataggio non avvia collegamenti o comandi"); expect(button("Salva configurazione").disabled).toBe(true);
     expect(desktopBridge.writeFile).not.toHaveBeenCalled();
   });
   it("aggiunge una connessione e un tag dal catalogo, senza broker o indirizzi inventati", async () => {

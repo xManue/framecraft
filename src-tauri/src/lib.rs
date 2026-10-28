@@ -16,6 +16,8 @@ use tempfile::NamedTempFile;
 use walkdir::WalkDir;
 mod editor_draft;
 mod connection_config;
+mod opcua_browse;
+mod opcua_job;
 mod recipe_config;
 mod recipe_plc_config;
 mod recipe_apply_config;
@@ -34,6 +36,7 @@ struct RuntimeState {
     watcher: Mutex<Option<RecommendedWatcher>>,
     project_root: Mutex<Option<PathBuf>>,
     project_generation: AtomicU64,
+    opcua_browse: Mutex<opcua_browse::BrowseState>,
     authorized_root: Mutex<Option<PathBuf>>,
     /// Directories outside the project the user explicitly chose to edit, such as a shared
     /// template catalog the project reaches through a Vite alias.
@@ -501,6 +504,7 @@ fn set_project_root(state: &RuntimeState, root_path: PathBuf) -> Result<(), Stri
     }
     *root = Some(root_path);
     state.project_generation.fetch_add(1, Ordering::SeqCst);
+    opcua_browse::cancel_all(state);
     state.preview_generation.fetch_add(1, Ordering::SeqCst);
     Ok(())
 }
@@ -1218,6 +1222,7 @@ fn close_project(state: State<RuntimeState>) -> Result<(), String> {
         let mut root = state.project_root.lock().map_err(|_| "Project root lock poisoned")?;
         root.take();
         state.project_generation.fetch_add(1, Ordering::SeqCst);
+        opcua_browse::cancel_all(&state);
         state.preview_generation.fetch_add(1, Ordering::SeqCst);
     }
     let stopped = stop_managed_preview(&state.preview);
@@ -1324,13 +1329,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(RuntimeState::default())
         .manage(ai_codex::AiCodexState::default())
-        .invoke_handler(tauri::generate_handler![recipe_apply_config::read_recipe_apply_configuration, recipe_apply_config::save_recipe_apply_configuration, operator_admin::read_operator_accounts, operator_admin::update_operator_accounts, operator_admin::save_operator_configuration, recipe_config::read_recipe_configuration, recipe_config::save_recipe_configuration, recipe_plc_config::read_recipe_plc_configuration, recipe_plc_config::save_recipe_plc_configuration, get_editor_session, ai_project::read_ai_project_file, ai_project::apply_ai_project_changes, ai_project::restore_ai_project_changes, ai_interview_draft::read_ai_interview_draft, ai_interview_draft::write_ai_interview_draft, ai_codex::ai_codex_connect, ai_codex::ai_codex_login, ai_codex::ai_codex_logout, ai_codex::ai_codex_models, ai_codex::ai_codex_sandbox_status, ai_codex::ai_codex_setup_sandbox, ai_codex::ai_codex_propose, ai_codex::ai_codex_cancel, editor_draft::read_editor_draft, editor_draft::write_editor_draft, editor_draft::clear_editor_draft, connection_config::read_connection_configuration, connection_config::save_connection_configuration, connection_config::read_alarm_configuration, connection_config::save_alarm_configuration, create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, list_project_source_files, import_project_asset, export_project, start_preview, stop_preview, close_project, create_vite_project])
+        .invoke_handler(tauri::generate_handler![opcua_browse::browse_opcua, opcua_browse::cancel_opcua_browse, recipe_apply_config::read_recipe_apply_configuration, recipe_apply_config::save_recipe_apply_configuration, operator_admin::read_operator_accounts, operator_admin::update_operator_accounts, operator_admin::save_operator_configuration, recipe_config::read_recipe_configuration, recipe_config::save_recipe_configuration, recipe_plc_config::read_recipe_plc_configuration, recipe_plc_config::save_recipe_plc_configuration, get_editor_session, ai_project::read_ai_project_file, ai_project::apply_ai_project_changes, ai_project::restore_ai_project_changes, ai_interview_draft::read_ai_interview_draft, ai_interview_draft::write_ai_interview_draft, ai_codex::ai_codex_connect, ai_codex::ai_codex_login, ai_codex::ai_codex_logout, ai_codex::ai_codex_models, ai_codex::ai_codex_sandbox_status, ai_codex::ai_codex_setup_sandbox, ai_codex::ai_codex_propose, ai_codex::ai_codex_cancel, editor_draft::read_editor_draft, editor_draft::write_editor_draft, editor_draft::clear_editor_draft, connection_config::read_connection_configuration, connection_config::save_connection_configuration, connection_config::read_alarm_configuration, connection_config::save_alarm_configuration, create_working_copy, analyze_project, read_text_file, write_text_file, create_project_file, list_project_source_files, import_project_asset, export_project, start_preview, stop_preview, close_project, create_vite_project])
         .build(tauri::generate_context!())
         .expect("error while building Framecraft");
     app.run(|app_handle, event| {
         if matches!(event, tauri::RunEvent::Exit) {
             let state = app_handle.state::<RuntimeState>();
             ai_codex::shutdown(&app_handle.state::<ai_codex::AiCodexState>());
+            opcua_browse::cancel_all(&state);
             state.preview_generation.fetch_add(1, Ordering::SeqCst);
             let _ = stop_managed_preview(&state.preview);
         }

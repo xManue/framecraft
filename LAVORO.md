@@ -6003,6 +6003,53 @@ Verifiche del 5 ottobre 2026:
   un nuovo comando browse Tauri non implementato. Restano recovery crash, array/UDT,
   collaudo WebView2/CPU/rete aziendale e gate industriali/licenze; AI e WIP trend esclusi.
 
+### 170. OPC UA: selettore desktop e helper incorporato (2026-10-28)
+
+- **Percorso operativo**: Pannello → Connessioni PLC → Esplora nodi OPC UA, solo su profilo
+  salvato/abilitato. Consenso esplicito dal PC editor, cartelle/breadcrumb, pagine revisionate
+  da 100 e ricerca dichiarata limitata alla pagina; tipo/rank/accesso reali e nodi non
+  supportati espliciti. Revisione di nuova variabile/mapping o sostituzione, aggiunta alla
+  sola bozza e Salva configurazione separato. Comandi nuovi/sostituiti disabilitati; refresh
+  del catalogo solo dopo salvataggio, senza reset del documento/canvas.
+- **Interfaccia**: finestra scura neutra a dimensioni stabili, area centrale scorrevole,
+  padre inert, focus trap/Escape e ritorno focus. Revisione/errori ricevono focus e scorrono
+  in vista; nessuna applicazione automatica dal focus. Risposte tarde/cancellate scartate,
+  cambio progetto invalida la richiesta e annullamento prima del claim coperto.
+- **Confine nativo**: comandi della sola finestra main, schema chiuso senza programma,
+  endpoint/SDK alternativi o segreti dal renderer. CAS/sessione prima/dopo la lettura;
+  helper e moduli da include_str!, mai Runtime/node_modules del pannello aperto. Node di
+  sistema fuori dal progetto, NODE_OPTIONS/NODE_PATH rimossi, stdin binario limitato a
+  32 MiB, stdout limitato e codici/rimedi sanificati. Singola richiesta attiva, limite
+  180 s e cancellazione cooperativa di due secondi, poi solo il Job Object posseduto.
+  Chiudere l’app termina anche i discendenti dell’helper. Non è una sandbox per codice HMI.
+- **SDK**: build release con client/certificate-manager/debug già bloccati nel lockfile;
+  127 pacchetti, 3588 file e circa 21 MiB, compressi in circa 6 MiB. Versioni/lock verificati,
+  grafo con dipendenze annidate/notice, percorsi, hash e file extra controllati. Nessuna
+  installazione npm dal progetto, nessun download o auto-trust. Preparazione solo al browse;
+  sviluppo senza scansione/copia SDK all’avvio. windows-sys 0.61.2 già transitiva diventa
+  diretta per i Job Object. Node resta esterno; nessun installer autosufficiente pubblicato.
+- **Prestazioni osservate**: prova nativa impacchettata con cache nuova e due letture passata
+  da 240,63 s a 106,44 s con I/O limitato a otto operazioni, poi a 30,80 s passando il pack
+  binario senza codifica hex/JSON né scansioni incrementali quadratiche di stdin. Stessi
+  controlli attivi; tempi locali comprensivi della prova/cleanup, non SLA o tempi di avvio app.
+- **Verifiche**: 90 casi JS mirati su quattro file e 30 test nativi pertinenti verdi. Prova
+  impacchettata eseguita esplicitamente col relativo test normalmente ignored, non contata
+  come superata solo perché ignorata. Server SDK loopback reale con 207 nodi, continuazioni,
+  zero valori di processo/comandi/Method, sessioni chiuse e codice progetto non eseguito.
+  Verificati cancellazione/claim, sessione/CAS, albero figli Windows, cache alterata/linkata,
+  limiti, dipendenze/lock/notice e campi UI. Due timeout JSdom sui cataloghi grandi riprovati
+  isolatamente senza alzare i timeout; verifiche profilo memorizzate per non riparsare i
+  cataloghi a ogni tasto della ricerca. Typecheck/build sullo snapshot pubblico riusciti;
+  avvisi preesistenti sugli import misti, dipendenze locali via junction e non clean install.
+  Edge headless su UI reale con IPC sintetico: consenso, navigazione, revisione, bozza,
+  tre cataloghi salvati solo al comando, focus e 375/768/1024/1440 px senza overflow, target
+  almeno 44 px e dimensioni dialogo ferme; immagini esaminate. Zero richieste esterne/errori
+  pagina. Non è una prova IPC nella finestra Tauri/WebView2 né una prova su CPU fisica.
+- **Restano**: installer/Node e collaudo release senza checkout, cache/retention guidate e
+  staging dopo kill forzato, certificati/PKI aziendali, array/UDT/metodi/eventi/history,
+  collaudo WebView2/CPU e gate licenze/CSP/audit industriali. Nessuna suite generale o agente;
+  AI e WIP trend conservati fuori dalla tranche. Guide/roadmap mantengono PARZIALE.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.
