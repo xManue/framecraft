@@ -3,6 +3,7 @@ import { OperatorAuthError } from "../../runtime/operator-policy.mjs";
 import { hmiAlarmElementBlocked } from "./hmiAlarmControl";
 import { operatorSessionProfile, openOperatorSession } from "./hmiOperatorSession";
 import { AlarmHistoryExportError, collectAlarmHistoryCsv } from "./hmiAlarmHistoryExport";
+import { createAlarmSavedViews, parseAlarmViewFilters, type AlarmViewContext, type HistoryAlarmViewFilters } from "../../scripts/hmi-alarm-views.mjs";
 
 const names: Record<string, string> = { Incoming: "Attivato", Outgoing: "Rientrato", Acknowledged: "Presa visione registrata", Confirmed: "Rientro confermato" };
 const css = `
@@ -20,7 +21,7 @@ const css = `
 [data-hmi-alarm-archive-root] a[download]{display:inline-flex;align-items:center;min-height:48px;max-width:100%;padding:8px 10px;border:1px solid #66788b;border-radius:4px;background:#fff;color:#172331;text-decoration:none;cursor:pointer}
 [data-hmi-alarm-archive-root] a[download]:hover{background:#e2edf7}
 `;
-export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boolean; path?: string; timeoutMs?: number; request?: typeof fetch }) {
+export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boolean; path?: string; timeoutMs?: number; request?: typeof fetch; views?: AlarmViewContext }) {
   const path = options.path ?? "/_framecraft/plc/v1", timeout = options.timeoutMs ?? 10000;
   if (path !== "/_framecraft/plc/v1" || !Number.isFinite(timeout) || timeout < 250 || timeout > 70000) throw new Error("Configurazione storico allarmi non valida.");
   const document = host.ownerDocument, view = document.defaultView!, original = [...host.childNodes], role = host.getAttribute("role"), label = host.getAttribute("aria-label");
@@ -28,20 +29,29 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
   host.dataset.hmiAlarmArchiveRoot = ""; host.setAttribute("role", "region"); host.setAttribute("aria-label", "Storico allarmi su disco");
   let active = true, busy = false, epoch = 0, filtersOpen = false, helpOpen = false, changed = false, failed = false;
   let snapshot: AlarmHistorySnapshot | undefined, applied: AlarmHistoryQuery = {}, draft: Record<string, string> = {}, controller: AbortController | undefined, focusKey: string | undefined;
+  let fixedDates: Record<string, string> = {};
   let notice = "Carica lo storico per consultare gli eventi salvati dal servizio. Nessuna lettura automatica.";
   let exporting = false, exported: { csv: string; info: string; basename: string; rows: number; through: number } | undefined;
   const releaseExport = () => { if (exported) { view.URL.revokeObjectURL(exported.csv); view.URL.revokeObjectURL(exported.info); exported = undefined; } };
-  const identity = () => { const user = operatorSessionProfile(); return user ? JSON.stringify([user.id, user.capabilities]) : ""; }; let userKey = identity();
+  const identity = () => { const user = operatorSessionProfile(); return user ? JSON.stringify([user.id, user.capabilities, user.permissions]) : ""; }; let userKey = identity();
   const permitted = () => !!operatorSessionProfile()?.capabilities.includes("alarms.history.read");
   const blocked = () => !active || !options.enabled || !permitted() || hmiAlarmElementBlocked(host);
   const make = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; };
-  function resetUser() { const who = identity(); if (who === userKey) return; userKey = who; epoch++; controller?.abort(); releaseExport(); exporting = false; snapshot = undefined; draft = {}; applied = {}; changed = false; busy = false; failed = false; notice = "Utente cambiato: i dati precedenti sono stati rimossi. Carica lo storico con il nuovo accesso."; }
+  function resetUser() { const who = identity(); if (who === userKey) return; userKey = who; epoch++; controller?.abort(); releaseExport(); exporting = false; snapshot = undefined; draft = {}; fixedDates = {}; savedViews.reset(); applied = {}; changed = false; busy = false; failed = false; notice = "Utente cambiato: i dati precedenti sono stati rimossi. Carica lo storico con il nuovo accesso."; }
   function button(text: string, action: () => void, disabled = false) { const node = make("button", text); node.type = "button"; node.disabled = busy || blocked() || disabled; node.addEventListener("click", () => { if (!node.disabled && !busy && !blocked()) action(); }); return node; }
   function query() {
-    const raw: Record<string, unknown> = { limit: 50 }; for (const [key, value] of Object.entries(draft)) if (value) { if (key === "from" || key === "to") { const date = new Date(value); if (!Number.isFinite(date.getTime())) throw new AlarmHistoryError("ALARM_HISTORY_QUERY"); raw[key] = date.toISOString(); } else raw[key] = value; }
+    const raw: Record<string, unknown> = { limit: 50 }; for (const [key, value] of Object.entries(draft)) if (value) { if (key === "from" || key === "to") { const date = new Date(value); if (!Number.isFinite(date.getTime())) throw new AlarmHistoryError("ALARM_HISTORY_QUERY"); raw[key] = fixedDates[key] ?? date.toISOString(); } else raw[key] = value; }
     return parseAlarmHistoryQuery(raw);
   }
-  function change(key: string, value: string) { draft[key] = value; changed = true; releaseExport(); host.querySelector('[data-archive-export]')?.remove(); notice = "Filtri modificati: carica dalla prima pagina. Le eventuali righe mostrate usano ancora i filtri precedenti."; const status = host.querySelector('[data-archive-status]'); if (status) status.textContent = notice; for (const selector of ['[data-archive-older]', '[data-archive-prepare-export]']) { const button = host.querySelector<HTMLButtonElement>(selector); if (button) button.disabled = true; } }
+  function change(key: string, value: string) { draft[key] = value; delete fixedDates[key]; host.querySelector(`[data-archive-date-anchor="${key}"]`)?.remove(); changed = true; releaseExport(); host.querySelector('[data-archive-export]')?.remove(); notice = "Filtri modificati: carica dalla prima pagina. Le eventuali righe mostrate usano ancora i filtri precedenti."; const status = host.querySelector('[data-archive-status]'); if (status) status.textContent = notice; for (const selector of ['[data-archive-older]', '[data-archive-prepare-export]']) { const button = host.querySelector<HTMLButtonElement>(selector); if (button) button.disabled = true; } }
+  const savedViews = createAlarmSavedViews({ document, kind: "history", context: options.views, disabled: () => busy || blocked(),
+    current: () => { const checked = query(); return Object.fromEntries(["alarmId", "alarmClass", "area", "state", "from", "to"].map(key => [key, checked[key as keyof AlarmHistoryQuery] ?? ""])) as unknown as HistoryAlarmViewFilters; },
+    apply: value => {
+      const checked = parseAlarmViewFilters("history", value), next: Record<string, string> = { ...checked }, dates: Record<string, string> = {};
+      for (const key of ["from", "to"] as const) if (checked[key]) { const date = new Date(checked[key]), pad = (value: number, size = 2) => String(value).padStart(size, "0"); if (date.getFullYear() < 1) throw new AlarmHistoryError("ALARM_HISTORY_QUERY"); dates[key] = checked[key]; next[key] = `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`; }
+      draft = next; fixedDates = dates; changed = true; releaseExport(); filtersOpen = true; failed = false; notice = "Vista caricata nei filtri. Controllali e carica dalla prima pagina; le righe attuali usano ancora la ricerca precedente.";
+    }, changed: render,
+  });
   async function read(input: AlarmHistoryQuery, signal: AbortSignal) {
     const params = new URLSearchParams(Object.entries(input).map(([key, value]) => [key, String(value)]));
     const response = await (options.request ?? fetch)(path + "/alarm-history?" + params, { method: "GET", credentials: "same-origin", cache: "no-store", redirect: "error", signal });
@@ -101,14 +111,14 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
     for (const [key, title, type] of [["alarmId", "Allarme (ID esatto)", "text"], ["alarmClass", "Classe (nome esatto)", "text"], ["area", "Zona (nome esatto)", "text"], ["state", "Evento", "select"], ["from", "Da (ora di questo dispositivo)", "datetime-local"], ["to", "A (ora di questo dispositivo)", "datetime-local"]]) {
       const label = make("label", title), input = type === "select" ? make("select") : make("input"); input.setAttribute("aria-label", title); input.dataset.archiveFocus = key;
       if (input instanceof view.HTMLSelectElement) { input.append(make("option", "Tutti")); input.options[0].value = ""; for (const state of alarmHistoryStates) { const option = make("option", names[state]); option.value = state; input.append(option); } }
-      else { input.type = type; input.maxLength = key === "alarmId" ? 80 : 200; } input.value = draft[key] ?? ""; input.disabled = busy || blocked(); input.addEventListener(type === "select" ? "change" : "input", () => change(key, input.value)); label.append(input); fields.append(label);
+      else { input.type = type; if (type === "datetime-local") input.step = ".001"; input.maxLength = key === "alarmId" ? 80 : 200; } input.value = draft[key] ?? ""; input.disabled = busy || blocked(); input.addEventListener(type === "select" ? "change" : "input", () => change(key, input.value)); label.append(input); if (fixedDates[key]) { const anchor = make("small", "Istante UTC salvato: " + fixedDates[key]); anchor.dataset.archiveDateAnchor = key; label.append(anchor); } fields.append(label);
     }
     const toolbar = make("div"); toolbar.className = "archive-toolbar";
     const read = button(snapshot ? "Aggiorna dalla prima pagina" : "Carica storico", () => {}); read.type = "submit"; read.dataset.archiveFocus = "read";
     const older = button("Eventi precedenti", () => void load(true), !snapshot?.nextBefore || changed); older.dataset.archiveOlder = ""; older.dataset.archiveFocus = "older";
     const prepare = button("Prepara CSV dei risultati filtrati", () => void prepareExport(), !snapshot || changed); prepare.dataset.archivePrepareExport = ""; prepare.dataset.archiveFocus = "prepare-export"; toolbar.append(read, older, prepare);
     if (exporting) { const cancel = make("button", "Annulla preparazione CSV"); cancel.type = "button"; cancel.dataset.archiveFocus = "cancel-export"; cancel.disabled = blocked(); cancel.addEventListener("click", () => { if (!blocked()) controller?.abort(); }); toolbar.append(cancel); }
-    form.append(filters, toolbar); form.addEventListener("submit", event => { event.preventDefault(); void load(); }); host.append(form);
+    filters.append(savedViews.render()); form.append(filters, toolbar); form.addEventListener("submit", event => { event.preventDefault(); void load(); }); host.append(form);
     const status = make("p", busy && !exporting ? "Lettura dello storico…" : notice); status.dataset.archiveStatus = ""; status.setAttribute("role", failed ? "alert" : "status"); host.append(status);
     if (exported) {
       const section = make("section"), downloads = make("div"); section.dataset.archiveExport = ""; section.setAttribute("aria-label", "File dello storico preparati"); downloads.className = "archive-toolbar";
@@ -137,6 +147,6 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
     host.scrollTop = scroll; if (focusKey) { const node = [...host.querySelectorAll<HTMLElement>("[data-archive-focus]")].find(node => node.dataset.archiveFocus === focusKey); if (node && !node.hasAttribute("disabled")) node.focus({ preventScroll: true }); }
   }
   const whoChanged = () => identity() !== userKey;
-  const changedUser = () => { resetUser(); render(); }; view.addEventListener("framecraft:user-changed", changedUser); render();
-  return { refresh: render, dispose() { if (!active) return; active = false; epoch++; controller?.abort(); releaseExport(); view.removeEventListener("framecraft:user-changed", changedUser); style.remove(); delete host.dataset.hmiAlarmArchiveRoot; host.removeAttribute("aria-busy"); if (role === null) host.removeAttribute("role"); else host.setAttribute("role", role); if (label === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", label); host.replaceChildren(...original); } };
+  const changedUser = () => { if (identity() === userKey) return; resetUser(); render(); }; view.addEventListener("framecraft:user-changed", changedUser); render();
+  return { refresh: render, dispose() { if (!active) return; active = false; epoch++; controller?.abort(); releaseExport(); savedViews.dispose(); view.removeEventListener("framecraft:user-changed", changedUser); style.remove(); delete host.dataset.hmiAlarmArchiveRoot; host.removeAttribute("aria-busy"); if (role === null) host.removeAttribute("role"); else host.setAttribute("role", role); if (label === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", label); host.replaceChildren(...original); } };
 }

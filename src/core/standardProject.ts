@@ -110,6 +110,8 @@ import alarmLabelSource from "../../runtime/alarm-labels.mjs?raw";
 import alarmLabelTypes from "../../runtime/alarm-labels.d.mts?raw";
 import alarmControlJs from "../../scripts/hmi-alarm-control.mjs?raw";
 import alarmControlTypes from "../../scripts/hmi-alarm-control.d.mts?raw";
+import alarmViewsJs from "../../scripts/hmi-alarm-views.mjs?raw";
+import alarmViewsTypes from "../../scripts/hmi-alarm-views.d.mts?raw";
 import alarmSummaryJs from "../../scripts/hmi-alarm-summary.mjs?raw";
 import alarmSummaryTypes from "../../scripts/hmi-alarm-summary.d.mts?raw";
 
@@ -341,7 +343,7 @@ import { createHmiRecipeControl, allowHmiRecipeNavigation } from "./framecraftHm
 import { createHmiAuditControl } from "./framecraftHmiAuditControl";
 import { createHmiAlarmArchive } from "./framecraftHmiAlarmArchive";
 import { AlarmHistoryError } from "../runtime/alarm-history.mjs";
-import { installHmiOperatorSession } from "./framecraftOperatorSession";
+import { installHmiOperatorSession, operatorSessionProfile } from "./framecraftOperatorSession";
 import "./framecraftOperatorAccess.js";
 import operatorConfig from "../framecraft.auth.json";
 import recipeUiConfig from "../framecraft.recipes-ui.json";
@@ -584,6 +586,7 @@ function applyDynamicValue(element: Element, property: string, value: string): b
 export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void {
   if ((window as Window & { __framecraftEditorPreview?: boolean }).__framecraftEditorPreview) return () => undefined;
   const operatorSession = installHmiOperatorSession({ path: gatewayConfig.path, enabled: gatewayConfig.enabled && operatorConfig.enabled === true, canSwitch: allowHmiRecipeNavigation });
+  const alarmViewContext = { namespace: operatorConfig.namespace, operator: operatorSessionProfile };
   let runtimeActive = true;
   const scriptAbort = new AbortController();
   let localAlarms: ReturnType<typeof createAlarmEngine> | undefined;
@@ -606,7 +609,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   const alarmArchives = new Map<HTMLElement, ReturnType<typeof createHmiAlarmArchive>>();
   const renderAlarmArchives = () => {
     for (const [host, control] of alarmArchives) if (!host.isConnected) { control.dispose(); alarmArchives.delete(host); }
-    for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAlarmArchiveControl"]')) if (!alarmArchives.has(host)) alarmArchives.set(host, createHmiAlarmArchive(host, { enabled: gatewayConfig.enabled && operatorConfig.enabled, path: gatewayConfig.path, timeoutMs: gatewayConfig.timeoutMs }));
+    for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAlarmArchiveControl"]')) if (!alarmArchives.has(host)) alarmArchives.set(host, createHmiAlarmArchive(host, { enabled: gatewayConfig.enabled && operatorConfig.enabled, path: gatewayConfig.path, timeoutMs: gatewayConfig.timeoutMs, views: alarmViewContext }));
   };
   const renderAuditControls = () => {
     for (const [host, control] of auditControls) if (!host.isConnected) { control.dispose(); auditControls.delete(host); }
@@ -625,8 +628,8 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   const renderAlarmControls = () => {
     for (const [host, control] of alarmControls) if (!host.isConnected) { control.dispose(); alarmControls.delete(host); }
     for (const [host, control] of alarmSummaries) if (!host.isConnected) { control.dispose(); alarmSummaries.delete(host); }
-    for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAlarmControl"]')) if (!alarmControls.has(host)) alarmControls.set(host, createHmiAlarmControl(host, performAlarmAction));
-    for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAlarmIndicator"], [data-hmi-type="HmiAlarmLine"]')) if (!alarmSummaries.has(host)) alarmSummaries.set(host, createHmiAlarmSummary(host, { action: performAlarmAction, routes: options.routes, navigate: (route) => navigateTarget(route) }));
+    for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAlarmControl"]')) if (!alarmControls.has(host)) alarmControls.set(host, createHmiAlarmControl(host, performAlarmAction, undefined, alarmViewContext));
+    for (const host of document.querySelectorAll<HTMLElement>('[data-hmi-type="HmiAlarmIndicator"], [data-hmi-type="HmiAlarmLine"]')) if (!alarmSummaries.has(host)) alarmSummaries.set(host, createHmiAlarmSummary(host, { action: performAlarmAction, routes: options.routes, navigate: (route) => navigateTarget(route), views: alarmViewContext }));
     for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-hmi-action="clear-alarm-log"]')) {
       if (!alarmClearButtons.has(button)) alarmClearButtons.set(button, { disabled: button.disabled, title: button.title });
       if (!button.disabled) button.disabled = true;
@@ -1934,10 +1937,12 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/alarm-history.d.mts", content: alarmHistoryTypes },
     { path: "runtime/alarm-history-store.mjs", content: alarmHistoryStoreSource },
     { path: "runtime/alarm-history-store.d.mts", content: alarmHistoryStoreTypes },
-    { path: "src/framecraftHmiAlarmControl.mjs", content: alarmControlJs },
-    { path: "src/framecraftHmiAlarmControl.d.mts", content: alarmControlTypes },
+    { path: "src/framecraftHmiAlarmViews.mjs", content: alarmViewsJs },
+    { path: "src/framecraftHmiAlarmViews.d.mts", content: alarmViewsTypes },
+    { path: "src/framecraftHmiAlarmControl.mjs", content: alarmControlJs.replaceAll('"./hmi-alarm-views.mjs"', '"./framecraftHmiAlarmViews.mjs"') },
+    { path: "src/framecraftHmiAlarmControl.d.mts", content: alarmControlTypes.replaceAll('"./hmi-alarm-views.mjs"', '"./framecraftHmiAlarmViews.mjs"') },
     { path: "src/framecraftHmiAlarmSummary.mjs", content: alarmSummaryJs.replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
-    { path: "src/framecraftHmiAlarmSummary.d.mts", content: alarmSummaryTypes.replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
+    { path: "src/framecraftHmiAlarmSummary.d.mts", content: alarmSummaryTypes.replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"').replaceAll('"./hmi-alarm-views.mjs"', '"./framecraftHmiAlarmViews.mjs"') },
     { path: "src/framecraftHmiAlarmControl.ts", content: alarmControlSource.replaceAll('"../../scripts/hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
     { path: "src/framecraftHmiAlarmSummary.ts", content: alarmSummarySource.replaceAll('"../../scripts/hmi-alarm-summary.mjs"', '"./framecraftHmiAlarmSummary.mjs"') },
     { path: "framecraft.alarms.json", content: JSON.stringify(config.guided ? guidedAlarmCatalog(config.guided) : emptyAlarmCatalog(), null, 2) + "\n" },
@@ -1959,7 +1964,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/framecraftHmiRecipeExchange.ts", content: recipeExchangeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiAuditControl.ts", content: auditControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
     { path: "src/framecraftHmiAlarmHistoryExport.ts", content: alarmHistoryExportSource.replaceAll('"../../runtime/', '"../runtime/') },
-    { path: "src/framecraftHmiAlarmArchive.ts", content: alarmArchiveSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiAlarmHistoryExport"', '"./framecraftHmiAlarmHistoryExport"') },
+    { path: "src/framecraftHmiAlarmArchive.ts", content: alarmArchiveSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiAlarmHistoryExport"', '"./framecraftHmiAlarmHistoryExport"').replaceAll('"../../scripts/hmi-alarm-views.mjs"', '"./framecraftHmiAlarmViews.mjs"') },
     { path: "framecraft.recipes-ui.json", content: JSON.stringify({ version: 1, namespace: crypto.randomUUID() }, null, 2) + "\n" },
     { path: "vite.config.ts", content: panelViteConfigSource },
     { path: "src/framecraftScriptRuntime.ts", content: hmiScriptRuntimeModuleSource() },

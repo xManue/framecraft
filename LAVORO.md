@@ -6130,6 +6130,41 @@ Verifiche del 5 ottobre 2026:
   senza importare oggetti vendor né rivalutare l’inventario completo. Guide e roadmap ancora
   PARZIALE; WIP trend/AI conservato fuori dal commit.
 
+## 173. Filtri, ordinamento e viste allarmi per operatore (28 ottobre 2026)
+
+- **Allarmi operativi**: ricerca, zona, classe, stato, qualità e priorità minima combinati
+  con i vincoli già configurati; sei ordinamenti sull'intero risultato prima della paginazione.
+  Una classe o zona salvata e poi rimossa non viene sostituita silenziosamente con Tutte.
+  Le viste non conservano selezioni, comandi, campioni, cursori o credenziali.
+- **Viste salvate**: creazione, richiamo esplicito, aggiornamento ed eliminazione nel pannello.
+  Archivio locale separato per progetto, operatore/ospite e lista attiva/storica; massimo
+  25 viste e 64 KiB per elenco. Nessun ripristino automatico, sincronizzazione o promessa
+  di backup. Con più finestre prevale l'ultimo salvataggio locale. Dati corrotti restano
+  conservati fino all'azzeramento esplicito del solo elenco; rilettura e messaggi dedicati.
+- **Storico**: richiamare una vista prepara i filtri senza interrogare il servizio; occorre
+  rileggere prima di esportare. Gli istanti UTC restano esatti anche durante l'ora ripetuta
+  del cambio legale/solare; indicazione UTC e ancoraggio separati dai campi locali modificabili.
+  Ordinamento sequenziale dello storico invariato. Storico RAM legacy senza viste persistenti.
+- **Contesto e pipeline**: aggiornare la sessione dello stesso utente conserva filtri e stato;
+  un cambio effettivo di identità/permessi li azzera. Nuovi pannelli e dettagli dei riepiloghi
+  ricevono il contesto operatore; prova incorporata senza namespace mantiene solo filtri
+  temporanei. Factory serializzabile e dipendenze esplicite nel ponte editor; risorsa inclusa
+  nel bundle Tauri. I pannelli esistenti richiedono aggiornamento esplicito del Runtime.
+- **Verifiche mirate**: 118 casi distinti su otto file JavaScript/TypeScript, un test nativo
+  delle risorse distribuite, typecheck e build dello snapshot pubblico con dipendenze locali.
+  Browser Edge sul pannello generato con account locali, ACL, audit SQLite e MQTT loopback:
+  viste conservate al reload ma applicate solo su richiesta; cinque comandi allarmi previsti,
+  zero scritture PLC e richieste esterne. Storico: richiamo senza richieste automatiche,
+  CSV di 520 eventi su due pagine. Prova editor: filtri qualità, salvataggio impostazioni e
+  diagnostica da tastiera; layout verificati a 375/768/1024/1440 px senza overflow orizzontale.
+  Corretti una dipendenza mancante nel ponte serializzato e un selettore ambiguo della prova
+  browser; prima esecuzione canvas interrotta dopo la diagnosi, poi verifiche mirate riuscite.
+  Nessuna suite generale, agente o dipendenza nuova.
+- **Limiti**: query/espressioni vendor complete, colonne e statistiche configurabili, shelving,
+  ordinamenti server dello storico e collaudo PLC fisico/touch/WebView2/installer restano aperti.
+  Consultati i filtri allarmi Unified V21 e Alarm Grid Optix 1.3, senza rivalutare l'inventario
+  completo né dichiarare parità. Guide e roadmap PARZIALE aggiornate; WIP trend/AI escluso.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

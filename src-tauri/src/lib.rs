@@ -1356,7 +1356,7 @@ mod tests {
             BundleResources::List(paths) => ResourcePaths::new(paths, true).iter().collect::<Result<Vec<_>, _>>(),
             BundleResources::Map(paths) => ResourcePaths::from_map(paths, true).iter().collect::<Result<Vec<_>, _>>(),
         }.unwrap();
-        for target in [EDITOR_PREVIEW_PLUGIN_RESOURCE, "scripts/framecraft-snap.mjs", "scripts/framecraft-picking.mjs", "scripts/hmi-property-flashing.mjs", "scripts/hmi-alarm-control.mjs", "scripts/hmi-alarm-summary.mjs", "scripts/hmi-alarm-preview-surface.mjs", "scripts/hmi-faceplate-visuals.mjs", "scripts/hmi-faceplate-preview.mjs", "scripts/editor-shortcuts.mjs", "scripts/hmi-trend.mjs", "scripts/hmi-function-trend.mjs", "scripts/hmi-trend-runtime-ui.mjs", "scripts/hmi-trend-preview.mjs", "runtime/alarm-labels.mjs"] {
+        for target in [EDITOR_PREVIEW_PLUGIN_RESOURCE, "scripts/framecraft-snap.mjs", "scripts/framecraft-picking.mjs", "scripts/hmi-property-flashing.mjs", "scripts/hmi-alarm-control.mjs", "scripts/hmi-alarm-views.mjs", "scripts/hmi-alarm-summary.mjs", "scripts/hmi-alarm-preview-surface.mjs", "scripts/hmi-faceplate-visuals.mjs", "scripts/hmi-faceplate-preview.mjs", "scripts/editor-shortcuts.mjs", "scripts/hmi-trend.mjs", "scripts/hmi-function-trend.mjs", "scripts/hmi-trend-runtime-ui.mjs", "scripts/hmi-trend-preview.mjs", "runtime/alarm-labels.mjs"] {
             let resource = resolved.iter().find(|resource| resource.target() == Path::new(target))
                 .unwrap_or_else(|| panic!("Missing bundled preview resource at backend path: {target}"));
             assert!(resource.path().is_file(), "Preview resource source does not exist: {}", resource.path().display());

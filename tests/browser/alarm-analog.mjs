@@ -20,7 +20,10 @@ try {
   assert.match(await page.locator('.alarm-test-view tbody').innerText(), /Attivo/);
   await page.getByLabel('Qualità della soglia', { exact: true }).selectOption('0'); await page.getByLabel('Valore della soglia PLC di prova', { exact: true }).fill('100'); await page.getByRole('button', { name: 'Applica soglia di prova', exact: true }).click();
   const detail = page.locator('.alarm-test-view tbody details'); await detail.locator('summary').focus(); await page.keyboard.press('Enter'); assert.equal(await detail.getAttribute('open'), ''); assert.match(await detail.innerText(), /Soglia PLC non disponibile/); assert.match(await page.locator('.alarm-test-view tbody').innerText(), /Attivo/);
-  for (const text of ['Successivi', 'Precedenti', 'Conferma rientro']) assert.equal(await page.locator('.alarm-test-view button').filter({ hasText: text }).isVisible(), false);
+  for (const text of ['Successivi', 'Precedenti', 'Conferma rientro']) assert.equal(await page.locator('.alarm-test-view').getByText(text, { exact: true }).isVisible(), false);
+  const testView = page.locator('.alarm-test-view'); await testView.getByText('Filtra allarmi', { exact: true }).click(); await testView.getByLabel('Qualità del segnale', { exact: true }).selectOption('good'); assert.equal(await testView.locator('tbody button[aria-pressed]').count(), 0);
+  await testView.getByLabel('Qualità del segnale', { exact: true }).selectOption('invalid'); assert.equal(await testView.locator('tbody button[aria-pressed]').count(), 1); await testView.getByLabel('Qualità del segnale', { exact: true }).selectOption('all');
+  await testView.getByText('Viste salvate', { exact: true }).click(); assert.equal(await testView.getByText('Salva come nuova vista', { exact: true }).isDisabled(), true); await testView.getByText('Filtra allarmi', { exact: true }).click(); if (await detail.getAttribute('open') === null) await detail.locator('summary').click();
   const layouts = [];
   for (const width of [1440, 1024, 768, 375]) {
     await page.setViewportSize({ width, height: 1000 }); await page.getByLabel('Origine della soglia', { exact: true }).scrollIntoViewIfNeeded();

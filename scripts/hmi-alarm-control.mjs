@@ -1,4 +1,5 @@
 import { alarmStateLabel } from "../runtime/alarm-labels.mjs";
+import { activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters } from "./hmi-alarm-views.mjs";
 export function hmiAlarmElementBlocked(host) {
     if (!host.isConnected || host.closest('[disabled], [hidden], [inert], [aria-disabled="true"]'))
         return true;
@@ -11,16 +12,16 @@ export function hmiAlarmElementBlocked(host) {
     }
     return false;
 }
-export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
-    const { alarmStateLabel, hmiAlarmElementBlocked } = runtime;
+export function createHmiAlarmControlWith(host, action, rowFilter, runtime, viewContext) {
+    const { alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters } = runtime;
     const original = [...host.childNodes], oldStyle = host.getAttribute("style"), oldRole = host.getAttribute("role"), oldLabel = host.getAttribute("aria-label");
     host.dataset.hmiAlarmRoot = "";
     host.setAttribute("role", "region");
     host.setAttribute("aria-label", "Allarmi operativi");
-    Object.assign(host.style, { background: "#333333", color: "#ffffff", display: "flex", flexDirection: "column", overflow: "hidden", fontSize: "16px", containerType: "inline-size", containerName: "framecraft-alarms" });
+    Object.assign(host.style, { background: "#333333", color: "#ffffff", display: "flex", flexDirection: "column", overflow: "auto", fontSize: "16px", containerType: "inline-size", containerName: "framecraft-alarms" });
     const make = (tag, value) => { const node = host.ownerDocument.createElement(tag); if (value !== undefined)
         node.textContent = value; return node; };
-    const responsive = make("style"); responsive.textContent = '[data-hmi-alarm-root] [hidden]{display:none!important}[data-hmi-alarm-root] td:first-child{min-width:180px}[data-hmi-alarm-root] td[data-alarm-column="Stato"]{min-width:110px}[data-hmi-alarm-root] td[data-alarm-column="Ora"]{min-width:130px}[data-hmi-alarm-root] :focus-visible{outline:2px solid #93c5fd;outline-offset:2px}';
+    const responsive = make("style"); responsive.textContent = '[data-hmi-alarm-root] [hidden]{display:none!important}[data-hmi-alarm-root] td:first-child{min-width:180px}[data-hmi-alarm-root] td[data-alarm-column="Stato"]{min-width:110px}[data-hmi-alarm-root] td[data-alarm-column="Ora"]{min-width:130px}[data-hmi-alarm-root] :focus-visible{outline:2px solid #93c5fd;outline-offset:2px}[data-hmi-alarm-root] :disabled{opacity:.55;cursor:default}';
     if (host.ownerDocument.defaultView?.CSS?.supports?.("container-type", "inline-size")) responsive.textContent += `@container framecraft-alarms (max-width:600px){
       [data-hmi-alarm-root] table,[data-hmi-alarm-root] tbody,[data-hmi-alarm-root] tr,[data-hmi-alarm-root] td{display:block;box-sizing:border-box;width:100%;min-width:0!important}
       [data-hmi-alarm-root] thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
@@ -38,6 +39,8 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
     Object.assign(table.style, { borderCollapse: "collapse", width: "100%", textAlign: "left" });
     const searchLabel = make("label", "Cerca "), search = make("input"), areaLabel = make("label", "Zona "), area = make("select");
     search.type = "search";
+    search.setAttribute("aria-label", "Cerca allarmi"); area.setAttribute("aria-label", "Zona");
+    search.maxLength = 200;
     search.placeholder = "Nome o messaggio";
     searchLabel.append(search);
     areaLabel.append(area);
@@ -54,9 +57,26 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
     groupTools.append(groupStatus, choosePage, clearChoices, reviewAck, reviewConfirm);
     const filters = make("details"), filtersTitle = make("summary", "Filtra allarmi"), filterFields = make("div");
     Object.assign(filters.style, { maxWidth: "100%", minWidth: "0", padding: "0", border: "1px solid #8894a4", borderRadius: "4px", margin: "0", background: "#252d39" });
+    Object.assign(filters.style, { maxHeight: "min(60vh,560px)", overflow: "auto" });
     Object.assign(filtersTitle.style, { minHeight: "44px", padding: "6px 12px", boxSizing: "border-box", cursor: "pointer" });
-    Object.assign(filterFields.style, { display: "flex", flexWrap: "wrap", gap: "8px", padding: "8px" });
+    Object.assign(filtersTitle.style, { position: "sticky", top: "0", zIndex: "1", background: "#252d39" });
+    Object.assign(filterFields.style, { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(220px,100%),1fr))", alignItems: "start", gap: "8px", padding: "8px" });
+    filters.addEventListener("toggle", () => { filters.style.width = filters.open ? "100%" : ""; });
     filterFields.append(searchLabel, areaLabel); filters.append(filtersTitle, filterFields); toolbar.append(filters, ack, confirm, multiple, previous, next);
+    const extra = {}, savedHost = make("div"); savedHost.style.gridColumn = "1 / -1";
+    for (const [key, title, values] of [
+        ["alarmClass", "Classe", [["", "Tutte"]]],
+        ["state", "Stato", [["all", "Tutti gli stati"], ["active", "Attivi"], ["unacknowledged", "Da prendere in visione"], ["awaiting-confirmation", "Rientri da confermare"]]],
+        ["quality", "Qualità del segnale", [["all", "Tutte le qualità"], ["good", "Valida"], ["invalid", "Non valida o sconosciuta"]]],
+        ["minimumPriority", "Priorità minima", undefined],
+        ["order", "Ordina allarmi", [["priority-desc", "Priorità più alta"], ["priority-asc", "Priorità più bassa"], ["latest-desc", "Attivazione più recente"], ["oldest-asc", "Attivazione meno recente"], ["name-asc", "Nome A–Z"], ["name-desc", "Nome Z–A"]]],
+    ]) {
+        const label = make("label", title + " "), control = make(values ? "select" : "input"); extra[key] = control; control.setAttribute("aria-label", title);
+        if (values) for (const [value, caption] of values) { const option = make("option", caption); option.value = value; control.append(option); }
+        else { control.type = "number"; control.min = "0"; control.max = "255"; control.step = "1"; }
+        control.value = activeAlarmViewDefaults[key]; Object.assign(label.style, { display: "grid", gap: "4px", minWidth: "0" }); Object.assign(control.style, { minHeight: "44px", maxWidth: "100%", width: "100%", boxSizing: "border-box", font: "inherit", background: "#181e28", color: "#fff", border: "1px solid #8894a4", borderRadius: "4px", padding: "6px" }); label.append(control); filterFields.append(label);
+    }
+    filterFields.append(savedHost);
     const headers = make("tr");
     for (const label of ["Allarme", "Stato", "Messaggio", "Zona", "Ora"]) {
         const th = make("th", label);
@@ -72,18 +92,26 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
     let selected, actionMessage, actionMessageKey;
     let multi = false, review, stopRequested = false, stopReason = "", generation = 0, visibleRows = [];
     const choices = new Map(), view = host.ownerDocument.defaultView;
+    let userIdentity = viewContext?.operator ? JSON.stringify(viewContext.operator()) : undefined, savedSignature = "", validFilters = true;
     const snapshotKey = () => snapshot && snapshot.instanceId + ":" + snapshot.revision;
     const rememberAction = (message) => { actionMessage = message; actionMessageKey = snapshotKey(); status.textContent = message; };
     const source = host.dataset.hmiAlarmSource === "history" ? "history" : "active";
     const filter = host.dataset.hmiFilter?.trim(), match = filter?.match(/^AlarmClassName\s*=\s*'([^']+)'$/);
     const invalidFilter = !!filter && !match;
-    const matches = (className, zone, values) => (!match || className === match[1]) && (!area.value || zone === area.value) && values.join(" ").toLocaleLowerCase().includes(search.value.toLocaleLowerCase());
+    const filterValues = () => ({ search: search.value, area: area.value, ...Object.fromEntries(Object.entries(extra).map(([key, input]) => [key, input.value])) });
+    const matches = (className, zone, values, row) => (!match || className === match[1]) && (!area.value || zone === area.value) && values.join(" ").toLocaleLowerCase().includes(search.value.toLocaleLowerCase()) && (source === "history" || validFilters && !!row && alarmRowMatchesView(row, filterValues()));
     const eligible = (row, kind) => !!row?.occurrence && row.pending && (kind === "acknowledge" ? row.acknowledgment !== "none" && !row.acknowledged : row.acknowledgment === "reset" && row.active === false && row.acknowledged && row.quality === "good" && !row.confirmed);
     const allowed = () => !disposed && connected && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && !hmiAlarmElementBlocked(host);
     const checkedRow = (item, kind) => {
         const current = snapshot?.rows.find(row => row.id === item.row.id);
-        return item.instanceId === snapshot?.instanceId && current?.occurrence === item.row.occurrence && current.revision === item.row.revision && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id]) && eligible(current, kind);
+        return item.instanceId === snapshot?.instanceId && current?.occurrence === item.row.occurrence && current.revision === item.row.revision && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id], current) && eligible(current, kind);
     };
+    const selectValue = (select, value) => { if (![...select.options].some(option => option.value === value)) { const option = make("option", value + " · non presente"); option.value = value; select.append(option); } select.value = value; };
+    const savedViews = createAlarmSavedViews({ document: host.ownerDocument, kind: "active", context: viewContext, dark: true,
+        disabled: () => disposed || busy || !!review || hmiAlarmElementBlocked(host), current: filterValues,
+        apply: value => { const checked = parseAlarmViewFilters("active", value); search.value = checked.search; selectValue(area, checked.area); for (const [key, input] of Object.entries(extra)) { if (input.tagName === "SELECT") selectValue(input, checked[key]); else input.value = checked[key]; } selected = undefined; choices.clear(); page = 0; actionMessage = undefined; },
+        changed: () => { savedSignature = ""; render(); },
+    });
     const rememberChoice = row => ({ instanceId: snapshot.instanceId, row: JSON.parse(JSON.stringify(row)) });
     const renderReview = () => {
         groupReview.hidden = !review;
@@ -157,25 +185,33 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
     const render = () => {
         if (disposed)
             return;
-        const zones = [...new Set((snapshot?.rows ?? []).filter((row) => !rowFilter || rowFilter(row)).map((row) => row.area ?? "").filter(Boolean))].sort();
-        const zoneSignature = JSON.stringify(zones);
+        try { parseAlarmViewFilters("active", filterValues()); validFilters = true; } catch { validFilters = false; }
+        const definitions = (snapshot?.rows ?? []).filter(row => (!rowFilter || rowFilter(row)) && (!match || row.className === match[1]));
+        const zones = [...new Set(definitions.map(row => row.area ?? "").filter(Boolean))].sort();
+        const zoneSignature = JSON.stringify([zones, area.value]);
         if (area.dataset.zones !== zoneSignature) {
             const value = area.value;
             area.replaceChildren(make("option", "Tutte"), ...zones.map((zone) => { const item = make("option", zone); item.value = zone; return item; }));
             area.options[0].value = "";
-            area.value = zones.includes(value) ? value : "";
+            selectValue(area, value);
             area.dataset.zones = zoneSignature;
         }
+        const classes = [...new Set(definitions.map(row => row.className))].sort(), classSignature = JSON.stringify([classes, extra.alarmClass.value]);
+        if (extra.alarmClass.dataset.classes !== classSignature) { const value = extra.alarmClass.value; const all = make("option", "Tutte"); all.value = ""; extra.alarmClass.replaceChildren(all, ...classes.map(name => { const option = make("option", name); option.value = name; return option; })); selectValue(extra.alarmClass, value); extra.alarmClass.dataset.classes = classSignature; }
+        for (const input of Object.values(extra)) { input.parentElement.hidden = source === "history"; input.disabled = busy || !!review; }
+        savedHost.hidden = source === "history";
+        const currentSavedSignature = JSON.stringify([busy, !!review, hmiAlarmElementBlocked(host), userIdentity]);
+        if (source !== "history" && savedSignature !== currentSavedSignature) { savedSignature = currentSavedSignature; savedHost.replaceChildren(savedViews.render()); }
         notice.textContent = !connected ? "Servizio non disponibile: gli stati mostrati non sono aggiornati. Controlla la diagnostica PLC." : !snapshot?.rows.length ? "Nessun allarme configurato. Nell'editor apri Pannello → Allarmi." : source === "history" ? "Storico della sessione del servizio, non archivio industriale. Eventi usciti dal limite: " + snapshot.historyDropped : "Presa visione ≠ guasto risolto. Il rientro dipende dal segnale PLC.";
         const rows = invalidFilter ? [] : source === "history"
             ? [...(snapshot?.history ?? [])].reverse().filter((row) => matches(row.alarmClass, row.area, [row.name, row.text, row.id]))
-            : [...(snapshot?.rows ?? [])].filter((row) => (row.pending || row.quality !== "good") && (!rowFilter || rowFilter(row)) && matches(row.className, row.area ?? "", [row.name, row.text, row.id])).sort((a, b) => b.priority - a.priority || (b.activatedAt ?? 0) - (a.activatedAt ?? 0));
+            : [...(snapshot?.rows ?? [])].filter((row) => (row.pending || row.quality !== "good") && (!rowFilter || rowFilter(row)) && matches(row.className, row.area ?? "", [row.name, row.text, row.id], row)).sort((a, b) => compareAlarmViewRows(a, b, extra.order.value));
         page = Math.min(page, Math.max(0, Math.ceil(rows.length / 100) - 1));
         previous.disabled = busy || !!review || page === 0;
         next.disabled = busy || !!review || (page + 1) * 100 >= rows.length;
         previous.hidden = next.hidden = rows.length <= 100;
         const current = snapshot?.rows.find((row) => row.id === selected?.id), unchanged = current && current.occurrence === selected?.occurrence && current.revision === selected?.revision;
-        const canAct = connected && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && unchanged && current?.pending && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id]) && !busy && !review && !multi && !hmiAlarmElementBlocked(host);
+        const canAct = connected && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && unchanged && current?.pending && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id], current) && !busy && !review && !multi && !hmiAlarmElementBlocked(host);
         ack.disabled = !canAct || current.acknowledged || current.acknowledgment === "none";
         confirm.disabled = !canAct || current.active !== false || !current.acknowledged || current.acknowledgment !== "reset" || current.quality !== "good";
         ack.hidden = source === "history";
@@ -188,7 +224,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
         search.disabled = area.disabled = busy || !!review;
         renderReview();
         if (!busy)
-            status.textContent = actionMessage && connected && actionMessageKey === snapshotKey() ? actionMessage : invalidFilter ? "Filtro non supportato: usa AlarmClassName = 'nome classe'. Nessun allarme viene mostrato con un filtro ambiguo." : selected && !unchanged ? "L'allarme è cambiato: selezionalo di nuovo prima di agire." : connected && snapshot && !snapshot.actionsEnabled && source !== "history" ? "Presa visione bloccata finché il servizio non autorizza l'operatore." : rows.length + " risultati · pagina " + (page + 1);
+            status.textContent = actionMessage && connected && actionMessageKey === snapshotKey() ? actionMessage : !validFilters && source !== "history" ? "Filtri non validi: controlla la priorità (intero 0–255) e i testi. Nessun allarme viene mostrato con filtri ambigui." : invalidFilter ? "Filtro non supportato: usa AlarmClassName = 'nome classe'. Nessun allarme viene mostrato con un filtro ambiguo." : selected && !unchanged ? "L'allarme è cambiato: selezionalo di nuovo prima di agire." : connected && snapshot && !snapshot.actionsEnabled && source !== "history" ? "Presa visione bloccata finché il servizio non autorizza l'operatore." : rows.length + " risultati · pagina " + (page + 1);
         const visible = rows.slice(page * 100, (page + 1) * 100), nextSignature = JSON.stringify([visible, selected, page, multi, [...choices.keys()], !!review, busy]);
         visibleRows = source === "history" ? [] : visible;
         if (signature === nextSignature)
@@ -279,15 +315,17 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
     choosePage.onclick = () => { if (busy || review || !allowed()) return; choices.clear(); for (const row of visibleRows) if (eligible(row, "acknowledge") || eligible(row, "confirm")) choices.set(row.id, rememberChoice(row)); render(); };
     clearChoices.onclick = () => { if (busy || review) return; choices.clear(); render(); };
     reviewAck.onclick = () => prepareGroup("acknowledge"); reviewConfirm.onclick = () => prepareGroup("confirm");
-    const userChanged = () => { generation++; stopRequested = true; choices.clear(); review = undefined; selected = undefined; actionMessage = undefined; multi = false; render(); };
+    const userChanged = () => { const who = viewContext?.operator ? JSON.stringify(viewContext.operator()) : undefined; if (viewContext?.operator && who === userIdentity) return; userIdentity = who; generation++; stopRequested = true; choices.clear(); review = undefined; selected = undefined; actionMessage = undefined; multi = false; search.value = ""; area.value = ""; for (const [key, input] of Object.entries(extra)) input.value = activeAlarmViewDefaults[key]; savedViews.reset(); savedSignature = ""; page = 0; render(); };
     view?.addEventListener("framecraft:user-changed", userChanged);
     search.oninput = area.onchange = () => { actionMessage = undefined; page = 0; render(); };
+    for (const input of Object.values(extra)) input.onchange = () => { actionMessage = undefined; selected = undefined; choices.clear(); page = 0; render(); };
+    extra.minimumPriority.oninput = extra.minimumPriority.onchange;
     previous.onclick = () => { actionMessage = undefined; page--; render(); };
     next.onclick = () => { actionMessage = undefined; page++; render(); };
     return {
         update(value, available = true) { if (value)
             snapshot = value; connected = available && !!value; render(); },
-        dispose() { if (disposed) return; disposed = true; generation++; choices.clear(); review = undefined; view?.removeEventListener("framecraft:user-changed", userChanged); responsive.remove(); delete host.dataset.hmiAlarmRoot; host.replaceChildren(...original); for (const [name, value] of [["style", oldStyle], ["role", oldRole], ["aria-label", oldLabel]]) {
+        dispose() { if (disposed) return; disposed = true; generation++; choices.clear(); review = undefined; savedViews.dispose(); view?.removeEventListener("framecraft:user-changed", userChanged); responsive.remove(); delete host.dataset.hmiAlarmRoot; host.replaceChildren(...original); for (const [name, value] of [["style", oldStyle], ["role", oldRole], ["aria-label", oldLabel]]) {
             if (value === null)
                 host.removeAttribute(name);
             else
@@ -296,6 +334,6 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime) {
     };
 }
 
-export function createHmiAlarmControl(host, action, rowFilter) {
-    return createHmiAlarmControlWith(host, action, rowFilter, { alarmStateLabel, hmiAlarmElementBlocked });
+export function createHmiAlarmControl(host, action, rowFilter, viewContext) {
+    return createHmiAlarmControlWith(host, action, rowFilter, { alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters }, viewContext);
 }

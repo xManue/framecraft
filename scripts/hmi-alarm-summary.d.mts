@@ -1,4 +1,5 @@
 import type { AlarmCommand, AlarmRow, AlarmSnapshot } from "../runtime/alarm-engine.mjs";
+import type { AlarmViewContext } from "./hmi-alarm-views.mjs";
 export const hmiAlarmSummaryAttribute: "data-hmi-alarm-summary";
 export const hmiAlarmSummaryCss: string;
 export type HmiAlarmSummaryKind = "indicator" | "line";
@@ -20,7 +21,7 @@ export function hmiAlarmSummaryView(snapshot: AlarmSnapshot | undefined, config:
   known: boolean; message: string; state: "unknown" | "alarm" | "normal"; hidden: boolean;
 };
 export function hmiAlarmSummaryJsx(kind: HmiAlarmSummaryKind): string;
-export function createHmiAlarmSummary(host: HTMLElement, options: { action(command: AlarmCommand): Promise<void>; navigate?(route: string): void; routes?: readonly string[] }): {
+export function createHmiAlarmSummary(host: HTMLElement, options: { action(command: AlarmCommand): Promise<void>; navigate?(route: string): void; routes?: readonly string[]; views?: AlarmViewContext }): {
   update(next: AlarmSnapshot | undefined, connected?: boolean): void;
   dispose(): void;
 };

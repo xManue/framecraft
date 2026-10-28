@@ -89,6 +89,60 @@ invalida i pulsanti selezionati prima del cambiamento. Il modello deriva da
 [stati Unified](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/basics-rt-unified/alarm-states-rt-unified)
 e [presa visione](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-alarms-rt-unified/basics-rt-unified/acknowledgment-model-rt-unified).
 
+### Filtri, ordinamento e viste salvate
+
+Nella lista **Allarmi operativi → Filtra allarmi** puoi combinare ricerca per nome/messaggio/ID,
+zona e classe esatte, stato, qualità del segnale e priorità minima (0–255). I criteri sono
+collegati con AND e si aggiungono al filtro del progetto o del riepilogo: non lo sostituiscono.
+Le sei scelte di ordinamento riguardano l’intero risultato prima della paginazione: priorità
+alta/bassa, attivazione recente/meno recente, nome A–Z/Z–A. A parità di priorità precede
+l’attivazione più recente; l’ID risolve gli altri pareggi. Le qualità non valide restano
+distinte dagli allarmi rientrati. I filtri non modificano segnali, stato allarme o autorizzazioni.
+
+**Viste salvate**, dentro i filtri, conserva una configurazione con un nome:
+
+1. Imposta i filtri, inserisci **Nome della vista** e premi **Salva come nuova vista**.
+2. Per richiamarla scegli **Vista salvata**, poi **Applica vista**. La sola selezione del nome
+   non la applica. Nella lista attiva applicare/riordinare azzera la selezione per i comandi,
+   senza prendere visione o confermare allarmi. Nessun ripristino automatico all’apertura.
+3. **Aggiorna vista selezionata** sostituisce nome e filtri con quelli attuali; un nome duplicato
+   viene rifiutato. **Elimina vista selezionata** rimuove solo quella vista, lasciando invariati
+   i filtri correnti. Puoi conservare fino a 25 viste per progetto, utente e tipo di lista.
+
+Le viste sono nella memoria locale del browser, separate tramite namespace del progetto,
+identità dell’operatore HMI e tipo di lista. L’utente anonimo ha un elenco separato. Non
+contengono campioni PLC, selezioni, occorrenze, revisioni di comando, sessioni o credenziali;
+contengono i nomi e i criteri scelti, quindi anche ID/classi/zone digitati. Non sono incluse
+nel progetto, non si sincronizzano fra dispositivi e cancellare i dati del browser le rimuove.
+Tra più finestre l’ultimo salvataggio locale prevale; gli aggiornamenti dell’elenco non
+applicano filtri automaticamente. Un cambio utente rimuove la vista corrente; un semplice
+rinnovo della stessa sessione non azzera filtri o selezioni.
+
+Nello **Storico allarmi su disco → Filtri dello storico → Viste salvate**, **Usa filtri della
+vista** carica soltanto la bozza. Rivedila e premi **Carica storico** o **Aggiorna dalla prima
+pagina**. Nessuna lettura automatica; pagine, cursori e limite di sequenza non vengono salvati.
+Le date sono conservate come istanti UTC e mostrate nel fuso del dispositivo: il riferimento
+UTC resta visibile finché non modifichi il campo, preservando l’istante anche nell’ora ripetuta
+del cambio d’ora. Modificare/applicare filtri invalida eventuali CSV preparati; prima di
+prepararne un altro occorre una nuova lettura. Lo storico resta ordinato per sequenza di
+registrazione, senza ordinare soltanto la pagina visibile. Il vecchio buffer di sessione
+mantiene i filtri temporanei e non usa queste viste persistenti.
+
+Un filtro salvato con classe/zona non più presenti rimane selezionato e può produrre zero
+risultati: non si allarga silenziosamente a tutti gli allarmi. I cataloghi locali sono validati
+(versione, campi, ID/nomi unici, 64 KiB); dati corrotti o versioni ignote non vengono sovrascritti.
+**Rileggi elenco delle viste** riprova dopo un errore del browser; **Reimposta elenco delle viste**
+richiede un secondo comando esplicito e azzera solo l’elenco di quell’utente/progetto/tipo,
+senza modificare archivio, progetto o filtri temporanei. Memoria bloccata o piena non impedisce
+di usare i filtri temporanei. Nella simulazione incorporata nell’editor le viste persistenti
+non sono abilitate: i filtri temporanei funzionano senza account o letture PLC.
+
+Disponibile nel Runtime generato e nei dettagli dei riepiloghi; i progetti esistenti richiedono
+aggiornamento esplicito del Runtime. Riferimenti funzionali: [filtri Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/operating-unified-pc-rt-unified/controls-rt-unified/operating-alarms-rt-unified/alarm-control-rt-unified/filtering-alarms-rt-unified)
+e [Alarm grid Optix 1.3](https://www.rockwellautomation.com/en-mde/docs/factorytalk-optix/1-3-0/contents-ditamap/creating-projects/alarms/alarm-grid.html).
+Framecraft usa criteri dichiarati, non espressioni SQL o una conversione dei filtri vendor.
+Statistiche industriali, ordinamento storico multi-colonna e il resto del modello vendor restano aperti.
+
 ### Operazioni su più allarmi
 
 Nel controllo **Allarmi operativi** scegli **Più allarmi**. Spunta le righe oppure usa

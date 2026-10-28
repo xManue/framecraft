@@ -5,6 +5,7 @@ import { overlayCandidate } from "./framecraft-picking.mjs";
 import { createHmiPropertyFlashingDomSurface } from "./hmi-property-flashing.mjs";
 import { alarmStateLabel } from "../runtime/alarm-labels.mjs";
 import { hmiAlarmElementBlocked, createHmiAlarmControlWith } from "./hmi-alarm-control.mjs";
+import { alarmViewsRuntimeModuleSource } from "./hmi-alarm-views.mjs";
 import { hmiAlarmSummaryAttribute, hmiAlarmSummaryCss, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView, createHmiAlarmSummaryWith } from "./hmi-alarm-summary.mjs";
 import { createHmiAlarmPreviewSurfaceWith, createHmiAlarmPreviewBridgeWith } from "./hmi-alarm-preview-surface.mjs";
 import { hmiFaceplateVisualRuntimeModuleSource } from "./hmi-faceplate-visuals.mjs";
@@ -173,7 +174,8 @@ export function installStandalonePreviewControls(view) {
 // imported by it but written into it. Stringifying the real functions keeps one copy: what the
 // tests check is exactly what runs inside the page.
 const sharedHelpers = `const hmiAlarmSummaryAttribute = ${JSON.stringify(hmiAlarmSummaryAttribute)};\nconst hmiAlarmSummaryCss = ${JSON.stringify(hmiAlarmSummaryCss)};\n` + [snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installPanelLayoutPreference, alarmStateLabel, hmiAlarmElementBlocked, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView].map((helper) => String(helper)).join("\n") + `
-const createHmiAlarmControl = (host, action, rowFilter) => (${String(createHmiAlarmControlWith)})(host, action, rowFilter, { alarmStateLabel, hmiAlarmElementBlocked });
+${alarmViewsRuntimeModuleSource()}
+const createHmiAlarmControl = (host, action, rowFilter) => (${String(createHmiAlarmControlWith)})(host, action, rowFilter, { alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters });
 const createHmiAlarmSummary = (host, options) => (${String(createHmiAlarmSummaryWith)})(host, options, { alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked });
 const createHmiAlarmPreviewSurface = (root, options) => (${String(createHmiAlarmPreviewSurfaceWith)})(root, options, { createHmiAlarmControl, createHmiAlarmSummary });
 const createHmiAlarmPreviewBridge = (view, options) => (${String(createHmiAlarmPreviewBridgeWith)})(view, options, createHmiAlarmPreviewSurface);

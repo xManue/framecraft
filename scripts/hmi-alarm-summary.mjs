@@ -101,7 +101,7 @@ export function createHmiAlarmSummaryWith(host, options, runtime) {
         Object.assign(view.style, { flex: "1", minHeight: "0" });
         doc.body.append(overlay);
         const control = createHmiAlarmControl(view, async (command) => { if (disposed || blocked())
-            throw new Error("Elemento non utilizzabile dall'utente attivo."); await options.action(command); }, filtered);
+            throw new Error("Elemento non utilizzabile dall'utente attivo."); await options.action(command); }, filtered, options.views);
         const dismiss = () => { doc.removeEventListener("keydown", keys, true); control.dispose(); overlay.remove(); popup = undefined; if (before && !hmiAlarmElementBlocked(before))
             before.focus(); };
         const keys = (event) => {

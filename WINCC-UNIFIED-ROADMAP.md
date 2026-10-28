@@ -16,6 +16,10 @@ checksum Unified restano distinti; nessun round-trip vendor dichiarato.
 riga e interruzione dei soli invii futuri (LAVORO 172). Riletto acknowledge collettivo V21:
 contratto Framecraft con richieste separate, senza transazione o ack PLC impliciti.
 
+28 ottobre 2026: filtri estesi/ordinamento nella lista e viste locali per progetto/operatore,
+anche per la bozza dello storico, con istanti UTC conservati (LAVORO 173). Riletti filtri V21;
+espressioni/colonne/statistiche e resto della semantica vendor non sono dichiarati equivalenti.
+
 21 ottobre 2026: archivio allarmi Framecraft su disco e vista protetta separata dallo stato attivo
 (LAVORO 161). Restano multilingua storica, manutenzione industriale e collaudo target.
 
@@ -166,7 +170,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-ALM-04 | Classi, priorità, aree e testi | PARZIALE | Multilingua, altri modelli Unified, colori/classi completi e identità/RBAC server | Editor di classi e tre modelli di chiusura, messaggi, zone e priorità; nessun dato macchina precompilato |
 | WCU-ALM-05 | Active, historical e logged alarms | PARZIALE | Recovery/retention/backup industriali, multilingua e collaudo target | Motore condiviso, storico di sessione e archivio SQLite per eventi supportati; batch per valutazione, riavvii distinti, lacune segnalate e nessun ripristino dello stato attivo dallo storico (106/161) |
 | WCU-ALM-06 | Acknowledge, confirm e shelving | PARZIALE | Shelving, motivazioni, modelli vendor restanti, ack PLC e collaudo target | Comandi singoli (152–155) e HMI su più allarmi con selezione/revisione, richieste separate autorizzate/auditate per riga, risultati parziali espliciti e stop senza replay; nessuna scrittura PLC (172) |
-| WCU-ALM-07 | Filtri, ordinamento e statistiche | PARZIALE | Filtri salvabili, query complete e statistiche | Filtri nella lista attiva; nuova vista storica con classe/zona/ID/stato/date sul server e pagine ancorate ad archivio/sequenza (161) |
+| WCU-ALM-07 | Filtri, ordinamento e statistiche | PARZIALE | Query/espressioni complete, ordinamento storico multi-colonna e statistiche | Lista: testo/classe/zona/stato/qualità/priorità e sei ordini; viste locali con CRUD e ambito progetto/utente, applicazione esplicita e nessuna selezione/comando persistito. Storico: filtri server (161), bozza salvabile con istanti UTC e nessuna lettura/cursor ripristinati (173) |
 | WCU-ALM-08 | Logging, import/export e CSV | PARZIALE | Import vendor, job server per grandi export e manutenzione industriale | Archivio SQLite e vista HMI protetta (161); CSV di tutte le pagine filtrate con identità/sequenza fissate, riepilogo JSON, avanzamento/annulla, protezione formule e nessun parziale o comando PLC (167) |
 | WCU-ALM-09 | Security events | DA FARE | Eventi sicurezza nel controllo allarmi | Correlazione con login, cambi e audit |
 | WCU-ALM-10 | Notifica email allarme | DA FARE | Trigger, destinatari e stato invio | Deduplica, escalation e test della regola |

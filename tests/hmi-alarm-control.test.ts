@@ -29,7 +29,7 @@ describe("vista allarmi operativi", () => {
     const search = host.querySelector<HTMLInputElement>('input[type="search"]')!; search.value = "missing"; search.dispatchEvent(new Event("input"));
     expect(button(host, "Prendi in visione").disabled).toBe(true); button(host, "Prendi in visione").click(); expect(action).not.toHaveBeenCalled();
     search.value = ""; search.dispatchEvent(new Event("input")); expect(button(host, "Prendi in visione").disabled).toBe(false);
-    included = false; control.update({ ...engine.snapshot(), actionsEnabled: true }); expect(button(host, "Prendi in visione").disabled).toBe(true); expect(host.querySelectorAll("select option")).toHaveLength(1); control.dispose();
+    included = false; control.update({ ...engine.snapshot(), actionsEnabled: true }); expect(button(host, "Prendi in visione").disabled).toBe(true); expect(host.querySelectorAll('select[aria-label="Zona"] option')).toHaveLength(1); control.dispose();
   });
   it.each(["visibility", "display", "pointerEvents"])("il blocco CSS %s del contenitore impedisce anche azioni programmatiche", (property) => {
     const parent = document.createElement("div"), host = document.createElement("div"); parent.append(host); document.body.append(parent); const engine = createAlarmEngine(catalog, variables), action = vi.fn(), control = createHmiAlarmControl(host, action);
