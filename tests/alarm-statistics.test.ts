@@ -15,6 +15,10 @@ function snapshot(rows: AlarmHistoryEntry[], order: NonNullable<Parameters<typeo
   const sequence = rows.at(-1)?.seq ?? 0;
   return { version: 1, id: archive, namespace: archive, sequence, through: sequence, incompleteRuns: 0, capture: { state: "recording", unconfirmedInThisRun: 0 }, order: input.order, limit: input.limit, ...accumulator.finish(input.order, input.limit) };
 }
+it("counts comments separately and does not treat them as a new activation or acknowledgment", () => {
+  const note = row(2, "Commented", 2000, { actor: "operator", note: { id: randomUUID(), reference: { archiveId: archive, seq: 1, instanceId: instance, occurrence: "same-pending-occurrence" }, text: "Intervento" } });
+  const result = snapshot([row(1), note, row(3, "Outgoing")]); expect(parseAlarmStatisticsSnapshot(result)).toEqual(result); expect(result.rows[0]).toMatchObject({ events: 3, incoming: 1, outgoing: 1, commented: 1, acknowledged: 0, active: { pairs: 1, totalMs: 2000 } }); expect(alarmStatisticsCsv(result, {})).toContain('"unshelved";"commented"');
+});
 it("validates separate shelving counters and exports them without inventing acknowledgment pairs", () => {
   const shelved = row(2, "Shelved", 2000, { actor: "operator", shelving: { mode: "timed", until: time + 62000, reason: "Verifica" } }), unshelved = row(3, "Unshelved", 3000, { shelving: { cause: "elapsed", reason: "Durata raggiunta" } });
   const result = snapshot([row(1), shelved, unshelved, row(4, "Outgoing")]); expect(parseAlarmStatisticsSnapshot(result)).toEqual(result); expect(result.rows[0]).toMatchObject({ events: 4, incoming: 1, acknowledged: 0, shelved: 1, unshelved: 1 });

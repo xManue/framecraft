@@ -7,6 +7,18 @@ const variables = [{ name: "Signal", dataType: "Bool", access: "read" }];
 const button = (host: HTMLElement, name: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === name)!;
 afterEach(() => { document.body.replaceChildren(); });
 describe("vista allarmi operativi", () => {
+  it("apre le note solo per la selezione corrente e conserva il controllo dell’elemento chiamante", () => {
+    const host = document.createElement("div"); document.body.append(host); const engine = createAlarmEngine(catalog, variables), notes = vi.fn(), control = createHmiAlarmControl(host, vi.fn(), undefined, { namespace: "7618fc24-79c4-4657-9139-56ad520cb1fa", notes }); engine.updateSample({ tag: "Signal", value: true, qualityCode: 192 }); control.update({ ...engine.snapshot(), actionsEnabled: true }); expect(button(host, "Note operatore").disabled).toBe(true); button(host, "Motor").click(); button(host, "Note operatore").click(); expect(notes).toHaveBeenCalledTimes(1); expect(notes.mock.calls[0][0]).toEqual({ alarmId: "a", instanceId: engine.snapshot().instanceId, occurrence: engine.snapshot().rows[0].occurrence }); expect(notes.mock.calls[0][2]()).toBe(true);
+    engine.updateSample({ tag: "Signal", value: false, qualityCode: 192 }); control.update({ ...engine.snapshot(), actionsEnabled: true }); button(host, "Note operatore").click(); expect(notes).toHaveBeenCalledTimes(1); control.dispose(); expect(notes.mock.calls[0][2]()).toBe(false);
+  });
+  it("apre le note dello storico della sessione sull’evento preciso e le disabilita senza servizio", () => {
+    const host = document.createElement("div"); host.dataset.hmiAlarmSource = "history"; document.body.append(host);
+    const engine = createAlarmEngine(catalog, variables), notes = vi.fn(), control = createHmiAlarmControl(host, vi.fn(), undefined, { namespace: "7618fc24-79c4-4657-9139-56ad520cb1fa", notes });
+    engine.updateSample({ tag: "Signal", value: true, qualityCode: 192 }); engine.updateSample({ tag: "Signal", value: false, qualityCode: 192 }); control.update({ ...engine.snapshot(), actionsEnabled: true });
+    const opener = host.querySelector<HTMLButtonElement>("[data-hmi-note-opener]")!; expect(opener.disabled).toBe(false); opener.click();
+    expect(notes.mock.calls[0][0]).toEqual({ alarmId: "a", instanceId: engine.snapshot().instanceId, occurrence: engine.snapshot().history.at(-1)!.occurrence, sourceSequence: engine.snapshot().history.at(-1)!.sequence });
+    control.update(engine.snapshot(), false); expect(host.querySelector<HTMLButtonElement>("[data-hmi-note-opener]")!.disabled).toBe(true); control.dispose(); expect(notes.mock.calls[0][2]()).toBe(false);
+  });
   it("filtri richiudibili, azioni pertinenti e paginazione solo quando necessaria", () => {
     const host = document.createElement("div"); document.body.append(host); const c = emptyAlarmCatalog(); c.alarms = Array.from({ length: 101 }, (_, index) => ({ ...catalog.alarms[0], id: "a" + index, tag: "Signal" + index }));
     const engine = createAlarmEngine(c, c.alarms.map(item => ({ ...variables[0], name: item.tag }))); engine.updateSamples(c.alarms.map(item => ({ tag: item.tag, value: "1", qualityCode: 192 })));

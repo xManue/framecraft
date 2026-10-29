@@ -9,7 +9,7 @@ import { RecipeStoreError, parseRecipeCommand, recipeActor, recipeId } from "./r
 import { OperatorAuthError, operatorText } from "./operator-policy.mjs";
 import { auditContext, appendAudit as persistAuditEvent, runAudited as auditOperation } from "./audit-operation.mjs";
 import { parseAuditQuery, parseAuditSnapshot } from "./audit-query.mjs";
-import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot, parseAlarmStatisticsQuery, parseAlarmStatisticsSnapshot } from "./alarm-history.mjs";
+import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot, parseAlarmStatisticsQuery, parseAlarmStatisticsSnapshot, parseAlarmNoteQuery, parseAlarmNoteCommand, parseAlarmNotesSnapshot, parseAlarmNoteResult } from "./alarm-history.mjs";
 import { RecipePlcError, captureRecipePlc, emptyRecipePlcConfig, parseRecipePlcConfig, parseRecipePlcQuery } from "./recipe-plc.mjs";
 import { RecipeApplyError, emptyRecipeApplyConfig, parseRecipeApplyConfig, parseRecipeApplyCommand, parseRecipeApplyLookup } from "./recipe-apply.mjs";
 import { createRecipeApplyEngine } from "./recipe-apply-engine.mjs";
@@ -69,6 +69,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
     catch (error) { historyMissed = Math.min(Number.MAX_SAFE_INTEGER, historyMissed + events.length); historyFault(error); }
   } }) : undefined;
   alarmInstanceId = alarms?.snapshot().instanceId;
+  const noteServiceInstanceId = randomUUID(), noteTasks = new Set(); let nextNoteRead = 0;
   let alarmTimer;
   const connections = enabled.map((connection) => {
     const driver = (connection.protocol === "opcua" ? createOpcUaPlcConnection : createMqttPlcConnection)(connection, variables, {
@@ -122,6 +123,46 @@ export function createPlcGateway(catalog, variables, options = {}) {
       const actual = Buffer.from(typeof request.headers.authorization === "string" ? request.headers.authorization : ""); const expected = Buffer.from("Bearer " + token);
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw failure(401, "GATEWAY_AUTH");
       if (request.url === api + "/snapshot" && request.method === "GET") { respond(response, 200, snapshot()); return; }
+      if (request.url === api + "/alarm-notes" || request.url?.startsWith(api + "/alarm-notes?") || request.url === api + "/alarm-comment") {
+        const mutation = request.url === api + "/alarm-comment";
+        if (mutation ? request.method !== "POST" : request.method !== "GET") throw new AlarmHistoryError("ALARM_NOTE_INPUT");
+        if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
+        if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;
+        let input;
+        if (mutation) {
+          if ((request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw new AlarmHistoryError("ALARM_NOTE_INPUT");
+          input = parseAlarmNoteCommand(await body(request, 8192)); auditScope = auditContext("alarms.comment", { kind: "alarm", id: input.reference.alarmId }, input.id);
+        } else {
+          if (request.url.length > 2048) throw new AlarmHistoryError("ALARM_NOTE_INPUT"); const params = new URL(request.url, "http://localhost").searchParams;
+          if ([...params].length > 6 || new Set(params.keys()).size !== [...params].length) throw new AlarmHistoryError("ALARM_NOTE_INPUT"); const raw = Object.fromEntries(params);
+          for (const key of ["seq", "before", "through", "sourceSequence"]) if (raw[key] !== undefined) { if (!/^(0|[1-9]\d*)$/.test(raw[key])) throw new AlarmHistoryError("ALARM_NOTE_INPUT"); raw[key] = Number(raw[key]); }
+          input = parseAlarmNoteQuery(raw);
+        }
+        const authorize = async () => {
+          let timer; try { return await Promise.race([options.operatorAuth.authorize(request, mutation ? "alarms.comment" : "alarms.comments.read", mutation, { alarmId: mutation ? input.reference.alarmId : input.alarmId }), new Promise((_, reject) => { timer = setTimeout(() => reject(new OperatorAuthError("AUTH_BUSY")), 5000); })]); } finally { clearTimeout(timer); }
+        };
+        const actor = await authorize(); if (!operatorText(actor, 200) || actor === token || actor === "Bearer " + token) throw new OperatorAuthError("AUTH_PERMISSION");
+        if (auditScope) auditScope.actor = actor;
+        if (stopping || request.aborted || response.destroyed) throw new AlarmHistoryError("ALARM_NOTE_DISABLED");
+        if (!options.alarmHistory || typeof options.alarmHistory.notes !== "function") throw historyError ?? new AlarmHistoryError("ALARM_HISTORY_DISABLED");
+        const writable = archiveEnabled && historyRunning && !historyError && typeof options.alarmHistory.addComment === "function";
+        const authorName = mutation ? (await options.operatorAuth.status(request)).user?.name : undefined;
+        if (mutation && !operatorText(authorName, 160)) throw new OperatorAuthError("AUTH_REQUIRED");
+        if (!mutation) {
+          if (performance.now() < nextNoteRead) throw new OperatorAuthError("AUTH_BUSY"); nextNoteRead = performance.now() + 200;
+          const data = options.alarmHistory.notes(input); respond(response, 200, parseAlarmNotesSnapshot({ ...data, writable, serviceInstanceId: noteServiceInstanceId }, input)); return;
+        }
+        if (input.serviceInstanceId !== noteServiceInstanceId) throw new AlarmHistoryError("ALARM_NOTE_CHANGED");
+        if (!writable) throw historyError ?? new AlarmHistoryError("ALARM_NOTE_DISABLED");
+        auditScope.actor = actor; auditStarted = true;
+        const task = runAudited(options.audit, auditScope, async () => {
+          if (await authorize() !== actor) throw new OperatorAuthError("AUTH_PERMISSION");
+          if (stopping || request.aborted || response.destroyed) throw new AlarmHistoryError("ALARM_NOTE_DISABLED");
+          const result = options.alarmHistory.addComment(input, actor, authorName);
+          try { return parseAlarmNoteResult(result, input); } catch { throw new AlarmHistoryError("ALARM_NOTE_UNCERTAIN"); }
+        }, result => ({ outcome: result.duplicate ? "duplicate" : "applied", code: result.duplicate ? "ALARM_NOTE_DUPLICATE" : "ALARM_NOTE_ADDED" }), () => !stopping && !request.aborted && !response.destroyed);
+        noteTasks.add(task); try { respond(response, 200, await task); } finally { noteTasks.delete(task); } return;
+      }
       const statisticsRequest = request.url === api + "/alarm-statistics" || request.url?.startsWith(api + "/alarm-statistics?");
       if (statisticsRequest || request.url === api + "/alarm-history" || request.url?.startsWith(api + "/alarm-history?")) {
         if (request.method !== "GET") throw new AlarmHistoryError("ALARM_HISTORY_QUERY");
@@ -322,7 +363,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         const code = error instanceof OperatorAuthError || error instanceof RecipeStoreError ? error.code : error instanceof ConnectionOperationError ? error.diagnostic.code : "REQUEST_REJECTED";
         try { await appendAudit(options.audit, auditScope, "rejected", code); } catch (auditError) { error = auditError; }
       }
-      if (error instanceof AlarmHistoryError) { respond(response, error.status, { type: "alarm-history", code: error.code, error: error.message, remedy: error.remedy }); return; }
+      if (error instanceof AlarmHistoryError) { respond(response, error.status, { type: "alarm-history", code: error.code, error: error.message, remedy: error.remedy, outcome: error.outcome }); return; }
       if (error instanceof OperatorAuthError) { respond(response, error.status, { type: "operator", code: error.code, error: error.message, remedy: error.remedy, outcome: error.outcome, plcConfirmed: false }); return; }
       if (error instanceof RecipeApplyError) {
         const diagnostic = { type: "recipe-apply", code: error.code, error: error.message, remedy: error.remedy };
@@ -365,6 +406,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         await Promise.allSettled(connections.map((driver) => driver.stop()));
         await applyStopped;
         await Promise.allSettled([...recipeTasks]);
+        await Promise.allSettled([...noteTasks]);
         await Promise.allSettled([...commands.values()].map(entry => entry.result));
         await Promise.allSettled([...auditTasks]);
         await startTask?.catch(() => {});

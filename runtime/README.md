@@ -366,7 +366,7 @@ Riferimenti funzionali: [WinCC Unified V21, acknowledge singolo e collettivo](ht
 e [Optix 1.10, acknowledge/confirm](https://www.rockwellautomation.com/en-nl/docs/factorytalk-optix/1-10/contents-ditamap/using-the-software/alarms/confirm-and-acknowledge-alarms.html).
 Le regole vendor della selezione e dei modelli di riconoscimento restano distinte dal
 contratto Framecraft descritto qui. La sospensione temporanea con motivo è descritta sotto;
-restano i modelli vendor completi, commenti generici e conferma al PLC.
+le note operatore sono descritte sotto; restano i modelli vendor completi e conferma al PLC.
 
 ### Sospendere temporaneamente una segnalazione
 
@@ -428,6 +428,72 @@ e [Timed/One-Shot Shelve di Optix](https://www.rockwellautomation.com/en-us/docs
 Questo è un contratto Framecraft per allarmi scalari, non l'object model vendor o la sospensione
 di condizioni/allarmi OPC UA ricevuti da un controller. Restano politica industriale di recovery,
 collaudo CPU/touch/WebView2 e i gate produzione generali.
+
+### Note operatore degli allarmi
+
+Abilita l'archivio su disco in **Pannello → Allarmi**, salva e riavvia manualmente il servizio.
+In **Pannello → Account del pannello** assegna esplicitamente **Consultare le note degli allarmi consentiti**
+(`alarms.comments.read`) e, per scrivere, **Aggiungere note agli allarmi consentiti** (`alarms.comment`).
+In **Risorse consentite → Azioni allarmi** scegli anche gli ID ammessi. I nuovi permessi non
+vengono assegnati agli account esistenti e non autorizzano comandi PLC o presa visione.
+La consultazione dell'intero archivio richiede separatamente `alarms.history.read`.
+
+Nel pannello seleziona una riga della lista e premi **Note operatore**. Nello storico della
+sessione usa **Note dell’evento**; nell'archivio su disco usa **Note dell’occorrenza**.
+Compila il testo (1–1000 caratteri, anche su più righe), premi **Rivedi nota** e poi
+**Conferma registrazione nota**. La finestra mantiene dimensioni stabili e scorre al suo interno.
+Le note sono testo semplice: eventuali frammenti HTML vengono visualizzati come testo.
+Nome, messaggio e riferimento arrivano dall'evento realmente registrato: non vengono inventati
+se lo storico non contiene l'occorrenza. Da stati diversi della stessa occorrenza puoi leggere
+le medesime note, anche dopo il rientro o il riavvio; una nuova attivazione resta distinta.
+
+Ogni nota aggiunge un evento immutabile `Commented` con data del servizio, nome dell'operatore
+verificato e ID stabile dell'account. Non è possibile modificarla o eliminarla dalla vista.
+Non cambia stato, revisione, segnale, presa visione o conferma dell'allarme e non pubblica
+valori PLC. Le note non entrano nel buffer eventi del motore né attivano gli script di
+processo dello Scheduler; compaiono nell'archivio, nel CSV e come conteggio separato nelle
+statistiche. Le letture delle note non rinnovano l'inattività dell'operatore.
+
+La bozza viene conservata nella `sessionStorage` della scheda, separata per progetto, account,
+archivio ed evento preciso. Ricaricare la stessa scheda permette di riprenderla riaprendo quel
+riferimento. Se l'allarme è cambiato, riapri il vecchio evento nello storico: la bozza non viene
+trasferita alla nuova attivazione. Non è un backup fra dispositivi o dopo la chiusura della
+scheda. Se la memoria è piena/bloccata, la chiusura chiede di copiare testo e ID prima di
+confermare l'uscita senza bozza; una bozza non leggibile resta conservata e richiede due passi
+espliciti per essere dimenticata. Un cambio utente chiude la finestra e scarta risposte tardive.
+
+Ogni invio ha un ID persistente. Se la conferma non arriva, **Rileggi note** prima di riprovare;
+**Rivedi la stessa richiesta** mantiene ID, testo e riferimento ed esige un'altra conferma.
+Il servizio riconosce un duplicato anche dopo il riavvio, senza aggiungere una seconda nota.
+Un ID già usato con testo, autore o riferimento diversi viene rifiutato. Dopo un riavvio serve
+una lettura del servizio corrente: nessun vecchio invio viene ripetuto automaticamente.
+Chiudere la finestra non annulla una richiesta già partita. Archivio pieno, sola lettura,
+permessi insufficienti o audit non disponibile producono messaggi con il passaggio da verificare.
+
+API sotto il prefisso gateway configurato:
+
+- `GET /alarm-notes?alarmId=…&archiveId=…&seq=…` apre un evento dell'archivio. In alternativa
+  `alarmId`, `instanceId`, `occurrence` identificano l'ultima transizione di quell'allarme nella
+  sessione, che deve appartenere all'occorrenza indicata; `sourceSequence` facoltativo apre un
+  evento preciso del buffer di sessione. Le pagine successive usano `through` e `before`.
+  Risultato con riferimento verificato, fino a 50 note, cursore, stato scrittura e ID del servizio.
+- `POST /alarm-comment`, JSON `{version:1,id,serviceInstanceId,reference:{archiveId,seq,alarmId},text}`.
+  Sessione, CSRF, capacità e ID ammesso vengono verificati sul server, anche dopo l'attesa
+  dell'audit. Il browser non può dichiarare autore o metadati dell'allarme. Richiesta/esito
+  sono registrati nell'audit; il testo risiede nello storico, senza duplicarlo nei log.
+
+Le note usano la transazione SQLite dello storico e stream chiusi di un evento: non interrompono
+la numerazione degli eventi macchina e non creano falsi avvii incompleti. Schema v1 mantenuto,
+con un indice parziale aggiunto dal writer; l'apertura in sola lettura non modifica il file.
+Nessuna cancellazione automatica per liberare spazio. I nuovi pannelli includono il Runtime;
+quelli esistenti richiedono un aggiornamento esplicito. Aggiorna anche gli altri lettori del
+medesimo archivio: i vecchi Runtime possono non riconoscere lo stato `Commented`.
+La prova locale dell'editor non simula un salvataggio nel servizio.
+
+Riferimenti funzionali: [dialogo commento del controllo allarmi Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/overview-of-screen-objects-rt-unified/controls-rt-unified/alarm-control-rt-unified)
+e [AddComment negli eventi allarmi Optix](https://www.rockwellautomation.com/en-gb/docs/factorytalk-optix/1-4-2/contents-ditamap/creating-projects/alarms/alarm-types/alarm-events.html).
+Il contratto è Framecraft: non importa oggetti vendor e non completa firme elettroniche,
+conformità Audit, commenti generici ad altri record o backup/recovery industriale.
 
 ### Autorizzazione server delle operazioni allarmi
 

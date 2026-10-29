@@ -47,7 +47,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
     const button = (label) => { const node = make("button", label); node.type = "button"; Object.assign(node.style, { minHeight: "44px", padding: "6px 12px", cursor: "pointer", border: "1px solid #8894a4", borderRadius: "4px", background: "#252d39", color: "#fff" }); return node; };
     for (const input of [search, area])
         Object.assign(input.style, { minHeight: "44px", maxWidth: "100%", background: "#181e28", color: "#fff", border: "1px solid #8894a4", borderRadius: "4px", padding: "6px" });
-    const ack = button("Prendi in visione"), confirm = button("Conferma rientro"), previous = button("Precedenti"), next = button("Successivi");
+    const ack = button("Prendi in visione"), confirm = button("Conferma rientro"), previous = button("Precedenti"), next = button("Successivi"), notes = button("Note operatore");
     const multiple = button("Più allarmi"), groupTools = make("div"), groupStatus = make("p"), groupReview = make("section");
     const choosePage = button("Scegli solo questa pagina"), clearChoices = button("Svuota selezione"), reviewAck = button("Rivedi presa visione"), reviewConfirm = button("Rivedi conferma rientro");
     Object.assign(groupTools.style, { display: "flex", flexWrap: "wrap", gap: "8px", padding: "8px", background: "#20252e" });
@@ -62,7 +62,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
     Object.assign(filtersTitle.style, { position: "sticky", top: "0", zIndex: "1", background: "#252d39" });
     Object.assign(filterFields.style, { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(220px,100%),1fr))", alignItems: "start", gap: "8px", padding: "8px" });
     filters.addEventListener("toggle", () => { filters.style.width = filters.open ? "100%" : ""; });
-    filterFields.append(searchLabel, areaLabel); filters.append(filtersTitle, filterFields); toolbar.append(filters, ack, confirm, multiple, previous, next);
+    filterFields.append(searchLabel, areaLabel); filters.append(filtersTitle, filterFields); toolbar.append(filters, ack, confirm, notes, multiple, previous, next);
     const extra = {}, savedHost = make("div"); savedHost.style.gridColumn = "1 / -1";
     for (const [key, title, values] of [
         ["alarmClass", "Classe", [["", "Tutte"]]],
@@ -274,6 +274,8 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         ack.disabled = !canAct || current.acknowledged || current.acknowledgment === "none";
         confirm.disabled = !canAct || current.active !== false || !current.acknowledged || current.acknowledgment !== "reset" || current.quality !== "good";
         ack.hidden = source === "history";
+        notes.hidden = source === "history" || !viewContext?.notes;
+        notes.disabled = !allowed() || !unchanged || !current?.occurrence || !matches(current.className, current.area ?? "", [current.name, current.text, current.id], current) || busy || !!review || multi;
         confirm.hidden = source === "history" || !rows.some(row => row.acknowledgment === "reset");
         const canShelf = connected && snapshot?.shelving?.enabled && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && !columnsError && unchanged && !!current?.occurrence && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id], current) && !busy && !review && !multi && !hmiAlarmElementBlocked(host);
         shelfPanel.hidden = source === "history" || !snapshot?.shelving?.enabled;
@@ -296,7 +298,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         renderReview();
         if (!busy)
             status.textContent = actionMessage && connected && actionMessageKey === snapshotKey() ? actionMessage : !validFilters && source !== "history" ? "Filtri non validi: controlla la priorità (intero 0–255) e i testi. Nessun allarme viene mostrato con filtri ambigui." : invalidFilter ? "Filtro non supportato: usa AlarmClassName = 'nome classe'. Nessun allarme viene mostrato con un filtro ambiguo." : selected && !unchanged ? "L'allarme è cambiato: selezionalo di nuovo prima di agire." : connected && snapshot && !snapshot.actionsEnabled && source !== "history" ? "Presa visione bloccata finché il servizio non autorizza l'operatore." : rows.length + " risultati · pagina " + (page + 1);
-        const visible = rows.slice(page * 100, (page + 1) * 100), visibleColumns = columns.columns.filter(item => item.visible), nextSignature = JSON.stringify([visible, selected, page, multi, [...choices.keys()], !!review, !!shelfProposal, busy, columns]);
+        const visible = rows.slice(page * 100, (page + 1) * 100), visibleColumns = columns.columns.filter(item => item.visible), nextSignature = JSON.stringify([visible, connected, selected, page, multi, [...choices.keys()], !!review, !!shelfProposal, busy, columns]);
         visibleRows = source === "history" ? [] : visible;
         if (signature === nextSignature)
             return;
@@ -311,9 +313,14 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
             const cell = make("td");
             cell.dataset.alarmColumn = visibleColumns.find(column => column.key === "name").label; cell.dataset.alarmKey = "name";
             cell.style.padding = "6px 8px";
-            if (history)
-                cell.textContent = item.name;
-            else {
+            if (history) {
+                cell.append(make("span", item.name));
+                if (viewContext?.notes) {
+                    const note = button("Note dell’evento"), instanceId = snapshot.instanceId;
+                    note.dataset.hmiNoteOpener = instanceId + ":" + item.sequence; note.setAttribute("aria-label", "Note di " + item.name + " · evento " + item.sequence); note.disabled = !connected || hmiAlarmElementBlocked(host);
+                    note.onclick = () => { if (disposed || !connected || snapshot?.instanceId !== instanceId || hmiAlarmElementBlocked(host)) return; viewContext.notes({ alarmId: item.id, instanceId, occurrence: item.occurrence, sourceSequence: item.sequence }, note, () => !disposed && !hmiAlarmElementBlocked(host)); }; cell.append(note);
+                }
+            } else {
                 const select = button(item.name);
                 select.setAttribute("aria-label", "Seleziona " + item.name);
                 select.setAttribute("aria-pressed", String(selected?.id === item.id));
@@ -390,6 +397,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         }
     };
     ack.onclick = () => { void act("acknowledge"); };
+    notes.onclick = () => { render(); if (notes.disabled || !selected?.occurrence || !snapshot) return; viewContext?.notes?.({ alarmId: selected.id, instanceId: snapshot.instanceId, occurrence: selected.occurrence }, notes, () => !disposed && !hmiAlarmElementBlocked(host)); };
     confirm.onclick = () => { void act("confirm"); };
     const prepareShelf = kind => {
         if ((kind === "shelve" ? prepareShelve : prepareUnshelve).disabled || shelfProposal || busy || review || !selected) return;

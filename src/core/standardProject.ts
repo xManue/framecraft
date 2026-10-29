@@ -341,7 +341,7 @@ import { createHmiAlarmSummary } from "./framecraftHmiAlarmSummary";
 import { createHmiRecipeClient } from "./framecraftHmiRecipeClient";
 import { createHmiRecipeControl, allowHmiRecipeNavigation } from "./framecraftHmiRecipeControl";
 import { createHmiAuditControl } from "./framecraftHmiAuditControl";
-import { createHmiAlarmArchive } from "./framecraftHmiAlarmArchive";
+import { createHmiAlarmArchive, createHmiAlarmNotes } from "./framecraftHmiAlarmArchive";
 import { AlarmHistoryError } from "../runtime/alarm-history.mjs";
 import { installHmiOperatorSession, operatorSessionProfile } from "./framecraftOperatorSession";
 import "./framecraftOperatorAccess.js";
@@ -586,7 +586,8 @@ function applyDynamicValue(element: Element, property: string, value: string): b
 export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void {
   if ((window as Window & { __framecraftEditorPreview?: boolean }).__framecraftEditorPreview) return () => undefined;
   const operatorSession = installHmiOperatorSession({ path: gatewayConfig.path, enabled: gatewayConfig.enabled && operatorConfig.enabled === true, canSwitch: allowHmiRecipeNavigation });
-  const alarmViewContext = { namespace: operatorConfig.namespace, operator: operatorSessionProfile };
+  const alarmNotes = createHmiAlarmNotes({ enabled: gatewayConfig.enabled && operatorConfig.enabled, namespace: operatorConfig.namespace, path: gatewayConfig.path, timeoutMs: gatewayConfig.timeoutMs });
+  const alarmViewContext = { namespace: operatorConfig.namespace, operator: operatorSessionProfile, notes: alarmNotes.open };
   let runtimeActive = true;
   const scriptAbort = new AbortController();
   let localAlarms: ReturnType<typeof createAlarmEngine> | undefined;
@@ -994,7 +995,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       (options.error ?? console.error)(\`[HMI \${eventType}] \${error instanceof Error ? error.message : String(error)}\`);
     });
   };
-  const target = (event: Event) => event.target instanceof Element && !event.target.closest("[data-hmi-recipe-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-faceplate-interface-trigger], [data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-time-zone], [data-hmi-trend-aggregation], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]") ? event.target.closest("[data-hmi-events]") : null;
+  const target = (event: Event) => event.target instanceof Element && !event.target.closest("[data-hmi-alarm-notes], [data-hmi-recipe-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-faceplate-interface-trigger], [data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-time-zone], [data-hmi-trend-aggregation], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]") ? event.target.closest("[data-hmi-events]") : null;
   const down = (event: Event) => run(target(event), "Down");
   const up = (event: Event) => run(target(event), "Up");
   const tapped = (event: Event) => run(target(event), "Tapped");
@@ -1003,7 +1004,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   const activated = (event: Event) => run(target(event), "Activated");
   const deactivated = (event: Event) => run(target(event), "Deactivated");
   const contextTapped = (event: Event) => run(target(event), "ContextTapped");
-  const keyDown = (event: KeyboardEvent) => { if (event.target instanceof Element && event.target.closest("[data-fc-operator-root]")) return; const owner = target(event); run(owner, "KeyDown", { key: event.key }); run(owner, "HotKey", { key: event.key }); };
+  const keyDown = (event: KeyboardEvent) => { if (event.target instanceof Element && event.target.closest("[data-fc-operator-root], [data-hmi-alarm-notes]")) return; const owner = target(event); run(owner, "KeyDown", { key: event.key }); run(owner, "HotKey", { key: event.key }); };
   const keyUp = (event: KeyboardEvent) => run(target(event), "KeyUp", { key: event.key });
   const interfaceEvent = (event: Event) => { const detail = (event as CustomEvent<unknown>).detail; run(target(event), "InterfaceEvent", { interfaceEvent: typeof detail === "string" ? detail : "InterfaceEvent" }); };
   const faceplateEvent = (event: Event) => {
@@ -1026,6 +1027,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     return Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? "SwipeLeft" : "SwipeRight") : (dy < 0 ? "SwipeUp" : "SwipeDown");
   };
   const gestureDown = (event: PointerEvent) => {
+    if (event.target instanceof Element && event.target.closest("[data-hmi-alarm-notes]")) { gestureStart = null; return; }
     if (event.pointerType === "touch" && event.isPrimary !== false) gestureStart = { pointerId: event.pointerId, target: event.target, x: event.clientX, y: event.clientY, time: Date.now() };
   };
   const finishGesture = (event: PointerEvent, cancelled = false) => {
@@ -1209,6 +1211,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   return () => {
     scriptAbort.abort();
     recipeClient?.dispose();
+    alarmNotes.dispose();
     operatorSession.dispose();
     for (const control of recipeControls.values()) control.dispose(); recipeControls.clear();
     for (const control of auditControls.values()) control.dispose(); auditControls.clear();

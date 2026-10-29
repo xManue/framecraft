@@ -1,6 +1,6 @@
 import { OperatorAuthError, operatorKeys, operatorText } from "./operator-policy.mjs";
 
-export const auditOperations = Object.freeze(["tags.write", "alarms.acknowledge", "alarms.confirm", "alarms.shelve", "alarms.unshelve", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "recipes.apply", "recipes.check", "recipes.fence", "session.login", "session.logout"]);
+export const auditOperations = Object.freeze(["tags.write", "alarms.acknowledge", "alarms.confirm", "alarms.shelve", "alarms.unshelve", "alarms.comment", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "recipes.apply", "recipes.check", "recipes.fence", "session.login", "session.logout"]);
 export const auditOutcomes = Object.freeze(["requested", "applied", "delivered", "duplicate", "rejected", "uncertain", "authenticated", "logged-out"]);
 const uuid = value => typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
 const date = value => { try { return typeof value === "string" && value.length === 24 && new Date(value).toISOString() === value; } catch { return false; } };

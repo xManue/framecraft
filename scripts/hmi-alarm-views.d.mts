@@ -1,4 +1,5 @@
 import type { AlarmRow, AlarmEvent } from "../runtime/alarm-engine.mjs";
+import type { AlarmNoteTarget } from "../runtime/alarm-history.mjs";
 export type AlarmColumnKey = "name" | "state" | "message" | "area" | "time" | "id" | "alarmClass" | "priority" | "quality" | "acknowledged" | "confirmed" | "clearedAt" | "occurrence";
 export interface AlarmColumn { key: AlarmColumnKey; label: string; width: number; visible: boolean }
 export interface AlarmColumnsConfig { version: 1; timeZone: "local" | "UTC"; columns: AlarmColumn[] }
@@ -16,7 +17,7 @@ export function parseAlarmColumnProfileConfig(value: unknown): AlarmColumnProfil
 export function alarmColumnProfileStorageKey(context: AlarmViewContext | undefined, id: string, pathname: string): string;
 export function parseAlarmColumnProfileRecord(raw: string | null): AlarmColumnProfileRecord | undefined;
 export function createAlarmColumnsProfile(options: { document: Document; host: HTMLElement; context?: AlarmViewContext; project(): AlarmColumnsConfig; current(): AlarmColumnsConfig; apply(value: AlarmColumnsConfig): void; disabled(): boolean; changed(): void }): { sync(): boolean; render(): HTMLElement; automatic(): void; signature(): number; reset(): void; dispose(): void };
-export interface AlarmViewContext { namespace: string; operator?: () => { id: string; capabilities?: readonly string[]; permissions?: readonly string[] } | null }
+export interface AlarmViewContext { namespace: string; operator?: () => { id: string; capabilities?: readonly string[]; permissions?: readonly string[] } | null; notes?: (target: AlarmNoteTarget, opener?: HTMLElement, alive?: () => boolean) => void }
 export interface ActiveAlarmViewFilters { search: string; area: string; alarmClass: string; state: "all" | "active" | "unacknowledged" | "awaiting-confirmation"; quality: "all" | "good" | "invalid"; minimumPriority: string; order: "priority-desc" | "priority-asc" | "latest-desc" | "oldest-asc" | "name-asc" | "name-desc" }
 export interface HistoryAlarmViewFilters { alarmId: string; alarmClass: string; area: string; state: string; from: string; to: string }
 export type AlarmViewKind = "active" | "history";

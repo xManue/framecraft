@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { lstatSync, realpathSync, mkdirSync, openSync, closeSync, fstatSync, readSync, writeFileSync, fsyncSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { auditSqliteSupported } from "./audit-store.mjs";
-import { AlarmHistoryError, historyKeys, historyUuid, parseHistoryEvent, parseAlarmHistoryQuery, parseAlarmStatisticsQuery, createAlarmStatisticsAccumulator } from "./alarm-history.mjs";
+import { AlarmHistoryError, historyKeys, historyUuid, parseHistoryEvent, parseAlarmHistoryQuery, parseAlarmStatisticsQuery, createAlarmStatisticsAccumulator, parseAlarmNoteQuery, parseAlarmNoteCommand, alarmNoteEntryValid } from "./alarm-history.mjs";
 
 const bytesLimit = 256 * 1024 * 1024, maximumRecords = 500000;
 const fail = code => { throw new AlarmHistoryError(code); };
@@ -64,6 +64,10 @@ export function openAlarmHistory({ root, namespace, recordLimit = 100000, readOn
       if (process.platform !== "win32") { const fd = openSync(directory, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } }
     }
     if (!dbExists) validateSchema();
+    const notesIndexSql = "CREATE INDEX history_notes ON history_events(alarm_id,json_extract(payload,'$.note.reference.instanceId'),json_extract(payload,'$.note.reference.occurrence'),seq) WHERE state='Commented'";
+    let notesIndex = db.prepare("SELECT sql FROM sqlite_schema WHERE name='history_notes'").get();
+    if (notesIndex && notesIndex.sql !== notesIndexSql) fail("ALARM_HISTORY_STORAGE");
+    if (!readOnly && !notesIndex) { db.exec(notesIndexSql); notesIndex = { sql: notesIndexSql }; }
     const check = () => {
       if (closed || !same(original, regular(file)) || readMarker(marker) !== markerSource) fail("ALARM_HISTORY_STORAGE"); folder(root); folder(parent); folder(directory); sidecars();
       const meta = db.prepare("SELECT * FROM history_meta").all(); if (meta.length !== 1 || meta[0].singleton !== 1 || meta[0].id !== identity.id || meta[0].namespace !== namespace) fail("ALARM_HISTORY_STORAGE");
@@ -76,7 +80,14 @@ export function openAlarmHistory({ root, namespace, recordLimit = 100000, readOn
     const payloadRow = row => {
       const event = parseHistoryEvent(JSON.parse(row.payload));
       if (event.sequence !== row.source_sequence || event.id !== row.alarm_id || event.alarmClass !== row.alarm_class || event.area !== row.area || event.state !== row.state || event.time !== row.time || !historyUuid(row.instance) || typeof row.recorded !== "string" || new Date(row.recorded).toISOString() !== row.recorded) fail("ALARM_HISTORY_STORAGE");
-      return { seq: row.seq, instanceId: row.instance, recordedAt: row.recorded, event };
+      const entry = { seq: row.seq, instanceId: row.instance, recordedAt: row.recorded, event };
+      if (!alarmNoteEntryValid(entry, identity.id)) fail("ALARM_HISTORY_STORAGE"); return entry;
+    };
+    const resolveNoteReference = query => {
+      if (query.archiveId !== undefined && query.archiveId !== identity.id) fail("ALARM_NOTE_CHANGED");
+      const row = query.archiveId !== undefined ? db.prepare("SELECT * FROM history_events WHERE seq=?").get(query.seq) : query.sourceSequence !== undefined ? db.prepare("SELECT * FROM history_events WHERE instance=? AND source_sequence=?").get(query.instanceId, query.sourceSequence) : db.prepare("SELECT * FROM history_events WHERE instance=? AND alarm_id=? ORDER BY source_sequence DESC LIMIT 1").get(query.instanceId, query.alarmId);
+      if (!row) fail("ALARM_NOTE_MISSING"); const entry = payloadRow(row);
+      if (entry.event.state === "Commented" || entry.event.id !== query.alarmId || query.occurrence !== undefined && entry.event.occurrence !== query.occurrence) fail("ALARM_NOTE_CHANGED"); return entry;
     };
     return {
       begin(instanceId) {
@@ -107,6 +118,40 @@ export function openAlarmHistory({ root, namespace, recordLimit = 100000, readOn
           const incompleteRuns = db.prepare("SELECT count(*) n FROM history_runs WHERE (ended IS NULL AND id<>?) OR missed>0").get(currentRun ?? "").n;
           db.exec("COMMIT"); return { version: 1, id: identity.id, namespace, sequence, count: sequence, incompleteRuns, events, nextBefore: rows.length > query.limit ? events.at(-1).seq : null };
         } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw safe(error); }
+      },
+      notes(input) {
+        try {
+          check(); const query = parseAlarmNoteQuery(input); db.exec("BEGIN"); const sequence = tip(), through = query.through ?? sequence, reference = resolveNoteReference(query);
+          if (through > sequence || reference.seq > through) fail("ALARM_NOTE_CHANGED");
+          const where = "state='Commented' AND alarm_id=? AND json_extract(payload,'$.note.reference.instanceId')=? AND json_extract(payload,'$.note.reference.occurrence')=? AND seq<=?" + (query.before === undefined ? "" : " AND seq<?");
+          const rows = db.prepare("SELECT * FROM history_events" + (notesIndex ? " INDEXED BY history_notes" : "") + " WHERE " + where + " ORDER BY seq DESC LIMIT 51").all(reference.event.id, reference.instanceId, reference.event.occurrence, through, ...(query.before === undefined ? [] : [query.before]));
+          const comments = rows.slice(0, 50).map(payloadRow); db.exec("COMMIT");
+          return { version: 1, id: identity.id, namespace, sequence, through, reference, comments, nextBefore: rows.length > 50 ? comments.at(-1).seq : null };
+        } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw safe(error); }
+      },
+      addComment(input, actor, authorName) {
+        const command = parseAlarmNoteCommand(input);
+        if (typeof actor !== "string" || !actor.trim() || actor.length > 200 || actor !== actor.trim() || /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(actor)) fail("ALARM_NOTE_INPUT");
+        if (authorName !== undefined && (typeof authorName !== "string" || !authorName.trim() || authorName !== authorName.trim() || authorName.length > 160 || /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(authorName))) fail("ALARM_NOTE_INPUT");
+        if (readOnly || failed || !currentRun) fail("ALARM_NOTE_DISABLED");
+        try {
+          return transaction(() => {
+            const reference = resolveNoteReference(command.reference), target = reference.event, existingRun = db.prepare("SELECT * FROM history_runs WHERE id=?").get(command.id);
+            if (existingRun) {
+              const raw = db.prepare("SELECT * FROM history_events WHERE instance=? AND source_sequence=1").get(command.id); if (!raw) fail("ALARM_NOTE_CONFLICT"); const entry = payloadRow(raw), note = entry.event.note;
+              if (entry.event.state !== "Commented" || entry.event.actor !== actor || note.text !== command.text || note.reference.archiveId !== command.reference.archiveId || note.reference.seq !== command.reference.seq || entry.event.id !== command.reference.alarmId) fail("ALARM_NOTE_CONFLICT");
+              return { version: 1, id: identity.id, namespace, commandId: command.id, duplicate: true, entry };
+            }
+            const sequence = tip(); if (sequence >= recordLimit) fail("ALARM_HISTORY_LIMIT");
+            const recordedAt = new Date().toISOString(), event = parseHistoryEvent({ sequence: 1, id: target.id, occurrence: target.occurrence, name: target.name, text: target.text, alarmClass: target.alarmClass, priority: target.priority, area: target.area, state: "Commented", time: Date.now(), actor, note: { id: command.id, ...(authorName === undefined ? {} : { authorName }), reference: { archiveId: identity.id, seq: reference.seq, instanceId: reference.instanceId, occurrence: target.occurrence }, text: command.text } });
+            db.prepare("INSERT INTO history_runs VALUES (?,?,?,1,0)").run(command.id, recordedAt, recordedAt);
+            db.prepare("INSERT INTO history_events VALUES (?,?,?,?,?,?,?,?,?,?)").run(sequence + 1, command.id, 1, recordedAt, event.id, event.alarmClass, event.area, event.state, event.time, JSON.stringify(event)); db.prepare("UPDATE history_meta SET sequence=? WHERE singleton=1").run(sequence + 1);
+            return { version: 1, id: identity.id, namespace, commandId: command.id, duplicate: false, entry: { seq: sequence + 1, instanceId: command.id, recordedAt, event } };
+          });
+        } catch (error) {
+          if (error instanceof AlarmHistoryError && ["ALARM_NOTE_INPUT", "ALARM_NOTE_MISSING", "ALARM_NOTE_CHANGED", "ALARM_NOTE_CONFLICT", "ALARM_HISTORY_LIMIT"].includes(error.code)) throw error;
+          failed = true; throw new AlarmHistoryError("ALARM_NOTE_UNCERTAIN");
+        }
       },
       async statistics(input = {}, options = {}) {
         if (statisticsBusy) fail("ALARM_HISTORY_STATISTICS_BUSY"); statisticsBusy = true;

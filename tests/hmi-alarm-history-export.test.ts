@@ -6,6 +6,10 @@ const row = (seq: number) => ({ seq, instanceId: other, recordedAt: "2026-10-23T
 const page = (sequences = [3, 2], nextBefore: number | null = 2): AlarmHistorySnapshot => ({ version: 1, id, namespace: id, sequence: 3, count: 3, incompleteRuns: 0, nextBefore, capture: { state: "recording", unconfirmedInThisRun: 0 }, events: sequences.map(row) });
 const fixture = () => ({ snapshot: page(), applied: {}, signal: new AbortController().signal, pause: async () => {}, read: vi.fn<AlarmHistoryExportOptions["read"]>(async () => page([3, 2, 1], null)) });
 afterEach(() => vi.unstubAllGlobals());
+it("exports multiline notes, verified actor and immutable references with formula protection", async () => {
+  const noteId = "5618fc24-79c4-4657-9139-56ad520cb1fa", event = { ...row(1).event, sequence: 1, state: "Commented" as const, actor: "local:operator", note: { id: noteId, reference: { archiveId: id, seq: 1, instanceId: other, occurrence: "occurrence" }, text: "=Verifica\nSeconda riga <img>" } }, data = { ...page([2], null), sequence: 2, count: 2, events: [{ ...row(2), instanceId: noteId, event }] };
+  const result = await collectAlarmHistoryCsv({ ...fixture(), snapshot: data, read: async () => data }); const csv = result.parts.join(""); expect(csv).toContain('"comment_id";"comment_text";"comment_author";"reference_archive"'); expect(csv).toContain('"\'=Verifica\nSeconda riga <img>"'); expect(csv).toContain('"local:operator"'); expect(csv).toContain(noteId);
+});
 it("exports suspension metadata with UTC, separate restore cause and formula-safe reason", async () => {
   const event = { ...row(1).event, state: "Shelved" as const, actor: "operator", shelving: { mode: "one-shot" as const, until: Date.parse("2026-10-23T09:01:00.000Z"), reason: "=Manutenzione" } }, data = { ...page([1], null), sequence: 1, count: 1, events: [{ ...row(1), event }] };
   const result = await collectAlarmHistoryCsv({ ...fixture(), snapshot: data, read: async () => data }); const csv = result.parts.join("");

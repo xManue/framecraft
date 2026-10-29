@@ -1,0 +1,6 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Note allarmi QA</title><style>html,body{margin:0;height:100%;font-family:system-ui;background:#252526;color:#eee}header{padding:8px}header button,header a{min-height:44px;font:inherit}main{height:calc(100% - 70px);overflow:auto}</style></head><body><header><a href="/batch-qa.html">Torna alla lista</a><button id="account" type="button">Account operatore</button></header><main data-hmi-type="HmiAlarmArchiveControl">Storico QA</main><script type="module">
+import { installFramecraftHmiRuntime } from '/src/framecraftHmiRuntime.ts';
+import { openOperatorSession } from '/src/framecraftOperatorSession.ts';
+window.disposeAlarmFixture = installFramecraftHmiRuntime({navigate:()=>{}});
+document.querySelector('#account').addEventListener('click', event => openOperatorSession(event.currentTarget));
+</script></body></html>

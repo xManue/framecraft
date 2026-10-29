@@ -6323,6 +6323,49 @@ Verifiche del 5 ottobre 2026:
   AI rinviata e gate produzione/licenze invariati; 23 file WIP precedenti preservati, con solo
   il nuovo timer canvas incluso nel commit del file misto.
 
+## 178. Note operatore sugli allarmi correnti e storici (29 ottobre 2026)
+
+- **Funzione**: dalla lista apri Note operatore; dal vecchio storico di sessione Note
+  dell'evento; dall'archivio Note dell'occorrenza. Testo semplice multilinea di 1–1000 caratteri,
+  revisione e conferma; autore verificato con nome leggibile e ID stabile, data del servizio.
+  Note immutabili su eventi realmente presenti nel disco, raggruppate per sessione/occorrenza:
+  una nuova attivazione non eredita quelle della precedente. Consultabili dopo il rientro,
+  modifica del catalogo o riavvio, se il riferimento resta nell'archivio.
+- **Contratto e permessi**: GET alarm-notes e POST alarm-comment, capacità separate
+  alarms.comments.read/alarms.comment e ACL Azioni allarmi per ID, assegnazione esplicita.
+  Sessione/origine/CSRF e nuova autorizzazione dopo l'audit; nessun autore scelto dal browser.
+  Lo storico completo richiede ancora alarms.history.read. Audit richiesta/esito senza testo;
+  ID richiesta persistente per deduplica anche dopo riavvio, conflitto su autore/testo/riferimento
+  diversi e barriera dell'istanza di servizio. Nessun invio o retry automatico.
+- **Archivio**: eventi Commented nella stessa transazione SQLite con stream già chiusi di un
+  evento. Nessuna modifica alla sequenza del motore, alle sue revisioni o ai valori PLC;
+  le note non entrano nel buffer processo o negli eventi Scheduler. Nessun falso avvio incompleto.
+  Schema v1 con indice parziale per occorrenza, controllato e assente da scritture read-only.
+  Limiti senza pruning; CSV con testo/ID/autore/riferimento e contatore statistico separato,
+  senza attribuire alle note prese visioni o tempi di rientro.
+- **Finestra e recupero**: dimensioni stabili, scorrimento interno, focus/tastiera e isolamento
+  dai gesti di navigazione HMI. Bozza sessionStorage per progetto/account/archivio/evento;
+  ID di invio incerto conservato e riproposto solo con revisione manuale. Quote/blocchi memoria
+  spiegati, seconda conferma per uscire senza bozza, bozza corrotta conservata con rimozione
+  in due passi. Cambio utente/distruzione chiudono la vista e isolano le risposte tardive.
+  Runtime nella pipeline dei nuovi progetti; aggiornamento esplicito di quelli esistenti e
+  degli altri lettori dell'archivio. La prova locale non finge di scrivere note nel servizio.
+- **Verifiche**: 176 casi distinti su 13 file mirati; dopo le aggiunte solo i file coinvolti
+  sono stati ripetuti. Coperti testo/ID/occorrenza, ACL, audit bloccato, revoca durante attesa,
+  risposta malformata dopo commit, deduplica persistente, riavvio/read-only, indice SQLite,
+  paginazione ancorata, CSV e bozza/quote/accesso scaduto. Corretto il nuovo mock asincrono
+  per il typecheck e il riferimento al buffer history nel test della vista sessione.
+  Typecheck/build pubblici e Runtime generato; browser con account reali sintetici, audit
+  SQLite e MQTT loopback: due note correnti/storiche, bozza dopo reload, ACL rifiutata, identico
+  snapshot motore prima/dopo e zero scritture PLC, richieste esterne o errori pagina. Immagini
+  sintetiche controllate a 375/768/1024/1440 px; nessuna suite generale, agente o dipendenza nuova.
+- **Stato**: confronto mirato con dialogo Comment Unified V21 e AddComment/eventi commento
+  Optix. Guide e roadmap restano PARZIALE: non è l'object model vendor, un Audit Viewer con
+  firme/commenti generici o una certificazione. Backup/recovery industriale, CPU fisiche,
+  touch/WebView2 e distribuzione restano aperti; AI rinviata e obiettivo complessivo attivo.
+  Preservati i 23 file WIP precedenti, con solo sei integrazioni proprie nel file misto
+  standardProject.ts; nessun JSON impianto, immagine reale o segreto nel commit pubblico.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

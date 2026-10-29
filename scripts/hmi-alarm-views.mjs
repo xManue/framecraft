@@ -58,7 +58,7 @@ function parseAlarmViewFilters(kind, value) {
         if (!keys(value, Object.keys(activeAlarmViewDefaults)) || ["search", "area", "alarmClass"].some(key => !safeText(value[key], 200)) || !["all", "active", "unacknowledged", "awaiting-confirmation"].includes(value.state) || !["all", "good", "invalid"].includes(value.quality) || !["priority-desc", "priority-asc", "latest-desc", "oldest-asc", "name-asc", "name-desc"].includes(value.order) || typeof value.minimumPriority !== "string" || value.minimumPriority !== "" && (!/^(?:0|[1-9]\d{0,2})$/.test(value.minimumPriority) || Number(value.minimumPriority) > 255)) fail("invalid");
     } else if (kind === "history") {
         if (!keys(value, ["alarmId", "alarmClass", "area", "state", "from", "to"]) || Object.values(value).some(item => typeof item !== "string")) fail("invalid");
-        if (!["alarmId", "alarmClass", "area"].every(key => safeText(value[key], key === "alarmId" ? 80 : 200) && (value[key] === "" || !!value[key].trim())) || !["", "Incoming", "Outgoing", "Acknowledged", "Confirmed", "Shelved", "Unshelved"].includes(value.state)) fail("invalid");
+        if (!["alarmId", "alarmClass", "area"].every(key => safeText(value[key], key === "alarmId" ? 80 : 200) && (value[key] === "" || !!value[key].trim())) || !["", "Incoming", "Outgoing", "Acknowledged", "Confirmed", "Shelved", "Unshelved", "Commented"].includes(value.state)) fail("invalid");
         for (const key of ["from", "to"]) if (value[key] !== "" && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value[key]) || !Number.isFinite(Date.parse(value[key])) || new Date(value[key]).toISOString() !== value[key])) fail("invalid");
         if (value.from && value.to && value.from > value.to) fail("invalid");
     } else fail("invalid");

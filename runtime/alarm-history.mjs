@@ -1,5 +1,11 @@
 import { alarmShelvingEventValid } from "./alarm-engine.mjs";
 const messages = {
+  ALARM_NOTE_INPUT: [400, "Nota allarme non valida", "Seleziona un evento reale e inserisci da 1 a 1000 caratteri. La nota è testo, senza comandi o contenuti eseguibili."],
+  ALARM_NOTE_MISSING: [404, "Evento allarme non disponibile nell’archivio", "Ricarica lo storico o seleziona nuovamente l’allarme. Nessuna nota viene collegata a un evento inventato."],
+  ALARM_NOTE_CHANGED: [409, "Riferimento della nota cambiato", "Riapri le note dall’allarme o dall’evento corretto. Una richiesta precedente non viene spostata su una nuova occorrenza."],
+  ALARM_NOTE_CONFLICT: [409, "Identificativo della nota già usato", "Rileggi le note e verifica quella già registrata. Non riutilizzare lo stesso identificativo con un testo o un evento diverso."],
+  ALARM_NOTE_DISABLED: [503, "Scrittura delle note non disponibile", "Abilita l’archivio allarmi su disco e verifica che il servizio registri correttamente. I permessi per leggere e scrivere le note si assegnano agli account del pannello."],
+  ALARM_NOTE_UNCERTAIN: [503, "Nota da verificare nell’archivio", "La nota potrebbe essere già registrata. Rileggi le note prima di riprovare; conserva il suo identificativo. Nessun invio automatico."],
   ALARM_HISTORY_DISABLED: [503, "Archivio allarmi non attivo", "In Framecraft apri Pannello → Allarmi e abilita l’archivio su disco, salva e riavvia manualmente il servizio. Lo storico di sessione resta separato."],
   ALARM_HISTORY_STORAGE: [503, "Archivio allarmi non disponibile", "Fai verificare disco locale, spazio, permessi e integrità dal responsabile. Non eliminare o sostituire i file. Gli allarmi attivi continuano, ma lo storico può essere incompleto."],
   ALARM_HISTORY_BUSY: [503, "Archivio allarmi occupato", "Controlla che un solo servizio usi questo progetto. Non eliminare lock o file; dopo la verifica riavvia manualmente il servizio."],
@@ -14,7 +20,7 @@ const messages = {
   ALARM_HISTORY_STATISTICS_BUSY: [429, "Statistiche già in calcolo", "Attendi il termine del calcolo in corso, poi riprova manualmente. Le richieste troppo ravvicinate non vengono accodate; non occorre riavviare il servizio."],
 };
 export class AlarmHistoryError extends Error {
-  constructor(code) { const known = Object.hasOwn(messages, code) ? code : "ALARM_HISTORY_STORAGE", [status, message, remedy] = messages[known]; super(message); this.name = "AlarmHistoryError"; this.code = known; this.status = status; this.remedy = remedy; }
+  constructor(code) { const known = Object.hasOwn(messages, code) ? code : "ALARM_HISTORY_STORAGE", [status, message, remedy] = messages[known]; super(message); this.name = "AlarmHistoryError"; this.code = known; this.status = status; this.remedy = remedy; this.outcome = known === "ALARM_NOTE_UNCERTAIN" ? "uncertain" : "rejected"; }
 }
 export const historyObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 export const historyKeys = (value, required, optional = []) => historyObject(value) && required.every(key => Object.hasOwn(value, key)) && Object.keys(value).every(key => required.includes(key) || optional.includes(key));
@@ -23,10 +29,53 @@ const text = (value, max, empty = false) => typeof value === "string" && (empty 
 const integer = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
 const iso = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 const fail = code => { throw new AlarmHistoryError(code); };
-export const alarmHistoryStates = Object.freeze(["Incoming", "Outgoing", "Acknowledged", "Confirmed", "Shelved", "Unshelved"]);
+export const alarmHistoryStates = Object.freeze(["Incoming", "Outgoing", "Acknowledged", "Confirmed", "Shelved", "Unshelved", "Commented"]);
+export const alarmNoteTextValid = value => typeof value === "string" && value.length >= 1 && value.length <= 1000 && value === value.trim() && !/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value);
+const alarmId = value => typeof value === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(value);
+const noteReference = value => historyKeys(value, ["archiveId", "seq", "instanceId", "occurrence"]) && historyUuid(value.archiveId) && integer(value.seq, 1) && historyUuid(value.instanceId) && text(value.occurrence, 80);
+export function parseAlarmNoteQuery(value) {
+  const historical = historyObject(value) && Object.hasOwn(value, "archiveId");
+  if (!historyKeys(value, historical ? ["alarmId", "archiveId", "seq"] : ["alarmId", "instanceId", "occurrence"], historical ? ["before", "through"] : ["before", "through", "sourceSequence"]) || !alarmId(value.alarmId) || historical && (!historyUuid(value.archiveId) || !integer(value.seq, 1)) || !historical && (!historyUuid(value.instanceId) || !text(value.occurrence, 80)) || value.sourceSequence !== undefined && !integer(value.sourceSequence, 1) || value.before !== undefined && !integer(value.before, 1) || value.through !== undefined && !integer(value.through) || value.before !== undefined && value.through !== undefined && value.before > value.through + 1) fail("ALARM_NOTE_INPUT");
+  return { ...value };
+}
+export function parseAlarmNoteCommand(value) {
+  if (!historyKeys(value, ["version", "id", "serviceInstanceId", "reference", "text"]) || value.version !== 1 || !historyUuid(value.id) || !historyUuid(value.serviceInstanceId) || !historyKeys(value.reference, ["archiveId", "seq", "alarmId"]) || !historyUuid(value.reference.archiveId) || !integer(value.reference.seq, 1) || !alarmId(value.reference.alarmId) || !alarmNoteTextValid(value.text)) fail("ALARM_NOTE_INPUT");
+  return structuredClone(value);
+}
+function validNoteEvent(value) {
+  if (value.state !== "Commented") return value.note === undefined;
+  return historyKeys(value.note, ["id", "reference", "text"], ["authorName"]) && historyUuid(value.note.id) && noteReference(value.note.reference) && alarmNoteTextValid(value.note.text) && value.note.reference.occurrence === value.occurrence && value.actor !== undefined && (value.note.authorName === undefined || text(value.note.authorName, 160) && value.note.authorName === value.note.authorName.trim() && !/[\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value.note.authorName));
+}
 export function parseHistoryEvent(value) {
-  if (!historyKeys(value, ["sequence", "id", "occurrence", "name", "text", "alarmClass", "priority", "area", "state", "time"], ["actor", "shelving"]) || !integer(value.sequence, 1) || !text(value.id, 80) || !/^[A-Za-z0-9_-]+$/.test(value.id) || !text(value.occurrence, 80) || !text(value.name, 200) || !text(value.text, 1000) || !text(value.alarmClass, 200) || !text(value.area, 200, true) || !integer(value.priority, 0, 255) || !alarmHistoryStates.includes(value.state) || !Number.isFinite(value.time) || Math.abs(value.time) > 8640000000000000 || value.actor !== undefined && !text(value.actor, 200) || !alarmShelvingEventValid(value)) fail("ALARM_HISTORY_RESPONSE");
+  if (!historyKeys(value, ["sequence", "id", "occurrence", "name", "text", "alarmClass", "priority", "area", "state", "time"], ["actor", "shelving", "note"]) || !integer(value.sequence, 1) || !text(value.id, 80) || !/^[A-Za-z0-9_-]+$/.test(value.id) || !text(value.occurrence, 80) || !text(value.name, 200) || !text(value.text, 1000) || !text(value.alarmClass, 200) || !text(value.area, 200, true) || !integer(value.priority, 0, 255) || !alarmHistoryStates.includes(value.state) || !Number.isFinite(value.time) || Math.abs(value.time) > 8640000000000000 || value.actor !== undefined && !text(value.actor, 200) || !alarmShelvingEventValid(value) || !validNoteEvent(value)) fail("ALARM_HISTORY_RESPONSE");
   if (["Acknowledged", "Confirmed", "Shelved"].includes(value.state) && value.actor === undefined || ["Incoming", "Outgoing"].includes(value.state) && value.actor !== undefined) fail("ALARM_HISTORY_RESPONSE");
+  return structuredClone(value);
+}
+export function alarmNoteEntryValid(row, archiveId) {
+  return row.event.state !== "Commented" || row.instanceId === row.event.note.id && row.event.sequence === 1 && row.event.note.reference.seq < row.seq && row.event.note.reference.archiveId === archiveId;
+}
+function noteEntry(value, archiveId, through) {
+  if (!historyKeys(value, ["seq", "instanceId", "recordedAt", "event"]) || !integer(value.seq, 1, through) || !historyUuid(value.instanceId) || !iso(value.recordedAt)) fail("ALARM_HISTORY_RESPONSE");
+  parseHistoryEvent(value.event); if (!alarmNoteEntryValid(value, archiveId)) fail("ALARM_HISTORY_RESPONSE"); return value;
+}
+export function parseAlarmNotesSnapshot(value, input) {
+  const query = parseAlarmNoteQuery(input);
+  if (!historyKeys(value, ["version", "id", "namespace", "sequence", "through", "reference", "comments", "nextBefore", "writable", "serviceInstanceId"]) || value.version !== 1 || !historyUuid(value.id) || !historyUuid(value.namespace) || !integer(value.sequence) || !integer(value.through, 0, value.sequence) || !Array.isArray(value.comments) || value.comments.length > 50 || typeof value.writable !== "boolean" || !historyUuid(value.serviceInstanceId) || query.archiveId !== undefined && query.archiveId !== value.id || query.through !== undefined && query.through !== value.through) fail("ALARM_HISTORY_RESPONSE");
+  const reference = noteEntry(value.reference, value.id, value.through), event = reference.event;
+  if (event.state === "Commented" || event.id !== query.alarmId || query.archiveId !== undefined && query.seq !== reference.seq || query.instanceId !== undefined && (query.instanceId !== reference.instanceId || query.occurrence !== event.occurrence || query.sourceSequence !== undefined && query.sourceSequence !== event.sequence)) fail("ALARM_HISTORY_RESPONSE");
+  let previous = Math.min(value.through + 1, query.before ?? value.through + 1);
+  for (const entry of value.comments) {
+    noteEntry(entry, value.id, value.through);
+    if (entry.seq >= previous || entry.event.state !== "Commented" || entry.event.id !== event.id || entry.event.note.reference.instanceId !== reference.instanceId || entry.event.note.reference.occurrence !== event.occurrence) fail("ALARM_HISTORY_RESPONSE"); previous = entry.seq;
+  }
+  if (value.nextBefore !== null && (!integer(value.nextBefore, 1, value.through) || value.nextBefore !== value.comments.at(-1)?.seq)) fail("ALARM_HISTORY_RESPONSE");
+  return structuredClone(value);
+}
+export function parseAlarmNoteResult(value, input) {
+  const command = parseAlarmNoteCommand(input);
+  if (!historyKeys(value, ["version", "id", "namespace", "commandId", "duplicate", "entry"]) || value.version !== 1 || value.id !== command.reference.archiveId || !historyUuid(value.namespace) || value.commandId !== command.id || typeof value.duplicate !== "boolean") fail("ALARM_HISTORY_RESPONSE");
+  const entry = noteEntry(value.entry, value.id, Number.MAX_SAFE_INTEGER);
+  if (entry.event.state !== "Commented" || entry.event.note.id !== command.id || entry.event.note.text !== command.text || entry.event.id !== command.reference.alarmId || entry.event.note.reference.seq !== command.reference.seq) fail("ALARM_HISTORY_RESPONSE");
   return structuredClone(value);
 }
 export function parseAlarmHistoryQuery(value = {}) {
@@ -57,7 +106,7 @@ export function parseAlarmHistorySnapshot(value, query = {}) {
   let last = Math.min(value.sequence, q.through ?? value.sequence) + 1;
   for (const row of value.events) {
     if (!historyKeys(row, ["seq", "instanceId", "recordedAt", "event"]) || !integer(row.seq, 1, value.sequence) || row.seq >= last || !historyUuid(row.instanceId) || !iso(row.recordedAt)) fail("ALARM_HISTORY_RESPONSE");
-    parseHistoryEvent(row.event); if (!matchesAlarmHistory(row, q)) fail("ALARM_HISTORY_RESPONSE"); last = row.seq;
+    parseHistoryEvent(row.event); if (!alarmNoteEntryValid(row, value.id) || !matchesAlarmHistory(row, q)) fail("ALARM_HISTORY_RESPONSE"); last = row.seq;
   }
   if (value.nextBefore !== null && value.nextBefore !== value.events.at(-1)?.seq) fail("ALARM_HISTORY_RESPONSE");
   return structuredClone(value);
@@ -102,6 +151,7 @@ export function createAlarmStatisticsAccumulator() {
         if (group.last?.instance === row.instanceId) addDuration(group.interval, group.last.time, e.time);
         group.last = { instance: row.instanceId, occurrence: e.occurrence, time: e.time, active: false, ack: false };
       } else if (e.state === "Confirmed") group.confirmed++;
+      else if (e.state === "Commented") group.commented = (group.commented ?? 0) + 1;
       else if (["Shelved", "Unshelved"].includes(e.state)) { const key = e.state === "Shelved" ? "shelved" : "unshelved"; group[key] = (group[key] ?? 0) + 1; }
       else if (["Outgoing", "Acknowledged"].includes(e.state)) {
         const kind = e.state === "Outgoing" ? "active" : "ack"; group[e.state === "Outgoing" ? "outgoing" : "acknowledged"]++;
@@ -127,12 +177,12 @@ export function parseAlarmStatisticsSnapshot(value, input = {}) {
   const ids = new Set(); let events = 0, incoming = 0;
   for (let i = 0; i < value.rows.length; i++) {
     const row = value.rows[i];
-    if (!historyKeys(row, ["id", "name", "text", "alarmClass", "area", "priority", "events", "incoming", "outgoing", "acknowledged", "confirmed", "firstTime", "lastTime", "active", "ack", "interval"], ["shelved", "unshelved"]) || ids.has(row.id) || !text(row.id, 80) || !/^[A-Za-z0-9_-]+$/.test(row.id) || !text(row.name, 200) || !text(row.text, 1000) || !text(row.alarmClass, 200) || !text(row.area, 200, true) || !integer(row.priority, 0, 255) || !integer(row.events, 1, value.matchedEvents) || ["incoming", "outgoing", "acknowledged", "confirmed"].some(key => !integer(row[key], 0, row.events)) || ["shelved", "unshelved"].some(key => row[key] !== undefined && !integer(row[key], 0, row.events)) || row.incoming + row.outgoing + row.acknowledged + row.confirmed + (row.shelved ?? 0) + (row.unshelved ?? 0) !== row.events || !Number.isFinite(row.firstTime) || !Number.isFinite(row.lastTime) || Math.abs(row.firstTime) > 8640000000000000 || Math.abs(row.lastTime) > 8640000000000000 || row.firstTime > row.lastTime || query.alarmId !== undefined && row.id !== query.alarmId || query.alarmClass !== undefined && row.alarmClass !== query.alarmClass || query.area !== undefined && row.area !== query.area || query.from !== undefined && row.firstTime < Date.parse(query.from) || query.to !== undefined && row.lastTime > Date.parse(query.to) || i > 0 && compareAlarmStatisticsRows(value.rows[i - 1], row, query.order) >= 0) fail("ALARM_HISTORY_RESPONSE");
+    if (!historyKeys(row, ["id", "name", "text", "alarmClass", "area", "priority", "events", "incoming", "outgoing", "acknowledged", "confirmed", "firstTime", "lastTime", "active", "ack", "interval"], ["shelved", "unshelved", "commented"]) || ids.has(row.id) || !text(row.id, 80) || !/^[A-Za-z0-9_-]+$/.test(row.id) || !text(row.name, 200) || !text(row.text, 1000) || !text(row.alarmClass, 200) || !text(row.area, 200, true) || !integer(row.priority, 0, 255) || !integer(row.events, 1, value.matchedEvents) || ["incoming", "outgoing", "acknowledged", "confirmed"].some(key => !integer(row[key], 0, row.events)) || ["shelved", "unshelved", "commented"].some(key => row[key] !== undefined && !integer(row[key], 0, row.events)) || row.incoming + row.outgoing + row.acknowledged + row.confirmed + (row.shelved ?? 0) + (row.unshelved ?? 0) + (row.commented ?? 0) !== row.events || !Number.isFinite(row.firstTime) || !Number.isFinite(row.lastTime) || Math.abs(row.firstTime) > 8640000000000000 || Math.abs(row.lastTime) > 8640000000000000 || row.firstTime > row.lastTime || query.alarmId !== undefined && row.id !== query.alarmId || query.alarmClass !== undefined && row.alarmClass !== query.alarmClass || query.area !== undefined && row.area !== query.area || query.from !== undefined && row.firstTime < Date.parse(query.from) || query.to !== undefined && row.lastTime > Date.parse(query.to) || i > 0 && compareAlarmStatisticsRows(value.rows[i - 1], row, query.order) >= 0) fail("ALARM_HISTORY_RESPONSE");
     for (const key of ["active", "ack", "interval"]) {
       const m = row[key], transitions = key === "active" ? row.outgoing : key === "ack" ? row.acknowledged : row.incoming;
       if (!historyKeys(m, ["pairs", "totalMs", "averageMs", "invalidPairs", "unpaired", "unmatchedTransitions"]) || ["pairs", "invalidPairs", "unpaired", "unmatchedTransitions"].some(field => !integer(m[field], 0, value.matchedEvents)) || m.pairs + m.invalidPairs + m.unpaired !== row.incoming || m.pairs + m.invalidPairs + m.unmatchedTransitions > transitions || !Number.isFinite(m.totalMs) || m.totalMs < 0 || m.totalMs > Number.MAX_SAFE_INTEGER || (m.pairs === 0 ? m.totalMs !== 0 || m.averageMs !== null : m.averageMs !== m.totalMs / m.pairs)) fail("ALARM_HISTORY_RESPONSE");
     }
-    if (query.state && row[{ Incoming: "incoming", Outgoing: "outgoing", Acknowledged: "acknowledged", Confirmed: "confirmed", Shelved: "shelved", Unshelved: "unshelved" }[query.state]] !== row.events) fail("ALARM_HISTORY_RESPONSE");
+    if (query.state && row[{ Incoming: "incoming", Outgoing: "outgoing", Acknowledged: "acknowledged", Confirmed: "confirmed", Shelved: "shelved", Unshelved: "unshelved", Commented: "commented" }[query.state]] !== row.events) fail("ALARM_HISTORY_RESPONSE");
     ids.add(row.id); events += row.events; incoming += row.incoming;
   }
   if (events > value.matchedEvents || incoming > value.activations || value.rows.length === value.alarms && (events !== value.matchedEvents || incoming !== value.activations)) fail("ALARM_HISTORY_RESPONSE");
