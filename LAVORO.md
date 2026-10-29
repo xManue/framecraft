@@ -6244,6 +6244,43 @@ Verifiche del 5 ottobre 2026:
   e Create an Alarm grid Optix 1.3; documentata la differenza fra modello Framecraft e vendor.
   Roadmap PARZIALE, AI rinviata e precedenti modifiche trend/AI preservate fuori dal commit.
 
+## 176. Profili locali delle colonne allarmi per operatore (29 ottobre 2026)
+
+- **Progetto**: Colonne allarmi → Salvataggio per operatore abilita una preferenza facoltativa
+  manuale o automatica. Identificativo stabile della lista, generato e modificabile nelle
+  opzioni avanzate; duplicati nella stessa pagina bloccano la persistenza. Attributo JSON v1
+  separato, con applicazione esplicita e undo/redo; configurazioni errate/calcolate conservate
+  fino a sostituzione esplicita. Nessuna migrazione delle colonne o delle viste dei filtri.
+- **Pannello**: preferenze separate per namespace progetto, operatore/ospite, percorso pagina
+  e lista, sul browser/origine corrente. Contengono solo colonne validate e configurazione
+  base canonica del progetto. Salvataggio manuale oppure automatico solo ad Applica/Reset,
+  mai durante digitazione, campionamento, caricamento del profilo o aggiornamento del codice.
+  Ripristino all'apertura/cambio utente solo se compatibile; rinnovo della stessa identità
+  conserva la disposizione temporanea. Un diverso ordine delle proprietà JSON resta compatibile.
+- **Recovery**: profili incompatibili o corrotti/versioni ignote conservati. Caricamento della
+  precedente disposizione valido solo su richiesta; rilettura senza applicazione. Rimozione
+  in due passaggi del solo profilo corrente, senza ricreazione automatica. Memoria bloccata
+  o piena lascia modifiche temporanee ed errori comprensibili. Eventi da altre finestre rileggono
+  lo storage reale senza applicarlo; ultimo salvataggio locale prevalente, senza promessa atomica.
+  Pulsanti vecchi non scrivono per un nuovo operatore; focus mantenuto fra conferma/rimozione.
+- **Pipeline**: factory condivisa con Runtime e ponte serializzato, nessuna risorsa o dipendenza
+  nuova. Prova senza namespace limitata alle colonne temporanee; opzione disabilitata senza
+  letture/scritture dei profili né osservatore globale aggiuntivo. Revisione/invio bloccano
+  preferenze e modifiche; completare un comando singolo le riabilita senza salvare bozze.
+  Nessuna nuova chiamata server, scrittura PLC o variazione delle autorizzazioni.
+- **Verifiche mirate**: 107 casi distinti su otto file, incluso Inspector con scrittura JSX/undo,
+  cambio utente, quota/corruzione, duplicati, storage fra finestre, comandi e ponte canvas.
+  Corretto un test che ignorava il disabled ereditato dal fieldset. Typecheck/build sullo
+  snapshot pubblico con WIP escluso; browser sul Runtime generato con account/ACL, SQLite e
+  MQTT loopback: salvataggio, ripristino al reload e colonne del progetto al logout. Cinque
+  comandi allarmi attesi, zero scritture PLC/richieste esterne; layout a 375/768/1024/1440 px.
+  Nessuna suite generale, agente o modifica nativa; immagini sintetiche controllate.
+- **Stato**: riletti personalizzazioni Unified V21 e gestione colonne Runtime Optix. Preferenze
+  locali Framecraft, senza default globali dal pannello, banca dati server o sincronizzazione
+  fra dispositivi. Guide e roadmap restano PARZIALE; aggiornamento esplicito dei vecchi Runtime.
+  Collaudo PLC fisico, touch/WebView2/installer e capacità vendor residue aperti; AI rinviata,
+  23 file WIP precedenti conservati e separati dal commit.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

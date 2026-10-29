@@ -21,7 +21,7 @@ function parseAlarmColumns(input) {
     }
     return { version: 1, timeZone: value.timeZone, columns: value.columns.map(item => ({ ...item })) };
 }
-function serializeAlarmColumns(value) { return JSON.stringify(parseAlarmColumns(value)); }
+function serializeAlarmColumns(value) { const checked = parseAlarmColumns(value); return JSON.stringify({ version: 1, timeZone: checked.timeZone, columns: checked.columns.map(({ key, label, width, visible }) => ({ key, label, width, visible })) }); }
 function alarmColumnValue(key, item, history, state, timeZone) {
     const date = value => !Number.isFinite(value) || !Number.isFinite(new Date(value).getTime()) ? "—" : timeZone === "UTC" ? new Date(value).toISOString().replace("T", " ").replace("Z", " UTC") : new Date(value).toLocaleString();
     switch (key) {
@@ -99,6 +99,83 @@ function parseAlarmViews(text, kind) {
     } catch { fail("corrupt"); }
 }
 
+const alarmColumnProfileAttribute = "data-hmi-alarm-column-profile";
+class AlarmColumnProfileError extends Error {
+    constructor(code) { const messages = { config: "Salvataggio colonne non configurato correttamente. Verifica identificativo e modalità nell’editor; le modifiche temporanee restano disponibili.", scope: "Il profilo richiede l’identificativo del progetto e della pagina. Nella prova incorporata usa le colonne temporanee.", duplicate: "Due liste nella pagina hanno lo stesso identificativo del profilo. Assegna identificativi diversi nell’editor; nessun profilo viene letto o sovrascritto.", corrupt: "Il profilo colonne è illeggibile o di una versione diversa. È conservato: puoi usare colonne temporanee, rileggere o rimuovere esplicitamente solo questo profilo.", storage: "Il browser non consente di leggere o salvare le colonne. Controlla spazio e impostazioni del browser; le modifiche restano temporanee.", changed: "Il progetto ha modificato le colonne. Il profilo precedente è conservato e non applicato: controlla il progetto, poi scegli se caricarlo o salvare la nuova disposizione." }; super(messages[code] ?? messages.config); this.name = "AlarmColumnProfileError"; this.code = Object.hasOwn(messages, code) ? code : "config"; }
+}
+function parseAlarmColumnProfileConfig(input) {
+    if (input === null || input === undefined || input === "") return undefined;
+    let value = input; try { if (typeof input === "string") { if (input.length > 1000) throw 0; value = JSON.parse(input); } } catch { throw new AlarmColumnProfileError("config"); }
+    if (!keys(value, ["version", "id", "save"]) || value.version !== 1 || typeof value.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(value.id) || !["manual", "automatic"].includes(value.save)) throw new AlarmColumnProfileError("config");
+    return { version: 1, id: value.id, save: value.save };
+}
+function alarmColumnProfileStorageKey(context, profileId, pathname) {
+    parseAlarmColumnProfileConfig({ version: 1, id: profileId, save: "manual" });
+    if (!safeText(pathname, 500, false) || !pathname.startsWith("/")) throw new AlarmColumnProfileError("scope");
+    try { return alarmViewsStorageKey(context, "active").replace("framecraft.alarm-views.v1:", "framecraft.alarm-columns.v1:").slice(0, -7) + ":" + encodeURIComponent(pathname) + ":" + profileId; } catch { throw new AlarmColumnProfileError("scope"); }
+}
+function parseAlarmColumnProfileRecord(raw) {
+    if (raw === null) return undefined;
+    try {
+        if (typeof raw !== "string" || raw.length > 32000) throw 0;
+        const value = JSON.parse(raw);
+        if (!keys(value, ["version", "baseline", "columns"]) || value.version !== 1 || typeof value.baseline !== "string" || serializeAlarmColumns(parseAlarmColumns(value.baseline)) !== value.baseline || !keys(value.columns, ["version", "timeZone", "columns"])) throw 0;
+        return { version: 1, baseline: value.baseline, columns: parseAlarmColumns(value.columns) };
+    } catch { throw new AlarmColumnProfileError("corrupt"); }
+}
+function createAlarmColumnsProfile(options) {
+    const { document, host } = options, window = document.defaultView;
+    let disposed = false, lastScope, scope, saved, code = "", status = "", revision = 0, removeAsked = false;
+    const source = () => {
+        const raw = host.getAttribute(alarmColumnProfileAttribute), baseline = serializeAlarmColumns(options.project());
+        let config, key, error = ""; try {
+            config = parseAlarmColumnProfileConfig(raw);
+            if (config) {
+                if ([...document.querySelectorAll('[' + alarmColumnProfileAttribute + ']')].some(node => { if (node === host) return false; try { return parseAlarmColumnProfileConfig(node.getAttribute(alarmColumnProfileAttribute))?.id === config.id; } catch { return false; } })) throw new AlarmColumnProfileError("duplicate");
+                key = alarmColumnProfileStorageKey(options.context, config.id, window.location.pathname);
+            }
+        } catch (failure) { error = failure instanceof AlarmColumnProfileError ? failure.code : "config"; }
+        return { config, key, baseline, error, signature: JSON.stringify([raw, baseline, key, error]) };
+    };
+    const read = current => { try { saved = parseAlarmColumnProfileRecord(window.localStorage.getItem(current.key)); code = saved && saved.baseline !== current.baseline ? "changed" : ""; status = code ? new AlarmColumnProfileError(code).message : saved ? "Colonne conservate disponibili. Nessuna modifica al progetto o ai comandi." : "Nessuna disposizione conservata per questo operatore e questa lista."; } catch (error) { saved = undefined; code = error instanceof AlarmColumnProfileError ? error.code : "storage"; status = new AlarmColumnProfileError(code).message; } revision++; };
+    function sync() {
+        if (disposed || options.disabled()) return false;
+        const current = source(); if (current.signature === lastScope) return false;
+        lastScope = current.signature; scope = current; saved = undefined; removeAsked = false; code = current.error; revision++; options.apply(parseAlarmColumns(options.project()));
+        if (current.error) { status = new AlarmColumnProfileError(current.error).message; return true; }
+        if (!current.config) { status = "Per conservare le colonne, abilita Salvataggio per operatore nell’editor. Qui restano temporanee."; return true; }
+        read(current);
+        if (saved && !code) { options.apply(parseAlarmColumns(saved.columns)); status = "Ripristinate le colonne conservate per questo operatore e questa lista. Nessun comando eseguito."; }
+        return true;
+    }
+    function save() {
+        const existing = window.localStorage.getItem(scope.key); parseAlarmColumnProfileRecord(existing);
+        const record = { version: 1, baseline: scope.baseline, columns: parseAlarmColumns(options.current()) }, raw = JSON.stringify(record); if (raw.length > 32000) throw new AlarmColumnProfileError("corrupt");
+        window.localStorage.setItem(scope.key, raw); saved = record; code = ""; removeAsked = false; status = "Colonne conservate per questo operatore, progetto, pagina e lista su questo browser."; revision++;
+    }
+    function automatic() {
+        if (disposed || options.disabled()) return;
+        const previous = lastScope; sync(); if (previous !== lastScope || !scope?.key || scope.error || scope.config?.save !== "automatic" || code === "corrupt" || code === "storage") return;
+        try { save(); } catch (error) { code = error instanceof AlarmColumnProfileError ? error.code : "storage"; status = new AlarmColumnProfileError(code).message; revision++; }
+    }
+    function render() {
+        const make = (tag, text) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; }, root = make("section"); root.setAttribute("aria-label", "Colonne personali conservate"); root.style.gridColumn = "1 / -1";
+        const message = make("p", status); message.setAttribute("role", code ? "alert" : "status"); root.append(message);
+        if (!scope?.config || !scope.key || scope.error) return root;
+        const controls = make("div"); Object.assign(controls.style, { display: "flex", flexWrap: "wrap", gap: "8px" });
+        const command = (title, action, disabled = false, focus = title) => { const expectedScope = lastScope, button = make("button", title); button.type = "button"; button.disabled = options.disabled() || disabled; button.dataset.columnProfileFocus = focus;
+            Object.assign(button.style, { minHeight: "44px", padding: "6px 12px", border: "1px solid #8894a4", borderRadius: "4px", background: "#252d39", color: "#fff", cursor: "pointer" });
+            button.onclick = () => { if (disposed || button.disabled || options.disabled()) return; sync(); if (lastScope !== expectedScope) { options.changed(); return; } try { action(); } catch (error) { code = error instanceof AlarmColumnProfileError ? error.code : "storage"; status = new AlarmColumnProfileError(code).message; revision++; } options.changed(); }; controls.append(button); return button; };
+        command("Salva le mie colonne", save, code === "corrupt" || code === "storage");
+        command("Carica le mie colonne", () => { read(scope); if (saved && !["corrupt", "storage"].includes(code)) { options.apply(parseAlarmColumns(saved.columns)); status = saved.baseline === scope.baseline ? "Colonne conservate caricate. Nessun comando eseguito." : "Caricate colonne di una configurazione precedente. Verificale prima di applicare o salvare la disposizione."; revision++; } }, !saved);
+        command("Rileggi profilo colonne", () => { removeAsked = false; read(scope); });
+        command(removeAsked ? "Conferma rimozione profilo colonne" : "Dimentica le mie colonne", () => { if (!removeAsked) { removeAsked = true; status = "Conferma la rimozione del solo profilo di questa lista e operatore. Gli altri dati restano conservati."; revision++; return; } window.localStorage.removeItem(scope.key); saved = undefined; removeAsked = false; code = ""; status = "Profilo rimosso. Ripristinate le colonne del progetto per questa lista."; options.apply(parseAlarmColumns(options.project())); revision++; }, !saved && code !== "corrupt", "remove");
+        root.append(controls, make("p", scope.config.save === "automatic" ? "Salvataggio automatico quando premi Applica visualizzazione o Ripristina colonne del progetto. Le bozze dei campi non vengono salvate." : "Salvataggio manuale: premi Salva le mie colonne. All’apertura vengono ripristinate solo se il progetto è ancora compatibile."), make("p", "Preferenze locali: nessun filtro, dato PLC, selezione, credenziale o comando conservato. Non sono un backup né autorizzazioni. Con più finestre prevale l’ultimo salvataggio.")); return root;
+    }
+    const storageChanged = event => { if (disposed || !scope?.key || event.key !== null && event.key !== scope.key) return; const current = source(); if (current.signature !== lastScope) { options.changed(); return; } removeAsked = false; read(current); if (!code) status = "Profilo aggiornato da un’altra finestra. La visualizzazione attuale non è cambiata; scegli Carica le mie colonne se serve."; revision++; options.changed(); };
+    window.addEventListener("storage", storageChanged);
+    return { sync, render, automatic, signature: () => revision, reset() { lastScope = undefined; scope = saved = undefined; removeAsked = false; code = ""; status = ""; revision++; }, dispose() { disposed = true; window.removeEventListener("storage", storageChanged); } };
+}
 function createAlarmSavedViews(options) {
     const { document, kind } = options, window = document.defaultView;
     let disposed = false, opened = false, selected = "", name = "", status = "Viste locali a questo browser, progetto e utente. Non concedono permessi e non eseguono comandi.", error = false, resetAsked = false, lastKey, rendered;
@@ -153,7 +230,7 @@ function createAlarmSavedViews(options) {
     window.addEventListener("storage", changed);
     return { render, reset() { selected = ""; name = ""; lastKey = undefined; resetAsked = false; error = false; status = "Accesso cambiato. Le viste di questo utente non vengono applicate automaticamente."; }, dispose() { disposed = true; window.removeEventListener("storage", changed); } };
 }
-return { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews, alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, alarmColumnValue };
+return { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews, alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, AlarmColumnProfileError, parseAlarmColumnProfileConfig, alarmColumnProfileStorageKey, parseAlarmColumnProfileRecord, createAlarmColumnsProfile };
 }
-export const { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews, alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, alarmColumnValue } = createAlarmViewsLibrary();
-export function alarmViewsRuntimeModuleSource() { return `const { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews, alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, alarmColumnValue } = (${String(createAlarmViewsLibrary)})();`; }
+export const { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews, alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, AlarmColumnProfileError, parseAlarmColumnProfileConfig, alarmColumnProfileStorageKey, parseAlarmColumnProfileRecord, createAlarmColumnsProfile } = createAlarmViewsLibrary();
+export function alarmViewsRuntimeModuleSource() { return `const { activeAlarmViewDefaults, AlarmViewError, parseAlarmViewFilters, alarmRowMatchesView, compareAlarmViewRows, alarmViewsStorageKey, parseAlarmViews, createAlarmSavedViews, alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, AlarmColumnProfileError, parseAlarmColumnProfileConfig, alarmColumnProfileStorageKey, parseAlarmColumnProfileRecord, createAlarmColumnsProfile } = (${String(createAlarmViewsLibrary)})();`; }

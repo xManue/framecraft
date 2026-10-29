@@ -7,7 +7,7 @@ import { desktopBridge } from "../src/filesystem/desktopBridge";
 import { Inspector } from "../src/inspector/Inspector";
 import { useEditorStore } from "../src/state/editorStore";
 import { parseSource } from "../src/source-parser/parseSource";
-import { alarmColumnsAttribute, parseAlarmColumns } from "../scripts/hmi-alarm-views.mjs";
+import { alarmColumnsAttribute, parseAlarmColumns, alarmColumnProfileAttribute, parseAlarmColumnProfileConfig } from "../scripts/hmi-alarm-views.mjs";
 const initial = useEditorStore.getState(), file = "C:/alarm-columns/Page.jsx";
 let host: HTMLDivElement, root: Root;
 const field = (label: string) => [...host.querySelectorAll(".alarm-columns-fields label")].find(node => node.querySelector("span")?.textContent === label)!.querySelector<HTMLInputElement | HTMLSelectElement>("input,select")!;
@@ -35,4 +35,15 @@ it("keeps invalid width as a field draft and requires identity/state visibility"
 it.each(['data-hmi-alarm-columns={getColumns()}', 'data-hmi-alarm-columns="PRIVATE_BROKEN_JSON"'])("requires explicit replacement for calculated or corrupt configuration: %s", async attributes => {
   await mount(attributes); const source = useEditorStore.getState().document!.source; expect(button("Usa colonne iniziali").disabled).toBe(true); expect(desktopBridge.writeFile).not.toHaveBeenCalled(); expect(useEditorStore.getState().document!.source).toBe(source); expect(host.querySelector(".alarm-columns-fields")!.textContent).not.toContain("PRIVATE_BROKEN_JSON");
   const checkbox = [...host.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent?.includes("Sostituisci la configurazione colonne attuale"))!.querySelector<HTMLInputElement>("input")!; await act(async () => checkbox.click()); await act(async () => button("Usa colonne iniziali").click()); expect(current().columns).toHaveLength(13); await act(async () => useEditorStore.getState().undo()); expect(useEditorStore.getState().document!.source).toBe(source);
+});
+const profile = () => { const state = useEditorStore.getState(); return parseAlarmColumnProfileConfig(state.document!.nodes[state.selectedId!].props[alarmColumnProfileAttribute]); };
+async function applyProfile() { const form = [...host.querySelectorAll<HTMLFormElement>("form")].find(form => form.querySelector("h4")?.textContent === "Salvataggio per operatore")!; await act(async () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))); }
+it("opts in explicitly to manual/automatic per-operator columns and supports undo without writing preferences", async () => {
+  await mount(); const writes = vi.spyOn(Storage.prototype, "setItem"); expect(profile()).toBeUndefined(); await act(async () => (field("Conserva le colonne per ogni operatore") as HTMLInputElement).click()); await change("Identificativo della lista", "main-alarms"); await change("Quando conservare le colonne", "automatic"); expect(desktopBridge.writeFile).not.toHaveBeenCalled(); await applyProfile(); expect(profile()).toEqual({ version: 1, id: "main-alarms", save: "automatic" }); expect(writes).not.toHaveBeenCalled(); await act(async () => useEditorStore.getState().undo()); expect(profile()).toBeUndefined(); await act(async () => useEditorStore.getState().redo()); expect(profile()?.id).toBe("main-alarms");
+});
+it("keeps an invalid profile identity in the form and never silently replaces calculated configuration", async () => {
+  await mount(); await act(async () => (field("Conserva le colonne per ogni operatore") as HTMLInputElement).click()); await change("Identificativo della lista", "../bad"); await applyProfile(); expect(host.textContent).toContain("Salvataggio colonne non configurato correttamente"); expect(profile()).toBeUndefined(); expect(desktopBridge.writeFile).not.toHaveBeenCalled();
+});
+it("requires explicit replacement of a dynamic profile and preserves it with undo", async () => {
+  await mount('data-hmi-alarm-column-profile={getProfile()}'); const source = useEditorStore.getState().document!.source; const apply = button("Applica salvataggio per operatore"); expect(apply.matches(":disabled")).toBe(true); expect(desktopBridge.writeFile).not.toHaveBeenCalled(); await act(async () => (field("Sostituisci l’impostazione del profilo") as HTMLInputElement).click()); await act(async () => (field("Conserva le colonne per ogni operatore") as HTMLInputElement).click()); await change("Identificativo della lista", "main"); await applyProfile(); expect(profile()).toEqual({ version: 1, id: "main", save: "manual" }); await act(async () => useEditorStore.getState().undo()); expect(useEditorStore.getState().document!.source).toBe(source);
 });

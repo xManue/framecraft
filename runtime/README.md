@@ -110,8 +110,9 @@ Nel pannello **Colonne e orario → Applica visualizzazione** permette gli stess
 per la sola apertura corrente del controllo. **Ripristina colonne del progetto** torna alle
 impostazioni della pagina. Cambio effettivo di utente, ricaricamento o aggiornamento della
 configurazione nel progetto rimuovono gli adattamenti temporanei; rinnovare la stessa sessione
-non li azzera. Le viste salvate conservano i filtri, non le colonne. Per una configurazione
-permanente usa l'editor. Nessun comando PLC, modifica degli allarmi o cambio di permessi.
+non li azzera. Le viste salvate conservano i filtri, non le colonne. La configurazione comune
+si modifica nell'editor; il progetto può abilitare le preferenze personali descritte sotto.
+Nessun comando PLC, modifica degli allarmi o cambio di permessi.
 
 Il riordino non cambia l'ID usato per selezione e comandi. Durante revisione/esecuzione di
 un'operazione, i campi delle colonne sono bloccati. Se la configurazione della pagina cambia
@@ -136,7 +137,72 @@ I pannelli esistenti richiedono aggiornamento esplicito del Runtime. Riferimenti
 [colonne del controllo Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/overview-of-screen-objects-rt-unified/controls-rt-unified/alarm-control-rt-unified)
 e [creazione delle colonne Alarm grid Optix 1.3](https://www.rockwellautomation.com/en-mde/docs/factorytalk-optix/1-3-0/contents-ditamap/creating-projects/alarms/alarm-grid/create-an-alarm-grid.html).
 Restano query/espressioni vendor, colonne immagine/editabili, altre proprietà evento,
-profili persistenti delle colonne, fusi IANA del controllo allarmi e collaudo target.
+impostazioni globali dal Runtime, fusi IANA del controllo allarmi e collaudo target.
+
+### Conservare le proprie colonne
+
+Nell'editor, in **Colonne allarmi → Salvataggio per operatore**, abilita **Conserva le colonne
+per ogni operatore**, scegli quando salvarle e premi **Applica salvataggio per operatore**.
+L'identificativo della lista viene creato automaticamente; in **Identità della lista (avanzate)**
+puoi cambiarlo, ad esempio in `allarmi-linea-2`, se copi una lista nella stessa pagina.
+Deve essere unico nella pagina e stabile: cambiarlo conserva il vecchio profilo con il suo
+identificativo, senza applicarlo alla nuova lista. L'impostazione è facoltativa e disabilitata
+in assenza di configurazione; il progetto non legge né scrive profili colonne in quel caso.
+
+Nel pannello apri **Colonne e orario**. In modalità manuale cambia le colonne, premi
+**Applica visualizzazione**, poi **Salva le mie colonne**. In modalità automatica il salvataggio
+avviene quando premi **Applica visualizzazione** o **Ripristina colonne del progetto**.
+Digitare nei campi, ricevere valori dal servizio, cambiare utente, caricare un profilo o
+modificare il codice non salva automaticamente le colonne. Le bozze non applicate restano bozze.
+
+All'apertura e al cambio effettivo di operatore vengono ripristinate le colonne conservate,
+se compatibili con il progetto. Le preferenze sono separate per progetto, operatore/ospite,
+pagina e identificativo della lista, sullo stesso browser e indirizzo del pannello. L'ospite
+è condiviso fra chi usa quel browser senza autenticarsi ed è distinto da un account chiamato
+guest. Rinnovare la stessa sessione non annulla una disposizione temporanea.
+
+Il profilo contiene solo campi/ordine/visibilità/titoli/larghezze e locale/UTC, più la configurazione
+del progetto usata per confrontarne la compatibilità. Non contiene filtri, dati PLC, selezioni,
+occorrenze, credenziali o comandi. Le righe e gli stati non vengono ripristinati da queste
+preferenze. Restano obbligatori nome e stato, con gli stessi limiti delle colonne temporanee.
+
+Se il progetto cambia effettivamente le colonne, il profilo precedente è conservato ma non
+applicato: usa la nuova configurazione e verifica il messaggio. **Carica le mie colonne** può
+richiamare esplicitamente la disposizione precedente; **Salva le mie colonne**, o Applica in
+modalità automatica, registra quella attuale con la nuova configurazione. Il solo riordino
+delle proprietà JSON non rende incompatibile un profilo. **Rileggi profilo colonne** controlla
+nuovamente la memoria locale, senza applicarne il contenuto. Gli aggiornamenti da un'altra
+finestra non cambiano la visualizzazione corrente: usa Carica se vuoi richiamarli.
+
+**Ripristina colonne del progetto** cambia la disposizione corrente: in modalità manuale il
+profilo salvato rimane disponibile; in automatica viene salvata la disposizione iniziale.
+**Dimentica le mie colonne → Conferma rimozione profilo colonne** elimina invece solo il profilo
+di quella lista, pagina e operatore e ripristina le colonne del progetto. Non cancella gli
+altri profili, le viste dei filtri, il progetto o gli archivi. Dopo la rimozione non viene
+ricreato fino a un nuovo salvataggio o Applica/Reset in modalità automatica.
+
+Due liste con lo stesso identificativo nella pagina disabilitano la persistenza, con un
+messaggio per correggere gli identificativi nell'editor. Dati corrotti/versioni ignote non
+vengono sovrascritti: puoi usare colonne temporanee, rileggere o confermare la rimozione del
+solo profilo. Memoria bloccata/piena lascia disponibili le modifiche temporanee; dopo aver
+risolto, usa Rileggi e riprova manualmente. Errori e dettagli tecnici del browser non vengono
+copiati nei messaggi del pannello. Durante revisione/invio di un comando, i pulsanti del
+profilo sono bloccati; nessun comando PLC è eseguito da un ripristino o un salvataggio.
+
+Contratto: `data-hmi-alarm-column-profile`, JSON `{ "version": 1, "id": "allarmi-linea-1",
+"save": "manual" }` oppure `automatic`. Attributo assente/vuoto = disabilitato. ID di 1–80
+caratteri ASCII, iniziale alfanumerica, poi lettere/numeri/punto/trattino/underscore. I record
+locali versione 1 contengono `baseline` canonica e `columns` validate; massimo 32.000 caratteri
+per record. Non sono backup, autorizzazioni, preferenze server o sincronizzazione fra dispositivi;
+con più finestre l'ultimo salvataggio locale prevale. Disabilitare il progetto non elimina i
+profili già conservati. La prova incorporata senza namespace mantiene solo modifiche temporanee.
+
+Riferimenti funzionali: [personalizzazioni utente Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/operating-unified-pc-rt-unified/controls-rt-unified/customizing-controls-to-suit-the-user-rt-unified)
+e [gestione colonne Runtime Optix](https://www.rockwellautomation.com/en-se/docs/factorytalk-optix/current/contents-ditamap/creating-projects/graphic-objects/predefined-objects/data-controls-objects/data-grid/show_or_hide_data_grid_columns.html).
+Framecraft conserva le colonne su questo browser, con salvataggio automatico limitato alle
+azioni indicate; non implementa la pubblicazione di default globali dal pannello, una banca
+dati profili server o il formato di un profilo vendor. I Runtime già generati vanno aggiornati
+esplicitamente per usare questa funzione.
 
 ### Filtri, ordinamento e viste salvate
 

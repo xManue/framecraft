@@ -8,6 +8,14 @@ export function defaultAlarmColumns(): AlarmColumnsConfig;
 export function parseAlarmColumns(value: unknown): AlarmColumnsConfig;
 export function serializeAlarmColumns(value: AlarmColumnsConfig): string;
 export function alarmColumnValue(key: AlarmColumnKey, item: AlarmRow | AlarmEvent, history: boolean, state: string, timeZone: AlarmColumnsConfig["timeZone"]): string;
+export interface AlarmColumnProfileConfig { version: 1; id: string; save: "manual" | "automatic" }
+export interface AlarmColumnProfileRecord { version: 1; baseline: string; columns: AlarmColumnsConfig }
+export const alarmColumnProfileAttribute: "data-hmi-alarm-column-profile";
+export class AlarmColumnProfileError extends Error { code: string; constructor(code: string) }
+export function parseAlarmColumnProfileConfig(value: unknown): AlarmColumnProfileConfig | undefined;
+export function alarmColumnProfileStorageKey(context: AlarmViewContext | undefined, id: string, pathname: string): string;
+export function parseAlarmColumnProfileRecord(raw: string | null): AlarmColumnProfileRecord | undefined;
+export function createAlarmColumnsProfile(options: { document: Document; host: HTMLElement; context?: AlarmViewContext; project(): AlarmColumnsConfig; current(): AlarmColumnsConfig; apply(value: AlarmColumnsConfig): void; disabled(): boolean; changed(): void }): { sync(): boolean; render(): HTMLElement; automatic(): void; signature(): number; reset(): void; dispose(): void };
 export interface AlarmViewContext { namespace: string; operator?: () => { id: string; capabilities?: readonly string[]; permissions?: readonly string[] } | null }
 export interface ActiveAlarmViewFilters { search: string; area: string; alarmClass: string; state: "all" | "active" | "unacknowledged" | "awaiting-confirmation"; quality: "all" | "good" | "invalid"; minimumPriority: string; order: "priority-desc" | "priority-asc" | "latest-desc" | "oldest-asc" | "name-asc" | "name-desc" }
 export interface HistoryAlarmViewFilters { alarmId: string; alarmClass: string; area: string; state: string; from: string; to: string }

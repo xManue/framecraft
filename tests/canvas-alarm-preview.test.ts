@@ -209,4 +209,9 @@ describe("allarmi con Canvas e vero ponte su origini differenti", () => {
     expect(model.update()).toBeUndefined();
     expect(hmiAlarmPreviewSession(useEditorStore)).toBeUndefined();
   });
+  it("il ponte serializzato tiene temporanee le colonne con profilo abilitato senza namespace del progetto", async () => {
+    await start(); const grid = frame.document.querySelector<HTMLElement>('[data-hmi-type="HmiAlarmControl"]')!;
+    await act(async () => { grid.setAttribute("data-hmi-alarm-column-profile", JSON.stringify({ version: 1, id: "preview", save: "manual" })); }); await flush();
+    expect(grid.textContent).toContain("Il profilo richiede"); expect(button("Salva le mie colonne", grid)).toBeUndefined(); expect(frame.localStorage.length).toBe(0); expect(network).not.toHaveBeenCalled();
+  });
 });

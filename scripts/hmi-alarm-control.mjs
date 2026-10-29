@@ -1,5 +1,5 @@
 import { alarmStateLabel } from "../runtime/alarm-labels.mjs";
-import { activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue } from "./hmi-alarm-views.mjs";
+import { activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile } from "./hmi-alarm-views.mjs";
 export function hmiAlarmElementBlocked(host) {
     if (!host.isConnected || host.closest('[disabled], [hidden], [inert], [aria-disabled="true"]'))
         return true;
@@ -13,7 +13,7 @@ export function hmiAlarmElementBlocked(host) {
     return false;
 }
 export function createHmiAlarmControlWith(host, action, rowFilter, runtime, viewContext) {
-    const { alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue } = runtime;
+    const { alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile } = runtime;
     const original = [...host.childNodes], oldStyle = host.getAttribute("style"), oldRole = host.getAttribute("role"), oldLabel = host.getAttribute("aria-label");
     host.dataset.hmiAlarmRoot = "";
     host.setAttribute("role", "region");
@@ -87,13 +87,13 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
     let multi = false, review, stopRequested = false, stopReason = "", generation = 0, visibleRows = [];
     const choices = new Map(), view = host.ownerDocument.defaultView;
     let userIdentity = viewContext?.operator ? JSON.stringify(viewContext.operator()) : undefined, savedSignature = "", validFilters = true;
-    let columnsRaw, columnsRead = false, projectColumns = defaultAlarmColumns(), columns = defaultAlarmColumns(), columnsError = "", columnsUiSignature = "";
+    let columnsRaw, columnProfileRaw, columnsRead = false, projectColumns = defaultAlarmColumns(), columns = defaultAlarmColumns(), columnsError = "", columnsUiSignature = "", columnProfileUiSignature = "", profileObserverActive = false;
     const syncColumns = () => {
-        const raw = host.getAttribute(alarmColumnsAttribute); if (columnsRead && raw === columnsRaw) return;
+        const raw = host.getAttribute(alarmColumnsAttribute), profileRaw = host.getAttribute(alarmColumnProfileAttribute); if (columnsRead && raw === columnsRaw && profileRaw === columnProfileRaw) return;
         if (columnsRead) { stopRequested = true; choices.clear(); selected = undefined; actionMessage = undefined; if (review?.phase === "running") stopReason = "Colonne aggiornate dal progetto: fermati gli invii successivi. Verifica gli esiti già ricevuti."; else review = undefined; }
-        columnsRead = true; columnsRaw = raw;
+        columnsRead = true; columnsRaw = raw; columnProfileRaw = profileRaw;
         try { projectColumns = parseAlarmColumns(raw); columnsError = ""; } catch (error) { projectColumns = defaultAlarmColumns(); columnsError = error.message; }
-        columns = parseAlarmColumns(projectColumns); columnsUiSignature = "";
+        columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnProfiles.reset(); columnProfileUiSignature = "";
     };
     const snapshotKey = () => snapshot && snapshot.instanceId + ":" + snapshot.revision;
     const rememberAction = (message) => { actionMessage = message; actionMessageKey = snapshotKey(); status.textContent = message; };
@@ -131,18 +131,21 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
     const fillColumnFields = () => { const item = columns.columns.find(item => item.key === columnPicker.value) ?? columns.columns[0]; columnPicker.value = item.key; columnLabel.value = item.label; columnWidth.value = String(item.width); columnVisible.checked = item.visible; columnVisible.disabled = busy || !!review || !!columnsError || hmiAlarmElementBlocked(host) || ["name", "state"].includes(item.key); columnPosition.value = String(columns.columns.indexOf(item)); columnTimeZone.value = columns.timeZone; };
     columnPicker.onchange = fillColumnFields;
     columnStatus.setAttribute("role", "status"); columnStatus.style.gridColumn = "1 / -1";
-    const columnHelp = make("p", "Nome e stato restano visibili. Qui modifichi solo questa apertura della lista; al cambio utente o al ricaricamento tornano le colonne del progetto. Per conservarle cambia Colonne allarmi nell’editor e salva. Le viste salvate conservano i filtri, non le colonne."); columnHelp.style.gridColumn = "1 / -1";
-    columnFields.append(applyColumns, resetColumns, columnStatus, columnHelp); columnPanel.append(columnTitle, columnFields); toolbar.prepend(columnPanel);
+    const columnHelp = make("p", "Nome e stato restano visibili. Le modifiche sono temporanee salvo salvataggio personale abilitato dal progetto. Le viste salvate conservano i filtri, non le colonne."); columnHelp.style.gridColumn = "1 / -1";
+    const profileHost = make("div"); profileHost.style.gridColumn = "1 / -1";
+    const columnProfiles = createAlarmColumnsProfile({ document: host.ownerDocument, host, context: viewContext, project: () => projectColumns, current: () => columns, apply: value => { columns = parseAlarmColumns(value); columnsUiSignature = ""; }, disabled: () => disposed || busy || !!review || !!columnsError || hmiAlarmElementBlocked(host), changed: () => { columnProfileUiSignature = ""; render(); } });
+    columnFields.append(applyColumns, resetColumns, columnStatus, columnHelp, profileHost); columnPanel.append(columnTitle, columnFields); toolbar.prepend(columnPanel);
     applyColumns.onclick = () => {
+        if (host.getAttribute(alarmColumnsAttribute) !== columnsRaw || host.getAttribute(alarmColumnProfileAttribute) !== columnProfileRaw) { syncColumns(); render(); return; }
         if (busy || review || columnsError || hmiAlarmElementBlocked(host)) return;
         try {
             const position = Number(columnPosition.value), next = parseAlarmColumns(columns), index = next.columns.findIndex(item => item.key === columnPicker.value);
             if (!Number.isInteger(position) || position < 0 || position >= next.columns.length || index < 0) throw new Error("Posizione della colonna non valida.");
             next.columns[index] = { ...next.columns[index], label: columnLabel.value, width: Number(columnWidth.value), visible: columnVisible.checked }; next.timeZone = columnTimeZone.value;
-            const [item] = next.columns.splice(index, 1); next.columns.splice(position, 0, item); columns = parseAlarmColumns(next); columnsUiSignature = ""; columnStatus.textContent = "Visualizzazione applicata per questa apertura. Nessun comando eseguito."; render();
+            const [item] = next.columns.splice(index, 1); next.columns.splice(position, 0, item); columns = parseAlarmColumns(next); columnsUiSignature = ""; columnProfiles.automatic(); columnStatus.textContent = "Visualizzazione applicata. Controlla qui sotto il salvataggio personale; nessun comando eseguito."; render();
         } catch (error) { columnStatus.textContent = error.message; }
     };
-    resetColumns.onclick = () => { if (busy || review || columnsError || hmiAlarmElementBlocked(host)) return; columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnStatus.textContent = "Ripristinate le colonne del progetto. Nessun comando eseguito."; render(); };
+    resetColumns.onclick = () => { if (busy || review || columnsError || hmiAlarmElementBlocked(host)) return; syncColumns(); columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnProfiles.automatic(); columnStatus.textContent = "Ripristinate le colonne del progetto. Nessun comando eseguito."; render(); };
     const rememberChoice = row => ({ instanceId: snapshot.instanceId, row: JSON.parse(JSON.stringify(row)) });
     const renderReview = () => {
         groupReview.hidden = !review;
@@ -220,6 +223,10 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         if (disposed)
             return;
         syncColumns();
+        columnProfiles.sync();
+        const watchProfiles = !!host.getAttribute(alarmColumnProfileAttribute); if (watchProfiles !== profileObserverActive) { profileObserverActive = watchProfiles; if (watchProfiles) profileObserver?.observe(host.ownerDocument.documentElement, { attributes: true, attributeFilter: [alarmColumnProfileAttribute], childList: true, subtree: true }); else profileObserver?.disconnect(); }
+        const profileSignature = JSON.stringify([columnProfiles.signature(), busy, !!review, !!columnsError, hmiAlarmElementBlocked(host)]);
+        if (profileSignature !== columnProfileUiSignature) { const focused = profileHost.contains(host.ownerDocument.activeElement) ? host.ownerDocument.activeElement?.getAttribute("data-column-profile-focus") : undefined; columnProfileUiSignature = profileSignature; profileHost.replaceChildren(columnProfiles.render()); if (focused) { const buttons = [...profileHost.querySelectorAll("button")], target = buttons.find(button => button.dataset.columnProfileFocus === focused && !button.disabled) ?? buttons.find(button => !button.disabled); target?.focus({ preventScroll: true }); } }
         const columnDisabled = busy || !!review || !!columnsError || hmiAlarmElementBlocked(host);
         for (const control of [columnPicker, columnLabel, columnWidth, columnPosition, columnTimeZone, applyColumns, resetColumns]) control.disabled = columnDisabled;
         columnVisible.disabled = columnDisabled || ["name", "state"].includes(columnPicker.value);
@@ -347,6 +354,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         finally {
             busy = false;
             if (!disposed) {
+                render();
                 ack.disabled = true;
                 confirm.disabled = true;
             }
@@ -358,18 +366,19 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
     choosePage.onclick = () => { if (busy || review || !allowed()) return; choices.clear(); for (const row of visibleRows) if (eligible(row, "acknowledge") || eligible(row, "confirm")) choices.set(row.id, rememberChoice(row)); render(); };
     clearChoices.onclick = () => { if (busy || review) return; choices.clear(); render(); };
     reviewAck.onclick = () => prepareGroup("acknowledge"); reviewConfirm.onclick = () => prepareGroup("confirm");
-    const userChanged = () => { const who = viewContext?.operator ? JSON.stringify(viewContext.operator()) : undefined; if (viewContext?.operator && who === userIdentity) return; userIdentity = who; generation++; stopRequested = true; choices.clear(); review = undefined; selected = undefined; actionMessage = undefined; multi = false; search.value = ""; area.value = ""; for (const [key, input] of Object.entries(extra)) input.value = activeAlarmViewDefaults[key]; columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnStatus.textContent = "Accesso cambiato: ripristinate le colonne del progetto."; savedViews.reset(); savedSignature = ""; page = 0; render(); };
+    const userChanged = () => { const who = viewContext?.operator ? JSON.stringify(viewContext.operator()) : undefined; if (viewContext?.operator && who === userIdentity) return; userIdentity = who; generation++; stopRequested = true; choices.clear(); review = undefined; selected = undefined; actionMessage = undefined; multi = false; search.value = ""; area.value = ""; for (const [key, input] of Object.entries(extra)) input.value = activeAlarmViewDefaults[key]; columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnProfiles.reset(); columnProfileUiSignature = ""; columnStatus.textContent = "Accesso cambiato: verificate le colonne del progetto e il profilo personale."; savedViews.reset(); savedSignature = ""; page = 0; render(); };
     view?.addEventListener("framecraft:user-changed", userChanged);
     search.oninput = area.onchange = () => { actionMessage = undefined; page = 0; render(); };
     for (const input of Object.values(extra)) input.onchange = () => { actionMessage = undefined; selected = undefined; choices.clear(); page = 0; render(); };
     extra.minimumPriority.oninput = extra.minimumPriority.onchange;
     previous.onclick = () => { actionMessage = undefined; page--; render(); };
     next.onclick = () => { actionMessage = undefined; page++; render(); };
-    const columnObserver = view?.MutationObserver ? new view.MutationObserver(() => render()) : undefined; columnObserver?.observe(host, { attributes: true, attributeFilter: [alarmColumnsAttribute] });
+    const columnObserver = view?.MutationObserver ? new view.MutationObserver(() => render()) : undefined; columnObserver?.observe(host, { attributes: true, attributeFilter: [alarmColumnsAttribute, alarmColumnProfileAttribute] });
+    const profileObserver = view?.MutationObserver ? new view.MutationObserver(records => { if (records.some(record => record.type === "attributes" ? record.target !== host : [...record.addedNodes, ...record.removedNodes].some(node => node.matches?.('[' + alarmColumnProfileAttribute + ']') || node.querySelector?.('[' + alarmColumnProfileAttribute + ']')))) render(); }) : undefined;
     return {
         update(value, available = true) { if (value)
             snapshot = value; connected = available && !!value; render(); },
-        dispose() { if (disposed) return; disposed = true; generation++; choices.clear(); review = undefined; savedViews.dispose(); columnObserver?.disconnect(); view?.removeEventListener("framecraft:user-changed", userChanged); responsive.remove(); delete host.dataset.hmiAlarmRoot; host.replaceChildren(...original); for (const [name, value] of [["style", oldStyle], ["role", oldRole], ["aria-label", oldLabel]]) {
+        dispose() { if (disposed) return; disposed = true; generation++; choices.clear(); review = undefined; savedViews.dispose(); columnProfiles.dispose(); columnObserver?.disconnect(); profileObserver?.disconnect(); view?.removeEventListener("framecraft:user-changed", userChanged); responsive.remove(); delete host.dataset.hmiAlarmRoot; host.replaceChildren(...original); for (const [name, value] of [["style", oldStyle], ["role", oldRole], ["aria-label", oldLabel]]) {
             if (value === null)
                 host.removeAttribute(name);
             else
@@ -379,5 +388,5 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
 }
 
 export function createHmiAlarmControl(host, action, rowFilter, viewContext) {
-    return createHmiAlarmControlWith(host, action, rowFilter, { alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue }, viewContext);
+    return createHmiAlarmControlWith(host, action, rowFilter, { alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile }, viewContext);
 }

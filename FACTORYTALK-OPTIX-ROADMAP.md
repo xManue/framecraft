@@ -33,6 +33,11 @@ visibilità, larghezze e locale/UTC, proprietà dell'elemento o modifiche tempor
 (LAVORO 175). Riletto Create an Alarm grid 1.3; colonne immagine/editabili, proprietà custom,
 query vendor e profili persistenti restano aperti.
 
+29 ottobre 2026: preferenze locali delle colonne separate per progetto/operatore/pagina/lista,
+manuali o automatiche ad Applica/Reset, con ripristino compatibile e recupero esplicito (176).
+Riletto Manage data grid columns at runtime; persistenza Framecraft distinta dai modelli vendor,
+dai default globali e dai profili server.
+
 21 ottobre 2026: storico allarmi Framecraft SQLite e controllo di sola lettura con capacità dedicata
 (LAVORO 161), confrontati con Alarm Event Logger nella guida `current` (1.8.0), non parità completa.
 
@@ -171,7 +176,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-ALM-01 | Digital, ExclusiveLevel e NonExclusiveLevel Alarm | PARZIALE | Tipi/stati Optix e livelli multipli esclusivi/non esclusivi, deadband specifica del tipo | Motore scalare Framecraft con bit e sei confronti, soglia fissa/PLC, isteresi, qualità delle dipendenze e prova; non importa né emula l’oggetto Optix (106/162) |
 | FTX-ALM-02 | Tipi allarme personalizzati | DA FARE | Ereditarietà e proprietà estese | Diff del tipo e migrazione delle istanze |
 | FTX-ALM-03 | Stato active, acknowledged e confirmed | PARZIALE | Tipi/condizioni/metodi Optix completi e ack al PLC | Motore scalare Framecraft e metodi singoli con identità server; transizioni storiche salvate (106/161), più richieste HMI con revisione/esiti separati e nessun replay (172) |
-| FTX-ALM-04 | AlarmGrid, AlarmWidget e filtri | PARZIALE | Query/espressioni, colonne immagine/editabili/custom e profili persistenti, metriche/oggetti vendor e shelving | Filtri/sei ordini/viste e bozza UTC (173); colonne configurabili nel progetto e temporanee Runtime, locale/UTC e schede mobile (175). Selezione/acknowledge/confirm con esiti separati (172); frequenze/somme/medie e CSV storici (174), distinti dai contatori correnti |
+| FTX-ALM-04 | AlarmGrid, AlarmWidget e filtri | PARZIALE | Query/espressioni, colonne immagine/editabili/custom, default globali/profili server, metriche vendor e shelving | Filtri/sei ordini/viste e bozza UTC (173); colonne configurabili/locale/UTC/mobile (175) e profili locali per operatore manuali/automatici, compatibilità con il progetto e recovery esplicito (176). Comandi con esiti separati (172); frequenze/somme/medie e CSV storici (174), distinti dai contatori correnti |
 | FTX-ALM-05 | Storico allarmi e Event Logger | PARZIALE | Logger e tipi Optix generici, multilingua, correlazione e manutenzione industriali | Eventi persistenti con avvii/occorrenze e consultazione protetta (161); CSV multi-pagina dei risultati filtrati, ancorato ad archivio/sequenza con riepilogo e annullamento, senza SQL libero o replay (167) |
 | FTX-ALM-06 | Import allarmi OPC UA | DA FARE | Tipi, condizioni e mapping OPC UA | Anteprima collisioni e normalizzazione controllata |
 | FTX-ALM-07 | Polling e aggiornamento allarmi | DA FARE | Frequenze e prestazioni Runtime | Carico stimato e diagnostica dei ritardi |

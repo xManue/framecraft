@@ -4,6 +4,7 @@ import type { EditorNode } from "../core/types";
 import { useEditorStore } from "../state/editorStore";
 import { alarmColumnsAttribute, alarmColumnDefinitions, defaultAlarmColumns, parseAlarmColumns, serializeAlarmColumns, type AlarmColumnsConfig, type AlarmColumnKey } from "../../scripts/hmi-alarm-views.mjs";
 import "./alarmColumns.css";
+import { AlarmColumnProfileSetting } from "./AlarmColumnProfileSetting";
 
 function ColumnFields({ config, columnKey, write }: { config: AlarmColumnsConfig; columnKey: AlarmColumnKey; write(value: AlarmColumnsConfig): Promise<void> }) {
   const index = config.columns.findIndex(item => item.key === columnKey), column = config.columns[index];
@@ -38,6 +39,7 @@ export function HmiAlarmColumnsSection({ node, expandSignal }: { node: EditorNod
       {!config ? <><p role="alert">{dynamic ? "Configurazione calcolata nel codice: per modificarla qui devi sostituirla esplicitamente." : "Configurazione colonne non valida. Non viene sostituita automaticamente."}</p><label className="alarm-columns-check"><input type="checkbox" checked={resetAllowed} onChange={event => setResetAllowed(event.target.checked)} /><span>Sostituisci la configurazione colonne attuale</span></label><button type="button" disabled={!resetAllowed} onClick={() => void write(defaultAlarmColumns()).catch(() => {})}>Usa colonne iniziali</button></> : <>
         <label><span>Colonna da configurare</span><select value={columnKey} onChange={event => setColumnKey(event.target.value as AlarmColumnKey)}>{config.columns.map(item => <option key={item.key} value={item.key}>{alarmColumnDefinitions.find(definition => definition.key === item.key)!.label}{item.visible ? " · visibile" : " · nascosta"}</option>)}</select></label>
         <ColumnFields key={node.id + ":" + columnKey + ":" + String(raw)} config={config} columnKey={columnKey} write={write} />
+        <AlarmColumnProfileSetting key={node.id + ":profile:" + String(node.props["data-hmi-alarm-column-profile"])} node={node} />
         <p className="inspector-hint">Le impostazioni temporanee in Usa il pannello non cambiano il progetto. Lo storico di sessione non contiene qualità o stati correnti: quelle colonne lo indicano esplicitamente.</p>
       </>}
     </div>}
