@@ -14,7 +14,7 @@ export const operatorCapabilityLabels: Record<OperatorCapability, string> = {
   "recipes.capture": "Leggere i valori PLC dei campi ricetta autorizzati",
   "recipes.apply": "Applicare ricette e verificarne l’esito con conferma del programma PLC",
   "recipes.read": "Leggere l’archivio ricette", "recipes.create": "Creare ricette", "recipes.update": "Modificare ricette", "recipes.copy": "Copiare ricette", "recipes.rename": "Rinominare ricette", "recipes.delete": "Eliminare ricette",
-  "alarms.acknowledge": "Prendere visione degli allarmi", "alarms.confirm": "Confermare gli allarmi", "tags.write": "Scrivere le variabili PLC abilitate",
+  "alarms.acknowledge": "Prendere visione degli allarmi", "alarms.confirm": "Confermare gli allarmi", "alarms.shelve": "Sospendere temporaneamente la segnalazione degli allarmi", "alarms.unshelve": "Ripristinare la segnalazione degli allarmi sospesi", "tags.write": "Scrivere le variabili PLC abilitate",
 };
 export function operatorAccountIssues(command: OperatorAdminCommand, existing: readonly OperatorAccountSummary[]): string[] {
   if (command.action === "disable") return [];

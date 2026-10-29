@@ -22,6 +22,14 @@ async function createAlarm() { await click(button("Nuovo allarme")); await chang
 beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); useEditorStore.setState({ project, loading: false, dirty: false, previewRestarting: false, previewUrl: undefined, consoleEntries: [], history: [], future: [], multiSelection: [] }); vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue(initial()); vi.mocked(desktopBridge.saveAlarmConfiguration).mockImplementation(async (_root, expected, source) => ({ ...expected, source })); });
 afterEach(async () => { if (root) await act(async () => root.unmount()); host?.remove(); vi.restoreAllMocks(); });
 describe("Allarmi: configurazione e prova guidata", () => {
+  it("abilita la sospensione con un limite esplicito e prova revisione/conferma senza PLC", async () => {
+    await mount(); await createAlarm(); await change("Eventi conservati nello storico di sessione", "100");
+    const enable = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(node => node.closest("label")?.textContent?.includes("Consenti sospensione e ripristino"))!; expect(enable.checked).toBe(false); await click(enable);
+    await change("Durata massima della sospensione (minuti)", "0"); expect(button("Salva allarmi").disabled).toBe(true); await change("Durata massima della sospensione (minuti)", "5");
+    await change("Valore del segnale selezionato", "1"); await click(button("Applica segnale di prova")); await click(button("Motor")); await change("Durata massima (minuti)", "2"); await change("Motivo della sospensione o del ripristino", "Prova manutenzione"); await click(button("Rivedi sospensione")); expect(document.body.textContent).toContain("Conferma sospensione di Motor"); expect(document.body.textContent).toContain("Segnalazioni sospese: 0");
+    await click(button("Conferma operazione allarme")); expect(document.body.textContent).toContain("Segnalazioni sospese: 1"); expect(desktopBridge.saveAlarmConfiguration).not.toHaveBeenCalled(); await click(button("Salva allarmi"));
+    expect(JSON.parse(vi.mocked(desktopBridge.saveAlarmConfiguration).mock.calls[0][2]).shelving).toEqual({ enabled: true, maxMinutes: 5 });
+  });
   it("configura e prova una soglia PLC senza salvare, collegarsi o inventare un campione", async () => {
     const analog = ["Pressure", "Limit"].map(name => ({ ...variables[0], name, dataType: "Real" }));
     vi.mocked(desktopBridge.readAlarmConfiguration).mockResolvedValue({ ...initial(), plc: JSON.stringify({ version: 1, variables: [...analog, ...variables] }) });

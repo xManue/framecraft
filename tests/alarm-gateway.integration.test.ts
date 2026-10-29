@@ -8,23 +8,43 @@ import { emptyAlarmCatalog, type AlarmCommand } from "../runtime/alarm-engine.mj
 import { createHmiGatewayClient } from "../src/core/hmiGateway";
 
 const token = "synthetic_alarm_gateway_token_0123456789", api = "/_framecraft/plc/v1", origin = "http://localhost:4173";
-async function fixture(authorize?: (command: AlarmCommand) => string | undefined | Promise<string | undefined>) {
+async function fixture(authorize?: (command: AlarmCommand) => string | undefined | Promise<string | undefined>, shelving = false) {
   const broker = await Aedes.createBroker(), tcp = createServer(broker.handle); await new Promise<void>((resolve) => tcp.listen(0, "127.0.0.1", resolve));
   const address = tcp.address(); if (!address || typeof address === "string") throw new Error("Broker fixture non disponibile.");
   const url = "mqtt://127.0.0.1:" + address.port, publisher = await connectAsync(url, { reconnectPeriod: 0 });
   const variables = [{ name: "Signal", dataType: "Bool", access: "read" as const }];
-  const alarms = { ...emptyAlarmCatalog(), alarms: [{ id: "a", name: "Motor", text: "Controlla motore", tag: "Signal", className: "Alarm_CTH", priority: 3, enabled: true, trigger: { kind: "bit" as const, bit: 0, activeWhen: "set" as const } }] };
+  const alarms = { ...emptyAlarmCatalog(), ...(shelving ? { maxHistory: 100, shelving: { enabled: true, maxMinutes: 10 } } : {}), alarms: [{ id: "a", name: "Motor", text: "Controlla motore", tag: "Signal", className: "Alarm_CTH", priority: 3, enabled: true, trigger: { kind: "bit" as const, bit: 0, activeWhen: "set" as const } }] }, audit = { append: vi.fn((_event: unknown) => {}) };
   const gateway = createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "ALARM_TEST_TOKEN", allowedOrigins: [origin], allowWrites: false }, connections: [{ id: "plc", protocol: "mqtt", enabled: true, url, clientId: "alarm-service", allowInsecure: true, allowWrites: false, timeoutMs: 3000, bindings: [{ tag: "Signal", topic: "signal", valuePath: "/value", qualityPath: "/quality" }] }] }, variables,
-    { audit: { append: () => {} }, alarmCatalog: alarms, resolveSecret: () => token, ...(authorize ? { authorizeAlarmAction: (_request, command) => authorize(command) } : {}) });
+    { audit, alarmCatalog: alarms, resolveSecret: () => token, ...(authorize ? { authorizeAlarmAction: (_request, command) => authorize(command) } : {}) });
   await gateway.start();
   const request = (suffix: string, init: RequestInit = {}) => fetch(gateway.address + api + suffix, { ...init, headers: { Authorization: "Bearer " + token, Origin: origin, ...init.headers } });
   const sample = async (value: boolean, quality = 192) => { await publisher.publishAsync("signal", JSON.stringify({ value, quality }), { qos: 1 }); await vi.waitFor(() => expect(gateway.snapshot().samples[0]?.qualityCode).toBe(quality)); };
-  return { gateway, request, sample, publisher, broker, async close() { await gateway.stop(); await publisher.endAsync(true); await new Promise<void>((resolve) => broker.close(resolve)); await new Promise<void>((resolve) => tcp.close(() => resolve())); } };
+  return { gateway, request, sample, publisher, broker, audit, async close() { await gateway.stop(); await publisher.endAsync(true); await new Promise<void>((resolve) => broker.close(resolve)); await new Promise<void>((resolve) => tcp.close(() => resolve())); } };
 }
 const command = (test: Awaited<ReturnType<typeof fixture>>): AlarmCommand => { const row = test.gateway.snapshot().alarms!.rows[0]; return { alarmId: row.id, occurrence: row.occurrence!, revision: row.revision, action: "acknowledge" }; };
 const post = (body: unknown) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 describe("allarmi nel servizio condiviso MQTT/HTTP", () => {
+  it("sospensione e scadenza sono condivise anche senza nuovi campioni, senza comandi PLC", async () => {
+    const test = await fixture(() => "Operator", true); let writes = 0; test.broker.on("publish", packet => { if (packet.topic === "command") writes++; });
+    try {
+      await test.sample(true); await vi.waitFor(() => expect(test.gateway.snapshot().alarms!.rows[0].active).toBe(true));
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] });
+      const request = { ...command(test), action: "shelve", mode: "timed", minutes: 1, reason: "Verifica impianto" };
+      const response = await test.request("/alarm-action", post(request)); expect(response.status).toBe(200); expect((await response.json()).alarms.rows[0]).toMatchObject({ active: true, shelving: { reason: "Verifica impianto", actor: "Operator" } });
+      vi.advanceTimersByTime(60000); await vi.waitFor(() => expect(test.gateway.snapshot().alarms!.rows[0].shelving).toBeUndefined(), { timeout: 2000 });
+      const view = await (await test.request("/snapshot")).json(); expect(view.alarms.history.at(-1)).toMatchObject({ state: "Unshelved", shelving: { cause: "elapsed" } }); expect(writes).toBe(0);
+      expect(test.audit.append.mock.calls.map(([event]) => event)).toMatchObject([{ operation: "alarms.shelve", outcome: "requested" }, { operation: "alarms.shelve", outcome: "applied" }]);
+    } finally { await test.close(); vi.useRealTimers(); }
+  });
+  it("non sospende se l'audit fallisce e rifiuta campi o identità forgiati prima dell'autorizzazione", async () => {
+    const authorize = vi.fn(() => "Operator"), test = await fixture(authorize, true);
+    try {
+      await test.sample(true); await vi.waitFor(() => expect(test.gateway.snapshot().alarms!.rows[0].active).toBe(true)); const request = { ...command(test), action: "shelve", mode: "timed", minutes: 1, reason: "Verifica" };
+      expect((await test.request("/alarm-action", post({ ...request, actor: "Admin" }))).status).toBe(400); expect(authorize).not.toHaveBeenCalled();
+      test.audit.append.mockImplementation(() => { throw new Error("PRIVATE_DISK_PATH"); }); const response = await test.request("/alarm-action", post(request)); expect(response.status).toBe(503); expect(await response.text()).not.toContain("PRIVATE_DISK_PATH"); expect(test.gateway.snapshot().alarms!.rows[0].shelving).toBeUndefined();
+    } finally { await test.close(); }
+  });
   it.each([null, false, 0, ""])("rifiuta un catalogo presente ma invalido (%s), senza avviare connessioni", (alarmCatalog) => {
     expect(() => createPlcGateway({ version: 1, gateway: { enabled: true, port: 0, tokenEnv: "ALARM_TEST_TOKEN", allowedOrigins: [origin], allowWrites: false }, connections: [] }, [], { resolveSecret: () => token, alarmCatalog: alarmCatalog as never })).toThrow(/allarmi non valido/);
   });

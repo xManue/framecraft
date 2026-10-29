@@ -9,7 +9,7 @@ function catalog(acknowledgment: "none" | "single" | "reset" = "single"): AlarmC
 function fixture(model: "none" | "single" | "reset" = "single") {
   let time = 1000, occurrence = 0; const engine = createAlarmEngine(catalog(model), variable(), { now: () => ++time, occurrenceId: () => "occ-" + ++occurrence });
   return { engine, row: () => engine.snapshot().rows[0], sample: (value: string | boolean, qualityCode?: number) => engine.updateSample({ tag: "Signal", value, qualityCode }),
-    action: (action: AlarmCommand["action"]) => { const row = engine.snapshot().rows[0]; return engine.action({ alarmId: row.id, occurrence: row.occurrence!, revision: row.revision, action }, "Operatore"); } };
+    action: (action: "acknowledge" | "confirm") => { const row = engine.snapshot().rows[0]; return engine.action({ alarmId: row.id, occurrence: row.occurrence!, revision: row.revision, action }, "Operatore"); } };
 }
 describe("motore allarmi condiviso", () => {
   it("parte sconosciuto, non inventa un guasto né un rientro", () => {

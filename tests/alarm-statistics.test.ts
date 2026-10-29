@@ -15,6 +15,12 @@ function snapshot(rows: AlarmHistoryEntry[], order: NonNullable<Parameters<typeo
   const sequence = rows.at(-1)?.seq ?? 0;
   return { version: 1, id: archive, namespace: archive, sequence, through: sequence, incompleteRuns: 0, capture: { state: "recording", unconfirmedInThisRun: 0 }, order: input.order, limit: input.limit, ...accumulator.finish(input.order, input.limit) };
 }
+it("validates separate shelving counters and exports them without inventing acknowledgment pairs", () => {
+  const shelved = row(2, "Shelved", 2000, { actor: "operator", shelving: { mode: "timed", until: time + 62000, reason: "Verifica" } }), unshelved = row(3, "Unshelved", 3000, { shelving: { cause: "elapsed", reason: "Durata raggiunta" } });
+  const result = snapshot([row(1), shelved, unshelved, row(4, "Outgoing")]); expect(parseAlarmStatisticsSnapshot(result)).toEqual(result); expect(result.rows[0]).toMatchObject({ events: 4, incoming: 1, acknowledged: 0, shelved: 1, unshelved: 1 });
+  expect(parseAlarmStatisticsSnapshot(snapshot([shelved], { state: "Shelved" }), { state: "Shelved" }).rows[0].shelved).toBe(1); expect(() => parseAlarmStatisticsSnapshot({ ...result, rows: [{ ...result.rows[0], shelved: 0 }] })).toThrow();
+  expect(alarmStatisticsCsv(result, {})).toContain('"confirmed";"shelved";"unshelved"');
+});
 async function fixture() { await mkdir(path.resolve(".hmi-preview"), { recursive: true }); const root = await mkdtemp(path.resolve(".hmi-preview/alarm-statistics-")), namespace = randomUUID(); return { root, namespace, file: path.join(root, ".framecraft-runtime/alarm-history/alarms.sqlite") }; }
 it("pairs the latest activation when a pending occurrence reactivates, without counting a second acknowledgment twice", () => {
   const result = snapshot([row(1), row(2, "Outgoing"), row(3), row(4, "Acknowledged", 3500), row(5, "Outgoing", 4000), row(6, "Acknowledged", 5000), row(7, "Confirmed", 6000)]);

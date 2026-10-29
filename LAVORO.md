@@ -6281,6 +6281,48 @@ Verifiche del 5 ottobre 2026:
   Collaudo PLC fisico, touch/WebView2/installer e capacità vendor residue aperti; AI rinviata,
   23 file WIP precedenti conservati e separati dal commit.
 
+## 177. Sospensione temporanea degli allarmi con motivo, scadenza e ripristino (29 ottobre 2026)
+
+- **Configurazione e pipeline**: Pannello → Allarmi abilita esplicitamente la sospensione e
+  il massimo intero di progetto, 1–1440 minuti. Catalogo v1 con campo facoltativo, invariato
+  in assenza della scelta; volume dello snapshot calcolato anche per motivi/metadati. Nuovi
+  Runtime, controlli e riepiloghi usano il comportamento comune; vecchi pannelli da aggiornare
+  esplicitamente. Nessuna modifica dei JSON reali dello standard, dipendenza o risorsa nativa nuova.
+- **Motore**: sospensione a tempo oppure one-shot fino al primo rientro valido, sempre entro
+  la durata massima. Richiesti allarme attivo e qualità valida, motivo, occorrenza e revisione.
+  Il segnale, la qualità e la logica di presa visione/conferma continuano. Niente prolungamento
+  implicito; ripristino anticipato esplicito. Scadenza monotona, controllata ogni 500 ms anche
+  senza campioni e prima di campioni/comandi: correzioni dell'ora civile non estendono la durata.
+  Non è un timer real-time; al riavvio nessuna sospensione viene recuperata o comando ripetuto.
+- **Autorizzazione e registri**: capacità nuove alarms.shelve/alarms.unshelve, assegnate solo
+  esplicitamente, più ACL per ID allarme e audit di richiesta/esito. Autore sempre dal server;
+  audit indisponibile blocca l'operazione. Eventi Shelved/Unshelved nel buffer e nell'archivio
+  SQLite facoltativo con motivo/modo/termine o causa operatore/scadenza/rientro. Gli automatismi
+  non inventano un autore; un problema dell'archivio non blocca acquisizione o scadenza.
+  Filtri, viste storiche, CSV e statistiche accettano i nuovi eventi. Contatori separati di
+  sospensioni/ripristini, senza contaminarne tempi o conteggi di presa visione/rientro.
+- **HMI e prova**: selezione → motivo/durata → revisione → conferma, con blocco per cambio
+  utente, allarme, servizio o progetto. Filtro temporaneo Escludi/Insieme/Solo sospese anche
+  per allarmi già rientrati; conteggio e dettagli sempre rintracciabili. Indicatori/righe
+  escludono le segnalazioni sospese dal lampeggio, mostrando il conteggio senza falso verde.
+  Scadenza anche nel ponte cross-origin senza cambiare i valori simulati; timer della sola
+  prova abilitata e cleanup React. La prova resta isolata da PLC e archivio del servizio.
+- **Verifiche**: 229 casi distinti su 16 file mirati, senza sommare ripetizioni; compresi
+  clock civile indietro, one-shot/qualità, revisioni vecchie, audit bloccato, ACL, SQLite,
+  CSV/statistiche, Inspector del catalogo e vero ponte canvas. Corretti ambiente DOM e tipi
+  dei nuovi test, attesa del timer reale nell'integrazione e chiusura del proxy QA prima di
+  fermare il servizio. Un caso SQLite scaduto nella prima prova è passato nella verifica
+  pubblica finale, senza aumentare timeout. Typecheck/build pubblici e Runtime generato.
+  Browser con account locali, ACL, audit SQLite e MQTT loopback: sospensione autorizzata,
+  rifiuto di altro ID, one-shot al rientro, ripristino manuale e motivi riletti dal disco dopo
+  riapertura. Nove richieste allarmi previste, zero scritture PLC/richieste esterne/errori pagina;
+  layout e immagini sintetiche a 375/768/1024/1440 px. Nessuna suite generale o agente.
+- **Stato**: riletti shelving Unified V21 e Timed/One-Shot Optix current; comportamento
+  Framecraft scalare, non object model/condizioni o eventi controller vendor. Guide e roadmap
+  PARZIALE aggiornate; recovery industriale, PLC fisico, touch/WebView2 e distribuzione aperti.
+  AI rinviata e gate produzione/licenze invariati; 23 file WIP precedenti preservati, con solo
+  il nuovo timer canvas incluso nel commit del file misto.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.

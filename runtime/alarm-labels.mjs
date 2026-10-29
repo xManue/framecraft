@@ -1,6 +1,4 @@
 export function alarmStateLabel(row) {
-  if (row.active === null) return "In attesa del segnale";
-  if (row.active) return row.acknowledged ? "Attivo · preso in visione" : "Attivo";
-  if (row.pending) return row.acknowledged ? "Rientrato · da confermare" : "Rientrato · da prendere in visione";
-  return "Normale";
+  const state = row.active === null ? "In attesa del segnale" : row.active ? row.acknowledged ? "Attivo · preso in visione" : "Attivo" : row.pending ? row.acknowledged ? "Rientrato · da confermare" : "Rientrato · da prendere in visione" : "Normale";
+  return (row.shelving ? "Segnalazione sospesa · " : "") + state;
 }

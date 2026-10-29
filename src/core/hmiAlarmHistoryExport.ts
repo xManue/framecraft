@@ -11,8 +11,8 @@ const cell = (value: string | number) => {
 const line = (values: (string | number)[]) => values.map(cell).join(";") + "\r\n";
 export function alarmStatisticsCsv(value: AlarmStatisticsSnapshot, query: AlarmStatisticsQuery) {
   const data = parseAlarmStatisticsSnapshot(value, query);
-  let csv = "\uFEFF" + line(["archive_id", "namespace", "through", "order", "matched_events", "all_alarms", "alarm_id", "name", "text", "class", "area", "events", "activations", "outgoing", "acknowledged", "confirmed", "first_event_utc", "last_event_utc", ...["active", "ack", "interval"].flatMap(key => [key + "_pairs", key + "_total_ms", key + "_average_ms", key + "_invalid_pairs", key + "_unpaired", key + "_unmatched_transitions"])]);
-  for (const row of data.rows) csv += line([data.id, data.namespace, data.through, data.order, data.matchedEvents, data.alarms, row.id, row.name, row.text, row.alarmClass, row.area, row.events, row.incoming, row.outgoing, row.acknowledged, row.confirmed, new Date(row.firstTime).toISOString(), new Date(row.lastTime).toISOString(), ...(["active", "ack", "interval"] as const).flatMap(key => { const m = row[key]; return [m.pairs, m.totalMs, m.averageMs ?? "", m.invalidPairs, m.unpaired, m.unmatchedTransitions]; })]);
+  let csv = "\uFEFF" + line(["archive_id", "namespace", "through", "order", "matched_events", "all_alarms", "alarm_id", "name", "text", "class", "area", "events", "activations", "outgoing", "acknowledged", "confirmed", "shelved", "unshelved", "first_event_utc", "last_event_utc", ...["active", "ack", "interval"].flatMap(key => [key + "_pairs", key + "_total_ms", key + "_average_ms", key + "_invalid_pairs", key + "_unpaired", key + "_unmatched_transitions"])]);
+  for (const row of data.rows) csv += line([data.id, data.namespace, data.through, data.order, data.matchedEvents, data.alarms, row.id, row.name, row.text, row.alarmClass, row.area, row.events, row.incoming, row.outgoing, row.acknowledged, row.confirmed, row.shelved ?? 0, row.unshelved ?? 0, new Date(row.firstTime).toISOString(), new Date(row.lastTime).toISOString(), ...(["active", "ack", "interval"] as const).flatMap(key => { const m = row[key]; return [m.pairs, m.totalMs, m.averageMs ?? "", m.invalidPairs, m.unpaired, m.unmatchedTransitions]; })]);
   return csv;
 }
 function pause(signal: AbortSignal) {
@@ -31,7 +31,7 @@ export async function collectAlarmHistoryCsv(options: AlarmHistoryExportOptions)
   const seed = parseAlarmHistorySnapshot(options.snapshot, options.applied), through = options.applied.through ?? seed.sequence;
   const { limit: _limit, before: _before, through: _through, archiveId: _archiveId, ...filters } = parseAlarmHistoryQuery(options.applied);
   const query = parseAlarmHistoryQuery({ ...filters, archiveId: seed.id, through, limit: 500 });
-  const exportedAt = new Date().toISOString(), parts = ["\uFEFF" + line(["archive_id", "namespace", "snapshot_through", "sequence", "instance_id", "event_sequence", "occurrence", "alarm_id", "name", "text", "class", "priority", "area", "state", "event_time_utc", "recorded_at_utc", "actor"])];
+  const exportedAt = new Date().toISOString(), parts = ["\uFEFF" + line(["archive_id", "namespace", "snapshot_through", "sequence", "instance_id", "event_sequence", "occurrence", "alarm_id", "name", "text", "class", "priority", "area", "state", "event_time_utc", "recorded_at_utc", "actor", "shelving_mode", "shelved_until_utc", "unshelve_cause", "shelving_reason"])];
   const encoder = new TextEncoder(); let bytes = encoder.encode(parts[0]).byteLength, rows = 0, previous = through + 1, before: number | undefined;
   let final = seed, incompleteRunsMax = seed.incompleteRuns, unconfirmedMax = seed.capture.unconfirmedInThisRun;
   const states = new Set([seed.capture.state]), codes = new Set(seed.capture.code ? [seed.capture.code] : []);
@@ -44,7 +44,7 @@ export async function collectAlarmHistoryCsv(options: AlarmHistoryExportOptions)
     for (const row of next.events) {
       if (row.seq >= previous) throw new AlarmHistoryError("ALARM_HISTORY_RESPONSE"); previous = row.seq;
       const event = row.event;
-      chunk += line([seed.id, seed.namespace, through, row.seq, row.instanceId, event.sequence, event.occurrence, event.id, event.name, event.text, event.alarmClass, event.priority, event.area, event.state, new Date(event.time).toISOString(), row.recordedAt, event.actor ?? ""]);
+      chunk += line([seed.id, seed.namespace, through, row.seq, row.instanceId, event.sequence, event.occurrence, event.id, event.name, event.text, event.alarmClass, event.priority, event.area, event.state, new Date(event.time).toISOString(), row.recordedAt, event.actor ?? "", event.shelving && "mode" in event.shelving ? event.shelving.mode : "", event.shelving && "until" in event.shelving ? new Date(event.shelving.until).toISOString() : "", event.shelving && "cause" in event.shelving ? event.shelving.cause : "", event.shelving?.reason ?? ""]);
     }
     bytes += encoder.encode(chunk).byteLength; rows += next.events.length;
     if (bytes > maxBytes || rows > maxRows) throw new AlarmHistoryExportError("L’esportazione supera 64 MiB o 500.000 eventi");

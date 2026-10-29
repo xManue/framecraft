@@ -5,6 +5,20 @@ const analogKinds = ["high", "low", "high-equal", "low-equal", "equal", "not-equ
 const text = (value, max = 200) => typeof value === "string" && !!value.trim() && value.length <= max && !/[\x00-\x1f]/.test(value);
 const object = (value) => value && typeof value === "object" && !Array.isArray(value);
 const copy = (value) => JSON.parse(JSON.stringify(value));
+const exact = (value, keys) => object(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+const safeReason = value => text(value, 240) && value === value.trim() && !/[\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value);
+const timestamp = value => Number.isFinite(value) && Math.abs(value) <= 8640000000000000;
+export const alarmShelvingConfigValid = value => exact(value, ["enabled", "maxMinutes"]) && typeof value.enabled === "boolean" && Number.isInteger(value.maxMinutes) && value.maxMinutes >= 1 && value.maxMinutes <= 1440;
+export function alarmShelvingEventValid(entry) {
+  if (entry.state === "Shelved") return exact(entry.shelving, ["mode", "until", "reason"]) && ["timed", "one-shot"].includes(entry.shelving.mode) && timestamp(entry.shelving.until) && entry.shelving.until > entry.time && entry.shelving.until - entry.time <= 86400000 && safeReason(entry.shelving.reason) && text(entry.actor);
+  if (entry.state === "Unshelved") return exact(entry.shelving, ["cause", "reason"]) && ["operator", "elapsed", "returned"].includes(entry.shelving.cause) && safeReason(entry.shelving.reason) && (entry.shelving.cause === "operator" ? text(entry.actor) : entry.actor === undefined);
+  return entry.shelving === undefined;
+}
+export function parseAlarmCommand(command) {
+  const action = command?.action, keys = ["alarmId", "occurrence", "revision", "action", ... (action === "shelve" ? ["mode", "minutes", "reason"] : action === "unshelve" ? ["reason"] : [])];
+  if (!exact(command, keys) || typeof command.alarmId !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(command.alarmId) || !text(command.occurrence, 80) || !Number.isSafeInteger(command.revision) || command.revision < 0 || !["acknowledge", "confirm", "shelve", "unshelve"].includes(action) || ["shelve", "unshelve"].includes(action) && !safeReason(command.reason) || action === "shelve" && (!["timed", "one-shot"].includes(command.mode) || !Number.isInteger(command.minutes) || command.minutes < 1 || command.minutes > 1440)) throw new Error("Comando allarme non valido: verifica selezione, durata e motivo (1–240 caratteri).");
+  return copy(command);
+}
 
 export function emptyAlarmCatalog() {
   return { version: 1, classes: [{ name: "Alarm_CTH", acknowledgment: "single" }, { name: "Alarm_History", acknowledgment: "none" }], alarms: [], maxHistory: 2000 };
@@ -14,7 +28,8 @@ export function alarmCatalogIssues(catalog, variables) {
   const issues = [], add = (path, message) => issues.push({ path, message });
   if (!object(catalog) || catalog.version !== 1 || !Array.isArray(catalog.classes) || !Array.isArray(catalog.alarms)) return [{ path: "catalog", message: "Catalogo allarmi non valido: servono versione 1, classi e allarmi." }];
   const fields = (item, allowed, path) => { if (object(item) && Object.keys(item).some((key) => !allowed.includes(key))) add(path, "Proprietà non supportate nel catalogo allarmi. Non inserire credenziali o altri dati in questo file."); };
-  fields(catalog, ["version", "classes", "alarms", "maxHistory", "archive"], "catalog");
+  fields(catalog, ["version", "classes", "alarms", "maxHistory", "archive", "shelving"], "catalog");
+  if (catalog.shelving !== undefined && !alarmShelvingConfigValid(catalog.shelving)) add("shelving", "Sospensione allarmi: scegli abilitazione e durata massima intera da 1 a 1440 minuti.");
   if (catalog.archive !== undefined && (!object(catalog.archive) || Object.keys(catalog.archive).some(key => !["enabled", "maxRecords"].includes(key)) || typeof catalog.archive.enabled !== "boolean" || !Number.isInteger(catalog.archive.maxRecords) || catalog.archive.maxRecords < 1000 || catalog.archive.maxRecords > 500000)) add("archive", "Archivio su disco: scegli abilitazione e limite da 1000 a 500000 eventi. Nessuna cancellazione automatica.");
   if (catalog.classes.length > 100 || catalog.alarms.length > 2000) add("catalog", "Superato il limite Framecraft di 100 classi o 2000 allarmi.");
   if (!Number.isInteger(catalog.maxHistory) || catalog.maxHistory < 100 || catalog.maxHistory > 10000) add("maxHistory", "Lo storico di sessione deve contenere da 100 a 10000 eventi.");
@@ -66,9 +81,9 @@ export function alarmCatalogIssues(catalog, variables) {
   });
   if (!issues.length) {
     const bytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
-    const rowBytes = bytes(catalog.alarms) + catalog.alarms.length * 600;
+    const rowBytes = bytes(catalog.alarms) + catalog.alarms.length * (catalog.shelving?.enabled ? 2000 : 600);
     const eventBytes = Math.max(200, ...catalog.alarms.map((item) => bytes({ id: item.id, occurrence: "0".repeat(80), name: item.name, text: item.text, alarmClass: item.className, priority: item.priority, area: item.area ?? "", actor: "\u0800".repeat(200), state: "Acknowledged", time: 8640000000000000, sequence: Number.MAX_SAFE_INTEGER })));
-    if (rowBytes + eventBytes * catalog.maxHistory > 3_500_000) add("maxHistory", "Catalogo e storico supererebbero la risposta massima del gateway. Riduci numero di eventi conservati o lunghezza dei messaggi.");
+    if (rowBytes + (eventBytes + (catalog.shelving?.enabled ? 1100 : 0)) * catalog.maxHistory > 3_500_000) add("maxHistory", "Catalogo e storico supererebbero la risposta massima del gateway. Riduci numero di eventi conservati o lunghezza dei messaggi.");
   }
   return issues;
 }
@@ -127,10 +142,12 @@ export { alarmStateLabel } from "./alarm-labels.mjs";
 export function parseAlarmSnapshot(value) {
   if (!object(value) || value.version !== 1 || !text(value.instanceId, 80) || !Number.isSafeInteger(value.revision) || value.revision < 0 || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !Array.isArray(value.rows) || value.rows.length > 2000 || !Array.isArray(value.history) || value.history.length > 10000
     || !Number.isSafeInteger(value.historyDropped) || value.historyDropped !== value.sequence - value.history.length || typeof value.actionsEnabled !== "boolean") throw new Error("Stato allarmi del servizio non valido.");
+  if (value.shelving !== undefined && !alarmShelvingConfigValid(value.shelving)) throw new Error("Configurazione sospensione allarmi non valida.");
   const classes = new Map(), ids = new Set();
   for (const row of value.rows) {
     if (!object(row) || !["none", "single", "reset"].includes(row.acknowledgment) || classes.has(row.className) && classes.get(row.className) !== row.acknowledgment) throw new Error("Classe allarmi del servizio non valida.");
     classes.set(row.className, row.acknowledgment); ids.add(row.id);
+    if (row.shelving !== undefined && (!value.shelving?.enabled || !exact(row.shelving, ["mode", "startedAt", "until", "actor", "reason"]) || !timestamp(row.shelving.startedAt) || !alarmShelvingEventValid({ state: "Shelved", time: row.shelving.startedAt, actor: row.shelving.actor, shelving: { mode: row.shelving.mode, until: row.shelving.until, reason: row.shelving.reason } }) || row.shelving.until - row.shelving.startedAt > value.shelving.maxMinutes * 60000 || !row.occurrence)) throw new Error("Sospensione allarme del servizio non valida.");
     if (![true, false, null].includes(row.active) || typeof row.acknowledged !== "boolean" || typeof row.confirmed !== "boolean" || typeof row.pending !== "boolean" || !["unknown", "good", "bad"].includes(row.quality) || !Number.isSafeInteger(row.revision) || row.revision < 0
       || row.occurrence !== undefined && !text(row.occurrence, 80) || row.diagnostic !== undefined && (typeof row.diagnostic !== "string" || row.diagnostic.length > 1000)
       || [row.activatedAt, row.clearedAt].some((time) => time !== undefined && (!Number.isFinite(time) || Math.abs(time) > 8640000000000000))) throw new Error("Stato allarme del servizio non valido.");
@@ -143,7 +160,7 @@ export function parseAlarmSnapshot(value) {
   const definitionsById = new Map(value.rows.map((row) => [row.id, row]));
   for (const entry of value.history) {
     if (!object(entry) || entry.sequence !== previous + 1 || !ids.has(entry.id) || !text(entry.occurrence, 80) || !text(entry.name) || !text(entry.text, 1000) || !text(entry.alarmClass) || typeof entry.area !== "string" || entry.area.length > 200 || !Number.isInteger(entry.priority) || entry.priority < 0 || entry.priority > 255
-      || !["Incoming", "Outgoing", "Acknowledged", "Confirmed"].includes(entry.state) || !Number.isFinite(entry.time) || Math.abs(entry.time) > 8640000000000000 || entry.actor !== undefined && !text(entry.actor)) throw new Error("Storico allarmi del servizio non valido.");
+      || !["Incoming", "Outgoing", "Acknowledged", "Confirmed", "Shelved", "Unshelved"].includes(entry.state) || !Number.isFinite(entry.time) || Math.abs(entry.time) > 8640000000000000 || entry.actor !== undefined && !text(entry.actor) || !alarmShelvingEventValid(entry)) throw new Error("Storico allarmi del servizio non valido.");
     previous = entry.sequence;
     const definition = definitionsById.get(entry.id);
     if (entry.name !== definition.name || entry.text !== definition.text || entry.alarmClass !== definition.className || entry.priority !== definition.priority || entry.area !== (definition.area ?? "")) throw new Error("Storico allarmi incoerente nel servizio.");
@@ -152,7 +169,7 @@ export function parseAlarmSnapshot(value) {
 }
 
 export function createAlarmEngine(value, variables, options = {}) {
-  const catalog = parseAlarmCatalog(value, variables), now = options.now ?? Date.now;
+  const catalog = parseAlarmCatalog(value, variables), now = options.now ?? Date.now, monotonicNow = options.monotonicNow ?? (() => performance.now());
   const definitions = new Map(catalog.alarms.filter((item) => item.enabled).map((item) => [item.id, item]));
   const tags = new Map(variables.filter(item => !item.detected).map((item) => [item.name, item])), classes = new Map(catalog.classes.map((item) => [item.name, item.acknowledgment]));
   const rows = new Map(), byTag = new Map(), samples = new Map(), history = [], pendingEvents = [], listeners = new Set(), instanceId = crypto.randomUUID(); let sequence = 0, revision = 0;
@@ -160,16 +177,25 @@ export function createAlarmEngine(value, variables, options = {}) {
     rows.set(item.id, { ...item, acknowledgment: classes.get(item.className), active: null, acknowledged: false, confirmed: false, pending: false, quality: "unknown", revision: 0 });
     for (const tag of dependencyTags(item)) { if (!byTag.has(tag)) byTag.set(tag, []); byTag.get(tag).push(item.id); }
   }
-  const snapshot = () => copy({ version: 1, instanceId, revision, sequence, rows: [...rows.values()], history, historyDropped: Math.max(0, sequence - history.length) });
+  const deadlines = new Map();
+  const snapshot = () => copy({ version: 1, instanceId, revision, sequence, rows: [...rows.values()], history, historyDropped: Math.max(0, sequence - history.length), ...(catalog.shelving ? { shelving: catalog.shelving } : {}) });
   const notify = () => { if (pendingEvents.length) { const events = pendingEvents.splice(0); try { options.onEvents?.(copy(events)); } catch { /* Archive failure cannot stop alarm acquisition. */ } } for (const listener of listeners) try { listener(snapshot()); } catch { /* A viewer cannot alter alarm acquisition. */ } };
-  const event = (row, state, actor) => {
-    const entry = { sequence: ++sequence, id: row.id, occurrence: row.occurrence, name: row.name, text: row.text, alarmClass: row.className, priority: row.priority, area: row.area ?? "", state, time: now(), ...(actor ? { actor } : {}) };
+  const event = (row, state, actor, shelving) => {
+    const entry = { sequence: ++sequence, id: row.id, occurrence: row.occurrence, name: row.name, text: row.text, alarmClass: row.className, priority: row.priority, area: row.area ?? "", state, time: now(), ...(actor ? { actor } : {}), ...(shelving ? { shelving } : {}) };
     history.push(entry); pendingEvents.push(entry); if (history.length > catalog.maxHistory) history.shift();
     try { options.onEvent?.(copy(entry)); } catch { /* Diagnostics must not stop state transitions. */ }
   };
   const pending = (row) => row.active === true || !!row.occurrence && (classes.get(row.className) !== "none" && !row.acknowledged || classes.get(row.className) === "reset" && !row.confirmed);
+  const unshelve = (row, cause, reason, actor) => { delete row.shelving; deadlines.delete(row.id); event(row, "Unshelved", actor, { cause, reason }); };
+  function tick() {
+    let changed = false;
+    for (const [id, deadline] of deadlines) if (monotonicNow() >= deadline) { const row = rows.get(id); unshelve(row, "elapsed", "Durata massima raggiunta"); row.revision++; revision++; changed = true; }
+    if (changed) notify();
+    return changed;
+  }
   function updateSamples(batch) {
     if (!Array.isArray(batch) || batch.length > 4000) throw new Error("Gruppo campioni allarmi non valido: massimo 4000 segnali.");
+    tick();
     const affected = new Set();
     for (const sample of batch) {
       if (!object(sample) || !byTag.has(sample.tag)) continue;
@@ -210,6 +236,7 @@ export function createAlarmEngine(value, variables, options = {}) {
             row.acknowledged = false; row.confirmed = false; delete row.clearedAt; row.activatedAt = now(); event(row, "Incoming");
           } else if (row.occurrence) { row.clearedAt = now(); event(row, "Outgoing"); }
           row.pending = pending(row);
+          if (row.shelving?.mode === "one-shot" && row.active === false && row.quality === "good") unshelve(row, "returned", "Segnale rientrato con qualità valida");
         }
       }
       if (JSON.stringify(row) !== before) { row.revision++; changed = true; }
@@ -221,10 +248,12 @@ export function createAlarmEngine(value, variables, options = {}) {
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     updateSample(sample) { updateSamples([sample]); },
     updateSamples,
+    tick,
     action(command, actor) {
-      if (!object(command) || Object.keys(command).some((key) => !["alarmId", "occurrence", "revision", "action"].includes(key)) || !text(actor)) throw new Error("Operatore o comando allarme non valido.");
+      command = parseAlarmCommand(command); tick();
+      if (!text(actor)) throw new Error("Operatore allarme non valido.");
       const row = rows.get(command.alarmId);
-      if (!row || !row.pending || row.occurrence !== command.occurrence || row.revision !== command.revision) throw new Error("L'allarme è cambiato. Aggiorna la vista e selezionalo di nuovo.");
+      if (!row || (!row.pending && !(command.action === "unshelve" && row.shelving)) || row.occurrence !== command.occurrence || row.revision !== command.revision) throw new Error("L'allarme è cambiato. Aggiorna la vista e selezionalo di nuovo.");
       const model = classes.get(row.className);
       if (command.action === "acknowledge") {
         if (model === "none" || row.acknowledged) throw new Error("Questo allarme non richiede una nuova presa visione.");
@@ -232,7 +261,16 @@ export function createAlarmEngine(value, variables, options = {}) {
       } else if (command.action === "confirm") {
         if (model !== "reset" || row.active !== false || !row.acknowledged || row.quality !== "good") throw new Error("Conferma disponibile solo dopo il rientro valido e la presa visione.");
         row.confirmed = true; event(row, "Confirmed", actor);
-      } else throw new Error("Azione allarme non supportata.");
+      } else if (command.action === "shelve") {
+        if (!catalog.shelving?.enabled || row.active !== true || row.quality !== "good" || row.shelving || command.minutes > catalog.shelving.maxMinutes) throw new Error("Sospensione non disponibile: verifica abilitazione, allarme attivo, qualità e durata massima del progetto.");
+        const startedAt = now(), until = startedAt + command.minutes * 60000;
+        if (!timestamp(startedAt) || !timestamp(until)) throw new Error("Orario del servizio non valido: nessuna sospensione applicata.");
+        row.shelving = { mode: command.mode, startedAt, until, actor, reason: command.reason }; deadlines.set(row.id, monotonicNow() + command.minutes * 60000);
+        event(row, "Shelved", actor, { mode: command.mode, until, reason: command.reason });
+      } else if (command.action === "unshelve") {
+        if (!row.shelving) throw new Error("Questo allarme non è sospeso. Aggiorna la vista.");
+        unshelve(row, "operator", command.reason, actor);
+      }
       row.pending = pending(row); row.revision++; revision++; notify(); return snapshot();
     },
   };

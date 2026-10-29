@@ -6,6 +6,11 @@ const row = (seq: number) => ({ seq, instanceId: other, recordedAt: "2026-10-23T
 const page = (sequences = [3, 2], nextBefore: number | null = 2): AlarmHistorySnapshot => ({ version: 1, id, namespace: id, sequence: 3, count: 3, incompleteRuns: 0, nextBefore, capture: { state: "recording", unconfirmedInThisRun: 0 }, events: sequences.map(row) });
 const fixture = () => ({ snapshot: page(), applied: {}, signal: new AbortController().signal, pause: async () => {}, read: vi.fn<AlarmHistoryExportOptions["read"]>(async () => page([3, 2, 1], null)) });
 afterEach(() => vi.unstubAllGlobals());
+it("exports suspension metadata with UTC, separate restore cause and formula-safe reason", async () => {
+  const event = { ...row(1).event, state: "Shelved" as const, actor: "operator", shelving: { mode: "one-shot" as const, until: Date.parse("2026-10-23T09:01:00.000Z"), reason: "=Manutenzione" } }, data = { ...page([1], null), sequence: 1, count: 1, events: [{ ...row(1), event }] };
+  const result = await collectAlarmHistoryCsv({ ...fixture(), snapshot: data, read: async () => data }); const csv = result.parts.join("");
+  expect(csv).toContain('"shelving_mode";"shelved_until_utc";"unshelve_cause";"shelving_reason"'); expect(csv).toContain('"one-shot";"2026-10-23T09:01:00.000Z";"";"\'=Manutenzione"');
+});
 it("exports every anchored page, not only the visible older page, excluding new arrivals", async () => {
   const test = { ...fixture(), snapshot: page([1], null), applied: { before: 2, through: 3, archiveId: id, alarmClass: "Guasto" } };
   test.read.mockResolvedValueOnce(page()).mockResolvedValueOnce({ ...page([1], null), sequence: 4, count: 4 }); const progress = vi.fn();

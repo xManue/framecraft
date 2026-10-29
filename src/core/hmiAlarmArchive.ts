@@ -5,7 +5,7 @@ import { operatorSessionProfile, openOperatorSession } from "./hmiOperatorSessio
 import { AlarmHistoryExportError, collectAlarmHistoryCsv, alarmStatisticsCsv } from "./hmiAlarmHistoryExport";
 import { createAlarmSavedViews, parseAlarmViewFilters, type AlarmViewContext, type HistoryAlarmViewFilters } from "../../scripts/hmi-alarm-views.mjs";
 
-const names: Record<string, string> = { Incoming: "Attivato", Outgoing: "Rientrato", Acknowledged: "Presa visione registrata", Confirmed: "Rientro confermato" };
+const names: Record<string, string> = { Incoming: "Attivato", Outgoing: "Rientrato", Acknowledged: "Presa visione registrata", Confirmed: "Rientro confermato", Shelved: "Segnalazione sospesa", Unshelved: "Segnalazione ripristinata" };
 const css = `
 [data-hmi-alarm-archive-root]{box-sizing:border-box;background:#f7f8fa;color:#172331;font:16px/1.5 "Segoe UI",sans-serif;padding:16px;overflow:auto;overflow-wrap:anywhere}
 [data-hmi-alarm-archive-root] *{box-sizing:border-box;min-width:0}
@@ -145,7 +145,7 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
       for (const title of titles) { const th = make("th", title); th.scope = "col"; header.append(th); } head.append(header);
       for (const row of data.rows) {
         const tr = make("tr"), name = make("td"); name.dataset.label = titles[0]; name.append(make("strong", row.name), make("p", row.text), make("small", row.id + " · " + row.alarmClass + (row.area ? " · " + row.area : ""))); tr.append(name);
-        const count = make("td", String(row.incoming)); count.dataset.label = titles[1]; count.append(make("small", `${row.events} eventi · ${row.outgoing} rientri · ${row.acknowledged} prese visioni · ${row.confirmed} conferme`)); tr.append(count);
+        const count = make("td", String(row.incoming)); count.dataset.label = titles[1]; count.append(make("small", `${row.events} eventi · ${row.outgoing} rientri · ${row.acknowledged} prese visioni · ${row.confirmed} conferme` + (row.shelved || row.unshelved ? ` · ${row.shelved ?? 0} sospensioni · ${row.unshelved ?? 0} ripristini` : ""))); tr.append(count);
         for (const [i, key] of (["active", "ack", "interval"] as const).entries()) { const m = row[key], cell = make("td", m.averageMs === null ? "Media non disponibile" : "Media: " + (m.averageMs / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }) + " s"); cell.dataset.label = titles[i + 2]; const details = [`Coppie valide: ${m.pairs}`]; if (m.pairs) details.push(`Totale misurato: ${(m.totalMs / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })} s`); if (m.unpaired) details.push(`Attivazioni senza coppia: ${m.unpaired}`); if (m.invalidPairs) details.push(`Orari incoerenti: ${m.invalidPairs}`); if (m.unmatchedTransitions) details.push(`Transizioni senza attivazione: ${m.unmatchedTransitions}`); for (const text of details) { const meta = make("small", text); meta.className = "archive-statistic-meta"; cell.append(meta); } tr.append(cell); }
         body.append(tr);
       }
@@ -198,6 +198,7 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
       for (const row of snapshot.events) {
         const item = make("li"); item.append(make("h3", names[row.event.state] + " · " + row.event.name), make("p", row.event.text));
         const dl = make("dl"); for (const [title, value] of [["Data evento", new Date(row.event.time).toLocaleString()], ["Classe / zona", row.event.alarmClass + (row.event.area ? " / " + row.event.area : "")], ["Priorità / ID allarme", row.event.priority + " / " + row.event.id], ["Operatore (ID)", row.event.actor ?? "Nessuno: evento del segnale"]]) { const group = make("div"); group.append(make("dt", title), make("dd", value)); dl.append(group); } item.append(dl);
+        if (row.event.shelving) { const info = row.event.shelving; item.append(make("p", "Motivo: " + info.reason), make("p", "until" in info ? "Termine massimo: " + new Date(info.until).toISOString() + (info.mode === "one-shot" ? " · anche al rientro valido" : "") : "Ripristino: " + ({ operator: "richiesto dall’operatore", elapsed: "durata raggiunta", returned: "rientro valido del segnale" }[info.cause]))); }
         const detail = make("details"); detail.append(make("summary", "Identificativi e date UTC"), make("p", `Archivio #${row.seq} · evento nell’avvio #${row.event.sequence} · avvio ${row.instanceId} · occorrenza ${row.event.occurrence}`), make("p", "Evento: " + new Date(row.event.time).toISOString() + " · registrazione: " + row.recordedAt)); item.append(detail); list.append(item);
       }
       host.append(list);

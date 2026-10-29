@@ -3,7 +3,7 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { createMqttPlcConnection, normalizeMqttTagValue } from "./mqtt-driver.mjs";
 import { createOpcUaPlcConnection } from "./opcua-driver.mjs";
 import { validateConnectionCatalog } from "./connection-config.mjs";
-import { createAlarmEngine } from "./alarm-engine.mjs";
+import { createAlarmEngine, parseAlarmCommand } from "./alarm-engine.mjs";
 import { ConnectionOperationError, connectionDiagnostic, createDiagnosticReporter, diagnosticText, safeNotify } from "./connection-diagnostics.mjs";
 import { RecipeStoreError, parseRecipeCommand, recipeActor, recipeId } from "./recipe-catalog.mjs";
 import { OperatorAuthError, operatorText } from "./operator-policy.mjs";
@@ -69,6 +69,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
     catch (error) { historyMissed = Math.min(Number.MAX_SAFE_INTEGER, historyMissed + events.length); historyFault(error); }
   } }) : undefined;
   alarmInstanceId = alarms?.snapshot().instanceId;
+  let alarmTimer;
   const connections = enabled.map((connection) => {
     const driver = (connection.protocol === "opcua" ? createOpcUaPlcConnection : createMqttPlcConnection)(connection, variables, {
       resolveSecret: options.resolveSecret,
@@ -260,8 +261,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (active >= 32) throw failure(429, "GATEWAY_BUSY");
         active++; accepted = true;
         const command = await body(request);
-        if (!command || !operatorText(command.alarmId, 200) || typeof command.occurrence !== "string" || !Number.isSafeInteger(command.revision) || !["acknowledge", "confirm"].includes(command.action)
-          || Object.keys(command).some((key) => !["alarmId", "occurrence", "revision", "action"].includes(key))) throw failure(400);
+        try { parseAlarmCommand(command); } catch { throw failure(400); }
         auditScope = auditContext("alarms." + command.action, { kind: "alarm", id: command.alarmId });
         let actor, authorizationTimer;
         try { actor = await Promise.race([options.operatorAuth ? options.operatorAuth.authorize(request, "alarms." + command.action, true, { alarmId: command.alarmId }) : options.authorizeAlarmAction(request, { ...command }), new Promise((resolve) => { authorizationTimer = setTimeout(() => resolve(undefined), 5000); })]); } catch (error) { if (error instanceof OperatorAuthError) throw error; }
@@ -352,12 +352,13 @@ export function createPlcGateway(catalog, variables, options = {}) {
       startTask = (async () => {
         await new Promise((resolve, reject) => { const error = (cause) => reject(new ConnectionOperationError(report("GATEWAY_LISTEN", { technicalCode: cause.code }))); server.once("error", error); server.listen(config.port, "127.0.0.1", () => { server.off("error", error); port = server.address().port; resolve(); }); });
         if (!stopping && archiveEnabled && alarmInstanceId) try { if (!options.alarmHistory) throw historyError ?? new AlarmHistoryError("ALARM_HISTORY_STORAGE"); options.alarmHistory.begin(alarmInstanceId); historyRunning = true; } catch (error) { historyFault(error); }
+        if (!stopping && alarms?.snapshot().shelving?.enabled) { alarmTimer = setInterval(() => alarms.tick(), 500); alarmTimer.unref?.(); }
         if (!stopping) await Promise.allSettled(connections.map((driver) => driver.start()));
       })();
       return startTask;
     },
     stop() {
-      if (stopTask) return stopTask; stopping = true; options.operatorAuth?.close();
+      if (stopTask) return stopTask; stopping = true; clearInterval(alarmTimer); options.operatorAuth?.close();
       stopTask = (async () => {
         server.closeAllConnections();
         const applyStopped = applyEngine?.stop();

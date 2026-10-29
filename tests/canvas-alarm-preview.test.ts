@@ -71,6 +71,15 @@ afterEach(async () => {
 });
 
 describe("allarmi con Canvas e vero ponte su origini differenti", () => {
+  it("fa scadere una sospensione nel ponte senza modificare i valori simulati o ripetere il comando", async () => {
+    await act(async () => useEditorStore.setState({ alarmPreviewConfiguration: { ...configuration, catalog: { ...configuration.catalog, maxHistory: 100, shelving: { enabled: true, maxMinutes: 1 } } } })); await start();
+    const scope = frame.document.querySelector<HTMLElement>('[data-hmi-type="HmiAlarmControl"]')!;
+    await act(async () => button("Motor", scope).click());
+    scope.querySelector<HTMLInputElement>('[aria-label="Durata massima (minuti)"]')!.value = "1"; scope.querySelector<HTMLInputElement>('[aria-label="Motivo della sospensione o del ripristino"]')!.value = "Prova locale";
+    await act(async () => button("Rivedi sospensione", scope).click()); expect(latest().snapshot.rows[0].shelving).toBeUndefined();
+    await act(async () => button("Conferma operazione allarme", scope).click()); await flush(); expect(latest().snapshot.rows[0].shelving).toMatchObject({ mode: "timed", reason: "Prova locale" });
+    const commands = incoming.filter(data => data.type === "framecraft:alarm-command").length; await flush(61000); expect(latest().snapshot.rows[0].shelving).toBeUndefined(); expect(latest().snapshot.rows[0].active).toBe(true); expect(latest().snapshot.history.at(-1)).toMatchObject({ state: "Unshelved", shelving: { cause: "elapsed" } }); expect(incoming.filter(data => data.type === "framecraft:alarm-command")).toHaveLength(commands); expect(network).not.toHaveBeenCalled();
+  });
   it("mostra tutti i controlli senza leggere il DOM cross-origin e gestisce la presa visione locale", async () => {
     await start({});
     expect(frame.document.querySelector('[data-hmi-type="HmiAlarmIndicator"]')!.textContent).toContain("sconosciuti");

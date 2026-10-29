@@ -17,7 +17,7 @@ export function alarmSummaryFilter(row: AlarmRow, config: HmiAlarmSummaryConfig)
 export function alarmSummaryMode(row: AlarmRow, config: HmiAlarmSummaryConfig): boolean;
 export function hmiAlarmSummaryView(snapshot: AlarmSnapshot | undefined, config: HmiAlarmSummaryConfig, available?: boolean): {
   rows: AlarmRow[]; selected: AlarmRow[]; pending: number; active: number;
-  unacknowledged: number; unconfirmed: number; invalid: number; count: number;
+  unacknowledged: number; unconfirmed: number; invalid: number; shelved: number; count: number;
   known: boolean; message: string; state: "unknown" | "alarm" | "normal"; hidden: boolean;
 };
 export function hmiAlarmSummaryJsx(kind: HmiAlarmSummaryKind): string;

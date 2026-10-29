@@ -60,6 +60,7 @@ export function createHmiAlarmPreview(configuration: AlarmPreviewConfiguration |
   };
   const snapshot = (): AlarmSnapshot | undefined => !disposed && options.current() && engine ? { ...engine.snapshot(), actionsEnabled: active() } : undefined;
   return {
+    tick() { return !disposed && options.current() && options.state().on ? engine?.tick() ?? false : false; },
     update() {
       if (disposed) return undefined;
       const on = options.current() && options.state().on;

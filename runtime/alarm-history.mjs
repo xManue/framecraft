@@ -1,3 +1,4 @@
+import { alarmShelvingEventValid } from "./alarm-engine.mjs";
 const messages = {
   ALARM_HISTORY_DISABLED: [503, "Archivio allarmi non attivo", "In Framecraft apri Pannello → Allarmi e abilita l’archivio su disco, salva e riavvia manualmente il servizio. Lo storico di sessione resta separato."],
   ALARM_HISTORY_STORAGE: [503, "Archivio allarmi non disponibile", "Fai verificare disco locale, spazio, permessi e integrità dal responsabile. Non eliminare o sostituire i file. Gli allarmi attivi continuano, ma lo storico può essere incompleto."],
@@ -22,10 +23,10 @@ const text = (value, max, empty = false) => typeof value === "string" && (empty 
 const integer = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
 const iso = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 const fail = code => { throw new AlarmHistoryError(code); };
-export const alarmHistoryStates = Object.freeze(["Incoming", "Outgoing", "Acknowledged", "Confirmed"]);
+export const alarmHistoryStates = Object.freeze(["Incoming", "Outgoing", "Acknowledged", "Confirmed", "Shelved", "Unshelved"]);
 export function parseHistoryEvent(value) {
-  if (!historyKeys(value, ["sequence", "id", "occurrence", "name", "text", "alarmClass", "priority", "area", "state", "time"], ["actor"]) || !integer(value.sequence, 1) || !text(value.id, 80) || !/^[A-Za-z0-9_-]+$/.test(value.id) || !text(value.occurrence, 80) || !text(value.name, 200) || !text(value.text, 1000) || !text(value.alarmClass, 200) || !text(value.area, 200, true) || !integer(value.priority, 0, 255) || !alarmHistoryStates.includes(value.state) || !Number.isFinite(value.time) || Math.abs(value.time) > 8640000000000000 || value.actor !== undefined && !text(value.actor, 200)) fail("ALARM_HISTORY_RESPONSE");
-  if (["Acknowledged", "Confirmed"].includes(value.state) !== (value.actor !== undefined)) fail("ALARM_HISTORY_RESPONSE");
+  if (!historyKeys(value, ["sequence", "id", "occurrence", "name", "text", "alarmClass", "priority", "area", "state", "time"], ["actor", "shelving"]) || !integer(value.sequence, 1) || !text(value.id, 80) || !/^[A-Za-z0-9_-]+$/.test(value.id) || !text(value.occurrence, 80) || !text(value.name, 200) || !text(value.text, 1000) || !text(value.alarmClass, 200) || !text(value.area, 200, true) || !integer(value.priority, 0, 255) || !alarmHistoryStates.includes(value.state) || !Number.isFinite(value.time) || Math.abs(value.time) > 8640000000000000 || value.actor !== undefined && !text(value.actor, 200) || !alarmShelvingEventValid(value)) fail("ALARM_HISTORY_RESPONSE");
+  if (["Acknowledged", "Confirmed", "Shelved"].includes(value.state) && value.actor === undefined || ["Incoming", "Outgoing"].includes(value.state) && value.actor !== undefined) fail("ALARM_HISTORY_RESPONSE");
   return structuredClone(value);
 }
 export function parseAlarmHistoryQuery(value = {}) {
@@ -101,7 +102,8 @@ export function createAlarmStatisticsAccumulator() {
         if (group.last?.instance === row.instanceId) addDuration(group.interval, group.last.time, e.time);
         group.last = { instance: row.instanceId, occurrence: e.occurrence, time: e.time, active: false, ack: false };
       } else if (e.state === "Confirmed") group.confirmed++;
-      else {
+      else if (["Shelved", "Unshelved"].includes(e.state)) { const key = e.state === "Shelved" ? "shelved" : "unshelved"; group[key] = (group[key] ?? 0) + 1; }
+      else if (["Outgoing", "Acknowledged"].includes(e.state)) {
         const kind = e.state === "Outgoing" ? "active" : "ack"; group[e.state === "Outgoing" ? "outgoing" : "acknowledged"]++;
         const start = group.last;
         if (start?.instance === row.instanceId && start.occurrence === e.occurrence && !start[kind]) { addDuration(group[kind], start.time, e.time); start[kind] = true; }
@@ -125,12 +127,12 @@ export function parseAlarmStatisticsSnapshot(value, input = {}) {
   const ids = new Set(); let events = 0, incoming = 0;
   for (let i = 0; i < value.rows.length; i++) {
     const row = value.rows[i];
-    if (!historyKeys(row, ["id", "name", "text", "alarmClass", "area", "priority", "events", "incoming", "outgoing", "acknowledged", "confirmed", "firstTime", "lastTime", "active", "ack", "interval"]) || ids.has(row.id) || !text(row.id, 80) || !/^[A-Za-z0-9_-]+$/.test(row.id) || !text(row.name, 200) || !text(row.text, 1000) || !text(row.alarmClass, 200) || !text(row.area, 200, true) || !integer(row.priority, 0, 255) || !integer(row.events, 1, value.matchedEvents) || ["incoming", "outgoing", "acknowledged", "confirmed"].some(key => !integer(row[key], 0, row.events)) || row.incoming + row.outgoing + row.acknowledged + row.confirmed !== row.events || !Number.isFinite(row.firstTime) || !Number.isFinite(row.lastTime) || Math.abs(row.firstTime) > 8640000000000000 || Math.abs(row.lastTime) > 8640000000000000 || row.firstTime > row.lastTime || query.alarmId !== undefined && row.id !== query.alarmId || query.alarmClass !== undefined && row.alarmClass !== query.alarmClass || query.area !== undefined && row.area !== query.area || query.from !== undefined && row.firstTime < Date.parse(query.from) || query.to !== undefined && row.lastTime > Date.parse(query.to) || i > 0 && compareAlarmStatisticsRows(value.rows[i - 1], row, query.order) >= 0) fail("ALARM_HISTORY_RESPONSE");
+    if (!historyKeys(row, ["id", "name", "text", "alarmClass", "area", "priority", "events", "incoming", "outgoing", "acknowledged", "confirmed", "firstTime", "lastTime", "active", "ack", "interval"], ["shelved", "unshelved"]) || ids.has(row.id) || !text(row.id, 80) || !/^[A-Za-z0-9_-]+$/.test(row.id) || !text(row.name, 200) || !text(row.text, 1000) || !text(row.alarmClass, 200) || !text(row.area, 200, true) || !integer(row.priority, 0, 255) || !integer(row.events, 1, value.matchedEvents) || ["incoming", "outgoing", "acknowledged", "confirmed"].some(key => !integer(row[key], 0, row.events)) || ["shelved", "unshelved"].some(key => row[key] !== undefined && !integer(row[key], 0, row.events)) || row.incoming + row.outgoing + row.acknowledged + row.confirmed + (row.shelved ?? 0) + (row.unshelved ?? 0) !== row.events || !Number.isFinite(row.firstTime) || !Number.isFinite(row.lastTime) || Math.abs(row.firstTime) > 8640000000000000 || Math.abs(row.lastTime) > 8640000000000000 || row.firstTime > row.lastTime || query.alarmId !== undefined && row.id !== query.alarmId || query.alarmClass !== undefined && row.alarmClass !== query.alarmClass || query.area !== undefined && row.area !== query.area || query.from !== undefined && row.firstTime < Date.parse(query.from) || query.to !== undefined && row.lastTime > Date.parse(query.to) || i > 0 && compareAlarmStatisticsRows(value.rows[i - 1], row, query.order) >= 0) fail("ALARM_HISTORY_RESPONSE");
     for (const key of ["active", "ack", "interval"]) {
       const m = row[key], transitions = key === "active" ? row.outgoing : key === "ack" ? row.acknowledged : row.incoming;
       if (!historyKeys(m, ["pairs", "totalMs", "averageMs", "invalidPairs", "unpaired", "unmatchedTransitions"]) || ["pairs", "invalidPairs", "unpaired", "unmatchedTransitions"].some(field => !integer(m[field], 0, value.matchedEvents)) || m.pairs + m.invalidPairs + m.unpaired !== row.incoming || m.pairs + m.invalidPairs + m.unmatchedTransitions > transitions || !Number.isFinite(m.totalMs) || m.totalMs < 0 || m.totalMs > Number.MAX_SAFE_INTEGER || (m.pairs === 0 ? m.totalMs !== 0 || m.averageMs !== null : m.averageMs !== m.totalMs / m.pairs)) fail("ALARM_HISTORY_RESPONSE");
     }
-    if (query.state && row[{ Incoming: "incoming", Outgoing: "outgoing", Acknowledged: "acknowledged", Confirmed: "confirmed" }[query.state]] !== row.events) fail("ALARM_HISTORY_RESPONSE");
+    if (query.state && row[{ Incoming: "incoming", Outgoing: "outgoing", Acknowledged: "acknowledged", Confirmed: "confirmed", Shelved: "shelved", Unshelved: "unshelved" }[query.state]] !== row.events) fail("ALARM_HISTORY_RESPONSE");
     ids.add(row.id); events += row.events; incoming += row.incoming;
   }
   if (events > value.matchedEvents || incoming > value.activations || value.rows.length === value.alarms && (events !== value.matchedEvents || incoming !== value.activations)) fail("ALARM_HISTORY_RESPONSE");

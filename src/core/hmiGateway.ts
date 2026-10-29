@@ -143,12 +143,12 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
     start() { if (running) return; running = true; const token = ++generation; changeState("connecting"); void poll(token); },
     stop() { running = false; generation++; clearTimeout(timer); for (const controller of pending) controller.abort(); snapshot = undefined; last = ""; changeState("stopped"); },
     async alarmAction(command: AlarmCommand, signal?: AbortSignal): Promise<AlarmSnapshot> {
-      if (!running || state !== "connected" || !snapshot?.alarms?.actionsEnabled || signal?.aborted) throw new HmiGatewayCommandError("Presa visione non disponibile. Controlla servizio, sessione e autorizzazioni dell'operatore.", "rejected");
+      if (!running || state !== "connected" || !snapshot?.alarms?.actionsEnabled || signal?.aborted) throw new HmiGatewayCommandError("Operazione allarme non disponibile. Controlla servizio, sessione e autorizzazioni dell'operatore.", "rejected");
       const generationBefore = generation;
       const instanceBefore = snapshot.alarms.instanceId;
       let result;
       try { result = await json("/alarm-action", { method: "POST", headers: { "Content-Type": "application/json", ...operatorSessionHeaders() }, body: JSON.stringify(command) }, signal); }
-      catch { throw new HmiGatewayCommandError("Esito presa visione non noto: aggiorna gli allarmi prima di riprovare. Nessun invio automatico.", "uncertain"); }
+      catch { throw new HmiGatewayCommandError("Esito operazione allarme non noto: aggiorna gli allarmi prima di riprovare. Nessun invio automatico.", "uncertain"); }
       if (!running || generationBefore !== generation) throw new HmiGatewayCommandError("Sessione cambiata: aggiorna gli allarmi prima di agire di nuovo.", "uncertain");
       if (!result.ok) {
         const data = result.data as Record<string, unknown>;

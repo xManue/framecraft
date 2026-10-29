@@ -17,7 +17,7 @@ export function parseAlarmHistorySnapshot(value: unknown, query?: AlarmHistoryQu
 export type AlarmStatisticsOrder = "frequency" | "active-total" | "ack-total" | "interval-average" | "name";
 export interface AlarmStatisticsQuery extends Omit<AlarmHistoryQuery, "before"> { order?: AlarmStatisticsOrder }
 export interface AlarmStatisticsMetric { pairs: number; totalMs: number; averageMs: number | null; invalidPairs: number; unpaired: number; unmatchedTransitions: number }
-export interface AlarmStatisticsRow { id: string; name: string; text: string; alarmClass: string; area: string; priority: number; events: number; incoming: number; outgoing: number; acknowledged: number; confirmed: number; firstTime: number; lastTime: number; active: AlarmStatisticsMetric; ack: AlarmStatisticsMetric; interval: AlarmStatisticsMetric }
+export interface AlarmStatisticsRow { id: string; name: string; text: string; alarmClass: string; area: string; priority: number; events: number; incoming: number; outgoing: number; acknowledged: number; confirmed: number; shelved?: number; unshelved?: number; firstTime: number; lastTime: number; active: AlarmStatisticsMetric; ack: AlarmStatisticsMetric; interval: AlarmStatisticsMetric }
 export interface AlarmStatisticsData { version: 1; id: string; namespace: string; sequence: number; through: number; matchedEvents: number; activations: number; alarms: number; incompleteRuns: number; order: AlarmStatisticsOrder; limit: number; rows: AlarmStatisticsRow[] }
 export interface AlarmStatisticsSnapshot extends AlarmStatisticsData { capture: AlarmHistoryCapture }
 export const alarmStatisticsOrders: readonly AlarmStatisticsOrder[];

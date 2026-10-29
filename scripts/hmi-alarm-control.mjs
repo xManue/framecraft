@@ -77,20 +77,32 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         control.value = activeAlarmViewDefaults[key]; Object.assign(label.style, { display: "grid", gap: "4px", minWidth: "0" }); Object.assign(control.style, { minHeight: "44px", maxWidth: "100%", width: "100%", boxSizing: "border-box", font: "inherit", background: "#181e28", color: "#fff", border: "1px solid #8894a4", borderRadius: "4px", padding: "6px" }); label.append(control); filterFields.append(label);
     }
     filterFields.append(savedHost);
+    const suspendedLabel = make("label", "Segnalazioni sospese "), suspended = make("select"); suspended.setAttribute("aria-label", "Segnalazioni sospese");
+    for (const [value, title] of [["exclude", "Escludi dalla lista"], ["include", "Mostra insieme alle altre"], ["only", "Mostra solo sospese"]]) { const option = make("option", title); option.value = value; suspended.append(option); }
+    Object.assign(suspendedLabel.style, { display: "grid", gap: "4px" }); Object.assign(suspended.style, { minHeight: "44px", maxWidth: "100%", background: "#181e28", color: "#fff", padding: "6px", border: "1px solid #8894a4" }); suspendedLabel.append(suspended); filterFields.append(suspendedLabel);
+    const shelfPanel = make("details"), shelfTitle = make("summary", "Sospensione temporanea"), shelfFields = make("div"), shelfNote = make("p"), shelfMode = make("select"), shelfMinutes = make("input"), shelfReason = make("input"), shelfReview = make("section");
+    const prepareShelve = button("Rivedi sospensione"), prepareUnshelve = button("Rivedi ripristino"), sendShelf = button("Conferma operazione allarme"), cancelShelf = button("Annulla operazione allarme");
+    Object.assign(shelfPanel.style, { maxWidth: "100%", width: "100%", background: "#252d39", border: "1px solid #8894a4", maxHeight: "min(60vh,560px)", overflow: "auto" });
+    Object.assign(shelfTitle.style, { minHeight: "44px", padding: "8px", cursor: "pointer", boxSizing: "border-box" }); Object.assign(shelfFields.style, { display: "grid", gap: "8px", padding: "8px", gridTemplateColumns: "repeat(auto-fit,minmax(min(220px,100%),1fr))" });
+    shelfMinutes.type = "number"; shelfMinutes.min = "1"; shelfMinutes.step = "1"; shelfReason.maxLength = 240; shelfReason.type = "text";
+    for (const [value, title] of [["timed", "Fino alla scadenza"], ["one-shot", "Fino al rientro valido, entro la scadenza"]]) { const option = make("option", title); option.value = value; shelfMode.append(option); }
+    for (const [title, field] of [["Termine della sospensione", shelfMode], ["Durata massima (minuti)", shelfMinutes], ["Motivo della sospensione o del ripristino", shelfReason]]) { const label = make("label", title); label.style.display = "grid"; label.style.gap = "4px"; field.setAttribute("aria-label", title); Object.assign(field.style, { minHeight: "44px", minWidth: "0", maxWidth: "100%", boxSizing: "border-box", font: "inherit", background: "#181e28", color: "#fff", padding: "6px", border: "1px solid #8894a4" }); label.append(field); shelfFields.append(label); }
+    shelfNote.style.gridColumn = "1 / -1"; shelfNote.setAttribute("role", "status"); shelfReview.style.gridColumn = "1 / -1"; shelfReview.tabIndex = -1; shelfReview.setAttribute("aria-label", "Revisione sospensione allarme");
+    shelfFields.append(shelfNote, prepareShelve, prepareUnshelve, shelfReview); shelfPanel.append(shelfTitle, shelfFields); toolbar.append(shelfPanel);
     const headers = make("tr"), colgroup = make("colgroup");
     head.append(headers);
     table.append(colgroup, head, body);
     scroller.append(table);
     host.replaceChildren(notice, toolbar, groupTools, status, groupReview, scroller);
     let snapshot, connected = false, busy = false, disposed = false, signature = "", page = 0;
-    let selected, actionMessage, actionMessageKey;
+    let selected, actionMessage, actionMessageKey, shelfProposal;
     let multi = false, review, stopRequested = false, stopReason = "", generation = 0, visibleRows = [];
     const choices = new Map(), view = host.ownerDocument.defaultView;
     let userIdentity = viewContext?.operator ? JSON.stringify(viewContext.operator()) : undefined, savedSignature = "", validFilters = true;
     let columnsRaw, columnProfileRaw, columnsRead = false, projectColumns = defaultAlarmColumns(), columns = defaultAlarmColumns(), columnsError = "", columnsUiSignature = "", columnProfileUiSignature = "", profileObserverActive = false;
     const syncColumns = () => {
         const raw = host.getAttribute(alarmColumnsAttribute), profileRaw = host.getAttribute(alarmColumnProfileAttribute); if (columnsRead && raw === columnsRaw && profileRaw === columnProfileRaw) return;
-        if (columnsRead) { stopRequested = true; choices.clear(); selected = undefined; actionMessage = undefined; if (review?.phase === "running") stopReason = "Colonne aggiornate dal progetto: fermati gli invii successivi. Verifica gli esiti già ricevuti."; else review = undefined; }
+        if (columnsRead) { stopRequested = true; shelfProposal = undefined; choices.clear(); selected = undefined; actionMessage = undefined; if (review?.phase === "running") stopReason = "Colonne aggiornate dal progetto: fermati gli invii successivi. Verifica gli esiti già ricevuti."; else review = undefined; }
         columnsRead = true; columnsRaw = raw; columnProfileRaw = profileRaw;
         try { projectColumns = parseAlarmColumns(raw); columnsError = ""; } catch (error) { projectColumns = defaultAlarmColumns(); columnsError = error.message; }
         columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnProfiles.reset(); columnProfileUiSignature = "";
@@ -101,16 +113,16 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
     const filter = host.dataset.hmiFilter?.trim(), match = filter?.match(/^AlarmClassName\s*=\s*'([^']+)'$/);
     const invalidFilter = !!filter && !match;
     const filterValues = () => ({ search: search.value, area: area.value, ...Object.fromEntries(Object.entries(extra).map(([key, input]) => [key, input.value])) });
-    const matches = (className, zone, values, row) => (!match || className === match[1]) && (!area.value || zone === area.value) && values.join(" ").toLocaleLowerCase().includes(search.value.toLocaleLowerCase()) && (source === "history" || validFilters && !!row && alarmRowMatchesView(row, filterValues()));
+    const matches = (className, zone, values, row) => (!match || className === match[1]) && (!area.value || zone === area.value) && values.join(" ").toLocaleLowerCase().includes(search.value.toLocaleLowerCase()) && (source === "history" || validFilters && !!row && alarmRowMatchesView(row, filterValues()) && (suspended.value === "include" || (suspended.value === "only") === !!row.shelving));
     const eligible = (row, kind) => !!row?.occurrence && row.pending && (kind === "acknowledge" ? row.acknowledgment !== "none" && !row.acknowledged : row.acknowledgment === "reset" && row.active === false && row.acknowledged && row.quality === "good" && !row.confirmed);
-    const allowed = () => !disposed && connected && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && !columnsError && !hmiAlarmElementBlocked(host);
+    const allowed = () => !disposed && !shelfProposal && connected && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && !columnsError && !hmiAlarmElementBlocked(host);
     const checkedRow = (item, kind) => {
         const current = snapshot?.rows.find(row => row.id === item.row.id);
         return item.instanceId === snapshot?.instanceId && current?.occurrence === item.row.occurrence && current.revision === item.row.revision && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id], current) && eligible(current, kind);
     };
     const selectValue = (select, value) => { if (![...select.options].some(option => option.value === value)) { const option = make("option", value + " · non presente"); option.value = value; select.append(option); } select.value = value; };
     const savedViews = createAlarmSavedViews({ document: host.ownerDocument, kind: "active", context: viewContext, dark: true,
-        disabled: () => disposed || busy || !!review || hmiAlarmElementBlocked(host), current: filterValues,
+        disabled: () => disposed || busy || !!review || !!shelfProposal || hmiAlarmElementBlocked(host), current: filterValues,
         apply: value => { const checked = parseAlarmViewFilters("active", value); search.value = checked.search; selectValue(area, checked.area); for (const [key, input] of Object.entries(extra)) { if (input.tagName === "SELECT") selectValue(input, checked[key]); else input.value = checked[key]; } selected = undefined; choices.clear(); page = 0; actionMessage = undefined; },
         changed: () => { savedSignature = ""; render(); },
     });
@@ -128,16 +140,16 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         Object.assign(control.style, { maxWidth: "100%", boxSizing: "border-box", minHeight: "44px", font: "inherit", background: "#181e28", color: "#fff", border: "1px solid #8894a4", borderRadius: "4px", padding: "6px" }); columnFields.append(label);
     }
     Object.assign(columnVisible.style, { minHeight: "22px", height: "22px", width: "22px", justifySelf: "start", accentColor: "#8894a4" });
-    const fillColumnFields = () => { const item = columns.columns.find(item => item.key === columnPicker.value) ?? columns.columns[0]; columnPicker.value = item.key; columnLabel.value = item.label; columnWidth.value = String(item.width); columnVisible.checked = item.visible; columnVisible.disabled = busy || !!review || !!columnsError || hmiAlarmElementBlocked(host) || ["name", "state"].includes(item.key); columnPosition.value = String(columns.columns.indexOf(item)); columnTimeZone.value = columns.timeZone; };
+    const fillColumnFields = () => { const item = columns.columns.find(item => item.key === columnPicker.value) ?? columns.columns[0]; columnPicker.value = item.key; columnLabel.value = item.label; columnWidth.value = String(item.width); columnVisible.checked = item.visible; columnVisible.disabled = busy || !!review || !!shelfProposal || !!columnsError || hmiAlarmElementBlocked(host) || ["name", "state"].includes(item.key); columnPosition.value = String(columns.columns.indexOf(item)); columnTimeZone.value = columns.timeZone; };
     columnPicker.onchange = fillColumnFields;
     columnStatus.setAttribute("role", "status"); columnStatus.style.gridColumn = "1 / -1";
     const columnHelp = make("p", "Nome e stato restano visibili. Le modifiche sono temporanee salvo salvataggio personale abilitato dal progetto. Le viste salvate conservano i filtri, non le colonne."); columnHelp.style.gridColumn = "1 / -1";
     const profileHost = make("div"); profileHost.style.gridColumn = "1 / -1";
-    const columnProfiles = createAlarmColumnsProfile({ document: host.ownerDocument, host, context: viewContext, project: () => projectColumns, current: () => columns, apply: value => { columns = parseAlarmColumns(value); columnsUiSignature = ""; }, disabled: () => disposed || busy || !!review || !!columnsError || hmiAlarmElementBlocked(host), changed: () => { columnProfileUiSignature = ""; render(); } });
+    const columnProfiles = createAlarmColumnsProfile({ document: host.ownerDocument, host, context: viewContext, project: () => projectColumns, current: () => columns, apply: value => { columns = parseAlarmColumns(value); columnsUiSignature = ""; }, disabled: () => disposed || busy || !!review || !!shelfProposal || !!columnsError || hmiAlarmElementBlocked(host), changed: () => { columnProfileUiSignature = ""; render(); } });
     columnFields.append(applyColumns, resetColumns, columnStatus, columnHelp, profileHost); columnPanel.append(columnTitle, columnFields); toolbar.prepend(columnPanel);
     applyColumns.onclick = () => {
         if (host.getAttribute(alarmColumnsAttribute) !== columnsRaw || host.getAttribute(alarmColumnProfileAttribute) !== columnProfileRaw) { syncColumns(); render(); return; }
-        if (busy || review || columnsError || hmiAlarmElementBlocked(host)) return;
+        if (busy || review || shelfProposal || columnsError || hmiAlarmElementBlocked(host)) return;
         try {
             const position = Number(columnPosition.value), next = parseAlarmColumns(columns), index = next.columns.findIndex(item => item.key === columnPicker.value);
             if (!Number.isInteger(position) || position < 0 || position >= next.columns.length || index < 0) throw new Error("Posizione della colonna non valida.");
@@ -145,7 +157,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
             const [item] = next.columns.splice(index, 1); next.columns.splice(position, 0, item); columns = parseAlarmColumns(next); columnsUiSignature = ""; columnProfiles.automatic(); columnStatus.textContent = "Visualizzazione applicata. Controlla qui sotto il salvataggio personale; nessun comando eseguito."; render();
         } catch (error) { columnStatus.textContent = error.message; }
     };
-    resetColumns.onclick = () => { if (busy || review || columnsError || hmiAlarmElementBlocked(host)) return; syncColumns(); columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnProfiles.automatic(); columnStatus.textContent = "Ripristinate le colonne del progetto. Nessun comando eseguito."; render(); };
+    resetColumns.onclick = () => { if (busy || review || shelfProposal || columnsError || hmiAlarmElementBlocked(host)) return; syncColumns(); columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnProfiles.automatic(); columnStatus.textContent = "Ripristinate le colonne del progetto. Nessun comando eseguito."; render(); };
     const rememberChoice = row => ({ instanceId: snapshot.instanceId, row: JSON.parse(JSON.stringify(row)) });
     const renderReview = () => {
         groupReview.hidden = !review;
@@ -181,7 +193,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
     };
     const prepareGroup = kind => {
         syncColumns();
-        if (!allowed() || busy || review || !choices.size) return;
+        if (!allowed() || busy || review || shelfProposal || !choices.size) return;
         review = { kind, phase: "review", items: [...choices.values()].map(item => ({ ...item, status: "waiting" })) };
         render(); groupReview.focus();
     };
@@ -225,9 +237,9 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         syncColumns();
         columnProfiles.sync();
         const watchProfiles = !!host.getAttribute(alarmColumnProfileAttribute); if (watchProfiles !== profileObserverActive) { profileObserverActive = watchProfiles; if (watchProfiles) profileObserver?.observe(host.ownerDocument.documentElement, { attributes: true, attributeFilter: [alarmColumnProfileAttribute], childList: true, subtree: true }); else profileObserver?.disconnect(); }
-        const profileSignature = JSON.stringify([columnProfiles.signature(), busy, !!review, !!columnsError, hmiAlarmElementBlocked(host)]);
+        const profileSignature = JSON.stringify([columnProfiles.signature(), busy, !!review, !!shelfProposal, !!columnsError, hmiAlarmElementBlocked(host)]);
         if (profileSignature !== columnProfileUiSignature) { const focused = profileHost.contains(host.ownerDocument.activeElement) ? host.ownerDocument.activeElement?.getAttribute("data-column-profile-focus") : undefined; columnProfileUiSignature = profileSignature; profileHost.replaceChildren(columnProfiles.render()); if (focused) { const buttons = [...profileHost.querySelectorAll("button")], target = buttons.find(button => button.dataset.columnProfileFocus === focused && !button.disabled) ?? buttons.find(button => !button.disabled); target?.focus({ preventScroll: true }); } }
-        const columnDisabled = busy || !!review || !!columnsError || hmiAlarmElementBlocked(host);
+        const columnDisabled = busy || !!review || !!shelfProposal || !!columnsError || hmiAlarmElementBlocked(host);
         for (const control of [columnPicker, columnLabel, columnWidth, columnPosition, columnTimeZone, applyColumns, resetColumns]) control.disabled = columnDisabled;
         columnVisible.disabled = columnDisabled || ["name", "state"].includes(columnPicker.value);
         const columnSignature = JSON.stringify(columns); if (columnSignature !== columnsUiSignature) { columnsUiSignature = columnSignature; fillColumnFields(); }
@@ -244,35 +256,47 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         }
         const classes = [...new Set(definitions.map(row => row.className))].sort(), classSignature = JSON.stringify([classes, extra.alarmClass.value]);
         if (extra.alarmClass.dataset.classes !== classSignature) { const value = extra.alarmClass.value; const all = make("option", "Tutte"); all.value = ""; extra.alarmClass.replaceChildren(all, ...classes.map(name => { const option = make("option", name); option.value = name; return option; })); selectValue(extra.alarmClass, value); extra.alarmClass.dataset.classes = classSignature; }
-        for (const input of Object.values(extra)) { input.parentElement.hidden = source === "history"; input.disabled = busy || !!review; }
+        for (const input of Object.values(extra)) { input.parentElement.hidden = source === "history"; input.disabled = busy || !!review || !!shelfProposal; }
         savedHost.hidden = source === "history";
-        const currentSavedSignature = JSON.stringify([busy, !!review, hmiAlarmElementBlocked(host), userIdentity]);
+        const currentSavedSignature = JSON.stringify([busy, !!review, !!shelfProposal, hmiAlarmElementBlocked(host), userIdentity]);
         if (source !== "history" && savedSignature !== currentSavedSignature) { savedSignature = currentSavedSignature; savedHost.replaceChildren(savedViews.render()); }
         notice.setAttribute("role", columnsError ? "alert" : "status");
-        notice.textContent = columnsError ? columnsError + " Mostrate le colonne iniziali; i comandi sono bloccati." : !connected ? "Servizio non disponibile: gli stati mostrati non sono aggiornati. Controlla la diagnostica PLC." : !snapshot?.rows.length ? "Nessun allarme configurato. Nell'editor apri Pannello → Allarmi." : source === "history" ? "Storico della sessione del servizio, non archivio industriale. Eventi usciti dal limite: " + snapshot.historyDropped : "Presa visione ≠ guasto risolto. Il rientro dipende dal segnale PLC.";
+        notice.textContent = columnsError ? columnsError + " Mostrate le colonne iniziali; i comandi sono bloccati." : !connected ? "Servizio non disponibile: gli stati mostrati non sono aggiornati. Controlla la diagnostica PLC." : !snapshot?.rows.length ? "Nessun allarme configurato. Nell'editor apri Pannello → Allarmi." : source === "history" ? "Storico della sessione del servizio, non archivio industriale. Eventi usciti dal limite: " + snapshot.historyDropped : "Presa visione ≠ guasto risolto. Il rientro dipende dal segnale PLC." + (snapshot.shelving?.enabled ? " Segnalazioni sospese: " + definitions.filter(row => row.shelving).length + ". Usa Filtra allarmi per mostrarle. Al riavvio del servizio le sospensioni terminano." : "");
         const rows = invalidFilter ? [] : source === "history"
             ? [...(snapshot?.history ?? [])].reverse().filter((row) => matches(row.alarmClass, row.area, [row.name, row.text, row.id]))
-            : [...(snapshot?.rows ?? [])].filter((row) => (row.pending || row.quality !== "good") && (!rowFilter || rowFilter(row)) && matches(row.className, row.area ?? "", [row.name, row.text, row.id], row)).sort((a, b) => compareAlarmViewRows(a, b, extra.order.value));
+            : [...(snapshot?.rows ?? [])].filter((row) => (row.pending || row.quality !== "good" || row.shelving) && (!rowFilter || rowFilter(row)) && matches(row.className, row.area ?? "", [row.name, row.text, row.id], row)).sort((a, b) => compareAlarmViewRows(a, b, extra.order.value));
         page = Math.min(page, Math.max(0, Math.ceil(rows.length / 100) - 1));
-        previous.disabled = busy || !!review || page === 0;
-        next.disabled = busy || !!review || (page + 1) * 100 >= rows.length;
+        previous.disabled = busy || !!review || !!shelfProposal || page === 0;
+        next.disabled = busy || !!review || !!shelfProposal || (page + 1) * 100 >= rows.length;
         previous.hidden = next.hidden = rows.length <= 100;
         const current = snapshot?.rows.find((row) => row.id === selected?.id), unchanged = current && current.occurrence === selected?.occurrence && current.revision === selected?.revision;
-        const canAct = connected && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && !columnsError && unchanged && current?.pending && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id], current) && !busy && !review && !multi && !hmiAlarmElementBlocked(host);
+        const canAct = connected && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && !columnsError && unchanged && current?.pending && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id], current) && !busy && !review && !shelfProposal && !multi && !hmiAlarmElementBlocked(host);
         ack.disabled = !canAct || current.acknowledged || current.acknowledgment === "none";
         confirm.disabled = !canAct || current.active !== false || !current.acknowledged || current.acknowledgment !== "reset" || current.quality !== "good";
         ack.hidden = source === "history";
         confirm.hidden = source === "history" || !rows.some(row => row.acknowledgment === "reset");
-        multiple.hidden = source === "history"; multiple.disabled = busy || !!review || !allowed(); multiple.setAttribute("aria-pressed", String(multi));
+        const canShelf = connected && snapshot?.shelving?.enabled && snapshot?.actionsEnabled && source !== "history" && !invalidFilter && !columnsError && unchanged && !!current?.occurrence && (!rowFilter || rowFilter(current)) && matches(current.className, current.area ?? "", [current.name, current.text, current.id], current) && !busy && !review && !multi && !hmiAlarmElementBlocked(host);
+        shelfPanel.hidden = source === "history" || !snapshot?.shelving?.enabled;
+        suspendedLabel.hidden = source === "history" || !snapshot?.shelving?.enabled; suspended.disabled = busy || !!review || !!shelfProposal;
+        shelfMinutes.max = String(snapshot?.shelving?.maxMinutes ?? 1440);
+        const shelfDisabled = !canShelf || !!shelfProposal; for (const input of [shelfMode, shelfMinutes, shelfReason]) input.disabled = shelfDisabled;
+        prepareShelve.disabled = shelfDisabled || !!current?.shelving || current?.active !== true || current?.quality !== "good";
+        prepareUnshelve.disabled = shelfDisabled || !current?.shelving;
+        shelfNote.textContent = !current ? "Seleziona un allarme nella lista. Solo un account con i permessi server può sospenderne o ripristinarne la segnalazione." : (current.shelving ? "Segnalazione sospesa fino a " + new Date(current.shelving.until).toLocaleString() + ". " + current.shelving.reason : "Selezionato: " + current.name) + ". Limite del progetto: " + (snapshot?.shelving?.maxMinutes ?? "—") + " minuti. Il segnale e la registrazione degli eventi continuano.";
+        if (shelfProposal) {
+            sendShelf.disabled = !canShelf || shelfProposal.user !== userIdentity || (viewContext?.operator && JSON.stringify(viewContext.operator()) !== userIdentity) || shelfProposal.instanceId !== snapshot?.instanceId || shelfProposal.command.alarmId !== current?.id || shelfProposal.command.occurrence !== current?.occurrence || shelfProposal.command.revision !== current?.revision;
+            cancelShelf.disabled = busy; shelfReview.hidden = false;
+        } else { shelfReview.hidden = true; shelfReview.replaceChildren(); }
+        multiple.hidden = source === "history"; multiple.disabled = busy || !!review || !!shelfProposal || !allowed(); multiple.setAttribute("aria-pressed", String(multi));
         groupTools.hidden = !multi || source === "history";
         groupStatus.textContent = `${choices.size} allarmi scelti · massimo 100. Sono inclusi solo quelli selezionati esplicitamente, anche su più pagine.`;
-        choosePage.disabled = busy || !!review || !allowed(); clearChoices.disabled = busy || !!review;
-        reviewAck.disabled = reviewConfirm.disabled = busy || !!review || !allowed() || !choices.size;
-        search.disabled = area.disabled = busy || !!review;
+        choosePage.disabled = busy || !!review || !!shelfProposal || !allowed(); clearChoices.disabled = busy || !!review || !!shelfProposal;
+        reviewAck.disabled = reviewConfirm.disabled = busy || !!review || !!shelfProposal || !allowed() || !choices.size;
+        search.disabled = area.disabled = busy || !!review || !!shelfProposal;
         renderReview();
         if (!busy)
             status.textContent = actionMessage && connected && actionMessageKey === snapshotKey() ? actionMessage : !validFilters && source !== "history" ? "Filtri non validi: controlla la priorità (intero 0–255) e i testi. Nessun allarme viene mostrato con filtri ambigui." : invalidFilter ? "Filtro non supportato: usa AlarmClassName = 'nome classe'. Nessun allarme viene mostrato con un filtro ambiguo." : selected && !unchanged ? "L'allarme è cambiato: selezionalo di nuovo prima di agire." : connected && snapshot && !snapshot.actionsEnabled && source !== "history" ? "Presa visione bloccata finché il servizio non autorizza l'operatore." : rows.length + " risultati · pagina " + (page + 1);
-        const visible = rows.slice(page * 100, (page + 1) * 100), visibleColumns = columns.columns.filter(item => item.visible), nextSignature = JSON.stringify([visible, selected, page, multi, [...choices.keys()], !!review, busy, columns]);
+        const visible = rows.slice(page * 100, (page + 1) * 100), visibleColumns = columns.columns.filter(item => item.visible), nextSignature = JSON.stringify([visible, selected, page, multi, [...choices.keys()], !!review, !!shelfProposal, busy, columns]);
         visibleRows = source === "history" ? [] : visible;
         if (signature === nextSignature)
             return;
@@ -293,18 +317,18 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
                 const select = button(item.name);
                 select.setAttribute("aria-label", "Seleziona " + item.name);
                 select.setAttribute("aria-pressed", String(selected?.id === item.id));
-                select.disabled = multi || busy || !!review;
+                select.disabled = multi || busy || !!review || !!shelfProposal;
                 select.onclick = () => { actionMessage = undefined; selected = { id: row.id, occurrence: row.occurrence, revision: row.revision }; render(); };
                 cell.append(select);
                 if (multi) {
-                    const label = make("label"), check = make("input"); check.type = "checkbox"; check.checked = choices.has(row.id); check.disabled = busy || !!review || !allowed() || !eligible(row, "acknowledge") && !eligible(row, "confirm");
+                    const label = make("label"), check = make("input"); check.type = "checkbox"; check.checked = choices.has(row.id); check.disabled = busy || !!review || !!shelfProposal || !allowed() || !eligible(row, "acknowledge") && !eligible(row, "confirm");
                     check.setAttribute("aria-label", "Includi " + row.name); Object.assign(label.style, { display: "flex", alignItems: "center", gap: "8px", minHeight: "44px", cursor: "pointer", overflowWrap: "anywhere" });
                     Object.assign(check.style, { width: "22px", height: "22px", flexShrink: "0" });
-                    check.onchange = () => { if (check.disabled || busy || review || !allowed()) return; if (!check.checked) choices.delete(row.id); else if (choices.size < 100) choices.set(row.id, rememberChoice(row)); else rememberAction("Massimo 100 allarmi per operazione. Riduci la selezione."); render(); };
+                    check.onchange = () => { if (check.disabled || busy || review || shelfProposal || !allowed()) return; if (!check.checked) choices.delete(row.id); else if (choices.size < 100) choices.set(row.id, rememberChoice(row)); else rememberAction("Massimo 100 allarmi per operazione. Riduci la selezione."); render(); };
                     label.append(check, make("span", "Includi")); cell.append(label);
                 }
             }
-            const state = history ? ({ Incoming: "Attivato", Outgoing: "Rientrato", Acknowledged: "Presa visione", Confirmed: "Rientro confermato" }[item.state]) + (item.actor ? " · " + item.actor : "") : alarmStateLabel(row) + (row.quality !== "good" ? " · segnale non valido" : "");
+            const state = history ? ({ Incoming: "Attivato", Outgoing: "Rientrato", Acknowledged: "Presa visione", Confirmed: "Rientro confermato", Shelved: "Segnalazione sospesa", Unshelved: "Segnalazione ripristinata" }[item.state]) + (item.actor ? " · " + item.actor : "") : alarmStateLabel(row) + (row.quality !== "good" ? " · segnale non valido" : "");
             for (const column of visibleColumns) {
                 if (column.key === "name") { tr.append(cell); continue; }
                 const td = make("td", alarmColumnValue(column.key, item, history, state, columns.timeZone));
@@ -317,6 +341,11 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
                 const detail = make("details"), summary = make("summary", "Problema del segnale / della soglia");
                 Object.assign(summary.style, { cursor: "pointer", minHeight: "44px", padding: "8px 0" });
                 detail.append(summary, make("p", row.diagnostic)); (tr.querySelector('[data-alarm-key="message"]') ?? tr.querySelector('[data-alarm-key="state"]')).append(detail);
+            }
+            if (item.shelving) {
+                const detail = make("details"), summary = make("summary", history ? "Dettagli sospensione / ripristino" : "Dettagli della sospensione"); summary.style.minHeight = "44px";
+                const info = item.shelving, description = history ? (info.cause ? ({ operator: "Ripristino richiesto dall'operatore", elapsed: "Scadenza raggiunta", returned: "Rientro valido del segnale" }[info.cause]) : "Termine: " + new Date(info.until).toLocaleString()) : "Termine: " + new Date(info.until).toLocaleString() + " · operatore: " + info.actor + " · " + (info.mode === "one-shot" ? "anche al rientro valido" : "alla scadenza");
+                detail.append(summary, make("p", description), make("p", info.reason)); (tr.querySelector('[data-alarm-key="message"]') ?? tr.querySelector('[data-alarm-key="state"]')).append(detail);
             }
             return tr;
         }));
@@ -332,7 +361,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
     };
     const act = async (kind) => {
         syncColumns();
-        if (!selected?.occurrence || columnsError || busy || !connected || !snapshot?.actionsEnabled || hmiAlarmElementBlocked(host) || (kind === "acknowledge" ? ack.disabled : confirm.disabled))
+        if (!selected?.occurrence || columnsError || shelfProposal || busy || !connected || !snapshot?.actionsEnabled || hmiAlarmElementBlocked(host) || (kind === "acknowledge" ? ack.disabled : confirm.disabled))
             return;
         const command = { alarmId: selected.id, occurrence: selected.occurrence, revision: selected.revision, action: kind };
         const epoch = generation;
@@ -362,11 +391,28 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
     };
     ack.onclick = () => { void act("acknowledge"); };
     confirm.onclick = () => { void act("confirm"); };
-    multiple.onclick = () => { if (busy || review || !allowed()) return; multi = !multi; choices.clear(); selected = undefined; render(); };
-    choosePage.onclick = () => { if (busy || review || !allowed()) return; choices.clear(); for (const row of visibleRows) if (eligible(row, "acknowledge") || eligible(row, "confirm")) choices.set(row.id, rememberChoice(row)); render(); };
-    clearChoices.onclick = () => { if (busy || review) return; choices.clear(); render(); };
+    const prepareShelf = kind => {
+        if ((kind === "shelve" ? prepareShelve : prepareUnshelve).disabled || shelfProposal || busy || review || !selected) return;
+        const reason = shelfReason.value.trim(), minutes = Number(shelfMinutes.value);
+        if (!reason || reason.length > 240 || /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(reason) || kind === "shelve" && (!Number.isInteger(minutes) || minutes < 1 || minutes > snapshot.shelving.maxMinutes)) { rememberAction("Compila un motivo (1–240 caratteri su una riga) e una durata intera entro il limite del progetto."); return; }
+        const row = snapshot.rows.find(row => row.id === selected.id), command = { alarmId: selected.id, occurrence: selected.occurrence, revision: selected.revision, action: kind, reason, ...(kind === "shelve" ? { mode: shelfMode.value, minutes } : {}) };
+        shelfProposal = { command, instanceId: snapshot.instanceId, user: userIdentity }; shelfReview.replaceChildren(make("h3", kind === "shelve" ? "Conferma sospensione di " + row.name : "Ripristina segnalazione di " + row.name), make("p", reason), make("p", kind === "shelve" ? minutes + " minuti massimi" + (command.mode === "one-shot" ? ", con termine anticipato al rientro valido." : ".") : "L'allarme tornerà nelle segnalazioni se il suo stato lo richiede."), make("p", "Nessun comando PLC. Acquisizione e storico continuano."), sendShelf, cancelShelf); render(); shelfReview.focus();
+    };
+    prepareShelve.onclick = () => prepareShelf("shelve"); prepareUnshelve.onclick = () => prepareShelf("unshelve");
+    cancelShelf.onclick = () => { if (busy) return; shelfProposal = undefined; render(); shelfTitle.focus(); };
+    sendShelf.onclick = async () => {
+        render(); if (!shelfProposal || sendShelf.disabled || busy) return;
+        const proposal = shelfProposal, epoch = generation; busy = true; render();
+        try { await action(proposal.command); if (!disposed && epoch === generation) { selected = undefined; shelfReason.value = ""; shelfMinutes.value = ""; rememberAction(proposal.command.action === "shelve" ? "Segnalazione sospesa. Il segnale PLC continua a essere acquisito e registrato." : "Segnalazione ripristinata. Il segnale PLC non è stato modificato."); } }
+        catch (error) { if (!disposed && epoch === generation) { selected = undefined; rememberAction(error instanceof Error ? error.message : "Esito non disponibile: controlla lo stato prima di ripetere. Nessun invio automatico."); } }
+        finally { busy = false; shelfProposal = undefined; if (!disposed) { render(); shelfTitle.focus(); } }
+    };
+    suspended.onchange = () => { if (busy || review || shelfProposal) return; selected = undefined; choices.clear(); actionMessage = undefined; page = 0; render(); };
+    multiple.onclick = () => { if (busy || review || shelfProposal || !allowed()) return; multi = !multi; choices.clear(); selected = undefined; render(); };
+    choosePage.onclick = () => { if (busy || review || shelfProposal || !allowed()) return; choices.clear(); for (const row of visibleRows) if (eligible(row, "acknowledge") || eligible(row, "confirm")) choices.set(row.id, rememberChoice(row)); render(); };
+    clearChoices.onclick = () => { if (busy || review || shelfProposal) return; choices.clear(); render(); };
     reviewAck.onclick = () => prepareGroup("acknowledge"); reviewConfirm.onclick = () => prepareGroup("confirm");
-    const userChanged = () => { const who = viewContext?.operator ? JSON.stringify(viewContext.operator()) : undefined; if (viewContext?.operator && who === userIdentity) return; userIdentity = who; generation++; stopRequested = true; choices.clear(); review = undefined; selected = undefined; actionMessage = undefined; multi = false; search.value = ""; area.value = ""; for (const [key, input] of Object.entries(extra)) input.value = activeAlarmViewDefaults[key]; columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnProfiles.reset(); columnProfileUiSignature = ""; columnStatus.textContent = "Accesso cambiato: verificate le colonne del progetto e il profilo personale."; savedViews.reset(); savedSignature = ""; page = 0; render(); };
+    const userChanged = () => { const who = viewContext?.operator ? JSON.stringify(viewContext.operator()) : undefined; if (viewContext?.operator && who === userIdentity) return; userIdentity = who; generation++; shelfProposal = undefined; shelfReason.value = ""; shelfMinutes.value = ""; suspended.value = "exclude"; stopRequested = true; choices.clear(); review = undefined; selected = undefined; actionMessage = undefined; multi = false; search.value = ""; area.value = ""; for (const [key, input] of Object.entries(extra)) input.value = activeAlarmViewDefaults[key]; columns = parseAlarmColumns(projectColumns); columnsUiSignature = ""; columnProfiles.reset(); columnProfileUiSignature = ""; columnStatus.textContent = "Accesso cambiato: verificate le colonne del progetto e il profilo personale."; savedViews.reset(); savedSignature = ""; page = 0; render(); };
     view?.addEventListener("framecraft:user-changed", userChanged);
     search.oninput = area.onchange = () => { actionMessage = undefined; page = 0; render(); };
     for (const input of Object.values(extra)) input.onchange = () => { actionMessage = undefined; selected = undefined; choices.clear(); page = 0; render(); };

@@ -501,6 +501,11 @@ export function Canvas() {
   }, [simulation.on, simulation.values, simulation.status, simulation.elements, resourceCatalog, scriptCatalog, dataLogRuntime, previewPath, previewSrc, plcVariables]);
 
   useEffect(sendAlarmPreview, [alarmConfiguration, projectRoot, simulation.on, simulation.values, simulation.status, interactionMode, previewSrc]);
+  useEffect(() => {
+    if (!simulation.on || !alarmConfiguration?.catalog.shelving?.enabled) return;
+    const timer = window.setInterval(() => { if (alarmPreviewRef.current?.tick()) sendAlarmPreview(); }, 500);
+    return () => window.clearInterval(timer);
+  }, [alarmConfiguration, projectRoot, simulation.on, previewSrc]);
   useEffect(renderFaceplateVisuals, [faceplateCatalog, simulation.on, simulation.values, interactionMode, previewSrc]);
   useEffect(sendShortcuts, [shortcutBindings, previewSrc]);
   useEffect(renderTrendVisuals, [interactionMode]);

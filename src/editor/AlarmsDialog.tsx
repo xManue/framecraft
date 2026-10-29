@@ -89,8 +89,8 @@ export function AlarmsDialog({ onClose }: { onClose(): void }) {
       return [createHmiAlarmSummary(host, { action: async () => { throw new Error("Usa la lista della prova per la presa visione."); } })];
     });
     const update = () => { const next = { ...engine.snapshot(), actionsEnabled: true }; control.update(next); for (const summary of summaries) summary.update(next); };
-    update(); const unsubscribe = engine.subscribe(update);
-    return () => { unsubscribe(); control.dispose(); for (const summary of summaries) summary.dispose(); };
+    update(); const unsubscribe = engine.subscribe(update), timer = catalog.shelving?.enabled ? setInterval(() => engine.tick(), 500) : undefined;
+    return () => { clearInterval(timer); unsubscribe(); control.dispose(); for (const summary of summaries) summary.dispose(); };
   }, [engine]);
   const change = (next: AlarmCatalog) => { setCatalog(next); setMessage(""); setConfirmClose(false); };
   const patch = (values: Partial<AlarmDefinition>) => change({ ...catalog, alarms: catalog.alarms.map((item, index) => index === selected ? { ...item, ...values } : item) });
@@ -113,6 +113,12 @@ export function AlarmsDialog({ onClose }: { onClose(): void }) {
         <Field label="Eventi conservati nello storico di sessione" value={catalog.maxHistory} number min={100} max={10000} onChange={(value) => change({ ...catalog, maxHistory: value === "" ? NaN : Number(value) })} />
         {catalog.classes.map((item, index) => <div className="alarm-fields" key={index}><Field label="Nome classe" value={item.name} onChange={(name) => change({ ...catalog, classes: catalog.classes.map((c, i) => i === index ? { ...c, name } : c) })} /><Field label="Chiusura allarme" value={item.acknowledgment} choices={[{ value: "none", label: "Solo rientro" }, { value: "single", label: "Rientro + presa visione" }, { value: "reset", label: "Rientro + presa visione + conferma" }]} onChange={(value) => change({ ...catalog, classes: catalog.classes.map((c, i) => i === index ? { ...c, acknowledgment: value as typeof c.acknowledgment } : c) })} /></div>)}
         <button type="button" onClick={() => change({ ...catalog, classes: [...catalog.classes, { name: "Classe_" + (catalog.classes.length + 1), acknowledgment: "single" }] })} disabled={catalog.classes.length >= 100}><Plus size={16} /> Nuova classe</button>
+      </details>
+      <details><summary>Sospensione temporanea degli allarmi</summary>
+        <label className="alarm-check"><input type="checkbox" checked={catalog.shelving?.enabled ?? false} onChange={event => change({ ...catalog, shelving: { enabled: event.target.checked, maxMinutes: catalog.shelving?.maxMinutes ?? 15 } })} /> Consenti sospensione e ripristino dal pannello</label>
+        <Field label="Durata massima della sospensione (minuti)" value={catalog.shelving?.maxMinutes ?? 15} number min={1} max={1440} onChange={value => change({ ...catalog, shelving: { enabled: catalog.shelving?.enabled ?? false, maxMinutes: value === "" ? NaN : Number(value) } })} />
+        <p>Solo allarmi attivi con segnale valido: a tempo, oppure fino al rientro valido entro la stessa durata massima. Servono motivo, revisione e conferma, più i permessi server “Sospendere” e “Ripristinare” sulle risorse autorizzate. Le sospensioni terminano al riavvio del servizio.</p>
+        <p>Il guasto non viene risolto o disabilitato: acquisizione e storico continuano. Nel pannello usa Filtra allarmi → Segnalazioni sospese per ritrovarle. Abilita l’archivio su disco per conservare gli eventi dopo il riavvio; la prova locale non scrive né al PLC né al disco.</p>
       </details>
       <details><summary>Archivio su disco del servizio</summary>
         <label className="alarm-check"><input type="checkbox" checked={catalog.archive?.enabled ?? false} onChange={event => change({ ...catalog, archive: { enabled: event.target.checked, maxRecords: catalog.archive?.maxRecords ?? 100000 } })} /> Conserva gli eventi anche dopo il riavvio</label>

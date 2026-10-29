@@ -5,7 +5,7 @@ import { operatorSessionHeaders, operatorSessionProfile, openOperatorSession } f
 import { hmiAlarmElementBlocked } from "./hmiAlarmControl";
 
 const operations: Record<string, string> = {
-  "tags.write": "Scrittura variabile", "alarms.acknowledge": "Presa visione allarme", "alarms.confirm": "Conferma allarme",
+  "tags.write": "Scrittura variabile", "alarms.acknowledge": "Presa visione allarme", "alarms.confirm": "Conferma allarme", "alarms.shelve": "Sospensione temporanea allarme", "alarms.unshelve": "Ripristino segnalazione allarme",
   "recipes.create": "Creazione ricetta", "recipes.update": "Modifica ricetta", "recipes.copy": "Copia ricetta", "recipes.rename": "Rinomina ricetta", "recipes.delete": "Eliminazione ricetta", "session.login": "Accesso operatore", "session.logout": "Uscita operatore",
   "recipes.import": "Importazione ricette · gruppo di record",
   "recipes.apply": "Applicazione ricetta al PLC", "recipes.check": "Verifica esito ricetta sul PLC",

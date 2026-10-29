@@ -43,20 +43,21 @@ export function parseHmiAlarmSummaryConfig(value) {
 }
 export function serializeHmiAlarmSummaryConfig(config) { return JSON.stringify(config); }
 export function alarmSummaryFilter(row, c) { return (!c.classes.length || c.classes.includes(row.className)) && (!c.areas.length || c.areas.includes(row.area ?? "")) && row.priority >= c.minPriority; }
-export function alarmSummaryMode(row, c) { return c.mode === "active" ? row.active === true : c.mode === "unacknowledged" ? row.pending && row.acknowledgment !== "none" && !row.acknowledged : row.pending; }
+export function alarmSummaryMode(row, c) { return !row.shelving && (c.mode === "active" ? row.active === true : c.mode === "unacknowledged" ? row.pending && row.acknowledgment !== "none" && !row.acknowledged : row.pending); }
 export function hmiAlarmSummaryView(snapshot, config, available = true) {
     const rows = (snapshot?.rows ?? []).filter((row) => alarmSummaryFilter(row, config));
-    const pending = rows.filter((r) => r.pending).length, active = rows.filter((r) => r.active === true).length;
-    const unacknowledged = rows.filter((r) => r.pending && r.acknowledgment !== "none" && !r.acknowledged).length;
-    const unconfirmed = rows.filter((r) => r.pending && r.acknowledgment === "reset" && r.active === false && r.acknowledged && !r.confirmed).length;
+    const signalling = rows.filter(r => !r.shelving), shelved = rows.length - signalling.length;
+    const pending = signalling.filter((r) => r.pending).length, active = signalling.filter((r) => r.active === true).length;
+    const unacknowledged = signalling.filter((r) => r.pending && r.acknowledgment !== "none" && !r.acknowledged).length;
+    const unconfirmed = signalling.filter((r) => r.pending && r.acknowledgment === "reset" && r.active === false && r.acknowledged && !r.confirmed).length;
     const invalid = rows.filter((r) => r.quality !== "good" || r.active === null).length;
     const selected = rows.filter((row) => alarmSummaryMode(row, config)).sort((a, b) => (config.order === "priority" ? b.priority - a.priority : 0) || (b.activatedAt ?? 0) - (a.activatedAt ?? 0) || a.id.localeCompare(b.id)).slice(0, config.rows);
     const count = config.mode === "active" ? active : config.mode === "unacknowledged" ? unacknowledged : pending;
     const known = available && !!snapshot && rows.length > 0 && invalid === 0;
-    const message = !available || !snapshot ? "Servizio non disponibile · dati non aggiornati" : !rows.length ? "Nessun allarme configurato per questi filtri" : invalid ? invalid + " segnali non validi o sconosciuti" : pending ? pending + " allarmi da gestire" : "Nessun allarme pendente · segnali validi";
-    return { rows, selected, pending, active, unacknowledged, unconfirmed, invalid, count, known, message,
-        state: !available || !snapshot || !rows.length ? "unknown" : pending ? "alarm" : invalid ? "unknown" : "normal",
-        hidden: !config.showAlways && known && pending === 0 };
+    const message = (!available || !snapshot ? "Servizio non disponibile · dati non aggiornati" : !rows.length ? "Nessun allarme configurato per questi filtri" : invalid ? invalid + " segnali non validi o sconosciuti" : pending ? pending + " allarmi da gestire" : shelved ? "Controlla le segnalazioni sospese nella lista allarmi" : "Nessun allarme pendente · segnali validi") + (shelved ? " · " + shelved + " segnalazioni sospese" : "");
+    return { rows, selected, pending, active, unacknowledged, unconfirmed, invalid, shelved, count, known, message,
+        state: !available || !snapshot || !rows.length ? "unknown" : pending ? "alarm" : invalid || shelved ? "unknown" : "normal",
+        hidden: !config.showAlways && known && pending === 0 && shelved === 0 };
 }
 export function hmiAlarmSummaryJsx(kind) {
     const config = serializeHmiAlarmSummaryConfig(defaultHmiAlarmSummaryConfig(kind));

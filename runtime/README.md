@@ -365,7 +365,69 @@ esplicito del Runtime. Nessuna compatibilità con oggetti/metodi vendor viene di
 Riferimenti funzionali: [WinCC Unified V21, acknowledge singolo e collettivo](https://docs.tia.siemens.cloud/r/en-us/v21/operating-unified-pc-rt-unified/controls-rt-unified/operating-alarms-rt-unified/alarm-control-rt-unified/acknowledging-rt-unified/acknowledging-alarms-rt-unified)
 e [Optix 1.10, acknowledge/confirm](https://www.rockwellautomation.com/en-nl/docs/factorytalk-optix/1-10/contents-ditamap/using-the-software/alarms/confirm-and-acknowledge-alarms.html).
 Le regole vendor della selezione e dei modelli di riconoscimento restano distinte dal
-contratto Framecraft descritto qui; shelving, motivazioni e conferma al PLC restano aperti.
+contratto Framecraft descritto qui. La sospensione temporanea con motivo è descritta sotto;
+restano i modelli vendor completi, commenti generici e conferma al PLC.
+
+### Sospendere temporaneamente una segnalazione
+
+In **Pannello → Allarmi → Sospensione temporanea degli allarmi** abilita la funzione e scegli
+il massimo di progetto, da 1 a 1440 minuti. Salva e riavvia manualmente il servizio; per i
+vecchi pannelli aggiorna esplicitamente il Runtime. La funzione parte disabilitata. Il limite
+di volume dello snapshot tiene conto anche di motivi e sospensioni: se necessario riduci gli
+eventi dello storico di sessione nella sezione Classi. I JSON esistenti senza `shelving` restano validi.
+
+Assegna esplicitamente agli account locali `alarms.shelve` e/o `alarms.unshelve`, oltre agli
+ID consentiti nella regola **Azioni allarmi**. Non sono inclusi nella presa visione o nel ruolo;
+non vengono aggiunti agli account esistenti. Il servizio ricontrolla capacità e risorsa prima
+di ogni comando, con audit di richiesta/esito e le protezioni di sessione/origine già previste.
+
+Nel pannello seleziona un allarme attivo con segnale valido, apri **Sospensione temporanea**,
+scegli il termine, compila durata e motivo su una riga (1–240 caratteri), premi **Rivedi
+sospensione** e conferma il riepilogo. Puoi scegliere fino alla scadenza, oppure fino al primo
+rientro valido entro la stessa durata massima. Un campione invalido non determina un rientro.
+Non è prevista una sospensione permanente né un prolungamento implicito: ripristina e rivedi
+una nuova richiesta se serve. Cambio utente, revisione dell'allarme, servizio diverso o elemento
+bloccato impediscono l'invio della vecchia conferma. Nessuna ripetizione automatica.
+
+La sospensione riguarda la segnalazione: non modifica segnale, qualità, presa visione, conferma
+o logica PLC. Acquisizione ed eventi continuano per tutti i client dello stesso servizio.
+Nella lista le segnalazioni sospese sono escluse inizialmente; un conteggio resta visibile e
+**Filtra allarmi → Segnalazioni sospese** permette di mostrarle insieme alle altre oppure sole,
+anche se nel frattempo il segnale è rientrato. Questa scelta è temporanea e separata dalle
+viste salvate. I dettagli mostrano termine, operatore e motivo. Seleziona la riga, compila il
+motivo e usa **Rivedi ripristino** per terminarla prima della scadenza. Il ripristino non risolve
+il guasto: la riga torna nelle segnalazioni se lo stato corrente lo richiede.
+
+Indicatori e righe riepilogative escludono le segnalazioni sospese dai conteggi operativi e
+dal lampeggio; espongono quante ne sono sospese. Con sole sospensioni restano visibili e non
+mostrano il verde “tutto normale”. Un problema di qualità continua a essere diagnosticato.
+
+La durata usa l'orologio monotono del processo, indipendente dalle correzioni dell'ora civile.
+Il servizio controlla le scadenze ogni 500 ms, anche senza campioni nuovi, e prima di campioni
+e comandi. Non è un timer real-time: eventuali blocchi del processo possono ritardare il controllo.
+L'ora di termine mostrata è calcolata all'inizio con l'orologio civile. Le sospensioni terminano
+al riavvio: lo stato non viene recuperato dal browser o dallo storico. Gli avvii rimangono distinti;
+non vengono inventati eventi di ripristino per il periodo in cui il servizio era fermo.
+
+Storico di sessione e, se abilitato, archivio SQLite registrano `Shelved` e `Unshelved`, motivo,
+termine/modo o causa del ripristino (operatore, scadenza, rientro valido). Gli automatismi non
+si attribuiscono l'identità di un operatore. Per conservarli dopo il riavvio abilita l'archivio
+su disco; il solo audit di richiesta/esito non contiene il motivo. Errori/spazio esaurito dello
+storico restano diagnosticati; una scadenza non viene bloccata dall'indisponibilità del disco.
+Filtri dello storico e CSV includono i nuovi eventi e metadati; le statistiche contano separatamente
+sospensioni/ripristini, senza contarli come prese visioni o usarli per i tempi di rientro/ack.
+
+Contratto del catalogo: `"shelving": { "enabled": true, "maxMinutes": 15 }`, facoltativo nel
+formato v1. `alarm-action` conserva ID/occorrenza/revisione; `action: "shelve"` richiede anche
+`mode: "timed" | "one-shot"`, `minutes` intero entro il massimo e `reason`; `unshelve` richiede
+`reason`. Nessun autore è accettato dal browser. La prova locale usa lo stesso motore e rimane
+isolata dal servizio/PLC/archivio; non certifica l'impianto.
+
+Riferimenti funzionali: [sospensione Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/operating-unified-pc-rt-unified/controls-rt-unified/operating-alarms-rt-unified/alarm-control-rt-unified/shelving-alarms-rt-unified)
+e [Timed/One-Shot Shelve di Optix](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/alarms/shelve_alarms.html).
+Questo è un contratto Framecraft per allarmi scalari, non l'object model vendor o la sospensione
+di condizioni/allarmi OPC UA ricevuti da un controller. Restano politica industriale di recovery,
+collaudo CPU/touch/WebView2 e i gate produzione generali.
 
 ### Autorizzazione server delle operazioni allarmi
 
@@ -381,7 +443,8 @@ richieste/esiti nell’audit del servizio. Identità esterne, conformità e coll
 restano da completare; il solo hook non è un prodotto di autenticazione completo.
 
 `POST /_framecraft/plc/v1/alarm-action` accetta soltanto `alarmId`, `occurrence`,
-`revision` e `action` (`acknowledge` o `confirm`), con JSON e le stesse protezioni
+`revision` e `action` (`acknowledge` o `confirm`); sospensione/ripristino aggiungono solo i campi
+documentati sopra. Usa JSON e le stesse protezioni
 token/origine del gateway. Dopo l'autorizzazione ricontrolla lo stato: una revisione
 vecchia o il replay vengono rifiutati (409); mancata autorizzazione dà 403. Un
 timeout HTTP non dimostra che l'azione sia fallita: aggiorna la vista prima di
@@ -415,8 +478,8 @@ la condizione, ma non ricrea i vecchi eventi. `Clear Alarm Log` resta disabilita
 con spiegazione finché non esiste un archivio con cancellazione/audit protetti.
 
 Prima della produzione servono archivio e ripristino verificati, identità/permessi
-server, audit, commissioning CPU, limiti/carico, traduzioni, shelving e operazioni
-multiple. Gli allarmi di eventi OPC UA/controller non sono i trigger scalari qui
+server, audit, commissioning CPU, limiti/carico, traduzioni e collaudo delle operazioni
+singole/multiple e delle sospensioni. Gli allarmi di eventi OPC UA/controller non sono i trigger scalari qui
 implementati. La prova locale è isolata e non certifica il funzionamento sulla macchina.
 
 ### Provare un faceplate sulla pagina nell'editor

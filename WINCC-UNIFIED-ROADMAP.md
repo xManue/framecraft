@@ -35,6 +35,10 @@ nell'Inspector, manuali o automatici ad Applica/Reset, ripristino compatibile al
 protezione da profili corrotti/obsoleti e identificativi duplicati (LAVORO 176). Rilette
 personalizzazioni utente V21; default globali e banca dati profili server restano distinti.
 
+29 ottobre 2026: sospensioni a tempo o fino al rientro valido entro un massimo, motivo e revisione/
+conferma, capacità/ACL server, scadenza monotona senza campioni, storico/CSV/statistiche e prova
+incorporata (LAVORO 177). Riletto shelving V21; niente disabilitazione PLC o parità object model.
+
 21 ottobre 2026: archivio allarmi Framecraft su disco e vista protetta separata dallo stato attivo
 (LAVORO 161). Restano multilingua storica, manutenzione industriale e collaudo target.
 
@@ -184,7 +188,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | WCU-ALM-03 | Allarmi PLC e multi-instance | DA FARE | Ricezione/struttura dal controller | Collegamento automatico a gerarchia e faceplate |
 | WCU-ALM-04 | Classi, priorità, aree e testi | PARZIALE | Multilingua, altri modelli Unified, colori/classi completi e identità/RBAC server | Editor di classi e tre modelli di chiusura, messaggi, zone e priorità; nessun dato macchina precompilato |
 | WCU-ALM-05 | Active, historical e logged alarms | PARZIALE | Recovery/retention/backup industriali, multilingua e collaudo target | Motore condiviso, storico di sessione e archivio SQLite per eventi supportati; batch per valutazione, riavvii distinti, lacune segnalate e nessun ripristino dello stato attivo dallo storico (106/161) |
-| WCU-ALM-06 | Acknowledge, confirm e shelving | PARZIALE | Shelving, motivazioni, modelli vendor restanti, ack PLC e collaudo target | Comandi singoli (152–155) e HMI su più allarmi con selezione/revisione, richieste separate autorizzate/auditate per riga, risultati parziali espliciti e stop senza replay; nessuna scrittura PLC (172) |
+| WCU-ALM-06 | Acknowledge, confirm e shelving | PARZIALE | Commenti generici, modelli/condizioni vendor restanti, ack PLC, recovery industriale e collaudo target | Comandi singoli (152–155) e selezione/revisione/esiti separati senza replay (172). Sospensione timed/one-shot con motivo, limite, revisione/conferma, capacità/ACL server, scadenza monotona anche senza campioni e ripristino anticipato; acquisizione/storico continuano, nessuna scrittura PLC (177) |
 | WCU-ALM-07 | Filtri, ordinamento e statistiche | PARZIALE | Query/espressioni, colonne avanzate/default globali/profili server, ordine storico multi-colonna e report avanzati | Lista: filtri/sei ordini/viste (173), tredici colonne con locale/UTC (175), profili colonne locali per operatore con salvataggio manuale/automatico e baseline del progetto (176). Storico: filtri/bozza UTC (161/173), frequenze/somme/medie su tutti gli eventi filtrati e CSV, senza durate fra riavvii (174) |
 | WCU-ALM-08 | Logging, import/export e CSV | PARZIALE | Import vendor, job server per grandi export e manutenzione industriale | Archivio SQLite e vista HMI protetta (161); CSV di tutte le pagine filtrate con identità/sequenza fissate, riepilogo JSON, avanzamento/annulla, protezione formule e nessun parziale o comando PLC (167) |
 | WCU-ALM-09 | Security events | DA FARE | Eventi sicurezza nel controllo allarmi | Correlazione con login, cambi e audit |
