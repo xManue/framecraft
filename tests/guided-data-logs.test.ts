@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import { parseGuidedDataLogs, guidedDataLogSources, guidedLogBindingIssue } from "../src/core/guidedDataLogs";
 import { defaultHmiDataLog, defaultHmiLoggingTag, type HmiDataLogCatalog, type HmiDataLogRuntime } from "../src/core/hmiDataLogs";
+import * as deadbandFunctions from "../runtime/data-log-deadband.mjs";
 import { newAiInterview, newGuidedPage, interviewConfig, interviewContext, interviewPrompt } from "../src/ai/aiInterview";
 import { parseAiInterviewDraft, serializeAiInterviewDraft } from "../src/ai/aiInterviewDraft";
 import { guidedPageSource, guidedProjectIssues } from "../src/core/guidedProject";
@@ -45,6 +46,15 @@ it("importa configurazioni vere senza campioni o normalizzazioni silenziose", ()
   const value = catalog(); expect(parseGuidedDataLogs(JSON.stringify(value), fixture().spec.tags)).toEqual(value);
   expect(guidedDataLogSources(value).map(source => source.loggedTagId)).toEqual(["x", "y", "text"]);
   expect(value.projectKey).toBe("ORIGINAL_PROJECT_KEY");
+});
+
+it("importa filtri e override nella pipeline del pannello e include la loro implementazione", () => {
+  const interview = fixture(), c = interview.spec.dataLogs!; c.logs[0].deadband = { mode: "percentage", value: 20 }; c.logs[0].tags[2].deadband = { mode: "none", value: 0 };
+  expect(parseGuidedDataLogs(JSON.stringify(c), interview.spec.tags)).toEqual(c);
+  const { files } = generated(interview), exported = JSON.parse(files.find(file => file.path === "framecraft.logs.json")!.content);
+  expect(exported.logs[0].deadband).toEqual(c.logs[0].deadband); expect(exported.logs[0].tags[2].deadband).toEqual({ mode: "none", value: 0 });
+  expect(files.some(file => file.path === "runtime/data-log-deadband.mjs")).toBe(true); expect(files.some(file => file.path === "runtime/data-log-deadband.d.mts")).toBe(true);
+  delete c.logs[0].tags[2].deadband; expect(() => parseGuidedDataLogs(c, interview.spec.tags)).toThrow(/numerico/);
 });
 
 it("il nuovo pannello include Data Log del servizio importati e i moduli necessari a leggerli", () => {
@@ -150,7 +160,7 @@ it("cambiare catalogo non rimappa la curva; un tipo o riferimento incompatibile 
 it("il Runtime generato acquisisce e disegna campioni reali dall’archivio scelto", () => {
   vi.useFakeTimers(); const { files, config } = generated(), load = (path: string) => {
     const output: Record<string, unknown> = {}, source = files.find(file => file.path === path)!.content;
-    new Function("exports", transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 } }).outputText)(output); return output;
+    new Function("exports", "require", transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 } }).outputText)(output, (name: string) => { if (name === "../runtime/data-log-deadband.mjs") return deadbandFunctions; throw Error(`Unexpected generated dependency: ${name}`); }); return output;
   };
   let at = 1000; const logCatalog = JSON.parse(files.find(file => file.path === "framecraft.logs.json")!.content);
   const create = load("src/framecraftHmiDataLogs.ts").createHmiDataLogRuntime as (catalog: HmiDataLogCatalog, options: unknown) => HmiDataLogRuntime;

@@ -51,6 +51,11 @@ oggetti Optix, senza completare Event Logger generico o firme.
 trend temporali/X/Y con letture protette, cache e reset delle viste in pausa al cambio utente (179).
 Riletto Data Logger current; modi, polling/deadband, oggetti e store generici Optix restano distinti.
 
+30 ottobre 2026: filtro variazioni Framecraft assoluto/percentuale con default archivio e override
+per variabile, soglia inclusa, qualità non filtrata, reset al riavvio e confronto Int64/decimali (180).
+Confrontati DataLogger, VariableToLog e intervalli documentati; percentuale Framecraft esplicita sul
+valore precedente in valore assoluto. Polling, object model e proprietà vendor complete restano aperti.
+
 21 ottobre 2026: storico allarmi Framecraft SQLite e controllo di sola lettura con capacità dedicata
 (LAVORO 161), confrontati con Alarm Event Logger nella guida `current` (1.8.0), non parità completa.
 
@@ -212,7 +217,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 
 | ID | Capacità FactoryTalk Optix | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
-| FTX-DAT-01 | Data Logger periodico e on-demand | PARZIALE | Polling/deadband Optix, oggetti/store generici, letture CPU coordinate e collaudo target | Servizio Framecraft con ciclo/variazione/trigger/richiesta, SQLite, elaborazione/qualità, conservazione, permessi e ricevute; non dipende dai browser (179) |
+| FTX-DAT-01 | Data Logger periodico e on-demand | PARZIALE | Polling/proprietà Optix complete, oggetti/store generici, letture CPU coordinate e collaudo target | Servizio indipendente dai browser, SQLite, elaborazione/qualità, conservazione, permessi/ricevute (179). Filtro variazioni assoluto/percentuale con default/override, soglia inclusa, precisione decimale e qualità preservata nell'intera pipeline (180) |
 | FTX-DAT-02 | Event Logger | PARZIALE | Tipi evento/campi/sorgenti generici, store e correlazione completa | Registro Runtime SQLite e vista HMI protetta con filtri/pagine per le operazioni Framecraft supportate, non Event Logger Optix generico (155/159) |
 | FTX-DAT-03 | Embedded Database SQLite | PARZIALE | Store/tabelle/query generici, migrazioni e backup/restore industriali verificati | Store fissi per audit, allarmi e Data Log; writer unico, conservazione per tempo/capacità, cursori ancorati e query parametrizzate, senza SQL arbitrario nel pannello (155/161/179) |
 | FTX-DAT-04 | Database ODBC | ESTERNO | Connessione, credenziali, schema e query | Test di compatibilità e segreti mai salvati nel progetto |

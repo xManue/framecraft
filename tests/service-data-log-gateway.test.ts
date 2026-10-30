@@ -15,7 +15,7 @@ import { dataLogDefinitionKey, parseDataLogSnapshot, type ServiceDataLogs } from
 import { openDataLogStore } from "../runtime/data-log-store.mjs";
 
 const token = "synthetic_data_log_token_01234567890123456789", password = "SYNTHETIC-data-log-password-012345", origin = "http://localhost:1420";
-async function fixture() {
+async function fixture(deadband?: ServiceDataLogs["logs"][number]["deadband"]) {
   await mkdir(path.resolve(".hmi-preview"), { recursive: true }); const root = await mkdtemp(path.resolve(".hmi-preview/data-log-gateway-")), namespace = randomUUID(), account = randomUUID(), viewer = randomUUID(), security = path.join(root, ".framecraft-runtime/security"); await mkdir(security, { recursive: true }); const file = path.join(security, "operators.json"), hash = await hashOperatorPassword(password);
   await writeOperatorStore(file, { version: 2, id: randomUUID(), accounts: [{ id: account, username: "operator", name: "Operatore QA", role: "Operatore", disabled: false, capabilities: ["dataLogs.read", "dataLogs.sample"], permissions: [], password: hash }, { id: viewer, username: "viewer", name: "Utente precedente", role: "Operatore", disabled: false, capabilities: [], permissions: [], password: hash }], resourceRules: [account, viewer].map(accountId => ({ accountId, limits: defaultOperatorResources() })) }, undefined);
   const logs: ServiceDataLogs = { version: 1, projectKey: "synthetic", logs: [{ id: "process", name: "Processo", storage: "runtime", enabled: true, retentionMs: 60000, segmentDurationMs: 60000, maxEntries: 1000, tags: [
@@ -23,6 +23,7 @@ async function fixture() {
     { id: "cycle", name: "Ciclo", tag: "Y", mode: "cyclic", cycleMs: 500, includeUnchanged: true, smoothingSamples: 1, aggregation: "none", aggregationWindowMs: 1000 },
     { id: "demand", name: "Trigger", tag: "Y", mode: "on-demand", cycleMs: 500, includeUnchanged: true, smoothingSamples: 1, aggregation: "none", aggregationWindowMs: 1000, triggerTag: "Trigger", triggerCondition: "rising" },
   ] }] };
+  if (deadband) logs.logs[0].deadband = deadband;
   const broker = await Aedes.createBroker(), tcp = createServer(broker.handle); await new Promise<void>(resolve => tcp.listen(0, "127.0.0.1", resolve)); const address = tcp.address(); if (!address || typeof address === "string") throw new Error(); const url = "mqtt://127.0.0.1:" + address.port, publisher = await connectAsync(url, { reconnectPeriod: 0 });
   const audit = openRuntimeAudit({ root, namespace }), variables = ["X", "Y", "Trigger"].map(name => ({ name, dataType: name === "Trigger" ? "Bool" : "Real", access: "read" as const })), config = { version: 1 as const, gateway: { enabled: true, port: 0, tokenEnv: "SYNTHETIC_DATA_LOG_TOKEN", allowedOrigins: [origin], allowWrites: false }, connections: [{ id: "mqtt-qa", protocol: "mqtt" as const, enabled: true, url, clientId: "data-log-qa", allowInsecure: true, allowWrites: false, timeoutMs: 3000, bindings: variables.map(v => ({ tag: v.name, topic: "signal/" + v.name, valuePath: "/value", qualityPath: "/quality", timestampPath: "/time", timestampUnit: "ms" as const })) }] };
   let store = openDataLogStore({ root, namespace, catalog: logs }), gateway: ReturnType<typeof createPlcGateway>, commands = 0, clock = 0;
@@ -35,6 +36,16 @@ async function fixture() {
   const command = () => ({ version: 1, id: randomUUID(), serviceInstanceId: gateway.snapshot().dataLogs!.instanceId, logId: "process", loggedTagId: "demand" });
   return { advance: (ms: number) => { clock += ms; }, audit, namespace, account, request, login, sample, query, command, snapshot: () => gateway.snapshot(), store: () => store, commands: () => commands, restartReadOnly: async () => { await gateway.stop(); store.close(); store = openDataLogStore({ root, namespace, catalog: logs, readOnly: true }); gateway = make(true); await gateway.start(); }, close: async () => { await gateway.stop(); store.close(); audit.close(); await publisher.endAsync(true); await new Promise<void>(resolve => broker.close(resolve)); await new Promise<void>(resolve => tcp.close(() => resolve())); } };
 }
+it("filtra il rumore MQTT nel servizio senza bloccare valori correnti o transizioni di qualità", async () => {
+  const f = await fixture({ mode: "absolute", value: 5 });
+  try {
+    for (const value of [10, 11, 14, 15]) await f.sample("X", value);
+    expect(f.store().query(f.query()).samples.map(row => row.value)).toEqual(["10", "15"]);
+    await f.sample("X", 16, 0); await f.sample("X", 16);
+    expect(f.store().query(f.query()).samples.map(row => row.qualityCode)).toEqual([192, 192, 0, 192]);
+    expect(f.snapshot().samples.find(row => row.tag === "X")).toMatchObject({ value: "16", qualityCode: 192 }); expect(f.commands()).toBe(0);
+  } finally { await f.close(); }
+});
 it("registra MQTT senza browser, condivide il disco e conserva qualità e timestamp sorgente", async () => {
   const f = await fixture(); try { await f.sample("X", 10); await f.sample("X", 20); await f.sample("X", 20, 0); await f.sample("Y", 5); await f.sample("Trigger", false); await f.sample("Trigger", true); await vi.waitFor(() => expect(f.store().query(f.query("cycle")).samples.length).toBeGreaterThan(0));
     const headers = await f.login(), query = f.query(), response = await f.request("data-log-history?" + new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])), undefined, headers); expect(response.status).toBe(200); const data = parseDataLogSnapshot(await response.json(), query); expect(data.samples.map(s => [s.value, s.qualityCode])).toEqual([["10", 192], ["20", 192], ["20", 0]]); expect(data.samples[0].sourceTimestamp).toBeLessThan(data.samples[0].time - 5000); expect(f.store().query(f.query("demand")).samples.map(s => s.value)).toEqual(["5"]); expect(f.commands()).toBe(0);

@@ -34,6 +34,26 @@ function configuredCatalog(): HmiDataLogCatalog {
 afterEach(() => vi.useRealTimers());
 
 describe("Data Log Unified", () => {
+  it("anteprima e browser filtrano variazioni cumulative senza nascondere qualità e recupero", () => {
+    const c = configuredCatalog(); c.logs[0].tags = [c.logs[0].tags[0]]; c.logs[0].deadband = { mode: "absolute", value: 5 };
+    const browser = createHmiDataLogRuntime(c, { storage: memoryStorage() });
+    for (const value of ["10", "12", "15"]) browser.updateSnapshot({ "Oven.Temperature": value }, { "Oven.Temperature": { qualityCode: 192 } });
+    browser.updateSnapshot({ "Oven.Temperature": "16" }, { "Oven.Temperature": { qualityCode: 0 } });
+    browser.updateSnapshot({ "Oven.Temperature": "16" }, { "Oven.Temperature": { qualityCode: 192 } });
+    expect(browser.query("process", "temperature").map(row => [row.value, row.qualityCode])).toEqual([["10", 192], ["15", 192], ["16", 0], ["16", 192]]);
+    browser.stop();
+    c.logs[0].storage = "runtime"; const storage = memoryStorage(), preview = createHmiDataLogRuntime(c, { storage, servicePreview: true });
+    for (const value of ["10", "12", "15"]) preview.updateTag("Oven.Temperature", value, { qualityCode: 192 });
+    expect(preview.query("process", "temperature").map(row => row.value)).toEqual(["10", "15"]); preview.stop(); expect(storage.values.size).toBe(0);
+  });
+
+  it("conserva l’override Nessuno e rifiuta soglie non valide senza normalizzarle", () => {
+    const c = configuredCatalog(); c.logs[0].deadband = { mode: "percentage", value: 20 }; c.logs[0].tags[0].deadband = { mode: "none", value: 0 };
+    const parsed = parseHmiDataLogCatalog(serializeHmiDataLogCatalog(c)); expect(parsed.logs[0].deadband).toEqual(c.logs[0].deadband); expect(parsed.logs[0].tags[0].deadband).toEqual(c.logs[0].tags[0].deadband);
+    const runtime = createHmiDataLogRuntime(parsed, { storage: memoryStorage() }); runtime.updateTag("Oven.Temperature", "10"); runtime.updateTag("Oven.Temperature", "11"); expect(runtime.query("process", "temperature")).toHaveLength(2); runtime.stop();
+    c.logs[0].deadband.value = -1; expect(() => serializeHmiDataLogCatalog(c)).toThrow(/Filtro variazioni/);
+  });
+
   it("gli archivi del servizio non vengono duplicati nel browser e la prova resta solo in memoria", () => {
     const c = configuredCatalog(); c.logs[0].storage = "runtime"; const storage = memoryStorage(), browser = createHmiDataLogRuntime(c, { storage }), preview = createHmiDataLogRuntime(c, { storage, servicePreview: true }); browser.updateTag("Oven.Temperature", "15"); preview.updateTag("Oven.Temperature", "15"); expect(browser.sampleCount()).toBe(0); expect(preview.sampleCount()).toBe(1); preview.flush(); browser.flush(); expect(storage.values.size).toBe(0); preview.stop(); browser.stop();
   });

@@ -6411,7 +6411,48 @@ Verifiche del 5 ottobre 2026:
   Preservati i 23 file WIP precedenti; solo le integrazioni proprie nei quattro file misti
   sono incluse. Nessun JSON macchina, asset reale o segreto nel commit pubblico.
 
+## 180. Filtro variazioni dei Data Log e generazione autonoma (30 ottobre 2026)
+
+- **Editor e contratto**: Filtro variazioni predefinito dell'archivio, con Nessuno/Assoluto/
+  Percentuale sul valore precedente. Override per variabile solo in Su variazione: eredita,
+  soglia propria o Nessuno, anche per escludere BOOL/testi da un filtro generale. Soglia e tipo
+  sono verificati, senza correggere silenziosamente valori negativi o campi sconosciuti.
+  Aiuto breve, calcolo/esempio a richiesta e indicazione del filtro ereditato effettivo.
+- **Acquisizione**: confronto con l'ultimo valore grezzo ammesso, dopo i limiti e prima delle
+  elaborazioni. I piccoli cambi si accumulano; soglia inclusa e zero per ogni differenza.
+  Percentuale su |base|, ogni valore diverso quando la base è zero. Confronti decimali BigInt
+  limitati: Int64/UInt64 preservati e rapporti LReal estremi senza overflow. Nessun filtro
+  su cambi qualità, recupero, richieste o cicli; reset della base dopo qualità invalida/riavvio.
+  Non cambia tag live, campionamento del driver o PLC e non ripristina valori correnti dal disco.
+- **Pipeline completa**: JSON v1 con deadband opzionale, import rigoroso, nuovo pannello standard,
+  servizio MQTT/OPC UA, canvas in memoria e archivi browser/sessione. Definizioni prive di filtro
+  mantengono la stessa chiave e lo storico precedente; soglie diverse non mescolano le serie.
+  Pannelli esistenti con aggiornamento Runtime esplicito e riavvio manuale del servizio.
+- **Correzione trovata dai test**: le funzioni Data Log serializzate potevano trattenere alias
+  interni del loader. Runtime browser trasferito a modulo autonomo con dichiarazioni tipizzate;
+  editor e sorgente esportato condividono implementazione e filtro. La prova esegue un modulo
+  generato dall'editor compilato e minificato, senza alias Vite o eval nel Runtime esportato.
+- **Verifiche**: 82 casi distinti su 9 file mirati, senza sommare ripetizioni: confini decimali,
+  Int64/UInt64, percentuali/zero/segni, qualità, riavvio, override, ordine elaborazioni,
+  import/generazione, salvataggio/rilettura UI, broker MQTT e nodo OPC UA locali reali.
+  Typecheck/build pubblico e del pannello generato. Browser con filtro attivo: rumore escluso
+  dal disco ma dati live aggiornati, trend temporale/X/Y, qualità/CSV, campionamento manuale,
+  cambio utente e riavvio. Nessuna scrittura PLC o richiesta esterna.
+  Form nell'editor controllato a 375/640 px: salvataggio in memoria, nessun overflow e nomi
+  accessibili dei selettori verificati. Stile della guida uniforme e campo singolo a larghezza piena.
+  Nessuna suite generale, agente, modifica nativa o dipendenza aggiunta; codice nuovo senza sorgenti vendor copiati.
+- **Stato**: aggiornati guida e riferimenti mirati Optix DataLogger/VariableToLog/intervalli.
+  Restano polling/proprietà vendor completi, letture CPU coordinate/forzate, storage esterni,
+  backup/restore e collaudi industriali/CPU/touch/WebView2. AI rinviata; obiettivo complessivo
+  attivo. Preservati i 23 file WIP precedenti; solo due integrazioni proprie in standardProject.ts.
+  Nessun JSON macchina, immagine reale o segreto pubblicato.
+
 ## Da fare, dopo
+
+- **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima
+  di proseguire con altre famiglie, Optix o AI. La prima fase aperta è la 3, script ed eventi:
+  verificare e completare scoping/closure, object model ed eventi, trasporto e proprietà delle
+  API e ownership Scheduler; non dichiarare conclusa la fase con il solo sottoinsieme IR.
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.
   I permessi/PIN nel browser non sostituiscono un confine sicuro né interblocchi PLC.

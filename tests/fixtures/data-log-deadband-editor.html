@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body><main id="root" style="max-width:680px;margin:0 auto;min-width:0"></main><script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import '/src/styles/global.css';
+import { DataLogsPanel } from '/src/editor/DataLogsPanel';
+import { useEditorStore } from '/src/state/editorStore';
+import { desktopBridge } from '/src/filesystem/desktopBridge';
+import { defaultHmiDataLog, defaultHmiLoggingTag, serializeHmiDataLogCatalog } from '/src/core/hmiDataLogs';
+const catalog = { version:1, projectKey:'synthetic', logs:[{...defaultHmiDataLog(), name:'Processo sintetico', storage:'runtime', tags:[{...defaultHmiLoggingTag(), tag:'Value', name:'Temperatura'}]}] };
+// Synthetic file bridge: no files, credentials, project or controller are modified.
+let saved = serializeHmiDataLogCatalog(catalog);
+desktopBridge.readFile = async () => saved;
+desktopBridge.writeFile = async (_path, value) => { saved = value; window.saved = value; };
+useEditorStore.setState({ project:{root:'C:/Synthetic', files:[{name:'framecraft.logs.json'}]}, dataLogCatalog:catalog, plcVariables:[{name:'Value',dataType:'LREAL',access:'read',address:'SYNTHETIC',description:''}], refreshDataLogCatalog:async()=>{} });
+createRoot(document.getElementById('root')).render(React.createElement(DataLogsPanel));
+</script></body></html>

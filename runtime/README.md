@@ -39,6 +39,43 @@ Modalità del contratto Framecraft:
   lettura valida del trigger; l'avvio con trigger già alto non inventa un fronte. La condizione
   Uguale campiona all'ingresso nel valore, non a ogni controllo del livello invariato.
 
+### Filtro variazioni: meno campioni dovuti a oscillazioni
+
+In **Pannello → Data Log e storico → Filtro variazioni predefinito** scegli:
+
+- **Nessuno**: conserva il comportamento già configurato, senza una soglia numerica.
+- **Assoluto**: registra quando la differenza raggiunge almeno la soglia nelle unità del tag.
+  Con soglia 5, dopo 10 i valori 11 e 14 vengono ignorati; 15 viene ammesso e diventa la nuova base.
+- **Percentuale sul valore precedente**: confronta la differenza con il valore assoluto della
+  base. Con 20%, da 10 a 12 o da -10 a -8 raggiunge la soglia. Da zero ogni valore diverso
+  viene ammesso; zero e -0 sono equivalenti. Non usa il fondo scala della variabile.
+
+Ogni variabile in **Su variazione** può usare il filtro dell'archivio, una soglia propria o
+**Nessuno** per disattivarlo. Per BOOL e testi usa Nessuno sulla variabile quando l'archivio ha
+un filtro numerico. Soglie negative, non finite e configurazioni sconosciute vengono rifiutate.
+Zero ammette ogni differenza numerica; anche la soglia esatta è inclusa. I confronti decimali
+conservano le differenze Int64/UInt64 e non fanno traboccare rapporti tra valori LReal estremi.
+
+Il filtro si applica soltanto a Su variazione, dopo i limiti e prima di media mobile e
+aggregazione. La base è l'ultimo valore grezzo **ammesso alla pipeline**, non l'ultima lettura
+del driver né il risultato di una media. Le letture ignorate non spostano la base. I cambi di
+qualità e il recupero non vengono filtrati dalla soglia; la qualità invalida azzera la base.
+Riavviare il servizio non ripristina la base dal database. Cicli, richieste manuali e trigger
+mantengono il loro comportamento; non vengono cambiati frequenza di lettura, valori live o PLC.
+
+Il contratto JSON v1 aggiunge `deadband: { mode: "none" | "absolute" | "percentage", value }`
+opzionale sull'archivio e sulla variabile. Campo assente sulla variabile significa eredita;
+Nessuno è un override esplicito. Le serie senza filtro effettivo mantengono la stessa identità
+e leggono i dati già archiviati; cambiare una soglia effettiva crea una serie distinta, soggetta
+alla stessa conservazione. Salva e riavvia manualmente il servizio; i pannelli esistenti
+richiedono aggiornamento esplicito del Runtime. Il filtro è condiviso da servizio, anteprima e
+archivi browser/sessione; nell'anteprima non apre collegamenti alla macchina.
+
+Riferimenti: [proprietà Data Logger](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/object-and-variable-reference/ftoptix-datalogger/objecttypes/datalogger.html),
+[override della variabile](https://www.rockwellautomation.com/en-hu/docs/factorytalk-optix/current/contents-ditamap/creating-projects/object-and-variable-reference/ftoptix-datalogger/variabletypes/variabletolog.html)
+e [intervalli documentati Optix](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/1-00/contents-ditamap/using-the-software/logger/data-logger/dead-band-interval-properties.html).
+È il contratto esplicito Framecraft, senza dichiarare compatibilità di progetto o polling Optix.
+
 Limiti numerici, media mobile fino a 64 campioni e aggregazione media/minimo/massimo sono applicati
 nel servizio. Le medie gestiscono anche valori LReal elevati senza overflow della somma. Una
 finestra interrotta dalla qualità invalida o dall'arresto viene conservata con `partial: true`;
@@ -117,7 +154,7 @@ Sotto il prefisso gateway configurato, con le protezioni di origine e autenticaz
 Riferimenti funzionali riletti: [modalità di logging Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-tags-rt-unified/logging-tags-rt-unified/basics-rt-unified/logging-modes-and-logging-process-rt-unified?contentId=A8wRpWq_nKw6xEncKsLpJg)
 e [Data Logger Optix current](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/object-and-variable-reference/ftoptix-datalogger/objecttypes/datalogger.html).
 Il comportamento è Framecraft: non emula il modello vendor, la lettura forzata On demand Unified
-o il polling/deadband Optix. Restano letture CPU coordinate, array/UDT, deadband, storage esterni,
+o il polling Optix. Il filtro Framecraft è descritto sopra. Restano letture CPU coordinate, array/UDT, storage esterni,
 query generiche, budget prestazioni e recovery su target industriali. Collaudato localmente con
 Node 24.22.1/SQLite 3.53.4, MQTT e server OPC UA sintetici; nessun collaudo di CPU o panel fisici.
 

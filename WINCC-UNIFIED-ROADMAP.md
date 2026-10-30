@@ -1,6 +1,12 @@
 # Framecraft verso WinCC Unified e oltre
 
-Aggiornato al 12 ottobre 2026. Baseline funzionale: documentazione ufficiale WinCC Unified V21.
+Aggiornato al 30 ottobre 2026. Baseline funzionale: documentazione ufficiale WinCC Unified V21.
+
+**Priorità richiesta dall'utente il 30 ottobre**: chiudere le fasi Unified già aperte prima di
+estendere Optix, AI o altre famiglie. Le fasi 1 e 2 sono chiuse; il lavoro riparte dalla fase 3
+(script ed eventi), verificando codice e comportamento invece di aggiungere altre tranche.
+Una famiglia resta PARZIALE finché ha requisiti applicabili a Framecraft non completati.
+I formati di progetto e i driver proprietari vendor restano riferimenti, come previsto dal prodotto autonomo.
 
 Aggiornamento mirato 21 ottobre 2026: consultazione HMI del registro attività Framecraft
 (LAVORO 159), confrontata con Audit Viewer V21. Non equivale a firme, commenti o conformità Audit.
@@ -49,6 +55,10 @@ qualità e timestamp distinti, conservazione e letture protette nei trend tempor
 Rilette le modalità di logging V21: il campionamento Framecraft usa la cache del driver;
 lettura forzata/coordinata CPU, opzioni vendor e storage industriale completo restano aperti.
 
+30 ottobre 2026: filtro variazioni assoluto/percentuale, default archivio e override per variabile,
+confronto decimale esatto, qualità non filtrata e stessa pipeline in servizio/anteprima/browser (180).
+Generazione Data Log da modulo autonomo verificata anche dopo minificazione dell'editor.
+
 21 ottobre 2026: archivio allarmi Framecraft su disco e vista protetta separata dallo stato attivo
 (LAVORO 161). Restano multilingua storica, manutenzione industriale e collaudo target.
 
@@ -58,7 +68,8 @@ tipi avanzati, simultaneità delle letture o collaudo CPU.
 
 22 ottobre 2026: collegamenti ricetta-tag, lettura scalare dalla cache PLC, confronto e nuova
 bozza esplicita (LAVORO 163). Per applicare una ricetta è obbligatoria la conferma del programma
-PLC: handshake e area di preparazione non sono ancora implementati. Nessuna scrittura diretta.
+PLC. Contratto Framecraft, preparazione e applicazione confermata sono stati poi implementati
+nei punti 164–166; restano adapter/collaudi CPU e manutenzione industriale. Nessuna scrittura diretta.
 
 Questo file è la checklist stabile del progetto. L'obiettivo non è copiare l'aspetto di TIA Portal,
 ma coprire le capacità che servono a progettare e usare un HMI Unified, poi renderle più verificabili,
@@ -222,7 +233,7 @@ in `ARCHITETTURA-HMI.md`; nessun avanzamento artificiale dei gate industriali, O
 | ID | Capacità WinCC Unified | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
 | WCU-DAT-01 | Data log e logging tag | PARZIALE | On demand con lettura CPU forzata/coordinata, semantica completa del target e carico industriale | Configurazione e import iniziale; acquisizione condivisa MQTT/OPC UA, tre modalità Framecraft, archiviazione SQLite indipendente dalle pagine, permessi per letture/campionamenti e diagnostica (179) |
-| WCU-DAT-02 | Smoothing, aggregation e limits | PARZIALE | Opzioni Unified complete, sorgenti da altri logging tag e anteprima visuale della pipeline | Media mobile, media/minimo/massimo e limiti nel browser e nel servizio; medie senza overflow della somma, finestre parziali e separazione della qualità invalida (179) |
+| WCU-DAT-02 | Smoothing, aggregation e limits | PARZIALE | Opzioni Unified complete, sorgenti da altri logging tag e anteprima visuale della pipeline | Media mobile, media/minimo/massimo e limiti; medie stabili, finestre parziali e qualità separata (179). Filtro variazioni condiviso con soglia assoluta/percentuale, ereditarietà e override, confronti decimali esatti e qualità non filtrata (180) |
 | WCU-DAT-03 | Storage, segmenti e retention | PARZIALE | Percorsi/supporti esterni, MSSQL, segmenti fisici, rotazione e backup/restore verificati | Browser/sessione e SQLite condiviso: writer unico, WAL/FULL, identità, conservazione per tempo/capacità, indici e limiti; nessuna riparazione o cancellazione per aggirare errori del disco (179) |
 | WCU-DAT-04 | Trend da valori correnti e archiviati | PARZIALE | Query avanzate e storico industriale | La stessa penna sceglie Online o Data Log anche a Runtime, con query temporale, qualità visiva e CSV; nessun valore precedente rietichettato dopo un cambio sorgente; al punto 114, fusi geografici/UTC e un solo predecessore su query esplicita, anche nella cache della prova |
 | WCU-DAT-05 | Statistiche trend ed export CSV | PARZIALE | Statistiche complete, deviazione e analisi salvate | Export CSV online/storico con sorgente e quality code; aggregazioni min/max/media disponibili nel Data Log |

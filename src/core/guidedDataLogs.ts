@@ -1,5 +1,6 @@
 import { hmiDataLogCatalogIssues, parseHmiDataLogCatalog, type HmiDataLogCatalog } from "./hmiDataLogs";
 import type { PlcVariableDefinition } from "./plcVariables";
+import { dataLogDeadbandValid } from "../../runtime/data-log-deadband.mjs";
 
 export interface GuidedLogBinding { logId: string; loggedTagId: string }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -18,15 +19,15 @@ export function parseGuidedDataLogs(value: unknown, variables?: readonly PlcVari
   if (!record(raw) || !keys(raw, ["version", "projectKey", "logs"]) || raw.version !== 1 || !text(raw.projectKey) || !Array.isArray(raw.logs) || raw.logs.length > 32) fail("versione, identificativo progetto o lista archivi non validi");
   let count = 0;
   for (const log of raw.logs) {
-    if (!record(log) || !keys(log, ["id", "name", "enabled", "storage", "retentionMs", "maxEntries", "segmentDurationMs", "tags"]) || !text(log.id, 80) || !text(log.name) || typeof log.enabled !== "boolean" || !["memory", "browser-local", "runtime"].includes(String(log.storage)) || !integer(log.retentionMs, 60_000, (log.storage === "runtime" ? 3660 : 365) * 86_400_000) || !integer(log.maxEntries, 100, log.storage === "runtime" ? 500_000 : 100_000) || !integer(log.segmentDurationMs, 60_000, (log.storage === "runtime" ? 3660 : 365) * 86_400_000) || !Array.isArray(log.tags)) fail("configurazione archivio non valida (servizio: massimo 500000 campioni e dieci anni; browser: 100000 campioni e un anno)");
+    if (!record(log) || !keys(log, ["id", "name", "enabled", "storage", "retentionMs", "maxEntries", "segmentDurationMs", "tags"], ["deadband"]) || log.deadband !== undefined && !dataLogDeadbandValid(log.deadband) || !text(log.id, 80) || !text(log.name) || typeof log.enabled !== "boolean" || !["memory", "browser-local", "runtime"].includes(String(log.storage)) || !integer(log.retentionMs, 60_000, (log.storage === "runtime" ? 3660 : 365) * 86_400_000) || !integer(log.maxEntries, 100, log.storage === "runtime" ? 500_000 : 100_000) || !integer(log.segmentDurationMs, 60_000, (log.storage === "runtime" ? 3660 : 365) * 86_400_000) || !Array.isArray(log.tags)) fail("configurazione archivio non valida (servizio: massimo 500000 campioni e dieci anni; browser: 100000 campioni e un anno)");
     count += log.tags.length; if (count > 5000) fail("massimo 5000 variabili archiviate complessive");
     for (const tag of log.tags) {
-      if (!record(tag) || !keys(tag, ["id", "name", "tag", "mode", "cycleMs", "includeUnchanged", "smoothingSamples", "aggregation", "aggregationWindowMs"], ["triggerTag", "triggerCondition", "triggerValue", "minimum", "maximum"]) || !text(tag.id, 80) || !text(tag.name) || !text(tag.tag) || !["cyclic", "on-change", "on-demand"].includes(String(tag.mode)) || !integer(tag.cycleMs, 500, 86_400_000) || typeof tag.includeUnchanged !== "boolean" || !integer(tag.smoothingSamples, 1, 64) || !["none", "average", "minimum", "maximum"].includes(String(tag.aggregation)) || !integer(tag.aggregationWindowMs, 500, 365 * 86_400_000)) fail("configurazione variabile archiviata non valida");
+      if (!record(tag) || !keys(tag, ["id", "name", "tag", "mode", "cycleMs", "includeUnchanged", "smoothingSamples", "aggregation", "aggregationWindowMs"], ["triggerTag", "triggerCondition", "triggerValue", "minimum", "maximum", "deadband"]) || tag.deadband !== undefined && !dataLogDeadbandValid(tag.deadband) || !text(tag.id, 80) || !text(tag.name) || !text(tag.tag) || !["cyclic", "on-change", "on-demand"].includes(String(tag.mode)) || !integer(tag.cycleMs, 500, 86_400_000) || typeof tag.includeUnchanged !== "boolean" || !integer(tag.smoothingSamples, 1, 64) || !["none", "average", "minimum", "maximum"].includes(String(tag.aggregation)) || !integer(tag.aggregationWindowMs, 500, 365 * 86_400_000)) fail("configurazione variabile archiviata non valida");
       if (tag.triggerTag !== undefined && !text(tag.triggerTag) || tag.triggerCondition !== undefined && !["changed", "rising", "falling", "equals"].includes(String(tag.triggerCondition)) || tag.triggerValue !== undefined && (typeof tag.triggerValue !== "string" || tag.triggerValue.length > 512 || /[\u0000-\u001f]/.test(tag.triggerValue)) || ["minimum", "maximum"].some(key => tag[key] !== undefined && !number(tag[key], -Number.MAX_VALUE, Number.MAX_VALUE))) fail("trigger o limiti non validi");
       if (tag.triggerCondition === "equals" && (tag.triggerValue === undefined || tag.triggerValue === "")) fail("un trigger di uguaglianza richiede un valore esplicito, anche quando si vuole confrontare con 0 o false");
     }
   }
-  const catalog = parseHmiDataLogCatalog(raw), errors = hmiDataLogCatalogIssues(catalog).filter(issue => issue.severity === "error");
+  const catalog = parseHmiDataLogCatalog(raw), errors = hmiDataLogCatalogIssues(catalog, variables).filter(issue => issue.severity === "error");
   if (errors.length) fail(errors[0].message);
   if (variables) {
     const declared = new Map<string, PlcVariableDefinition[]>();

@@ -1,4 +1,5 @@
 import { normalizeMqttTagValue } from "./connection-config.mjs";
+import { dataLogDeadbandValid, effectiveDataLogDeadband, dataLogDeadbandAllows } from "./data-log-deadband.mjs";
 
 const messages = {
   DATA_LOG_CONFIG: [422, "Configurazione Data Log del servizio non valida", "Apri Pannello → Data Log e storico: verifica ID, variabili dichiarate, limiti e modalità, poi salva e riavvia manualmente il servizio."],
@@ -25,7 +26,8 @@ const integer = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInte
 const time = v => Number.isFinite(v) && Math.abs(v) <= 8640000000000000;
 const uuid = v => typeof v === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v);
 export function dataLogDefinitionKey(log, tag) {
-  return JSON.stringify([log.id, tag.id, tag.tag, tag.mode, tag.cycleMs, tag.triggerTag ?? null, tag.triggerCondition ?? "changed", tag.triggerValue ?? null, tag.includeUnchanged, tag.smoothingSamples, tag.aggregation, tag.aggregationWindowMs, tag.minimum ?? null, tag.maximum ?? null]);
+  const policy = effectiveDataLogDeadband(log, tag);
+  return JSON.stringify([log.id, tag.id, tag.tag, tag.mode, tag.cycleMs, tag.triggerTag ?? null, tag.triggerCondition ?? "changed", tag.triggerValue ?? null, tag.includeUnchanged, tag.smoothingSamples, tag.aggregation, tag.aggregationWindowMs, tag.minimum ?? null, tag.maximum ?? null, ...(policy ? ["deadband", policy.mode, policy.value] : [])]);
 }
 export function parseServiceDataLogs(input, variables) {
   if (typeof input === "string") try { input = JSON.parse(input); } catch { fail("DATA_LOG_CONFIG"); }
@@ -35,14 +37,14 @@ export function parseServiceDataLogs(input, variables) {
     if (!object(log) || !["memory", "browser-local", "runtime"].includes(log.storage)) fail("DATA_LOG_CONFIG");
     if (log.storage !== "runtime") continue;
     if (!id(log.id) || ids.has(log.id.toLowerCase())) fail("DATA_LOG_CONFIG"); ids.add(log.id.toLowerCase());
-    if (!keys(log, ["id", "name", "enabled", "storage", "retentionMs", "maxEntries", "segmentDurationMs", "tags"]) || !text(log.name, 200) || typeof log.enabled !== "boolean" || !integer(log.retentionMs, 60000, 10 * 366 * 86400000) || !integer(log.maxEntries, 100, 500000) || !integer(log.segmentDurationMs, 60000, 10 * 366 * 86400000) || !Array.isArray(log.tags) || log.tags.length > 256) fail("DATA_LOG_CONFIG");
+    if (!keys(log, ["id", "name", "enabled", "storage", "retentionMs", "maxEntries", "segmentDurationMs", "tags"], ["deadband"]) || log.deadband !== undefined && !dataLogDeadbandValid(log.deadband) || !text(log.name, 200) || typeof log.enabled !== "boolean" || !integer(log.retentionMs, 60000, 10 * 366 * 86400000) || !integer(log.maxEntries, 100, 500000) || !integer(log.segmentDurationMs, 60000, 10 * 366 * 86400000) || !Array.isArray(log.tags) || log.tags.length > 256) fail("DATA_LOG_CONFIG");
     const tagIds = new Set();
     for (const tag of log.tags) {
-      if (!keys(tag, ["id", "name", "tag", "mode", "cycleMs", "includeUnchanged", "smoothingSamples", "aggregation", "aggregationWindowMs"], ["triggerTag", "triggerCondition", "triggerValue", "minimum", "maximum"]) || !id(tag.id) || tagIds.has(tag.id.toLowerCase()) || !text(tag.name, 200) || !text(tag.tag, 200) || !["on-change", "on-demand", "cyclic"].includes(tag.mode) || !integer(tag.cycleMs, 500, 86400000) || typeof tag.includeUnchanged !== "boolean" || !integer(tag.smoothingSamples, 1, 64) || !["none", "average", "minimum", "maximum"].includes(tag.aggregation) || !integer(tag.aggregationWindowMs, 500, 86400000)) fail("DATA_LOG_CONFIG");
+      if (!keys(tag, ["id", "name", "tag", "mode", "cycleMs", "includeUnchanged", "smoothingSamples", "aggregation", "aggregationWindowMs"], ["triggerTag", "triggerCondition", "triggerValue", "minimum", "maximum", "deadband"]) || tag.deadband !== undefined && !dataLogDeadbandValid(tag.deadband) || !id(tag.id) || tagIds.has(tag.id.toLowerCase()) || !text(tag.name, 200) || !text(tag.tag, 200) || !["on-change", "on-demand", "cyclic"].includes(tag.mode) || !integer(tag.cycleMs, 500, 86400000) || typeof tag.includeUnchanged !== "boolean" || !integer(tag.smoothingSamples, 1, 64) || !["none", "average", "minimum", "maximum"].includes(tag.aggregation) || !integer(tag.aggregationWindowMs, 500, 86400000)) fail("DATA_LOG_CONFIG");
       tagIds.add(tag.id.toLowerCase());
       if (tag.triggerTag !== undefined && !text(tag.triggerTag, 200) || tag.triggerCondition !== undefined && !["changed", "rising", "falling", "equals"].includes(tag.triggerCondition) || tag.triggerValue !== undefined && (typeof tag.triggerValue !== "string" || tag.triggerValue.length > 1000) || [tag.minimum, tag.maximum].some(v => v !== undefined && !Number.isFinite(v)) || tag.minimum !== undefined && tag.maximum !== undefined && tag.minimum > tag.maximum) fail("DATA_LOG_CONFIG");
       if (declared) for (const name of [tag.tag, tag.triggerTag].filter(Boolean)) { const variable = declared.get(name); if (!variable || variable.access === "write" || typeof variable.dataType !== "string") fail("DATA_LOG_CONFIG"); try { normalizeMqttTagValue(["bool", "boolean"].includes(variable.dataType.toLowerCase()) ? false : ["string", "wstring"].includes(variable.dataType.toLowerCase()) ? "" : 0, variable.dataType); } catch { fail("DATA_LOG_CONFIG"); } }
-      if (declared && (tag.smoothingSamples > 1 || tag.aggregation !== "none" || tag.minimum !== undefined || tag.maximum !== undefined) && ["bool", "boolean", "string", "wstring"].includes(declared.get(tag.tag).dataType.toLowerCase())) fail("DATA_LOG_CONFIG");
+      if (declared && (tag.smoothingSamples > 1 || tag.aggregation !== "none" || tag.minimum !== undefined || tag.maximum !== undefined || effectiveDataLogDeadband(log, tag)) && ["bool", "boolean", "string", "wstring"].includes(declared.get(tag.tag).dataType.toLowerCase())) fail("DATA_LOG_CONFIG");
     }
     tags += log.tags.length; service.push(structuredClone(log));
   }
@@ -81,10 +83,13 @@ export function createServiceDataLogEngine({ catalog, write, read, now = () => D
   const process = (entry, sample, at) => {
     const p = pipelines.get(entry.key) ?? { smooth: [], last: undefined, bucket: undefined }; pipelines.set(entry.key, p); const rows = [];
     if (p.bucket && at >= p.bucket.end) rows.push(...flush(entry, p, at));
-    if (!sample || sample.value === undefined || sample.qualityCode !== 192 || sample.lastError) { if (p.bucket) rows.push(...flush(entry, p, at, true)); p.smooth = []; p.bucket = undefined; const signature = "bad:" + (sample?.qualityCode ?? 0); if (p.last !== signature || entry.tag.includeUnchanged) rows.push(point(entry, sample?.value === undefined ? null : String(sample.value), sample, at)); p.last = signature; return rows; }
+    if (!sample || sample.value === undefined || sample.qualityCode !== 192 || sample.lastError) { if (p.bucket) rows.push(...flush(entry, p, at, true)); p.smooth = []; p.bucket = undefined; p.reference = undefined; const signature = "bad:" + (sample?.qualityCode ?? 0); if (p.last !== signature || entry.tag.includeUnchanged) rows.push(point(entry, sample?.value === undefined ? null : String(sample.value), sample, at)); p.last = signature; return rows; }
     let value = String(sample.value); if (value.length > 4096) { report(new DataLogError("DATA_LOG_CONFIG")); return rows; }
     const numeric = Number(value), transformed = entry.tag.smoothingSamples > 1 || entry.tag.aggregation !== "none" || entry.tag.minimum !== undefined || entry.tag.maximum !== undefined;
     if (transformed && (!Number.isFinite(numeric) || entry.tag.minimum !== undefined && numeric < entry.tag.minimum || entry.tag.maximum !== undefined && numeric > entry.tag.maximum)) return rows;
+    const policy = effectiveDataLogDeadband(entry.log, entry.tag);
+    if (policy && !dataLogDeadbandAllows(p.reference, value, policy)) return rows;
+    if (policy) p.reference = value;
     if (entry.tag.smoothingSamples > 1) { p.smooth.push(numeric); if (p.smooth.length > entry.tag.smoothingSamples) p.smooth.shift(); value = String(p.smooth.reduce((mean, value, index) => meanStep(mean, value, index + 1), 0)); }
     if (entry.tag.aggregation !== "none") { const end = (Math.floor(at / entry.tag.aggregationWindowMs) + 1) * entry.tag.aggregationWindowMs; if (p.bucket && p.bucket.end !== end) rows.push(...flush(entry, p, at, true)); const b = p.bucket ?? { end, count: 0, mean: 0, min: Infinity, max: -Infinity }; b.count++; b.mean = meanStep(b.mean, Number(value), b.count); b.min = Math.min(b.min, Number(value)); b.max = Math.max(b.max, Number(value)); b.sample = sample; p.bucket = b; return rows; }
     if (entry.tag.includeUnchanged || p.last !== value) rows.push(point(entry, value, sample, at)); p.last = value; return rows;

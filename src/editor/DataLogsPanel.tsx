@@ -12,6 +12,7 @@ import {
   type HmiDataLogCatalog,
   type HmiDataLogDefinition,
   type HmiLoggingTagDefinition,
+  type HmiDataLogDeadband,
 } from "../core/hmiDataLogs";
 import { joinProjectPath } from "../core/paths";
 import { desktopBridge } from "../filesystem/desktopBridge";
@@ -25,6 +26,34 @@ const uniqueId = (used: readonly string[], base: string) => {
   return id;
 };
 const formatSize = (bytes: number) => bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.ceil(bytes / 1_000)} kB`;
+
+function DeadbandFields({ policy, inherited, onChange, variable = false }: {
+  policy?: HmiDataLogDeadband;
+  inherited?: HmiDataLogDeadband;
+  onChange: (value?: HmiDataLogDeadband) => void;
+  variable?: boolean;
+}) {
+  const mode = policy?.mode ?? (variable ? "inherit" : "none");
+  const effective = policy ?? inherited;
+  return <div className="data-log-deadband">
+    <div className={`data-log-grid${policy && policy.mode !== "none" ? "" : " data-log-grid-single"}`}>
+      <label><span>{variable ? "Filtro variazioni della variabile" : "Filtro variazioni predefinito"}</span>
+        <select aria-label={variable ? "Filtro variazioni della variabile" : "Filtro variazioni predefinito"} value={mode} onChange={event => onChange(event.target.value === "inherit" ? undefined : { mode: event.target.value as HmiDataLogDeadband["mode"], value: policy?.value ?? 0 })}>
+          {variable && <option value="inherit">Usa il filtro dell’archivio</option>}
+          <option value="none">Nessuno · ogni variazione</option>
+          <option value="absolute">Assoluto · unità del tag</option>
+          <option value="percentage">Percentuale sul valore precedente</option>
+        </select>
+      </label>
+      {policy && policy.mode !== "none" && <label><span>{policy.mode === "percentage" ? "Variazione minima (%)" : "Variazione minima (unità del tag)"}</span>
+        <input type="number" min="0" step="any" value={policy.value} onChange={event => onChange({ ...policy, value: Number(event.target.value) })} />
+      </label>}
+    </div>
+    {variable && mode === "inherit" && <p className="panel-help">{effective && effective.mode !== "none" ? `Filtro dell’archivio: almeno ${effective.value}${effective.mode === "percentage" ? "% del valore precedente in valore assoluto" : " unità del tag"}.` : "L’archivio registra ogni variazione."}</p>}
+    {!variable && <><p className="panel-help">Riduce i campioni dovuti a piccole oscillazioni, solo in Su variazione. I cambi di qualità e il recupero non vengono filtrati.</p>
+      <details><summary>Come funziona la soglia</summary><p className="panel-help">Confronta il valore con l’ultimo campione accettato, prima di medie e aggregazioni. La soglia è inclusa: con 5 unità, da 10 a 12 viene ignorato, da 10 a 15 viene registrato. La percentuale usa il valore precedente in valore assoluto; da zero basta un valore diverso. Con soglia 0 conserva ogni variazione. Non modifica letture o comandi PLC.</p></details></>}
+  </div>;
+}
 
 export function DataLogsPanel() {
   const project = useEditorStore((state) => state.project);
@@ -126,6 +155,7 @@ export function DataLogsPanel() {
       <label><span>Dove conservare i campioni</span><select value={selected.storage} onChange={(event) => patchLog({ storage: event.target.value as HmiDataLogDefinition["storage"] })}><option value="runtime">Disco del servizio · condiviso</option><option value="browser-local">Locale e persistente · questo browser</option><option value="memory">Solo sessione · questa pagina</option></select></label>
       {selected.storage === "runtime" && <p className="panel-help">Avvia il gateway OPC UA/MQTT e assegna agli account il permesso di lettura Data Log. Salva e riavvia manualmente il servizio per applicare modifiche. Su richiesta/trigger usa l’ultima lettura del driver, senza forzare la CPU. I limiti eliminano i campioni più vecchi; organizza un backup. Stima indicativa: le stringhe possono occupare di più. Nel canvas la prova usa solo memoria temporanea.</p>}
       <label className="data-log-check"><input type="checkbox" checked={selected.enabled} onChange={(event) => patchLog({ enabled: event.target.checked })} /> Acquisizione abilitata</label>
+      <DeadbandFields policy={selected.deadband} onChange={deadband => patchLog({ deadband })} />
       <div className="data-log-tags-head"><span><strong>VARIABILI ARCHIVIATE</strong><small>timestamp e quality code vengono conservati con il valore</small></span><button type="button" onClick={addTag}><Plus size={13} /> Aggiungi</button></div>
       <div className="data-log-tag-list">{selected.tags.map((tag) => <article key={tag.id} className="data-log-tag-card">
         <header><span><Database size={13} /><strong>{tag.name}</strong></span><button type="button" onClick={() => patchLog({ tags: selected.tags.filter((item) => item.id !== tag.id) })} aria-label={`Elimina ${tag.name}`}><Trash2 size={12} /></button></header>
@@ -133,6 +163,7 @@ export function DataLogsPanel() {
         <label><span>Identificatore log</span><input value={tag.id} onChange={(event) => patchTag(tag.id, { id: identifier(event.target.value, tag.id) })} /></label>
         <label><span>Variabile PLC</span><input list="hmi-data-log-tags" value={tag.tag} onChange={(event) => patchTag(tag.id, { tag: event.target.value })} placeholder="es. Oven.Temperature" /></label>
         <label><span>Modalità</span><select value={tag.mode} onChange={(event) => patchTag(tag.id, { mode: event.target.value as HmiLoggingTagDefinition["mode"] })}><option value="on-change">Su variazione</option><option value="on-demand">Su richiesta / trigger</option><option value="cyclic">Ciclica</option></select></label>
+        {tag.mode === "on-change" && <DeadbandFields variable policy={tag.deadband} inherited={selected.deadband} onChange={deadband => patchTag(tag.id, { deadband })} />}
         {tag.mode === "cyclic" && <><label><span>Ciclo logging (ms)</span><input type="number" min="500" step="100" value={tag.cycleMs} onChange={(event) => patchTag(tag.id, { cycleMs: Math.max(500, Math.round(Number(event.target.value) || 500)) })} /></label><label className="data-log-check"><input type="checkbox" checked={tag.includeUnchanged} onChange={(event) => patchTag(tag.id, { includeUnchanged: event.target.checked })} /> Registra anche valori invariati</label></>}
         {tag.mode === "on-demand" && <><label><span>Variabile trigger</span><input list="hmi-data-log-tags" value={tag.triggerTag ?? ""} onChange={(event) => patchTag(tag.id, { triggerTag: event.target.value || undefined })} placeholder="Vuoto se richiamata da script" /></label><div className="data-log-grid"><label><span>Condizione</span><select value={tag.triggerCondition ?? "changed"} onChange={(event) => patchTag(tag.id, { triggerCondition: event.target.value as HmiLoggingTagDefinition["triggerCondition"] })}><option value="changed">Cambia</option><option value="rising">Fronte salita</option><option value="falling">Fronte discesa</option><option value="equals">Uguale a</option></select></label>{tag.triggerCondition === "equals" && <label><span>Valore</span><input value={tag.triggerValue ?? "1"} onChange={(event) => patchTag(tag.id, { triggerValue: event.target.value })} /></label>}</div></>}
         <details><summary>Elaborazione campione</summary><div className="data-log-grid"><label><span>Media mobile (campioni)</span><input type="number" min="1" max="64" value={tag.smoothingSamples} onChange={(event) => patchTag(tag.id, { smoothingSamples: Math.max(1, Math.min(64, Math.round(Number(event.target.value) || 1))) })} /></label><label><span>Aggregazione</span><select value={tag.aggregation} onChange={(event) => patchTag(tag.id, { aggregation: event.target.value as HmiLoggingTagDefinition["aggregation"] })}><option value="none">Nessuna</option><option value="average">Media</option><option value="minimum">Minimo</option><option value="maximum">Massimo</option></select></label>{tag.aggregation !== "none" && <label><span>Finestra (s)</span><input type="number" min="0.5" step="0.5" value={tag.aggregationWindowMs / 1000} onChange={(event) => patchTag(tag.id, { aggregationWindowMs: Math.max(500, Number(event.target.value) * 1000 || 500) })} /></label>}<label><span>Limite minimo</span><input type="number" value={tag.minimum ?? ""} onChange={(event) => patchTag(tag.id, { minimum: event.target.value === "" ? undefined : Number(event.target.value) })} /></label><label><span>Limite massimo</span><input type="number" value={tag.maximum ?? ""} onChange={(event) => patchTag(tag.id, { maximum: event.target.value === "" ? undefined : Number(event.target.value) })} /></label></div></details>

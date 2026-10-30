@@ -25,6 +25,8 @@ import { hmiTrendRuntimeModuleSource } from "./hmiTrend";
 import { hmiFunctionTrendRuntimeModuleSource } from "./hmiFunctionTrend";
 import { emptyHmiDataLogCatalog, hmiDataLogRuntimeModuleSource } from "./hmiDataLogs";
 import dataLogContractSource from "../../runtime/data-log.mjs?raw";
+import dataLogDeadbandSource from "../../runtime/data-log-deadband.mjs?raw";
+import dataLogDeadbandTypes from "../../runtime/data-log-deadband.d.mts?raw";
 import dataLogContractTypes from "../../runtime/data-log.d.mts?raw";
 import dataLogStoreSource from "../../runtime/data-log-store.mjs?raw";
 import dataLogStoreTypes from "../../runtime/data-log-store.d.mts?raw";
@@ -1970,6 +1972,8 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/alarm-engine.mjs", content: alarmEngineSource },
     { path: "runtime/alarm-engine.d.mts", content: alarmEngineTypes },
     { path: "runtime/data-log.mjs", content: dataLogContractSource },
+    { path: "runtime/data-log-deadband.mjs", content: dataLogDeadbandSource },
+    { path: "runtime/data-log-deadband.d.mts", content: dataLogDeadbandTypes },
     { path: "runtime/data-log.d.mts", content: dataLogContractTypes },
     { path: "runtime/data-log-store.mjs", content: dataLogStoreSource },
     { path: "runtime/data-log-store.d.mts", content: dataLogStoreTypes },
