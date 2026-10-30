@@ -46,6 +46,10 @@ it("importa configurazioni vere senza campioni o normalizzazioni silenziose", ()
   expect(guidedDataLogSources(value).map(source => source.loggedTagId)).toEqual(["x", "y", "text"]);
   expect(value.projectKey).toBe("ORIGINAL_PROJECT_KEY");
 });
+
+it("il nuovo pannello include Data Log del servizio importati e i moduli necessari a leggerli", () => {
+  const interview = fixture(); interview.spec.dataLogs!.logs[0].storage = "runtime"; expect(parseGuidedDataLogs(interview.spec.dataLogs, interview.spec.tags).logs[0].storage).toBe("runtime"); const { files } = generated(interview); expect(JSON.parse(files.find(file => file.path === "framecraft.logs.json")!.content).logs[0].storage).toBe("runtime"); expect(files.some(file => file.path === "runtime/data-log-store.mjs")).toBe(true); expect(files.some(file => file.path === "src/framecraftHmiDataLogClient.ts")).toBe(true);
+});
 it.each(["version", "extra", "samples", "storage", "cycle", "entries", "missing", "duplicate", "duplicate-tag"])("rifiuta un catalogo non supportato: %s", change => {
   const value = JSON.parse(JSON.stringify(catalog()));
   if (change === "version") value.version = 2;
@@ -156,6 +160,6 @@ it("il Runtime generato acquisisce e disegna campioni reali dall’archivio scel
   const main = files.find(file => file.path === "src/framecraftHmiRuntime.ts")!.content, start = main.indexOf("function renderTrendControls()"), end = main.indexOf("\nfunction dynamizations(", start);
   expect(start).toBeGreaterThan(-1); expect(end).toBeGreaterThan(start);
   const code = transpileModule(main.slice(start, end), { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 } }).outputText;
-  const draw = new Function("document", "values", "tagStatus", "plcCatalogJson", "dataLogCatalogJson", "dataLogRuntime", "renderHmiTrendControls", "renderHmiFunctionTrendControls", "viewProfileConfig", "viewProfileStore", code + "\nreturn renderTrendControls;")(document, {}, {}, { variables: fixture().spec.tags }, logCatalog, runtime, (doc: Document, values: unknown, options: Record<string, unknown>) => render(doc, values, { ...options, now: at }), () => {}, { namespace: "synthetic" }, {});
+  const draw = new Function("document", "values", "tagStatus", "plcCatalogJson", "dataLogCatalogJson", "dataLogRuntime", "renderHmiTrendControls", "renderHmiFunctionTrendControls", "viewProfileConfig", "viewProfileStore", "queryRuntimeDataLogs", "serviceDataLogs", code + "\nreturn renderTrendControls;")(document, {}, {}, { variables: fixture().spec.tags }, logCatalog, runtime, (doc: Document, values: unknown, options: Record<string, unknown>) => render(doc, values, { ...options, now: at }), () => {}, { namespace: "synthetic" }, {}, (logId: string, tagId: string, from: number, to: number, previous: boolean) => runtime.query(logId, tagId, from, to, previous), undefined);
   draw(); expect(runtime.query("process", "y")).toHaveLength(2); expect(host.querySelector('[data-hmi-trend-series="curve-1"]')?.getAttribute("d")).toMatch(/^M.+L/); runtime.stop();
 });

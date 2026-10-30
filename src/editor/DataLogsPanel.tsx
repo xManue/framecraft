@@ -77,7 +77,7 @@ export function DataLogsPanel() {
     const index = catalog.logs.length;
     const seed = defaultHmiDataLog(index);
     const id = uniqueId(catalog.logs.map((log) => log.id), seed.id);
-    change({ ...catalog, logs: [...catalog.logs, { ...seed, id }] }); setSelectedId(id);
+    change({ ...catalog, logs: [...catalog.logs, { ...seed, id, storage: "runtime" }] }); setSelectedId(id);
   };
   const removeLog = () => {
     if (!selected || !window.confirm(`Eliminare il Data Log «${selected.name}»? I Trend che lo usano verranno segnalati dal controllo pannello.`)) return;
@@ -104,12 +104,12 @@ export function DataLogsPanel() {
 
   return <div className="panel-content data-log-panel">
     <div className="panel-title"><span>DATA LOG</span><small>{catalog.logs.length}</small></div>
-    <p className="panel-help">Archivi reali del Runtime: acquisizione su variazione, su trigger o ciclica. I Trend possono leggere questi campioni anche dopo il ricaricamento.</p>
+    <p className="panel-help">Acquisizione su variazione, trigger o ciclo. Scegli il servizio per uno storico condiviso che continua a registrare anche senza pagine aperte; browser e sessione sono archivi separati.</p>
     <datalist id="hmi-data-log-tags">{variables.map((variable) => <option key={variable.name} value={variable.name}>{variable.dataType}</option>)}</datalist>
     <div className="data-log-toolbar"><button type="button" onClick={addLog}><Plus size={13} /> Nuovo Data Log</button></div>
     <div className="data-log-list">
       {catalog.logs.map((log) => <button type="button" key={log.id} className={log.id === selectedId ? "active" : ""} onClick={() => setSelectedId(log.id)}>
-        <Database size={14} /><span><strong>{log.name}</strong><small>{log.enabled ? "Attivo" : "Disattivato"} · {log.tags.length} variabili · {formatSize(estimateHmiDataLogBytes(log))} max</small></span>
+        <Database size={14} /><span><strong>{log.name}</strong><small>{log.enabled ? "Attivo" : "Disattivato"} · {log.storage === "runtime" ? "Servizio" : log.storage === "memory" ? "Questa pagina" : "Questo browser"} · {log.tags.length} variabili · {formatSize(estimateHmiDataLogBytes(log))} stimati</small></span>
       </button>)}
       {!catalog.logs.length && <p className="resource-empty">Nessun archivio. Creane uno, aggiungi le variabili e salvalo: apparirà tra le sorgenti del Trend Control.</p>}
     </div>
@@ -119,11 +119,12 @@ export function DataLogsPanel() {
       <label><span>Identificatore</span><input value={selected.id} onChange={(event) => patchLog({ id: identifier(event.target.value, selected.id) })} /></label>
       <div className="data-log-grid">
         <label><span>Conservazione (giorni)</span><input type="number" min="0.001" step="0.25" value={Number((selected.retentionMs / 86_400_000).toFixed(3))} onChange={(event) => patchLog({ retentionMs: Math.max(60_000, Number(event.target.value) * 86_400_000 || 60_000) })} /></label>
-        <label><span>Segmento (ore)</span><input type="number" min="0.017" step="1" value={Number((selected.segmentDurationMs / 3_600_000).toFixed(3))} onChange={(event) => patchLog({ segmentDurationMs: Math.max(60_000, Number(event.target.value) * 3_600_000 || 60_000) })} /></label>
-        <label><span>Campioni massimi</span><input type="number" min="100" step="100" value={selected.maxEntries} onChange={(event) => patchLog({ maxEntries: Math.max(100, Math.round(Number(event.target.value) || 100)) })} /></label>
+        {selected.storage !== "runtime" && <label><span>Segmento (ore)</span><input type="number" min="0.017" step="1" value={Number((selected.segmentDurationMs / 3_600_000).toFixed(3))} onChange={(event) => patchLog({ segmentDurationMs: Math.max(60_000, Number(event.target.value) * 3_600_000 || 60_000) })} /></label>}
+        <label><span>Campioni totali massimi</span><input type="number" min="100" step="100" value={selected.maxEntries} onChange={(event) => patchLog({ maxEntries: Math.max(100, Math.round(Number(event.target.value) || 100)) })} /></label>
         <label><span>Memoria stimata</span><output>{formatSize(estimateHmiDataLogBytes(selected))}</output></label>
       </div>
-      <label><span>Persistenza Runtime</span><select value={selected.storage} onChange={(event) => patchLog({ storage: event.target.value as HmiDataLogDefinition["storage"] })}><option value="browser-local">Locale e persistente</option><option value="memory">Solo sessione</option></select></label>
+      <label><span>Dove conservare i campioni</span><select value={selected.storage} onChange={(event) => patchLog({ storage: event.target.value as HmiDataLogDefinition["storage"] })}><option value="runtime">Disco del servizio · condiviso</option><option value="browser-local">Locale e persistente · questo browser</option><option value="memory">Solo sessione · questa pagina</option></select></label>
+      {selected.storage === "runtime" && <p className="panel-help">Avvia il gateway OPC UA/MQTT e assegna agli account il permesso di lettura Data Log. Salva e riavvia manualmente il servizio per applicare modifiche. Su richiesta/trigger usa l’ultima lettura del driver, senza forzare la CPU. I limiti eliminano i campioni più vecchi; organizza un backup. Stima indicativa: le stringhe possono occupare di più. Nel canvas la prova usa solo memoria temporanea.</p>}
       <label className="data-log-check"><input type="checkbox" checked={selected.enabled} onChange={(event) => patchLog({ enabled: event.target.checked })} /> Acquisizione abilitata</label>
       <div className="data-log-tags-head"><span><strong>VARIABILI ARCHIVIATE</strong><small>timestamp e quality code vengono conservati con il valore</small></span><button type="button" onClick={addTag}><Plus size={13} /> Aggiungi</button></div>
       <div className="data-log-tag-list">{selected.tags.map((tag) => <article key={tag.id} className="data-log-tag-card">
@@ -140,7 +141,7 @@ export function DataLogsPanel() {
     </section>}
     {issues.map((issue, index) => <div key={`${issue.logId}:${issue.loggedTagId}:${index}`} className={issue.severity === "error" ? "plc-error" : "data-log-warning"} role={issue.severity === "error" ? "alert" : undefined}><AlertTriangle size={13} /><span>{issue.message}</span></div>)}
     {error && <div className="plc-error" role="alert"><AlertTriangle size={13} /><span>{error}</span></div>}
-    {saved && !dirty && <div className="plc-imported" role="status"><Check size={13} /><span>Data Log salvati e disponibili nel Runtime.</span></div>}
+    {saved && !dirty && <div className="plc-imported" role="status"><Check size={13} /><span>{catalog.logs.some(log => log.storage === "runtime") ? "Configurazione salvata. Riavvia manualmente il servizio per applicare i Data Log sul disco." : "Data Log salvati e disponibili nel Runtime."}</span></div>}
     <button className="resource-save" type="button" onClick={() => void save()} disabled={!project || saving || !dirty || hasErrors}><Save size={14} />{saving ? "Salvataggio…" : hasErrors ? "Correggi gli errori" : dirty ? "Salva Data Log" : "Data Log salvati"}</button>
   </div>;
 }

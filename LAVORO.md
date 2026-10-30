@@ -6366,6 +6366,51 @@ Verifiche del 5 ottobre 2026:
   Preservati i 23 file WIP precedenti, con solo sei integrazioni proprie nel file misto
   standardProject.ts; nessun JSON impianto, immagine reale o segreto nel commit pubblico.
 
+## 179. Data Log condiviso sul servizio e storico nei trend (30 ottobre 2026)
+
+- **Scelta e pipeline**: Pannello → Data Log e storico offre Disco del servizio, iniziale per
+  nuovi archivi dalla schermata, separato da browser/sessione. Configurazione e import nel nuovo
+  pannello distribuiscono contratto, collector, store SQLite e client dei grafici; i pannelli
+  esistenti richiedono aggiornamento esplicito. Salvataggio/configurazione non avviano PLC.
+  Il canvas simula questi archivi soltanto in memoria, senza duplicare dati nel browser o disco.
+- **Acquisizione reale**: il gateway raccoglie campioni dai driver MQTT/OPC UA anche senza pagine
+  aperte. Variazioni di valore/qualità, cicli monotoni minimi 500 ms e richieste/trigger armati;
+  nessun recupero inventato durante pause o riavvii. Richiesta/trigger usano la cache del driver,
+  senza una lettura CPU forzata. Valori, qualità e timestamp sorgente restano distinti dall'ora
+  UTC di registrazione; dato assente null, non zero. Limiti, media mobile e aggregazioni prima
+  della persistenza, medie numericamente stabili e finestre parziali per arresto/qualità invalida.
+- **Disco**: samples.sqlite con identità/namespace, writer unico, WAL/FULL e controlli di file,
+  marker, link e schema. Conservazione per tempo/capacità esplicita, senza cancellazioni per
+  aggirare guasti. Conteggi mantenuti e indici evitano la riscansione dell'intero archivio a
+  ogni campione; hash delle definizioni per serie che non mescolano elaborazioni diverse.
+  Limite database 256 MiB, con stima/avvisi nell'editor, errori distinti per lock e Node/SQLite.
+  Campo segmenti nascosto per SQLite: non viene promessa rotazione fisica inesistente.
+- **Accesso e richieste**: capacità globali dataLogs.read/dataLogs.sample assegnate esplicitamente,
+  senza nuovi permessi impliciti. Query fisse GET o JSON POST, snapshot/cursori e revisione
+  della conservazione; pagine parziali scartate. Campionamento manuale con UUID/istanza,
+  sessione/CSRF, nuova autorizzazione dopo l'audit e ricevuta atomica con i campioni. Nessuna
+  scrittura PLC o ripetizione automatica. Ledger separato dalla conservazione dei campioni.
+- **Trend e utenti**: temporali e X/Y leggono anche lo storico del servizio. Cache/coda/volume
+  limitati, intervallo esatto filtrato e predecessore dove richiesto, UI di lettura/errore
+  soltanto nei grafici interessati. Cambio/scadenza utente o cambio servizio puliscono anche
+  viste in pausa; reset e risposte tardive non trasferiscono dati al nuovo operatore.
+  Metadati interni ai widget e observer dedicato, evitando mutazioni dei nodi dell'editor.
+  Corretti i bordi che aggiungevano 2 px alla larghezza dei grafici su mobile.
+- **Verifiche**: 104 casi distinti su 10 file mirati, senza sommare ripetizioni; MQTT reale
+  loopback, OPC UA locale con nodo/qualità reali, SQLite, permessi, CSRF, scadenza durante
+  audit, deduplica, riavvio/read-only, conservazione/cursori, medie estreme e qualità interrotta.
+  Typecheck/build pubblici e Runtime generato. Browser: lettura senza campionare dal browser,
+  entrambe le curve, cambio sorgente, un campionamento manuale con audit, logout da grafici in
+  pausa, CSV con qualità e lettura dopo chiusura/riavvio/reload. Zero scritture/richieste write
+  PLC ed esterne; immagini sintetiche controllate a 375/768/1024/1440 px. Nessuna suite generale,
+  agente, modifica nativa o dipendenza nuova. Node 24.22.1/SQLite 3.53.4 nel collaudo locale.
+- **Stato**: riferimenti mirati Unified V21 e Data Logger Optix current aggiornati; restano
+  letture CPU forzate/coerenti, deadband e modello vendor, array/UDT, query/store generici,
+  supporti esterni, backup/restore, prestazioni/guasti e CPU/touch/WebView2 reali. Nessuna
+  parità vendor o produzione certificata dichiarata. AI rinviata e obiettivo complessivo attivo.
+  Preservati i 23 file WIP precedenti; solo le integrazioni proprie nei quattro file misti
+  sono incluse. Nessun JSON macchina, asset reale o segreto nel commit pubblico.
+
 ## Da fare, dopo
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.
@@ -6397,8 +6442,9 @@ Verifiche del 5 ottobre 2026:
 - **Roadmap WinCC, fase 6 da completare**: stampa, profili, codici fuso vendor/object model
   dei trend e collaudo reale; fusi IANA e aggregazione per pixel aggiunti al punto 114
   (`WCU-CTL-05/06`, `WCU-DAT-04/05`).
-- **Roadmap WinCC, fase 7 da completare**: collegare i Data Log a driver e storage industriali,
-  supporti esterni, rotazione, backup e diagnostica spazio (`WCU-TAG-08`, `WCU-DAT-01/02/03`).
+- **Roadmap WinCC, fase 7 da completare**: Data Log condivisi MQTT/OPC UA/SQLite al punto 179;
+  completare letture CPU forzate/coerenti, storage industriali/esterni, rotazione, backup/restore
+  e diagnostica predittiva dello spazio (`WCU-TAG-08`, `WCU-DAT-01/02/03`).
 - **Interfaccia**: estendere le categorie superiori quando entrano nuove funzioni WinCC, Optix e AI,
   senza reintrodurre toolbar permanenti nel canvas o nel bordo inferiore.
 - **Connettività trasversale**: trasporto asincrono MQTT nella IR integrato al punto 91;

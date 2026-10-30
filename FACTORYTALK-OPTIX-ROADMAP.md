@@ -47,6 +47,10 @@ revisione/conferma, ID persistente e recupero esplicito della bozza (178). Confr
 e AuditConditionCommentEventType nella guida ufficiale; contratto Framecraft distinto dagli
 oggetti Optix, senza completare Event Logger generico o firme.
 
+30 ottobre 2026: Data Log condiviso del servizio, SQLite, driver MQTT/OPC UA, conservazione e
+trend temporali/X/Y con letture protette, cache e reset delle viste in pausa al cambio utente (179).
+Riletto Data Logger current; modi, polling/deadband, oggetti e store generici Optix restano distinti.
+
 21 ottobre 2026: storico allarmi Framecraft SQLite e controllo di sola lettura con capacità dedicata
 (LAVORO 161), confrontati con Alarm Event Logger nella guida `current` (1.8.0), non parità completa.
 
@@ -119,7 +123,7 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 | FTX-UI-04 | Stili, stylesheet e temi | PARZIALE | Modello StyleSheet Optix e selezione per engine | Token condivisi con controllo contrasto automatico |
 | FTX-UI-05 | Immagini, SVG, video, PDF e WebBrowser | PARZIALE | Proprietà media e policy Runtime | Dipendenze asset, CSP e fallback controllati |
 | FTX-UI-06 | DataGrid, ListBox, ComboBox e controlli dati | PARZIALE | Binding a store/query e interazioni Optix | Colonne tipizzate, virtualizzazione e carico stimato |
-| FTX-UI-07 | Trend real-time, storico e da database | DA FARE | Penne, assi, soglie, query, Normal/Trace/Range | Playback sincronizzato con allarmi, eventi e audit |
+| FTX-UI-07 | Trend real-time, storico e da database | PARZIALE | Oggetti/modalità Normal/Trace/Range, query generiche e semantica Optix completa | Trend temporali/X/Y Framecraft con curve, assi, soglie, qualità e CSV; sorgente SQLite condivisa, letture coerenti e reset delle viste storiche anche in pausa al cambio utente (179) |
 | FTX-UI-08 | Widget e librerie riusabili | PARZIALE | Packaging, dipendenze e semantica delle istanze/widget Optix | Base Framecraft: catalogo faceplate versionato, diff e migrazione assistita di tag/proprietà/eventi con undo (LAVORO 104); non equivale ancora a ObjectType/ereditarietà Optix |
 | FTX-UI-09 | Finestre modali e popup parametrizzati | PARZIALE | Alias di contesto, ciclo vita e risultati | Anteprima nello stesso editor con istanze reali |
 | FTX-UI-10 | Localizzazione e Localization Dictionary | PARZIALE | Import/export e semantica delle LocalizedText Optix | Copertura, fallback e cambio lingua live già centrali |
@@ -208,13 +212,13 @@ verranno aggiunti al contratto della famiglia quando essa entra in implementazio
 
 | ID | Capacità FactoryTalk Optix | Stato Framecraft | Parità da completare | Miglioramento Framecraft |
 |---|---|---|---|---|
-| FTX-DAT-01 | Data Logger periodico e on-demand | DA FARE | Sampling, deadband, store e lifecycle | Stima crescita e perdita dati prima del deploy |
+| FTX-DAT-01 | Data Logger periodico e on-demand | PARZIALE | Polling/deadband Optix, oggetti/store generici, letture CPU coordinate e collaudo target | Servizio Framecraft con ciclo/variazione/trigger/richiesta, SQLite, elaborazione/qualità, conservazione, permessi e ricevute; non dipende dai browser (179) |
 | FTX-DAT-02 | Event Logger | PARZIALE | Tipi evento/campi/sorgenti generici, store e correlazione completa | Registro Runtime SQLite e vista HMI protetta con filtri/pagine per le operazioni Framecraft supportate, non Event Logger Optix generico (155/159) |
-| FTX-DAT-03 | Embedded Database SQLite | PARZIALE | Store/tabelle/query generici, migrazioni, retention e backup/restore verificati | Store applicativi fissi per audit e allarmi; nessuna query SQL arbitraria esposta nel pannello (155/161) |
+| FTX-DAT-03 | Embedded Database SQLite | PARZIALE | Store/tabelle/query generici, migrazioni e backup/restore industriali verificati | Store fissi per audit, allarmi e Data Log; writer unico, conservazione per tempo/capacità, cursori ancorati e query parametrizzate, senza SQL arbitrario nel pannello (155/161/179) |
 | FTX-DAT-04 | Database ODBC | ESTERNO | Connessione, credenziali, schema e query | Test di compatibilità e segreti mai salvati nel progetto |
 | FTX-DAT-05 | InfluxDB | ESTERNO | Connessione e mapping time-series | Stima cardinalità, retention e costi di storage |
 | FTX-DAT-06 | SQL query e binding ai controlli | DA FARE | SelectQuery e comportamento Runtime | Builder parametrico e protezione da query fragili |
-| FTX-DAT-07 | Trend real-time e storico | DA FARE | Penne, assi, modalità e interazione | Playback sincronizzato e confronto periodi |
+| FTX-DAT-07 | Trend real-time e storico | PARZIALE | Modalità e modello Optix completi, playback sincronizzato e confronto periodi | Curve temporali/X/Y Framecraft da browser o SQLite del servizio, con intervallo, qualità, CSV e cache isolata per utente/istanza (179) |
 | FTX-DAT-08 | Trend da query database | DA FARE | Modello SQL e refresh | Costo query e volume dati visualizzati prima dell'esecuzione |
 | FTX-DAT-09 | Report PDF localizzati | DA FARE | Header, section, footer, GeneratePdf ed evento | Preview fedele, test visuale e accessibilità PDF |
 | FTX-DAT-10 | Export dati e report pianificati | PARZIALE | Export generici, metodi/file system server, scheduler, checksum e retention | Export manuale dello storico allarmi in CSV e dettagli JSON, download esplicito e nessun file parziale (167); non un Generic Table Exporter Optix |

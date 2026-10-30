@@ -14,10 +14,13 @@ import type { AlarmHistoryCapture, AlarmHistoryError } from "./alarm-history.mjs
 import type { RecipePlcConfig, RecipePlcError } from "./recipe-plc.mjs";
 import type { RecipeApplyConfig, RecipeApplyError } from "./recipe-apply.mjs";
 import type { RecipeApplyStore } from "./recipe-apply-store.mjs";
+import type { DataLogStore } from "./data-log-store.mjs";
+import type { DataLogCapture, DataLogError } from "./data-log.mjs";
 export interface GatewayConfig {
   enabled: boolean; host?: "127.0.0.1"; port: number; tokenEnv: string; allowedOrigins: string[]; allowWrites?: boolean;
 }
 export interface GatewaySnapshot {
+  dataLogs?: DataLogCapture & { instanceId: string };
   alarmHistory?: AlarmHistoryCapture;
   alarms?: AlarmSnapshot;
   version: 1; allowWrites: boolean;
@@ -31,6 +34,10 @@ export function createPlcGateway(
   variables: readonly { name: string; dataType: string; access: "read" | "write" | "read-write" }[],
   options?: Pick<MqttConnectionCallbacks, "resolveSecret" | "onState" | "onError" | "onDiagnostic"> & { alarmCatalog?: AlarmCatalog; onAlarmEvent?: (event: AlarmEvent) => void; authorizeAlarmAction?: (request: IncomingMessage, command: AlarmCommand) => string | undefined | Promise<string | undefined>;
     recipeStore?: RecipeStore;
+    dataLogCatalog?: unknown;
+    dataLogStore?: DataLogStore;
+    dataLogUnavailable?: DataLogError;
+    onDataLogDiagnostic?: (event: { type: "data-log"; code: string; error: string; remedy: string }) => void;
     recipeApplyConfig?: RecipeApplyConfig;
     recipeApplyNamespace?: string;
     recipeApplyStore?: RecipeApplyStore;

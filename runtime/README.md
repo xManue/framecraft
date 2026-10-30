@@ -11,6 +11,116 @@ CA/server/client effimeri verificano TLS e mTLS, trust rifiutato, scadenza e hos
 non vengono installati nel trust del sistema. Serve OpenSSL (su Windows è usato quello di Git,
 se presente). Queste prove locali non dimostrano compatibilità con CPU/broker/trust aziendali.
 
+## Storico variabili sul disco del servizio
+
+In **Pannello → Data Log e storico** crea un archivio e scegli **Disco del servizio · condiviso**.
+È la scelta iniziale dei nuovi archivi creati dalla schermata. Gli archivi già configurati
+come browser/sessione conservano quella scelta e i loro dati; non vengono trasferiti sul server.
+Aggiungi variabili scalari dichiarate e leggibili, poi collega i loro tag al gateway OPC UA/MQTT.
+Salva la configurazione e riavvia manualmente il servizio. Salvare non avvia collegamenti PLC.
+Per i pannelli esistenti serve un aggiornamento esplicito del Runtime.
+
+Il gateway registra in `.framecraft-runtime/data-logs/samples.sqlite` con identità di archivio
+e namespace del progetto. Il database ha un solo proprietario, indipendente da pagine e utenti
+collegati: chiudere il browser non ferma la registrazione; aprire più pagine non duplica i campioni.
+Il servizio deve essere in esecuzione. La prova nell'editor usa soltanto memoria temporanea e
+non scrive nel database o nel PLC. I campioni già presenti nel database sono consultabili dopo
+il riavvio; non ripristinano valori correnti, trigger, medie o comandi della macchina.
+
+Modalità del contratto Framecraft:
+
+- **Su variazione** registra cambi di valore o qualità ricevuti dal driver. Una qualità che
+  torna valida viene registrata anche quando il valore numerico è invariato.
+- **Ciclica** usa il ciclo configurato, minimo 500 ms, con scadenze monotone. Non ricostruisce
+  campioni dei periodi in cui il servizio è rimasto fermo o bloccato. Il ciclo non rende più
+  veloce l'acquisizione del driver: configura anche frequenza e scadenza delle letture.
+- **Su richiesta / trigger** usa gli ultimi campioni disponibili nel driver, con la loro qualità
+  e timestamp. Non forza una nuova lettura della CPU. I fronti vengono armati dopo una prima
+  lettura valida del trigger; l'avvio con trigger già alto non inventa un fronte. La condizione
+  Uguale campiona all'ingresso nel valore, non a ogni controllo del livello invariato.
+
+Limiti numerici, media mobile fino a 64 campioni e aggregazione media/minimo/massimo sono applicati
+nel servizio. Le medie gestiscono anche valori LReal elevati senza overflow della somma. Una
+finestra interrotta dalla qualità invalida o dall'arresto viene conservata con `partial: true`;
+la qualità invalida azzera la media mobile. Le aggregazioni sono sui campioni osservati, senza
+inventare letture intermedie o una media temporale del processo.
+
+Ogni punto conserva l'istante di registrazione UTC, il valore e la qualità normalizzata, più
+il timestamp comunicato dal driver quando presente. Una lettura invalida può conservare il valore
+precedente ricevuto dal driver, marcato invalido; quando manca un valore resta `null`, non zero.
+Nei grafici il segnaposto invalido può usare l'ultima posizione nota: non diventa un campione Good.
+Il database conserva il dato originale, mentre CSV e righello del grafico seguono la sua
+rappresentazione e la qualità. Per analisi dei timestamp sorgente usa l'API dello storico.
+
+La conservazione per tempo e il massimo di campioni sono condivisi da tutte le variabili dello
+stesso archivio, anche fra revisioni della sua configurazione. Il servizio elimina i campioni
+scaduti o eccedenti secondo questi parametri, durante le scritture e la manutenzione periodica.
+La manutenzione in scrittura può applicare la conservazione anche agli archivi disabilitati.
+Non è un backup. Le stime nell'editor sono indicative; stringhe e indici possono occupare di più.
+Limiti iniziali: 64 archivi del servizio, 256 variabili per archivio, 512 complessive,
+500000 campioni per archivio e 256 MiB complessivi del database. `segmentDurationMs` resta nel
+JSON v1 per compatibilità: nel servizio non crea file segmentati, e la relativa opzione è nascosta.
+Un problema di disco ferma la registrazione e viene diagnosticato, senza cancellare dati per
+aggirarlo né impartire comandi PLC. Prima della manutenzione ferma il servizio e conserva una
+copia verificata dell'intera cartella dell'archivio, compresa la sua identità. Backup automatico,
+rotazione esterna e restore guidato restano da completare.
+
+### Leggere lo storico nei trend
+
+In **Pannello → Account del pannello** assegna esplicitamente **Consultare tutti i Data Log del
+servizio** (`dataLogs.read`). È un permesso globale sugli archivi del progetto; non aggiunge
+permessi PLC e non viene assegnato agli account esistenti. Nei Trend temporali e X/Y scegli la
+sorgente **Data Log** e la variabile archiviata, come per gli archivi del browser.
+
+Le letture sono pagine ancorate a un'identità/sequenza dell'archivio e a una revisione della
+conservazione. Se durante la lettura vengono rimossi campioni, la lettura viene rifiutata e
+può essere ripetuta esplicitamente; non viene presentata come completa una parte delle pagine.
+La configurazione di elaborazione identifica la serie: cambiarla non rietichetta i campioni
+precedenti. Questi restano nel disco, soggetti alla conservazione, ma non vengono mescolati
+automaticamente alla nuova serie.
+
+La cache del client unifica le richieste fra ridisegni, limita coda/volume e isola account e
+istanza del servizio. Riutilizza finestre di 10 secondi, filtrandole all'intervallo esatto del
+grafico, con aggiornamento indicativo ogni 2 secondi e predecessore dove richiesto. Massimo
+32 letture conservate, 8 in coda attiva, 50000 punti e circa 4,5 MB per lettura: restringi il
+periodo quando il controllo segnala troppo volume. Le letture non rinnovano l'inattività
+dell'operatore. Cambio/scadenza utente e cambio istanza eliminano anche le viste storiche in
+pausa. I grafici online non mostrano gli avvisi di quelli che usano l'archivio.
+
+### Campionare manualmente e API
+
+Assegna separatamente **Campionare i Data Log su richiesta** (`dataLogs.sample`) agli account
+autorizzati. Gli script possono attendere `requestRuntimeDataLog(logId, loggedTagId?)`, esportato
+dal modulo Runtime; l'evento `framecraft:data-log-request` resta disponibile. La richiesta
+campiona soltanto definizioni Su richiesta, non invia valori al PLC. Una finestra aggregata
+può produrre zero punti immediati perché è ancora in elaborazione.
+
+La richiesta ha un ID UUID e l'identità del servizio corrente, con controllo sessione/CSRF,
+nuova autorizzazione dopo l'audit e ricevuta persistita nella stessa transazione dei campioni.
+Lo stesso ID, autore e configurazione non aggiungono un secondo campionamento. L'audit conserva
+richiesta/esito, senza valori di processo; la ricevuta non viene eliminata dalla conservazione
+dei campioni, con limite iniziale di 100000 richieste. Un vecchio invio non passa attraverso
+un riavvio. Nessun invio viene ripetuto automaticamente: se manca la conferma conserva l'ID
+mostrato e verifica archivio/audit prima di impartire una nuova richiesta.
+
+Sotto il prefisso gateway configurato, con le protezioni di origine e autenticazione già previste:
+
+- `GET /data-log-history` con `logId`, `loggedTagId`, `definition`, `from`, `to`, opzionali
+  `includePrevious`, `limit` (massimo 5000), e cursori `archiveId`, `through`, `floor`, `after`.
+- `POST /data-log-query` con gli stessi campi JSON è una lettura, usata anche per definizioni
+  lunghe senza superare i limiti degli URL. Non esegue SQL libero o operazioni PLC.
+- `POST /data-log-sample`, JSON `{version:1,id,serviceInstanceId,logId,loggedTagId?}`.
+- Lo snapshot gateway include `dataLogs` con stato, campioni scritti in questo avvio, istanza
+  ed eventuale codice diagnostico. Errori disco, archivio già occupato e Node/SQLite da aggiornare
+  hanno istruzioni distinte; nessun errore grezzo o valore di processo viene inserito nei log.
+
+Riferimenti funzionali riletti: [modalità di logging Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-tags-rt-unified/logging-tags-rt-unified/basics-rt-unified/logging-modes-and-logging-process-rt-unified?contentId=A8wRpWq_nKw6xEncKsLpJg)
+e [Data Logger Optix current](https://www.rockwellautomation.com/en-us/docs/factorytalk-optix/current/contents-ditamap/creating-projects/object-and-variable-reference/ftoptix-datalogger/objecttypes/datalogger.html).
+Il comportamento è Framecraft: non emula il modello vendor, la lettura forzata On demand Unified
+o il polling/deadband Optix. Restano letture CPU coordinate, array/UDT, deadband, storage esterni,
+query generiche, budget prestazioni e recovery su target industriali. Collaudato localmente con
+Node 24.22.1/SQLite 3.53.4, MQTT e server OPC UA sintetici; nessun collaudo di CPU o panel fisici.
+
 ## Allarmi nel servizio condiviso
 
 Nell'editor, **Pannello → Allarmi** configura `framecraft.alarms.json`.

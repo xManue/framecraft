@@ -185,6 +185,7 @@ export function Canvas() {
   }
   const hmiTimerManager = hmiTimerManagerRef.current!;
   const dataLogRuntime = useMemo(() => createHmiDataLogRuntime(dataLogCatalog, {
+    servicePreview: true,
     storageKey: `framecraft:editor-data-logs:${projectRoot ?? dataLogCatalog.projectKey}`,
     onError: (message) => useEditorStore.getState().addPreviewOutput("stderr", message),
   }), [dataLogCatalog, projectRoot]);

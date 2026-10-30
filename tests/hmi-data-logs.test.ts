@@ -34,6 +34,9 @@ function configuredCatalog(): HmiDataLogCatalog {
 afterEach(() => vi.useRealTimers());
 
 describe("Data Log Unified", () => {
+  it("gli archivi del servizio non vengono duplicati nel browser e la prova resta solo in memoria", () => {
+    const c = configuredCatalog(); c.logs[0].storage = "runtime"; const storage = memoryStorage(), browser = createHmiDataLogRuntime(c, { storage }), preview = createHmiDataLogRuntime(c, { storage, servicePreview: true }); browser.updateTag("Oven.Temperature", "15"); preview.updateTag("Oven.Temperature", "15"); expect(browser.sampleCount()).toBe(0); expect(preview.sampleCount()).toBe(1); preview.flush(); browser.flush(); expect(storage.values.size).toBe(0); preview.stop(); browser.stop();
+  });
   it("normalizza, serializza e valida log, modalità e variabili PLC", () => {
     const catalog = parseHmiDataLogCatalog(serializeHmiDataLogCatalog(configuredCatalog()));
     catalog.logs[0].tags.push({ ...catalog.logs[0].tags[0], id: "temperature", tag: "Missing.Tag", cycleMs: 100, mode: "cyclic" });

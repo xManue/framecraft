@@ -556,7 +556,9 @@ export function renderHmiTrendControl(host, values, options = {}) {
     if (!root.querySelector(":scope > header"))
         trendChrome(root, config);
     root.setAttribute("aria-label", config.caption || "Trend Control");
-    Object.assign(root.style, { display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: "240px", overflow: "auto", border: "1px solid #70777c", background: trendArgb(config.backColor), color: "#20262b", font: "12px/1.25 system-ui,sans-serif" });
+    const activeDataLogs = JSON.stringify(config.trends.filter(trend => !state.hidden.has(trend.id) && trend.source === "log").map(trend => [trend.logId, trend.loggedTagId]));
+    if (root.getAttribute("data-hmi-active-data-logs") !== activeDataLogs) root.setAttribute("data-hmi-active-data-logs", activeDataLogs);
+    Object.assign(root.style, { boxSizing: "border-box", minWidth: "0", display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: "240px", overflow: "auto", border: "1px solid #70777c", background: trendArgb(config.backColor), color: "#20262b", font: "12px/1.25 system-ui,sans-serif" });
     root.querySelector("header").textContent = config.caption + (state.paused ? " · vista ferma" : "");
     const pause = root.querySelector('[data-hmi-trend-action="pause"]');
     if (pause) {
@@ -764,6 +766,7 @@ export function renderHmiTrendControls(root, values, options = {}) {
     return rendered;
 }
 export function clearHmiTrendHistory(host) {
+    host.removeAttribute("data-hmi-active-data-logs");
     trendStates.delete(host);
     host.querySelector(":scope > [data-hmi-trend-root]")?.remove();
 }

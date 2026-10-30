@@ -9,7 +9,7 @@ const maxBytes = 64 * 1024 * 1024, maxRecords = 100000, zero = "0".repeat(64);
 const fail = (code = "AUTH_AUDIT") => { throw new OperatorAuthError(code); };
 const hash = value => createHash("sha256").update(value).digest("hex");
 const uuid = value => typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
-const operations = ["tags.write", "alarms.acknowledge", "alarms.confirm", "alarms.shelve", "alarms.unshelve", "alarms.comment", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "recipes.apply", "recipes.check", "recipes.fence", "session.login", "session.logout"];
+const operations = ["tags.write", "alarms.acknowledge", "alarms.confirm", "alarms.shelve", "alarms.unshelve", "alarms.comment", "dataLogs.sample", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "recipes.apply", "recipes.check", "recipes.fence", "session.login", "session.logout"];
 const outcomes = ["requested", "applied", "delivered", "duplicate", "rejected", "uncertain", "authenticated", "logged-out"];
 export function auditSqliteSupported(value) {
   if (typeof value !== "string" || !/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)) return false;
@@ -24,9 +24,9 @@ function ensureSqlite() {
 function event(input) {
   if (!operatorKeys(input, ["traceId", "actor", "operation", "resource", "commandId", "outcome", "code"]) || !uuid(input.traceId) || input.actor !== null && !operatorText(input.actor, 200) || !operations.includes(input.operation) || !outcomes.includes(input.outcome) || typeof input.code !== "string" || !/^[A-Z][A-Z0-9_]{0,63}$/.test(input.code)) fail();
   if (input.commandId !== null && (typeof input.commandId !== "string" || !/^[A-Za-z0-9_-]{16,80}$/.test(input.commandId))) fail();
-  if (input.resource !== null && (!operatorKeys(input.resource, input.resource.kind === "recipe-schema" ? ["kind", "id", "recordId", "targetId"] : ["kind", "id"]) || !["tag", "alarm", "recipe-schema"].includes(input.resource.kind) || !operatorText(input.resource.id, 200))) fail();
+  if (input.resource !== null && (!operatorKeys(input.resource, input.resource.kind === "recipe-schema" ? ["kind", "id", "recordId", "targetId"] : ["kind", "id"]) || !["tag", "alarm", "recipe-schema", "data-log"].includes(input.resource.kind) || !operatorText(input.resource.id, 200))) fail();
   if (input.resource?.kind === "recipe-schema" && (!operatorText(input.resource.recordId, 80) || input.resource.targetId !== null && !operatorText(input.resource.targetId, 80))) fail();
-  const kind = input.operation.startsWith("tags.") ? "tag" : input.operation.startsWith("alarms.") ? "alarm" : input.operation.startsWith("recipes.") ? "recipe-schema" : undefined;
+  const kind = input.operation.startsWith("tags.") ? "tag" : input.operation.startsWith("alarms.") ? "alarm" : input.operation.startsWith("recipes.") ? "recipe-schema" : input.operation.startsWith("dataLogs.") ? "data-log" : undefined;
   if (kind ? input.resource?.kind !== kind : input.resource !== null) fail();
   return { traceId: input.traceId, actor: input.actor, operation: input.operation, resource: input.resource === null ? null : { ...input.resource }, commandId: input.commandId, outcome: input.outcome, code: input.code };
 }

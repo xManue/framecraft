@@ -425,7 +425,9 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
         state.displayed = displayed;
     }
     root.setAttribute("aria-label", config.caption || "Function Trend Control");
-    Object.assign(root.style, { display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: "280px", overflow: "auto", border: "1px solid #70777c", background: fxArgb(config.backColor), color: "#20262b", font: "12px/1.3 system-ui,sans-serif" });
+    const activeDataLogs = JSON.stringify(config.trends.filter(trend => !state.hidden.has(trend.id)).flatMap(trend => [trend.x, trend.y].filter(source => source.source === "log").map(source => [source.logId, source.loggedTagId])));
+    if (root.getAttribute("data-hmi-active-data-logs") !== activeDataLogs) root.setAttribute("data-hmi-active-data-logs", activeDataLogs);
+    Object.assign(root.style, { boxSizing: "border-box", minWidth: "0", display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: "280px", overflow: "auto", border: "1px solid #70777c", background: fxArgb(config.backColor), color: "#20262b", font: "12px/1.3 system-ui,sans-serif" });
     let header = root.querySelector(":scope > header");
     if (!header) {
         const style = doc.createElement("style");
@@ -634,6 +636,7 @@ export function hmiFunctionTrendRuntimeModuleSource() {
 }
 
 export function clearHmiFunctionTrendHistory(host) {
+    host.removeAttribute("data-hmi-active-data-logs");
     functionTrendStates.delete(host);
     host.querySelector(":scope > [data-hmi-function-trend-root]")?.remove();
 }

@@ -24,6 +24,11 @@ import { hmiFaceplateVisualRuntimeModuleSource } from "./hmiFaceplateVisuals";
 import { hmiTrendRuntimeModuleSource } from "./hmiTrend";
 import { hmiFunctionTrendRuntimeModuleSource } from "./hmiFunctionTrend";
 import { emptyHmiDataLogCatalog, hmiDataLogRuntimeModuleSource } from "./hmiDataLogs";
+import dataLogContractSource from "../../runtime/data-log.mjs?raw";
+import dataLogContractTypes from "../../runtime/data-log.d.mts?raw";
+import dataLogStoreSource from "../../runtime/data-log-store.mjs?raw";
+import dataLogStoreTypes from "../../runtime/data-log-store.d.mts?raw";
+import dataLogClientSource from "./hmiDataLogClient.ts?raw";
 import mqttDriverSource from "../../runtime/mqtt-driver.mjs?raw";
 import opcUaDriverSource from "../../runtime/opcua-driver.mjs?raw";
 import opcUaDriverTypes from "../../runtime/opcua-driver.d.mts?raw";
@@ -327,9 +332,10 @@ import { hmiAlarmMatches, nextHmiCalendarDue } from "./framecraftHmiSchedule";
 import { createHmiTimerManager } from "./framecraftHmiTimers";
 import { createHmiFaceplatePopupDomSurface, createHmiFaceplatePopupManager } from "./framecraftHmiPopups";
 import { renderHmiFaceplates } from "./framecraftHmiFaceplateVisuals";
-import { renderHmiTrendControls } from "./framecraftHmiTrend";
-import { renderHmiFunctionTrendControls } from "./framecraftHmiFunctionTrend";
+import { clearHmiTrendHistory, renderHmiTrendControls } from "./framecraftHmiTrend";
+import { clearHmiFunctionTrendHistory, renderHmiFunctionTrendControls } from "./framecraftHmiFunctionTrend";
 import { createHmiDataLogRuntime } from "./framecraftHmiDataLogs";
+import { createHmiDataLogClient } from "./framecraftHmiDataLogClient";
 import { resolveHmiTagDynamization, resolveHmiTagReference } from "./framecraftHmiTagBinding";
 import scriptCatalogJson from "../framecraft.scripts.json";
 import faceplateCatalogJson from "../framecraft.faceplates.json";
@@ -409,6 +415,25 @@ let gatewayReport: ((message: string) => void) | undefined;
 let gatewaySnapshot: HmiGatewaySnapshot | undefined;
 const faceplateLocalStates = new WeakMap<Element, { signature: string; names: Set<string>; values: Record<string, string> }>();
 const dataLogRuntime = createHmiDataLogRuntime(dataLogCatalogJson, { onError: (message: string) => console.error(message) });
+let serviceDataLogs: ReturnType<typeof createHmiDataLogClient> | undefined;
+function resetServiceDataLogViews() {
+  for (const owner of document.querySelectorAll<HTMLElement>("[data-hmi-active-data-logs]")) {
+    const host = owner.closest<HTMLElement>("[data-hmi-trend],[data-hmi-function-trend]"); if (!host) continue;
+    const raw = owner.getAttribute("data-hmi-active-data-logs") ?? "[]"; if (raw.length > 10000) continue;
+    let pairs: unknown; try { pairs = JSON.parse(raw); } catch { continue; }
+    if (!Array.isArray(pairs) || !pairs.some((pair: unknown) => Array.isArray(pair) && dataLogCatalogJson.logs.some(log => log.storage === "runtime" && log.id === pair[0]))) continue;
+    if (host.hasAttribute("data-hmi-trend")) clearHmiTrendHistory(host);
+    if (host.hasAttribute("data-hmi-function-trend")) clearHmiFunctionTrendHistory(host);
+  }
+}
+function queryRuntimeDataLogs(logId: string, loggedTagId: string, from: number, to: number, previous = false) {
+  if (!dataLogCatalogJson.logs.some(log => log.id === logId && log.storage === "runtime")) return dataLogRuntime.query(logId, loggedTagId, from, to, previous);
+  let lastKnown = "";
+  return (serviceDataLogs?.query(logId, loggedTagId, from, to, previous) ?? []).map(sample => {
+    if (sample.value !== null) lastKnown = sample.value;
+    return { ...sample, value: sample.value ?? lastKnown };
+  });
+}
 
 export function runtimeTagValues(): Readonly<Record<string, string>> { return values; }
 export function runtimeTagStatus() { return tagStatus as Readonly<typeof tagStatus>; }
@@ -473,8 +498,13 @@ function gatewayScriptTransport() {
   };
 }
 
-export function requestRuntimeDataLog(logId?: string, loggedTagId?: string) {
-  return dataLogRuntime.request(logId, loggedTagId);
+export async function requestRuntimeDataLog(logId?: string, loggedTagId?: string) {
+  let written = dataLogRuntime.request(logId, loggedTagId);
+  for (const log of dataLogCatalogJson.logs.filter(log => log.enabled && log.storage === "runtime" && (!logId || log.id === logId) && log.tags.some(tag => tag.mode === "on-demand" && (!loggedTagId || tag.id === loggedTagId)))) {
+    if (!serviceDataLogs) throw new Error("Il servizio Data Log non è collegato.");
+    written += await serviceDataLogs.sample(log.id, loggedTagId);
+  }
+  return written;
 }
 
 export function notifyRuntimeAlarm(alarm: RuntimeAlarmNotification) {
@@ -520,13 +550,14 @@ function renderFaceplateVisuals() {
 function renderTrendControls() {
   const sources = { tags: plcCatalogJson.variables.map((variable: { name: string }) => variable.name), logs: dataLogCatalogJson.logs };
   renderHmiTrendControls(document, values, { status: tagStatus, sources, history: (trend: { logId?: string; loggedTagId?: string }, from: number, to: number) => trend.logId && trend.loggedTagId
-    ? dataLogRuntime.query(trend.logId, trend.loggedTagId, from, to, true).flatMap((sample: { time: number; value: string; qualityCode?: number }) => {
+    ? queryRuntimeDataLogs(trend.logId, trend.loggedTagId, from, to, true).flatMap((sample: { time: number; value: string; qualityCode?: number }) => {
       const value = Number(sample.value);
       return sample.value.trim() && Number.isFinite(value) ? [{ time: sample.time, value, qualityCode: sample.qualityCode }] : [];
     })
     : [] });
   renderHmiFunctionTrendControls(document, values, { status: tagStatus, sources, history: (source: { logId?: string; loggedTagId?: string }, from: number, to: number) => source.logId && source.loggedTagId
-    ? dataLogRuntime.query(source.logId, source.loggedTagId, from, to) : [] });
+    ? queryRuntimeDataLogs(source.logId, source.loggedTagId, from, to) : [] });
+  serviceDataLogs?.renderStatus();
 }
 
 function dynamizations(element: Element): DynamicBinding[] {
@@ -586,6 +617,7 @@ function applyDynamicValue(element: Element, property: string, value: string): b
 export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void {
   if ((window as Window & { __framecraftEditorPreview?: boolean }).__framecraftEditorPreview) return () => undefined;
   const operatorSession = installHmiOperatorSession({ path: gatewayConfig.path, enabled: gatewayConfig.enabled && operatorConfig.enabled === true, canSwitch: allowHmiRecipeNavigation });
+  serviceDataLogs = createHmiDataLogClient({ catalog: dataLogCatalogJson, namespace: operatorConfig.namespace, enabled: gatewayConfig.enabled && operatorConfig.enabled, path: gatewayConfig.path, timeoutMs: gatewayConfig.timeoutMs, onChange: renderTrendControls, onReset: resetServiceDataLogViews });
   const alarmNotes = createHmiAlarmNotes({ enabled: gatewayConfig.enabled && operatorConfig.enabled, namespace: operatorConfig.namespace, path: gatewayConfig.path, timeoutMs: gatewayConfig.timeoutMs });
   const alarmViewContext = { namespace: operatorConfig.namespace, operator: operatorSessionProfile, notes: alarmNotes.open };
   let runtimeActive = true;
@@ -1081,7 +1113,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   };
   const requestDataLog = (event: Event) => {
     const detail = (event as CustomEvent<{ logId?: string; loggedTagId?: string }>).detail;
-    dataLogRuntime.request(detail?.logId, detail?.loggedTagId);
+    void requestRuntimeDataLog(detail?.logId, detail?.loggedTagId).catch(error => (gatewayReport ?? options.error ?? console.error)(error instanceof Error ? error.message : "Campionamento Data Log non riuscito."));
   };
   const commandResult = (event: Event) => {
     const result = (event as CustomEvent<{ tag?: string; outcome?: string; error?: string }>).detail;
@@ -1155,7 +1187,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
         renderGatewayStatus(gatewayClient?.state ?? "connecting");
       },
       onSnapshot: (snapshot) => {
-        gatewaySnapshot = snapshot;
+        gatewaySnapshot = snapshot; serviceDataLogs?.observe(snapshot.dataLogs);
         acceptAlarmSnapshot(snapshot.alarms);
         for (const sample of snapshot.samples) applyRuntimeTagSample(sample);
         renderGatewayStatus("connected");
@@ -1211,6 +1243,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   return () => {
     scriptAbort.abort();
     recipeClient?.dispose();
+    serviceDataLogs?.dispose(); serviceDataLogs = undefined;
     alarmNotes.dispose();
     operatorSession.dispose();
     for (const control of recipeControls.values()) control.dispose(); recipeControls.clear();
@@ -1936,6 +1969,11 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/alarm-labels.d.mts", content: alarmLabelTypes },
     { path: "runtime/alarm-engine.mjs", content: alarmEngineSource },
     { path: "runtime/alarm-engine.d.mts", content: alarmEngineTypes },
+    { path: "runtime/data-log.mjs", content: dataLogContractSource },
+    { path: "runtime/data-log.d.mts", content: dataLogContractTypes },
+    { path: "runtime/data-log-store.mjs", content: dataLogStoreSource },
+    { path: "runtime/data-log-store.d.mts", content: dataLogStoreTypes },
+    { path: "src/framecraftHmiDataLogClient.ts", content: dataLogClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "runtime/alarm-history.mjs", content: alarmHistorySource },
     { path: "runtime/alarm-history.d.mts", content: alarmHistoryTypes },
     { path: "runtime/alarm-history-store.mjs", content: alarmHistoryStoreSource },

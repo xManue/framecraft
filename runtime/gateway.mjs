@@ -13,6 +13,7 @@ import { AlarmHistoryError, parseAlarmHistoryQuery, parseAlarmHistorySnapshot, p
 import { RecipePlcError, captureRecipePlc, emptyRecipePlcConfig, parseRecipePlcConfig, parseRecipePlcQuery } from "./recipe-plc.mjs";
 import { RecipeApplyError, emptyRecipeApplyConfig, parseRecipeApplyConfig, parseRecipeApplyCommand, parseRecipeApplyLookup } from "./recipe-apply.mjs";
 import { createRecipeApplyEngine } from "./recipe-apply-engine.mjs";
+import { DataLogError, parseServiceDataLogs, createServiceDataLogEngine, parseDataLogQuery, parseDataLogSnapshot } from "./data-log.mjs";
 
 const api = "/_framecraft/plc/v1";
 function failure(status, code = "GATEWAY_REQUEST") { return Object.assign(new ConnectionOperationError(connectionDiagnostic(code, { protocol: "gateway" })), { status }); }
@@ -70,13 +71,21 @@ export function createPlcGateway(catalog, variables, options = {}) {
   } }) : undefined;
   alarmInstanceId = alarms?.snapshot().instanceId;
   const noteServiceInstanceId = randomUUID(), noteTasks = new Set(); let nextNoteRead = 0;
+  const dataLogInstanceId = randomUUID(); let dataLogTimer, dataLogFault = options.dataLogUnavailable ? new DataLogError(options.dataLogUnavailable.code) : undefined, dataLogReadBudget = 64, lastDataLogRead = performance.now();
+  const reportDataLog = error => { if (!dataLogFault) { dataLogFault = error instanceof DataLogError ? error : new DataLogError("DATA_LOG_STORAGE"); safeNotify(options.onDataLogDiagnostic, { type: "data-log", code: dataLogFault.code, error: dataLogFault.message, remedy: dataLogFault.remedy }); } };
+  let dataLogCatalog = { version: 1, projectKey: "framecraft-panel", logs: [] };
+  try { dataLogCatalog = parseServiceDataLogs(options.dataLogCatalog ?? dataLogCatalog, variables); } catch (error) { reportDataLog(error); }
+  const dataLogEngine = options.dataLogStore && !dataLogFault ? createServiceDataLogEngine({ catalog: dataLogCatalog,
+    write: (rows, receipt) => options.dataLogStore.append(rows, receipt),
+    read: tag => { const owner = owners.get(tag), sample = owner?.driver.read(tag); return owner?.driver.state === "connected" ? sample : { ...sample, tag, qualityCode: 0, lastError: "Offline" }; }, onError: reportDataLog }) : undefined;
+  const dataLogCapture = () => ({ ...(dataLogFault ? { state: "error", written: dataLogEngine?.status().written ?? 0, code: dataLogFault.code } : dataLogEngine?.status() ?? { state: "stopped", written: 0 }), instanceId: dataLogInstanceId });
   let alarmTimer;
   const connections = enabled.map((connection) => {
     const driver = (connection.protocol === "opcua" ? createOpcUaPlcConnection : createMqttPlcConnection)(connection, variables, {
       resolveSecret: options.resolveSecret,
       onError: options.onError,
       onDiagnostic: record,
-      onSample: (sample) => alarms?.updateSample(sample),
+      onSample: (sample) => { alarms?.updateSample(sample); dataLogEngine?.update(sample); },
       onState: (state) => { states.set(connection.id, { ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) }); safeNotify(options.onState, state); },
     });
     for (const binding of connection.bindings) {
@@ -87,6 +96,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
     }
     states.set(connection.id, { id: connection.id, state: "stopped" }); return driver;
   });
+  if (dataLogCatalog.logs.some(log => log.enabled && log.tags.some(tag => [tag.tag, tag.triggerTag].filter(Boolean).some(name => !owners.has(name))))) reportDataLog(new DataLogError("DATA_LOG_CONFIG"));
   const endpoint = (connection, binding, write) => {
     const url = new URL(connection.url); let address = url.href;
     if (connection.protocol === "mqtt") { const port = url.port || ({ "mqtt:": "1883", "mqtts:": "8883", "ws:": "80", "wss:": "443" })[url.protocol]; address = url.protocol + "//" + url.hostname.toLowerCase() + ":" + port + (["mqtt:", "mqtts:"].includes(url.protocol) ? "" : url.pathname || "/"); }
@@ -102,6 +112,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
   } }) : undefined;
   const snapshot = () => ({ version: 1, allowWrites: config.allowWrites === true,
     alarmHistory: historyCapture(),
+    dataLogs: dataLogCapture(),
     ...(alarms ? { alarms: { ...alarms.snapshot(), actionsEnabled: !!options.operatorAuth || typeof options.authorizeAlarmAction === "function" } } : {}),
     diagnostics: diagnostics.map((event) => ({ ...event })),
     connections: [...states.values()].map((state) => ({ ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) })),
@@ -123,6 +134,40 @@ export function createPlcGateway(catalog, variables, options = {}) {
       const actual = Buffer.from(typeof request.headers.authorization === "string" ? request.headers.authorization : ""); const expected = Buffer.from("Bearer " + token);
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw failure(401, "GATEWAY_AUTH");
       if (request.url === api + "/snapshot" && request.method === "GET") { respond(response, 200, snapshot()); return; }
+      if (request.url === api + "/data-log-history" || request.url?.startsWith(api + "/data-log-history?") || request.url === api + "/data-log-sample" || request.url === api + "/data-log-query") {
+        const mutation = request.url === api + "/data-log-sample";
+        if (request.method !== (mutation || request.url === api + "/data-log-query" ? "POST" : "GET")) throw new DataLogError("DATA_LOG_QUERY");
+        if (!options.operatorAuth) throw options.operatorUnavailable ?? new OperatorAuthError("AUTH_REQUIRED");
+        if (active >= 32) throw new OperatorAuthError("AUTH_BUSY"); active++; accepted = true;
+        let input;
+        if (mutation) {
+          if ((request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw new DataLogError("DATA_LOG_QUERY"); input = await body(request, 2048);
+          if (!input || typeof input !== "object" || Array.isArray(input) || !["version", "id", "serviceInstanceId", "logId"].every(key => Object.hasOwn(input, key)) || Object.keys(input).some(key => !["version", "id", "serviceInstanceId", "logId", "loggedTagId"].includes(key)) || input.version !== 1 || [input.id, input.serviceInstanceId].some(v => typeof v !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v)) || typeof input.logId !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(input.logId) || input.loggedTagId !== undefined && (typeof input.loggedTagId !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(input.loggedTagId))) throw new DataLogError("DATA_LOG_QUERY");
+          auditScope = auditContext("dataLogs.sample", { kind: "data-log", id: input.logId }, input.id);
+        } else {
+          if (request.url === api + "/data-log-query") {
+            if ((request.headers["content-type"] ?? "").split(";")[0].trim() !== "application/json") throw new DataLogError("DATA_LOG_QUERY"); input = parseDataLogQuery(await body(request, 32768));
+          } else {
+          if (request.url.length > 16384) throw new DataLogError("DATA_LOG_QUERY"); const params = new URL(request.url, "http://localhost").searchParams; if ([...params].length > 12 || new Set(params.keys()).size !== [...params].length) throw new DataLogError("DATA_LOG_QUERY"); const raw = Object.fromEntries(params);
+          for (const key of ["from", "to", "through", "after", "floor", "limit"]) if (raw[key] !== undefined) { if (!/^-?(0|[1-9]\d*)(\.\d+)?$/.test(raw[key])) throw new DataLogError("DATA_LOG_QUERY"); raw[key] = Number(raw[key]); }
+          if (raw.includePrevious !== undefined) { if (!["true", "false"].includes(raw.includePrevious)) throw new DataLogError("DATA_LOG_QUERY"); raw.includePrevious = raw.includePrevious === "true"; } input = parseDataLogQuery(raw);
+          }
+        }
+        const authorize = async () => { let timer; try { return await Promise.race([options.operatorAuth.authorize(request, mutation ? "dataLogs.sample" : "dataLogs.read", mutation), new Promise((_, reject) => { timer = setTimeout(() => reject(new OperatorAuthError("AUTH_BUSY")), 5000); })]); } finally { clearTimeout(timer); } };
+        const actor = await authorize(); if (!operatorText(actor, 200)) throw new OperatorAuthError("AUTH_PERMISSION"); if (auditScope) auditScope.actor = actor;
+        if (stopping || request.aborted || response.destroyed) throw new DataLogError("DATA_LOG_DISABLED");
+        if (!options.dataLogStore) throw dataLogFault ?? new DataLogError("DATA_LOG_DISABLED");
+        if (!mutation) { const clock = performance.now(); dataLogReadBudget = Math.min(64, dataLogReadBudget + (clock - lastDataLogRead) / 25); lastDataLogRead = clock; if (dataLogReadBudget < 1) throw new OperatorAuthError("AUTH_BUSY"); dataLogReadBudget--; const data = options.dataLogStore.query(input); respond(response, 200, parseDataLogSnapshot(data, input)); return; }
+        if (!dataLogEngine || dataLogFault) throw dataLogFault ?? new DataLogError("DATA_LOG_DISABLED");
+        if (input.serviceInstanceId !== dataLogInstanceId) throw new DataLogError("DATA_LOG_CHANGED");
+        const fingerprint = createHash("sha256").update(JSON.stringify([input.logId, input.loggedTagId ?? null, dataLogCatalog])).digest("hex"); auditStarted = true;
+        const result = await runAudited(options.audit, auditScope, async () => {
+          if (await authorize() !== actor) throw new OperatorAuthError("AUTH_PERMISSION"); if (stopping || request.aborted || response.destroyed) throw new DataLogError("DATA_LOG_DISABLED");
+          const known = options.dataLogStore.lookup(input.id, actor, fingerprint); if (known) return { version: 1, ...known, duplicate: true };
+          const count = dataLogEngine.request(input.logId, input.loggedTagId, { id: input.id, actor, fingerprint }); return { version: 1, id: input.id, count, duplicate: false };
+        }, value => ({ outcome: value.duplicate ? "duplicate" : "applied", code: value.duplicate ? "DATA_LOG_DUPLICATE" : "DATA_LOG_SAMPLED" }), () => !stopping && !request.aborted && !response.destroyed);
+        respond(response, 200, result); return;
+      }
       if (request.url === api + "/alarm-notes" || request.url?.startsWith(api + "/alarm-notes?") || request.url === api + "/alarm-comment") {
         const mutation = request.url === api + "/alarm-comment";
         if (mutation ? request.method !== "POST" : request.method !== "GET") throw new AlarmHistoryError("ALARM_NOTE_INPUT");
@@ -360,9 +405,10 @@ export function createPlcGateway(catalog, variables, options = {}) {
     } catch (error) {
       if (!stopping && auditScope && !auditStarted && !(error instanceof OperatorAuthError && error.code.startsWith("AUTH_AUDIT"))) {
         if (error instanceof OperatorAuthError && recipeActor(error.actor)) auditScope.actor = error.actor;
-        const code = error instanceof OperatorAuthError || error instanceof RecipeStoreError ? error.code : error instanceof ConnectionOperationError ? error.diagnostic.code : "REQUEST_REJECTED";
+        const code = error instanceof OperatorAuthError || error instanceof RecipeStoreError || error instanceof DataLogError ? error.code : error instanceof ConnectionOperationError ? error.diagnostic.code : "REQUEST_REJECTED";
         try { await appendAudit(options.audit, auditScope, "rejected", code); } catch (auditError) { error = auditError; }
       }
+      if (error instanceof DataLogError) { respond(response, error.status, { type: "data-log", code: error.code, error: error.message, remedy: error.remedy }); return; }
       if (error instanceof AlarmHistoryError) { respond(response, error.status, { type: "alarm-history", code: error.code, error: error.message, remedy: error.remedy, outcome: error.outcome }); return; }
       if (error instanceof OperatorAuthError) { respond(response, error.status, { type: "operator", code: error.code, error: error.message, remedy: error.remedy, outcome: error.outcome, plcConfirmed: false }); return; }
       if (error instanceof RecipeApplyError) {
@@ -394,12 +440,13 @@ export function createPlcGateway(catalog, variables, options = {}) {
         await new Promise((resolve, reject) => { const error = (cause) => reject(new ConnectionOperationError(report("GATEWAY_LISTEN", { technicalCode: cause.code }))); server.once("error", error); server.listen(config.port, "127.0.0.1", () => { server.off("error", error); port = server.address().port; resolve(); }); });
         if (!stopping && archiveEnabled && alarmInstanceId) try { if (!options.alarmHistory) throw historyError ?? new AlarmHistoryError("ALARM_HISTORY_STORAGE"); options.alarmHistory.begin(alarmInstanceId); historyRunning = true; } catch (error) { historyFault(error); }
         if (!stopping && alarms?.snapshot().shelving?.enabled) { alarmTimer = setInterval(() => alarms.tick(), 500); alarmTimer.unref?.(); }
+        if (!stopping && dataLogEngine && !dataLogFault) { dataLogEngine.start(); dataLogTimer = setInterval(() => { try { options.dataLogStore.maintain(); } catch (error) { reportDataLog(error); } }, 60000); dataLogTimer.unref?.(); }
         if (!stopping) await Promise.allSettled(connections.map((driver) => driver.start()));
       })();
       return startTask;
     },
     stop() {
-      if (stopTask) return stopTask; stopping = true; clearInterval(alarmTimer); options.operatorAuth?.close();
+      if (stopTask) return stopTask; stopping = true; clearInterval(alarmTimer); clearInterval(dataLogTimer); options.operatorAuth?.close();
       stopTask = (async () => {
         server.closeAllConnections();
         const applyStopped = applyEngine?.stop();
@@ -409,6 +456,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         await Promise.allSettled([...noteTasks]);
         await Promise.allSettled([...commands.values()].map(entry => entry.result));
         await Promise.allSettled([...auditTasks]);
+        dataLogEngine?.stop();
         await startTask?.catch(() => {});
         if (historyRunning) { try { options.alarmHistory.finish(alarms.snapshot().sequence, historyMissed); } catch (error) { historyFault(error); } historyRunning = false; }
         const closed = server.listening ? new Promise((resolve) => server.close(resolve)) : Promise.resolve(); server.closeAllConnections();

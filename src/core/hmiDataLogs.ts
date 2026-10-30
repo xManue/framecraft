@@ -1,4 +1,5 @@
 import type { PlcVariableDefinition } from "./plcVariables";
+import { parseServiceDataLogs } from "../../runtime/data-log.mjs";
 
 export const hmiDataLogCatalogName = "framecraft.logs.json";
 export const hmiLoggingModes = ["on-change", "on-demand", "cyclic"] as const;
@@ -28,7 +29,7 @@ export interface HmiDataLogDefinition {
   id: string;
   name: string;
   enabled: boolean;
-  storage: "browser-local" | "memory";
+  storage: "browser-local" | "memory" | "runtime";
   retentionMs: number;
   maxEntries: number;
   segmentDurationMs: number;
@@ -74,6 +75,7 @@ export interface HmiDataLogRuntimeOptions {
   storage?: HmiDataLogStorage;
   now?: () => number;
   onError?: (message: string) => void;
+  servicePreview?: boolean;
 }
 
 export interface HmiDataLogRuntime {
@@ -124,7 +126,7 @@ function normalizeDataLog(value: unknown, index: number): HmiDataLogDefinition {
     id: dataLogString(item.id, `data-log-${index + 1}`).trim() || `data-log-${index + 1}`,
     name: dataLogString(item.name, `Data log ${index + 1}`).trim() || `Data log ${index + 1}`,
     enabled: dataLogBool(item.enabled, true),
-    storage: item.storage === "memory" ? "memory" : "browser-local",
+    storage: item.storage === "runtime" ? "runtime" : item.storage === "memory" ? "memory" : "browser-local",
     retentionMs: Math.max(60_000, Math.round(dataLogNumber(item.retentionMs, 7 * 86_400_000))),
     maxEntries: Math.max(100, Math.round(dataLogNumber(item.maxEntries, 100_000))),
     segmentDurationMs: Math.max(60_000, Math.round(dataLogNumber(item.segmentDurationMs, 86_400_000))),
@@ -165,10 +167,13 @@ export function serializeHmiDataLogCatalog(catalog: HmiDataLogCatalog): string {
 
 export function hmiDataLogCatalogIssues(catalog: HmiDataLogCatalog, variables?: readonly PlcVariableDefinition[]): HmiDataLogIssue[] {
   const issues: HmiDataLogIssue[] = [];
+  if (catalog.logs.filter(log => log.storage === "runtime").reduce((sum, log) => sum + estimateHmiDataLogBytes(log), 0) > 256 * 1024 * 1024) issues.push({ severity: "warning", message: "La stima dei Data Log del servizio supera 256 MiB, il limite complessivo del database. Riduci i campioni o prepara una politica di conservazione e backup adeguata." });
+  if (catalog.logs.some(log => log.storage === "runtime")) try { parseServiceDataLogs(catalog, variables?.filter(v => !v.detected)); } catch { issues.push({ severity: "error", message: "Data Log del servizio: verifica variabili scalari leggibili, trigger e limiti. Massimo 64 archivi e 512 variabili del servizio complessive; il minimo ciclo è 500 ms." }); }
   const logIds = new Set<string>();
   const logNames = new Set<string>();
   const declared = variables?.length ? new Set(variables.filter((variable) => !variable.detected).map((variable) => variable.name)) : undefined;
   for (const log of catalog.logs) {
+    if (log.storage === "runtime" && (log.maxEntries > 500000 || log.tags.length > 256 || !/^[A-Za-z0-9_-]{1,80}$/.test(log.id))) issues.push({ severity: "error", logId: log.id, message: `${log.name}: il servizio accetta fino a 500000 campioni, 256 variabili per archivio e ID con lettere, cifre, trattini o underscore.` });
     const logId = log.id.toLocaleLowerCase();
     const logName = log.name.toLocaleLowerCase();
     if (logIds.has(logId)) issues.push({ severity: "error", logId: log.id, message: `Data log: identificatore duplicato “${log.id}”.` });
@@ -177,6 +182,7 @@ export function hmiDataLogCatalogIssues(catalog: HmiDataLogCatalog, variables?: 
     if (log.segmentDurationMs > log.retentionMs) issues.push({ severity: "warning", logId: log.id, message: `${log.name}: un segmento dura più del periodo di conservazione.` });
     const tagIds = new Set<string>();
     for (const tag of log.tags) {
+      if (log.storage === "runtime" && (!/^[A-Za-z0-9_-]{1,80}$/.test(tag.id) || variables && !variables.some(v => v.name === tag.tag && v.access !== "write" && !v.detected && !v.dataType.includes("[")))) issues.push({ severity: "error", logId: log.id, loggedTagId: tag.id, message: `${log.name} / ${tag.name}: usa un ID valido e una variabile scalare dichiarata e leggibile dal gateway.` });
       const id = tag.id.toLocaleLowerCase();
       if (tagIds.has(id)) issues.push({ severity: "error", logId: log.id, loggedTagId: tag.id, message: `${log.name}: identificatore variabile duplicato “${tag.id}”.` });
       tagIds.add(id);
@@ -192,7 +198,7 @@ export function hmiDataLogCatalogIssues(catalog: HmiDataLogCatalog, variables?: 
 }
 
 export function estimateHmiDataLogBytes(log: HmiDataLogDefinition): number {
-  return log.maxEntries * 112;
+  return log.maxEntries * (log.storage === "runtime" ? 512 : 112);
 }
 
 function hmiDataLogStorageKey(catalog: HmiDataLogCatalog, explicit?: string): string {
@@ -225,6 +231,7 @@ function hmiAggregateValue(kind: HmiLogAggregation, values: readonly number[]): 
 
 export function createHmiDataLogRuntime(input: HmiDataLogCatalog | unknown, options: HmiDataLogRuntimeOptions = {}): HmiDataLogRuntime {
   const catalog = parseHmiDataLogCatalog(input);
+  catalog.logs = catalog.logs.flatMap(log => log.storage !== "runtime" ? [log] : options.servicePreview ? [{ ...log, storage: "memory" as const }] : []);
   const now = options.now ?? (() => Date.now());
   const storage = options.storage ?? (typeof localStorage !== "undefined" ? localStorage : undefined);
   const storageKey = hmiDataLogStorageKey(catalog, options.storageKey);

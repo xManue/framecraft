@@ -1,6 +1,6 @@
 import { OperatorAuthError, operatorKeys, operatorText } from "./operator-policy.mjs";
 
-export const auditOperations = Object.freeze(["tags.write", "alarms.acknowledge", "alarms.confirm", "alarms.shelve", "alarms.unshelve", "alarms.comment", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "recipes.apply", "recipes.check", "recipes.fence", "session.login", "session.logout"]);
+export const auditOperations = Object.freeze(["tags.write", "alarms.acknowledge", "alarms.confirm", "alarms.shelve", "alarms.unshelve", "alarms.comment", "dataLogs.sample", "recipes.create", "recipes.update", "recipes.copy", "recipes.rename", "recipes.delete", "recipes.import", "recipes.apply", "recipes.check", "recipes.fence", "session.login", "session.logout"]);
 export const auditOutcomes = Object.freeze(["requested", "applied", "delivered", "duplicate", "rejected", "uncertain", "authenticated", "logged-out"]);
 const uuid = value => typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
 const date = value => { try { return typeof value === "string" && value.length === 24 && new Date(value).toISOString() === value; } catch { return false; } };
@@ -39,7 +39,7 @@ export function parseAuditSnapshot(value, input = {}) {
     if (!operatorKeys(event, ["seq", "timestamp", "traceId", "actor", "operation", "resource", "commandId", "outcome", "code"]) || !Number.isSafeInteger(event.seq) || event.seq < 1 || event.seq >= previous
       || !date(event.timestamp) || !uuid(event.traceId) || event.actor !== null && !operatorText(event.actor, 200) || !auditOperations.includes(event.operation) || !auditOutcomes.includes(event.outcome)
       || event.commandId !== null && (typeof event.commandId !== "string" || !/^[A-Za-z0-9_-]{16,80}$/.test(event.commandId)) || typeof event.code !== "string" || !/^[A-Z][A-Z0-9_]{0,63}$/.test(event.code)) fail();
-    const kind = event.operation.startsWith("tags.") ? "tag" : event.operation.startsWith("alarms.") ? "alarm" : event.operation.startsWith("recipes.") ? "recipe-schema" : undefined;
+    const kind = event.operation.startsWith("tags.") ? "tag" : event.operation.startsWith("alarms.") ? "alarm" : event.operation.startsWith("recipes.") ? "recipe-schema" : event.operation.startsWith("dataLogs.") ? "data-log" : undefined;
     if (!kind ? event.resource !== null : !operatorKeys(event.resource, kind === "recipe-schema" ? ["kind", "id", "recordId", "targetId"] : ["kind", "id"]) || event.resource.kind !== kind || !operatorText(event.resource.id, 200)
       || kind === "recipe-schema" && (!operatorText(event.resource.recordId, 80) || event.resource.targetId !== null && !operatorText(event.resource.targetId, 80))) fail();
     if (!matchesAuditQuery(event, query)) fail(); previous = event.seq;
