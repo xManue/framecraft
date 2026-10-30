@@ -110,16 +110,17 @@ function globalDefinitionOf(value: unknown, allowExports = false): HmiScriptGlob
     const unsafe = (value: unknown): boolean => {
       if (!value || typeof value !== "object") return false;
       const item = value as Record<string, unknown>;
+      if (item.kind === "function-value" || item.kind === "function-declare") return false;
       if (item.kind === "local" && ["Screen", "Faceplate", "item"].includes(String(item.name))) return true;
-      if (["module-call", "timer-set", "popup-open", "popup-property", "screen-item", "property-flashing"].includes(String(item.kind))) return true;
+      if (["invoke", "module-call", "timer-set", "popup-open", "popup-property", "screen-item", "property-flashing"].includes(String(item.kind))) return true;
       if (item.kind === "array-method" && ["push", "pop", "shift", "unshift", "sort", "reverse", "splice"].includes(String(item.method))) return true;
       return Object.values(item).some(unsafe);
     };
-    if (inspection.program.statements.some((statement) => statement.kind !== "declare" || unsafe(statement))) {
-      error = "La definizione globale ammette dichiarazioni let/const/var con valori, calcoli o letture tag. Azioni, timer e chiamate di moduli appartengono alle funzioni.";
+    if (inspection.program.statements.some((statement) => !["declare", "function-declare"].includes(statement.kind) || unsafe(statement))) {
+      error = "La definizione globale ammette dichiarazioni di variabili e funzioni, con valori, calcoli o letture tag. Esegui le chiamate alle funzioni, le azioni e i timer negli eventi o nelle operazioni pianificate.";
     } else {
-      const invalid = inspection.program.statements.find((statement) => statement.kind === "declare" && reserved.has(statement.name));
-      if (invalid?.kind === "declare") error = `Il nome ${invalid.name} e' riservato al Runtime HMI.`;
+      const invalid = inspection.program.statements.find((statement) => (statement.kind === "declare" || statement.kind === "function-declare") && reserved.has(statement.name));
+      if (invalid?.kind === "declare" || invalid?.kind === "function-declare") error = `Il nome ${invalid.name} e' riservato al Runtime HMI.`;
     }
   }
   return { source, ...(error ? { error } : { program: inspection.program }) };

@@ -47,8 +47,8 @@ describe("contesti script persistenti e isolati", () => {
     expect(hmiScriptCatalogIssues(catalog)).toEqual([]);
     const saved = JSON.parse(serializeHmiScriptCatalog(catalog));
     expect(saved.globalModules[0].globalDefinition.program.statements[1]).toMatchObject({ name: "step", constant: true });
-    expect(saved.localDefinitions[0].globalDefinition.program.version).toBe(2);
-    expect(saved.schedulerDefinition.program.version).toBe(2);
+    expect(saved.localDefinitions[0].globalDefinition.program.version).toBe(3);
+    expect(saved.schedulerDefinition.program.version).toBe(3);
     expect(parseHmiScriptCatalog(saved)).toEqual(catalog);
   });
 

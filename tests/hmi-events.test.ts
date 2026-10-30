@@ -19,7 +19,7 @@ describe("eventi Runtime HMI", () => {
   });
   it("salva insieme allo script il programma sicuro per il pannello generato", () => {
     const raw = serializeHmiEvents([{ event: "Tapped", script: 'HMIRuntime.Tags.SysFct.SetTagValue("Command", 1);' }]);
-    expect(raw).toContain('"program":{"version":2');
+    expect(raw).toContain('"program":{"version":3');
     const parsed = parseHmiEvents(raw);
     expect(parsed).toHaveLength(1);
     expect(parsed[0]).toMatchObject({ event: "Tapped", script: 'HMIRuntime.Tags.SysFct.SetTagValue("Command", 1);' });

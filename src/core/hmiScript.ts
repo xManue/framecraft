@@ -5,6 +5,8 @@ export type HmiScriptScalar = string | number | boolean | null;
 
 export type HmiScriptExpression =
   | { kind: "literal"; value: HmiScriptScalar }
+  | { kind: "function-value"; parameters: string[]; program: HmiScriptProgram; name?: string }
+  | { kind: "invoke"; callee: HmiScriptExpression; arguments: HmiScriptExpression[] }
   | { kind: "local"; name: string }
   | { kind: "module-variable"; name: string }
   | { kind: "array"; items: HmiScriptExpression[] }
@@ -26,12 +28,13 @@ export type HmiScriptExpression =
   | { kind: "module-call"; name: string; arguments: HmiScriptExpression[] }
   | { kind: "popup-open"; scope: "screen" | "faceplate"; faceplateType: HmiScriptExpression; title: HmiScriptExpression; interfaceValues: HmiScriptPopupInterfaceValue[]; parentBound: boolean; independentWindow?: HmiScriptExpression; invisible?: HmiScriptExpression; popupWindowName?: HmiScriptExpression; adaptWindow?: HmiScriptExpression; left?: HmiScriptExpression; top?: HmiScriptExpression; width?: HmiScriptExpression; height?: HmiScriptExpression }
   | { kind: "popup-property"; popup: HmiScriptExpression; property: HmiScriptPopupProperty }
-  | { kind: "timer-set"; mode: "timeout" | "interval"; callback: HmiScriptTimerCallback; delay: HmiScriptExpression };
+  | { kind: "timer-set"; mode: "timeout" | "interval"; callback: HmiScriptTimerCallback | { kind: "value"; value: HmiScriptExpression }; delay: HmiScriptExpression };
 
 export type HmiScriptStatement =
   | { kind: "declare"; name: string; value?: HmiScriptExpression; constant?: boolean; functionScoped?: boolean }
   | { kind: "block"; statements: HmiScriptStatement[] }
   | { kind: "break" }
+  | { kind: "function-declare"; name: string; value: Extract<HmiScriptExpression, { kind: "function-value" }> }
   | { kind: "assign"; name: string; value: HmiScriptExpression }
   | { kind: "member-set"; object: HmiScriptExpression; key: HmiScriptExpression; value: HmiScriptExpression }
   | { kind: "expression"; value: HmiScriptExpression }
@@ -60,8 +63,8 @@ export type HmiScriptStatement =
   | { kind: "switch"; value: HmiScriptExpression; cases: { test?: HmiScriptExpression; statements: HmiScriptStatement[] }[] };
 
 export interface HmiScriptProgram {
-  /** IR 1 keeps flat legacy bindings; IR 2 has lexical scopes and explicit var declarations. */
-  version: 1 | 2;
+  /** IR 1: legacy flat bindings. IR 2: lexical blocks. IR 3: callable values and closures. */
+  version: 1 | 2 | 3;
   statements: HmiScriptStatement[];
   exports?: { name: string; local: string }[];
 }
@@ -152,7 +155,9 @@ interface RuntimeTagStatus { qualityCode: number; timeStamp: string | number; la
 type TagSetState = { names: string[]; pending: Record<string, HmiScriptScalar>; status: Record<string, RuntimeTagStatus>; lastError: number; errorDescription: string };
 type TagSetReference = { readonly tagSet: TagSetState };
 type DataReference = { readonly data: RuntimeValue[] | Record<string, RuntimeValue> };
-type RuntimeValue = HmiScriptScalar | TagReference | TagSetReference | HmiScriptPopupReference | HmiScriptScreenItemReference | DataReference;
+type FunctionReference = { readonly scriptFunction: { parameters: readonly string[]; program: HmiScriptProgram; scope?: HmiScriptScope; functions?: HmiScriptExecutionOptions["functions"]; variables?: HmiScriptExecutionOptions["variables"]; globalScope?: HmiScriptScope; name?: string } };
+
+type RuntimeValue = FunctionReference | HmiScriptScalar | TagReference | TagSetReference | HmiScriptPopupReference | HmiScriptScreenItemReference | DataReference;
 
 export interface HmiScriptScope {
   values: Map<string, RuntimeValue>;
@@ -364,19 +369,31 @@ function compileTagSetFactory(call: t.CallExpression): HmiScriptExpression | und
   return { kind: "tag-set", entries: compileTagSetEntries(argument, name) };
 }
 
-function compileTimerCallback(node: t.CallExpression["arguments"][number] | undefined, label: string): HmiScriptTimerCallback {
-  if (node && (t.isFunctionExpression(node) || t.isArrowFunctionExpression(node))) {
-    if (node.async || node.generator || node.params.length) fail(`${label} richiede una callback sincrona senza parametri`, node);
-    if (!t.isBlockStatement(node.body)) fail(`${label} richiede una callback con blocco { ... }`, node.body);
-    return { kind: "inline", program: { version: 2, statements: compileBlock(node.body) } };
-  }
-  if (node && t.isMemberExpression(node)) {
+function compileFunctionValue(node: t.FunctionExpression | t.ArrowFunctionExpression | t.FunctionDeclaration): Extract<HmiScriptExpression, { kind: "function-value" }> {
+  if (node.async || node.generator) fail("Le funzioni valore devono essere sincrone; await resta disponibile nelle azioni TagSet previste.", node);
+  if (node.params.length > 32 || node.params.some(parameter => !t.isIdentifier(parameter))) fail("La funzione richiede fino a 32 parametri con nome semplice, senza valori predefiniti, rest o destructuring.", node);
+  const parameters = node.params.map(parameter => (parameter as t.Identifier).name);
+  if (new Set(parameters).size !== parameters.length) fail("I nomi dei parametri devono essere distinti.", node);
+  const reserved = new Set([...safeCalls].map(name => name.split(".")[0]).concat([...forbiddenCalls], ["Tags", "Tag", "Modules", "Local", "UI", "Screen", "Faceplate", "Object", "JSON", "undefined"]));
+  const names = [...parameters, ...("id" in node && node.id ? [node.id.name] : [])];
+  if (names.some(name => reserved.has(name))) fail("Nomi delle API HMI riservati: scegli un altro nome per la funzione o per il parametro.", node);
+  let statements: HmiScriptStatement[];
+  if (t.isBlockStatement(node.body)) statements = compileBlock(node.body);
+  else if (t.isCallExpression(node.body)) {
+    const action = compileCallStatement(node.body);
+    statements = [!["expression", "module-call", "timer-set", "tag-set-read"].includes(action.kind) ? action : { kind: "return", value: compileExpression(node.body) }];
+  } else statements = [{ kind: "return", value: compileExpression(node.body) }];
+  return { kind: "function-value", parameters, program: { version: 3, statements }, ...("id" in node && node.id ? { name: node.id.name } : {}) };
+}
+
+function compileTimerCallback(node: t.CallExpression["arguments"][number] | undefined, label: string): Extract<HmiScriptExpression, { kind: "timer-set" }>["callback"] {
+  if (!node || !t.isExpression(node)) fail(label + " richiede una funzione e il ritardo in millisecondi.");
+  if ((t.isFunctionExpression(node) || t.isArrowFunctionExpression(node)) && !node.async && !node.generator && !node.params.length && t.isBlockStatement(node.body) && !("id" in node && node.id)) return { kind: "inline", program: { version: 3, statements: compileBlock(node.body) } };
+  if (t.isMemberExpression(node)) {
     const name = dottedName(node);
-    if (name && (/^Modules\.[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*$/.test(name) || /^Local\.[A-Za-z_$][\w$]*$/.test(name))) {
-      return { kind: "function", call: { kind: "module-call", name, arguments: [] } };
-    }
+    if (name && (/^Modules\.[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*$/.test(name) || /^Local\.[A-Za-z_$][\w$]*$/.test(name))) return { kind: "function", call: { kind: "module-call", name, arguments: [] } };
   }
-  fail(`${label} richiede una callback inline oppure il riferimento a una funzione Modules/Local`, node && t.isNode(node) ? node : undefined);
+  return { kind: "value", value: compileExpression(node) };
 }
 
 function compileTimerSet(call: t.CallExpression): Extract<HmiScriptExpression, { kind: "timer-set" }> | undefined {
@@ -454,6 +471,7 @@ function compilePopupOpen(call: t.CallExpression): Extract<HmiScriptExpression, 
 
 function compileExpression(node: t.Expression | t.JSXNamespacedName | t.ArgumentPlaceholder | t.SpreadElement): HmiScriptExpression {
   if (!t.isExpression(node)) fail("Espressione non supportata", node);
+  if (t.isFunctionExpression(node) || t.isArrowFunctionExpression(node)) return compileFunctionValue(node);
   const constant = literal(node);
   if (constant) return constant;
   if (t.isArrayExpression(node)) {
@@ -501,6 +519,7 @@ function compileExpression(node: t.Expression | t.JSXNamespacedName | t.Argument
     }
     if (t.isMemberExpression(node.callee) && t.isExpression(node.callee.object) && ["push", "pop", "shift", "unshift", "indexOf", "lastIndexOf", "includes", "slice", "join", "toString", "reverse", "sort", "splice"].includes(memberName(node.callee) ?? "")) {
       if (node.arguments.some((item) => t.isSpreadElement(item) || t.isArgumentPlaceholder(item))) fail("Argomenti spread non supportati", node);
+      if (memberName(node.callee) === "sort" && node.arguments.length) fail("Array.sort con comparatore non e' ancora supportato nella sandbox.", node);
       return { kind: "array-method", object: compileExpression(node.callee.object), method: memberName(node.callee)!, arguments: node.arguments.map(compileExpression) };
     }
     const popup = compilePopupOpen(node);
@@ -515,20 +534,21 @@ function compileExpression(node: t.Expression | t.JSXNamespacedName | t.Argument
       return { kind: "tag-set-item", set: compileExpression(node.callee.object), tag: callArguments(node, 1, "Item")[0] };
     }
     if (t.isIdentifier(node.callee) && forbiddenCalls.has(node.callee.name)) fail(`Chiamata ${node.callee.name} non ammessa nella sandbox`, node);
-    if (t.isIdentifier(node.callee) && !safeCalls.has(node.callee.name) && node.arguments.length === 1 && t.isExpression(node.arguments[0])) {
-      return { kind: "tag-set-item", set: { kind: "local", name: node.callee.name }, tag: compileExpression(node.arguments[0]) };
-    }
     if (t.isMemberExpression(node.callee) && memberName(node.callee) === "Read" && t.isExpression(node.callee.object)) {
       return { kind: "tag-read", tag: compileExpression(node.callee.object) };
     }
-    if (!name || !safeCalls.has(name)) fail(`Chiamata ${name ?? "dinamica"} non ammessa nella sandbox`, node);
+    if (!name || !safeCalls.has(name)) {
+      if (name && /^(?:Object|JSON|Math|HMIRuntime|UI|Faceplate|Screen|Tags)\./.test(name)) fail("Chiamata " + name + " non ammessa nella sandbox.", node);
+      if (!t.isExpression(node.callee) || node.arguments.length > 32 || node.arguments.some(argument => !t.isExpression(argument))) fail("Chiamata con argomenti non supportati nella sandbox.", node);
+      return { kind: "invoke", callee: compileExpression(node.callee), arguments: node.arguments.map(compileExpression) };
+    }
     if (node.arguments.some((argument) => t.isSpreadElement(argument) || t.isArgumentPlaceholder(argument))) fail("Argomenti spread non supportati", node);
     return { kind: "call", name, arguments: node.arguments.map(compileExpression) };
   }
   if (t.isMemberExpression(node) && t.isExpression(node.object)) {
     const name = dottedName(node);
     if (name === "UI.ActiveScreen" || name === "HMIRuntime.UI.ActiveScreen") return { kind: "local", name: "Screen" };
-    if (name && /^Modules\.[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*$/.test(name)) return { kind: "module-variable", name };
+    if (name && (/^Modules\.[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*$/.test(name) || /^Local\.[A-Za-z_$][\w$]*$/.test(name))) return { kind: "module-variable", name };
     const gesture = gestureEnums.get(dottedName(node) ?? "");
     if (gesture) return { kind: "literal", value: gesture };
     const runtimeEnum = runtimeEnums.get(dottedName(node) ?? "");
@@ -731,7 +751,7 @@ function compileCallStatement(call: t.CallExpression): HmiScriptStatement {
   if (t.isMemberExpression(call.callee) && ["push", "pop", "shift", "unshift", "indexOf", "lastIndexOf", "includes", "slice", "join", "toString", "reverse", "sort", "splice"].includes(memberName(call.callee) ?? "")) {
     return { kind: "expression", value: compileExpression(call) };
   }
-  fail(`La chiamata ${name ?? "dinamica"} non e' un'azione supportata`, call);
+  return { kind: "expression", value: compileExpression(call) };
 }
 
 function compileBlock(node: t.Statement | t.BlockStatement | null | undefined): HmiScriptStatement[] {
@@ -740,6 +760,10 @@ function compileBlock(node: t.Statement | t.BlockStatement | null | undefined): 
   const result: HmiScriptStatement[] = [];
   for (const statement of statements) {
     if (t.isEmptyStatement(statement)) continue;
+    if (t.isFunctionDeclaration(statement)) {
+      if (!statement.id) fail("La dichiarazione di funzione richiede un nome.", statement);
+      result.push({ kind: "function-declare", name: statement.id.name, value: compileFunctionValue(statement) }); continue;
+    }
     if (t.isBreakStatement(statement)) { result.push({ kind: "break" }); continue; }
     if (t.isBlockStatement(statement)) { result.push({ kind: "block", statements: compileBlock(statement) }); continue; }
     if (t.isVariableDeclaration(statement)) {
@@ -842,7 +866,40 @@ function updateStaticArray(expression: Extract<HmiScriptExpression, { kind: "arr
   }
 }
 
+type StaticFunction = Extract<HmiScriptExpression, { kind: "function-value" }> & { bindings?: Map<string, HmiScriptExpression>; inspecting?: boolean };
+
+function inspectCallable(expression: HmiScriptExpression, args: HmiScriptExpression[], locals: Map<string, HmiScriptExpression>, read = new Set<string>(), written = new Set<string>(), asyncState = { value: false }): HmiScriptExpression[] {
+  const result: HmiScriptExpression[] = [];
+  for (const candidate of staticValues(expression, locals)) {
+    if (candidate.kind !== "function-value") continue;
+    const fn = bindStaticData(candidate, locals) as StaticFunction;
+    if (fn.inspecting) continue;
+    const bindings = new Map(fn.bindings ?? locals);
+    if (fn.name) bindings.set(fn.name, fn);
+    for (let index = 0; index < fn.parameters.length; index++) {
+      if (args[index]) bindings.set(fn.parameters[index], bindStaticData(args[index], locals)); else bindings.delete(fn.parameters[index]);
+    }
+    fn.inspecting = true;
+    try {
+      inspectStatements(fn.program.statements, read, written, bindings, asyncState, fn.program.version >= 2);
+      const returns = (body: readonly HmiScriptStatement[]) => {
+        for (const statement of body) {
+          if (statement.kind === "return" && statement.value) result.push(bindStaticData(statement.value, bindings));
+          else if (statement.kind === "block") returns(statement.statements);
+          else if (statement.kind === "if") { returns(statement.consequent); returns(statement.alternate); }
+          else if (statement.kind === "switch") for (const entry of statement.cases) returns(entry.statements);
+          else if (statement.kind === "try") { returns(statement.statements); returns(statement.failure?.statements ?? []); returns(statement.final); }
+        }
+      };
+      returns(fn.program.statements);
+    } finally { fn.inspecting = false; }
+  }
+  return result;
+}
+
 function walkExpression(expression: HmiScriptExpression, read: Set<string>, locals: Map<string, HmiScriptExpression>) {
+  if (expression.kind === "function-value") return;
+  if (expression.kind === "invoke") { walkExpression(expression.callee, read, locals); expression.arguments.forEach(argument => walkExpression(argument, read, locals)); return; }
   if (expression.kind === "screen-item") { walkExpression(expression.name, read, locals); return; }
   if (expression.kind === "property-flashing") { walkExpression(expression.item, read, locals); expression.arguments.forEach((argument) => walkExpression(argument, read, locals)); return; }
   if (expression.kind === "local" && !locals.has(expression.name) && ["document", "window", "globalThis", "global", "self", "parent", "top", "frames", "opener", "location", "navigator", "localStorage", "sessionStorage", "process", "require", "Buffer", "fetch", "XMLHttpRequest", "WebSocket", "eval", "Function"].includes(expression.name)) {
@@ -897,13 +954,17 @@ function walkExpression(expression: HmiScriptExpression, read: Set<string>, loca
     for (const item of [expression.independentWindow, expression.invisible, expression.popupWindowName, expression.adaptWindow, expression.left, expression.top, expression.width, expression.height]) if (item) walkExpression(item, read, locals);
   }
   if (expression.kind === "popup-property") walkExpression(expression.popup, read, locals);
-  if (expression.kind === "timer-set") walkExpression(expression.delay, read, locals);
+  if (expression.kind === "timer-set") { walkExpression(expression.delay, read, locals); if (expression.callback.kind === "value") walkExpression(expression.callback.value, read, locals); }
 }
 
 function staticValues(expression: HmiScriptExpression, locals: Map<string, HmiScriptExpression>, path: Set<HmiScriptExpression> = new Set()): HmiScriptExpression[] {
   if (path.has(expression) || path.size >= 64) return [];
   const next = new Set(path); next.add(expression);
   const resolve = (value: HmiScriptExpression) => staticValues(value, locals, next);
+  if (expression.kind === "invoke") {
+    if (expression.arguments.length === 1 && staticValues(expression.callee, locals, next).some(value => value.kind === "tag-set")) return staticValues({ kind: "tag-set-item", set: expression.callee, tag: expression.arguments[0] }, locals, next);
+    return inspectCallable(expression.callee, expression.arguments, locals);
+  }
   if (expression.kind === "local" || expression.kind === "module-variable") {
     const binding = locals.get(expression.name);
     return binding ? resolve(binding) : [];
@@ -970,6 +1031,8 @@ function staticTags(expression: HmiScriptExpression, locals: Map<string, HmiScri
 }
 
 function bindStaticData(expression: HmiScriptExpression, locals: Map<string, HmiScriptExpression>): HmiScriptExpression {
+  if (expression.kind === "function-value") return (expression as StaticFunction).bindings ? expression : Object.assign({ ...expression }, { bindings: locals });
+  if (expression.kind === "invoke") return staticChoice(inspectCallable(expression.callee, expression.arguments, locals)) ?? expression;
   if (expression.kind === "array") return { ...expression, items: expression.items.map((item) => bindStaticData(item, locals)) };
   if (expression.kind === "object") return { ...expression, entries: expression.entries.map((entry) => ({ ...entry, value: bindStaticData(entry.value, locals) })) };
   if (expression.kind === "tag-set") return { ...expression, entries: expression.entries.map((entry) => ({ ...entry, ...(entry.value ? { value: bindStaticData(entry.value, locals) } : {}) })) };
@@ -1030,14 +1093,18 @@ function updateStaticTagSet(expression: HmiScriptExpression, locals: Map<string,
 
 function inspectStatements(statements: readonly HmiScriptStatement[], read: Set<string>, written: Set<string>, locals: Map<string, HmiScriptExpression>, asyncState: { value: boolean }, lexicalBlocks = true): boolean {
   let hasReturn = false;
-  const callbacks: { program: HmiScriptProgram; bindings: Map<string, HmiScriptExpression> }[] = [];
+  const callbacks: { program: HmiScriptProgram; bindings: Map<string, HmiScriptExpression>; parameters?: string[] }[] = [];
   for (const statement of statements) if (lexicalBlocks && statement.kind === "declare" && !statement.functionScoped) locals.delete(statement.name);
+  for (const statement of statements) if (statement.kind === "function-declare") locals.set(statement.name, bindStaticData(statement.value, locals));
   const captureCallbacks = (value: unknown) => {
     if (!value || typeof value !== "object") return;
     const item = value as Record<string, unknown>;
+    if (item.kind === "function-value") { callbacks.push({ program: item.program as HmiScriptProgram, bindings: new Map(locals), parameters: item.parameters as string[] }); return; }
+    if (item.kind === "invoke") inspectCallable(item.callee as HmiScriptExpression, item.arguments as HmiScriptExpression[], locals, read, written, asyncState);
     if (item.kind === "timer-set" && item.callback && typeof item.callback === "object") {
-      const callback = item.callback as HmiScriptTimerCallback;
+      const callback = item.callback as Extract<HmiScriptExpression, {kind:"timer-set"}>["callback"];
       if (callback.kind === "inline") callbacks.push({ program: callback.program, bindings: new Map(locals) });
+      if (callback.kind === "value") { captureCallbacks(callback.value); inspectCallable(callback.value, [], locals, read, written, asyncState); }
       captureCallbacks(item.delay); return;
     }
     for (const [key, child] of Object.entries(item)) {
@@ -1176,24 +1243,39 @@ function inspectStatements(statements: readonly HmiScriptStatement[], read: Set<
       const before = callback.bindings.get(name);
       callback.bindings.set(name, before && before !== value ? staticChoice([before, value])! : value);
     }
-    inspectStatements(callback.program.statements, read, written, callback.bindings, asyncState, callback.program.version === 2);
+    for (const name of callback.parameters ?? []) callback.bindings.delete(name);
+    inspectStatements(callback.program.statements, read, written, callback.bindings, asyncState, callback.program.version >= 2);
   }
   return hasReturn;
 }
 
-function inspectModuleVariables(program: HmiScriptProgram, variables: Readonly<Record<string, HmiScriptRuntimeVariable>>, read: Set<string>, written: Set<string>, asyncState: { value: boolean }, bindings: Map<string, HmiScriptExpression> = new Map(), stack: string[] = []): Map<string, HmiScriptExpression> {
+function inspectModuleVariables(program: HmiScriptProgram, variables: Readonly<Record<string, HmiScriptRuntimeVariable>>, read: Set<string>, written: Set<string>, asyncState: { value: boolean }, bindings: Map<string, HmiScriptExpression> = new Map(), stack: string[] = [], functions: Readonly<Record<string, HmiScriptRuntimeFunction>> = {}): Map<string, HmiScriptExpression> {
   const visit = (value: unknown) => {
     if (!value || typeof value !== "object") return;
     const item = value as Record<string, unknown>;
     if (item.kind === "module-variable" && typeof item.name === "string") {
       const name = item.name;
+      const fn = functions[name];
+      if (fn) {
+        if (!bindings.has(name)) {
+          const fnBindings = new Map<string, HmiScriptExpression>();
+          const value: StaticFunction = { kind: "function-value", parameters: [...fn.parameters], program: fn.program, bindings: fnBindings, name };
+          bindings.set(name, value);
+          const definition = fn.globalDefinition ?? fn.globalScope?.initializer;
+          if (definition) inspectStatements(definition.statements, read, written, fnBindings, asyncState, definition.version >= 2);
+          for (const tag of fn.tagsRead ?? []) read.add(tag);
+          for (const tag of fn.tagsWritten ?? []) written.add(tag);
+          if (fn.hasAsync) asyncState.value = true;
+        }
+        return;
+      }
       if (stack.includes(name)) throw new Error(`Dipendenza ciclica fra variabili pubbliche HMI: ${[...stack, name].join(" -> ")}.`);
       const binding = variables[name];
       if (!binding || !binding.definition.exports?.some((entry) => entry.local === binding.name && name.endsWith(`.${entry.name}`))) throw new Error(`Variabile pubblica HMI ${name} non esportata o modulo non disponibile.`);
       if (bindings.has(name)) return;
-      inspectModuleVariables(binding.definition, variables, read, written, asyncState, bindings, [...stack, name]);
+      inspectModuleVariables(binding.definition, variables, read, written, asyncState, bindings, [...stack, name], functions);
       const locals = new Map(bindings);
-      inspectStatements(binding.definition.statements, read, written, locals, asyncState, binding.definition.version === 2);
+      inspectStatements(binding.definition.statements, read, written, locals, asyncState, binding.definition.version >= 2);
       const expression = staticValue({ kind: "local", name: binding.name }, locals);
       if (expression) bindings.set(name, expression);
       return;
@@ -1211,23 +1293,31 @@ function inspectModuleDependencies(program: HmiScriptProgram, functions: Readonl
     if (item.kind === "module-call" && typeof item.name === "string" && Array.isArray(item.arguments)) {
       for (const argument of item.arguments) visit(argument);
       const definition = functions[item.name];
-      if (!definition) throw new Error(`Funzione HMI ${item.name} non definita o non importata nel contesto corrente.`);
+      if (!definition) {
+        if (variables?.[item.name]) {
+          const reference: HmiScriptExpression = { kind: "module-variable", name: item.name };
+          const bindingProgram: HmiScriptProgram = { version: 3, statements: [{ kind: "expression", value: reference }] };
+          const bindings = inspectModuleVariables(bindingProgram, variables, read, written, asyncState, new Map(callerLocals), [], functions);
+          inspectCallable(reference, item.arguments as HmiScriptExpression[], bindings, read, written, asyncState); return;
+        }
+        throw new Error("Funzione HMI " + item.name + " non definita o non importata nel contesto corrente.");
+      }
       if (definition.parameters.length !== item.arguments.length) throw new Error(`${item.name} richiede ${definition.parameters.length} argomenti, ricevuti ${item.arguments.length}.`);
       if (stack.includes(item.name)) throw new Error(`Chiamata ricorsiva non ammessa: ${[...stack, item.name].join(" -> ")}.`);
       for (const tag of definition.tagsRead ?? []) read.add(tag);
       for (const tag of definition.tagsWritten ?? []) written.add(tag);
       if (definition.hasAsync) asyncState.value = true;
       {
-        const bindings = variables ? inspectModuleVariables(definition.program, variables, read, written, asyncState) : new Map<string, HmiScriptExpression>();
+        const bindings = variables ? inspectModuleVariables(definition.program, variables, read, written, asyncState, new Map(), [], functions) : new Map<string, HmiScriptExpression>();
         const globalDefinition = definition.globalDefinition ?? definition.globalScope?.initializer;
         if (globalDefinition) {
-          if (variables) inspectModuleVariables(globalDefinition, variables, read, written, asyncState, bindings);
-          inspectStatements(globalDefinition.statements, read, written, bindings, asyncState, globalDefinition.version === 2);
+          if (variables) inspectModuleVariables(globalDefinition, variables, read, written, asyncState, bindings, [], functions);
+          inspectStatements(globalDefinition.statements, read, written, bindings, asyncState, globalDefinition.version >= 2);
         }
         for (let index = 0; index < definition.parameters.length; index += 1) {
           bindings.set(definition.parameters[index], bindStaticData(item.arguments[index] as HmiScriptExpression, callerLocals));
         }
-        inspectStatements(definition.program.statements, read, written, bindings, asyncState, definition.program.version === 2);
+        inspectStatements(definition.program.statements, read, written, bindings, asyncState, definition.program.version >= 2);
         const returnedTags = (value: unknown) => {
           if (!value || typeof value !== "object") return;
           const statement = value as Record<string, unknown>;
@@ -1246,18 +1336,18 @@ function inspectModuleDependencies(program: HmiScriptProgram, functions: Readonl
 
 export function inspectHmiScriptProgram(program: HmiScriptProgram, functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>, definition?: HmiScriptProgram, parameters: readonly string[] = [], variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>): HmiScriptInspection {
   try {
-    if (!program || ![1, 2].includes(program.version) || !Array.isArray(program.statements)) throw new Error("Versione dello script non supportata: aggiorna il Runtime e ricompila il sorgente.");
+    if (!program || ![1, 2, 3].includes(program.version) || !Array.isArray(program.statements)) throw new Error("Versione dello script non supportata: aggiorna il Runtime e ricompila il sorgente.");
     const read = new Set<string>();
     const written = new Set<string>();
     const asyncState = { value: false };
     const locals = new Map<string, HmiScriptExpression>();
-    if (variables) {
-      inspectModuleVariables(program, variables, read, written, asyncState, locals);
-      if (definition) inspectModuleVariables(definition, variables, read, written, asyncState, locals);
+    if (variables || functions) {
+      inspectModuleVariables(program, variables ?? {}, read, written, asyncState, locals, [], functions);
+      if (definition) inspectModuleVariables(definition, variables ?? {}, read, written, asyncState, locals, [], functions);
     }
-    if (definition) inspectStatements(definition.statements, read, written, locals, asyncState, definition.version === 2);
+    if (definition) inspectStatements(definition.statements, read, written, locals, asyncState, definition.version >= 2);
     for (const parameter of parameters) locals.set(parameter, { kind: "literal", value: null });
-    const hasReturn = inspectStatements(program.statements, read, written, locals, asyncState, program.version === 2);
+    const hasReturn = inspectStatements(program.statements, read, written, locals, asyncState, program.version >= 2);
     if (functions) inspectModuleDependencies(program, functions, read, written, asyncState, [], variables, locals);
     return { tagsRead: [...read], tagsWritten: [...written], hasReturn, hasAsync: asyncState.value, program };
   } catch (caught) {
@@ -1272,7 +1362,7 @@ export function inspectHmiScript(source: string, functions?: Readonly<Record<str
     const file = parse(`async function __framecraftScript() {\n${source}\n}`, { sourceType: "module" });
     const declaration = file.program.body[0];
     if (!t.isFunctionDeclaration(declaration) || !t.isBlockStatement(declaration.body)) fail("Script non leggibile");
-    return inspectHmiScriptProgram({ version: 2, statements: compileBlock(declaration.body) }, functions, definition, parameters, variables);
+    return inspectHmiScriptProgram({ version: 3, statements: compileBlock(declaration.body) }, functions, definition, parameters, variables);
   } catch (caught) {
     return { tagsRead: [], tagsWritten: [], hasReturn: false, hasAsync: false, error: caught instanceof Error ? caught.message : String(caught) };
   }
@@ -1302,7 +1392,7 @@ export function inspectHmiScriptDefinition(source: string, allowExports = false)
         statements.push(...compileBlock(item));
       }
     }
-    return inspectHmiScriptProgram({ version: 2, statements, ...(exports.length ? { exports } : {}) });
+    return inspectHmiScriptProgram({ version: 3, statements, ...(exports.length ? { exports } : {}) });
   } catch (caught) {
     return { tagsRead: [], tagsWritten: [], hasReturn: false, hasAsync: false, error: caught instanceof Error ? caught.message : String(caught) };
   }
@@ -1342,7 +1432,12 @@ function number(value: RuntimeValue): number {
   return converted;
 }
 
+function isFunctionReference(value: RuntimeValue): value is FunctionReference {
+  return typeof value === "object" && value !== null && "scriptFunction" in value;
+}
+
 function scalar(value: RuntimeValue): HmiScriptScalar {
+  if (isFunctionReference(value)) throw new Error("Una funzione non puo' essere usata come valore PLC, testo, proprieta' o JSON: chiamala e usa il risultato.");
   if (isDataReference(value)) throw new Error("Un valore strutturato richiede un membro scalare o JSON.stringify(), non puo' essere usato direttamente come valore PLC/proprieta'.");
   if (value && typeof value === "object" && "screenItemId" in value) throw new Error("Un riferimento grafico richiede una proprieta' scalare, per esempio Font.Size, non puo' essere usato come valore PLC/proprieta'.");
   if (typeof value === "object" && value !== null) throw new Error("Lo script sta usando il riferimento a un tag invece del suo valore: aggiungi .Read().");
@@ -1499,8 +1594,8 @@ function dataArrayMethod(target: RuntimeValue, method: string, args: RuntimeValu
 }
 
 function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<Record<string, string>>, options: HmiScriptExecutionOptions = {}): ScriptCoroutine<HmiScriptExecution> {
-  if (!program || ![1, 2].includes(program.version) || !Array.isArray(program.statements)) return { writes: {}, traces: [], navigation: [], operatorMessages: [], faceplateEvents: [], tagStatus: {}, steps: 0, error: "Versione dello script non supportata. Aggiorna il Runtime e ricompila lo script nell’editor; nessun comando eseguito." };
-  const lexicalBlocks = program.version === 2;
+  if (!program || ![1, 2, 3].includes(program.version) || !Array.isArray(program.statements)) return { writes: {}, traces: [], navigation: [], operatorMessages: [], faceplateEvents: [], tagStatus: {}, steps: 0, error: "Versione dello script non supportata. Aggiorna il Runtime e ricompila lo script nell’editor; nessun comando eseguito." };
+  const lexicalBlocks = program.version >= 2;
   const values = { ...input };
   const localScope = options.initializingScope ?? createHmiScriptScope(undefined, options.closureScope ?? options.globalScope);
   let lexicalScope = localScope, functionScope = localScope, locals = localScope.values;
@@ -1635,7 +1730,25 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       if (owner.unassigned?.has(expression.name)) throw new Error(`La variabile ${expression.name} non ha ancora un valore: assegnalo prima di leggerla o inviarla al PLC.`);
       return owner.values.get(expression.name)!;
     }
+    if (expression.kind === "function-value") {
+      if (program.version < 3) throw new Error("Le funzioni valore richiedono IR 3: ricompila lo script.");
+      return makeFunction(expression);
+    }
+    if (expression.kind === "invoke") {
+      if (program.version < 3) throw new Error("Le chiamate a funzioni valore richiedono IR 3: ricompila lo script.");
+      const target = (yield* evaluate(expression.callee));
+      const args = (yield* mapScriptValues(expression.arguments, evaluate));
+      if (isTagSetReference(target) && args.length === 1) {
+        const name = tagName(args[0]);
+        if (!target.tagSet.names.includes(name)) throw new Error("Il tag " + name + " non appartiene al TagSet.");
+        return { tag: name, tagSet: target.tagSet };
+      }
+      if (!isFunctionReference(target)) throw new Error("Il valore selezionato non e' una funzione HMI.");
+      return (yield* invokeFunction(target, args));
+    }
     if (expression.kind === "module-variable") {
+      const definition = options.functions?.[expression.name];
+      if (definition) return { scriptFunction: { parameters: definition.parameters, program: definition.program, scope: definition.globalScope, globalScope: definition.globalScope, functions: options.functions, variables: options.variables, name: expression.name } };
       const binding = options.variables?.[expression.name];
       if (!binding?.globalScope || !binding.definition.exports?.some((entry) => entry.local === binding.name && expression.name.endsWith(`.${entry.name}`))) throw new Error(`Variabile pubblica HMI ${expression.name} non esportata o modulo non disponibile.`);
       (yield* initializeScope(binding.globalScope));
@@ -1756,6 +1869,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     }
     if (expression.kind === "unary") {
       const value = (yield* evaluate(expression.value));
+      if (expression.operator === "typeof" && isFunctionReference(value)) return "function";
       if (expression.operator === "typeof" && typeof value === "object") return "object";
       if (expression.operator === "!") return !truthy(value);
       if (expression.operator === "+") return number(value);
@@ -1783,7 +1897,14 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     }
     if (expression.kind === "module-call") {
       const definition = options.functions?.[expression.name];
-      if (!definition) throw new Error(`Funzione HMI ${expression.name} non definita o non importata nel contesto corrente.`);
+      if (!definition) {
+        if (options.variables?.[expression.name]) {
+          const target = (yield* evaluate({ kind: "module-variable", name: expression.name }));
+          if (!isFunctionReference(target)) throw new Error("La variabile pubblica " + expression.name + " non e' una funzione HMI.");
+          return (yield* invokeFunction(target, (yield* mapScriptValues(expression.arguments, evaluate))));
+        }
+        throw new Error("Funzione HMI " + expression.name + " non definita o non importata nel contesto corrente.");
+      }
       if (definition.parameters.length !== expression.arguments.length) {
         throw new Error(`${expression.name} richiede ${definition.parameters.length} argomenti, ricevuti ${expression.arguments.length}.`);
       }
@@ -1837,10 +1958,21 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       return options.popupManager.get(popup, expression.property);
     }
     if (expression.kind === "timer-set") {
+      if (expression.callback.kind === "value" && program.version < 3) throw new Error("I timer con funzioni valore richiedono IR 3.");
+      const callbackTarget = expression.callback.kind === "value" ? (yield* evaluate(expression.callback.value)) : undefined;
       const delay = number((yield* evaluate(expression.delay)));
       if (!Number.isInteger(delay) || delay < 0 || delay > 0xffffffff) throw new Error("Il ritardo del timer deve essere un UInt32 in millisecondi.");
       if (!options.timerManager) throw new Error("Il contesto corrente non dispone di un gestore timer.");
-      return options.timerManager.set(expression.mode, expression.callback, delay, { functions: options.functions, variables: options.variables, globalScope: options.globalScope, screenItems: options.screenItems, transport: options.transport, transportTimeoutMs: options.transportTimeoutMs, localTags: options.localTags, localTagValues: options.localTagValues, signal: options.signal, isActive: options.isActive, ...(expression.callback.kind === "inline" ? { closureScope: lexicalScope } : {}) });
+      let callback = expression.callback;
+      let closureScope = callback.kind === "inline" ? lexicalScope : undefined;
+      if (callback.kind === "value") {
+        const target = callbackTarget;
+        if (target === undefined || !isFunctionReference(target) || target.scriptFunction.parameters.length) throw new Error("La callback del timer deve essere una funzione HMI senza parametri.");
+        closureScope = createHmiScriptScope(undefined, lexicalScope);
+        closureScope.values.set("__framecraftTimerCallback", target); closureScope.constants.add("__framecraftTimerCallback");
+        callback = { kind: "inline", program: { version: 3, statements: [{ kind: "expression", value: { kind: "invoke", callee: { kind: "local", name: "__framecraftTimerCallback" }, arguments: [] } }] } };
+      }
+      return options.timerManager.set(expression.mode, callback, delay, { functions: options.functions, variables: options.variables, globalScope: options.globalScope, screenItems: options.screenItems, transport: options.transport, transportTimeoutMs: options.transportTimeoutMs, localTags: options.localTags, localTagValues: options.localTagValues, signal: options.signal, isActive: options.isActive, ...(closureScope ? { closureScope } : {}) });
     }
     const left = (yield* evaluate(expression.left));
     if (expression.operator === "&&" && !truthy(left)) return false;
@@ -1995,11 +2127,37 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       // Promise handlers and timer programs own their function declarations.
     }
   };
+  const makeFunction = (expression: Extract<HmiScriptExpression, { kind: "function-value" }>, declaration = false): FunctionReference => {
+    const scope = expression.name && !declaration ? createHmiScriptScope(undefined, lexicalScope) : lexicalScope;
+    const result: FunctionReference = { scriptFunction: { parameters: expression.parameters, program: expression.program, scope, globalScope: options.globalScope, functions: options.functions, variables: options.variables, name: expression.name } };
+    if (expression.name && !declaration) { scope.values.set(expression.name, result); scope.constants.add(expression.name); }
+    return result;
+  };
+  const invokeFunction = function* (reference: FunctionReference, args: RuntimeValue[]): ScriptCoroutine<RuntimeValue> {
+    const fn = reference.scriptFunction, stack = options.callStack ?? [];
+    if (stack.length >= 16) throw new Error("Troppi livelli di chiamata fra funzioni HMI (massimo 16).");
+    if (args.length !== fn.parameters.length) throw new Error("La funzione " + (fn.name ?? "anonima") + " richiede " + fn.parameters.length + " argomenti, ricevuti " + args.length + ".");
+    const nested = (yield* executeHmiScriptCoroutine(fn.program, values, { ...options,
+      maxSteps: Math.max(1, maxSteps - steps), timeoutMs: Math.max(1, timeoutMs - elapsed()),
+      locals: Object.fromEntries(fn.parameters.map((parameter, index) => [parameter, args[index]])),
+      globalScope: fn.globalScope, closureScope: fn.scope, initializingScope: undefined,
+      functions: fn.functions, variables: fn.variables, tagStatus: { ...options.tagStatus, ...statusByTag },
+      callStack: [...stack, fn.name ?? "callback"], returnByReference: true,
+    }));
+    mergeNested(nested);
+    if (nested.error) throw new Error(nested.error);
+    return "returnedReference" in nested ? nested.returnedReference ?? null : nested.returned ?? null;
+  };
   const prepareLexicals = (statements: readonly HmiScriptStatement[]) => {
     if (!lexicalBlocks) return;
     lexicalScope.uninitialized ??= new Set();
     for (const statement of statements) {
       prepareStep();
+      if (statement.kind === "function-declare") {
+        if (program.version < 3) throw new Error("Le dichiarazioni di funzione richiedono IR 3: ricompila lo script.");
+        if (locals.has(statement.name) && lexicalScope !== functionScope) throw new Error("Funzione gia' dichiarata nello scope: " + statement.name);
+        locals.set(statement.name, makeFunction(statement.value, true)); lexicalScope.unassigned?.delete(statement.name); continue;
+      }
       if (statement.kind !== "declare" || statement.functionScoped) continue;
       if (locals.has(statement.name)) throw new Error(`La variabile ${statement.name} e' gia' dichiarata nello stesso scope.`);
       locals.set(statement.name, null); lexicalScope.uninitialized.add(statement.name);
@@ -2010,6 +2168,10 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
   const runBody = function* (statements: readonly HmiScriptStatement[]): ScriptCoroutine<Flow> {
     for (const statement of statements) {
       tick();
+      if (statement.kind === "function-declare") {
+        if (program.version < 3) throw new Error("Le dichiarazioni di funzione richiedono IR 3.");
+        continue;
+      }
       if (statement.kind === "declare") {
         const owner = statement.functionScoped ? ownerOf(statement.name) ?? functionScope : lexicalScope;
         if (statement.value) { owner.values.set(statement.name, (yield* evaluate(statement.value))); owner.unassigned?.delete(statement.name); }
@@ -2351,5 +2513,5 @@ export async function executeHmiScriptAsync(program: HmiScriptProgram, input: Re
 /** Il progetto generato non porta con se' Babel: riceve il programma gia' compilato nell'attributo
  * e solo questo piccolo esecutore. Le funzioni sono le stesse usate dai test dell'editor. */
 export function hmiScriptRuntimeModuleSource(): string {
-  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
+  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\n${String(inspectCallable)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(isFunctionReference)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
 }

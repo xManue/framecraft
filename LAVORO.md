@@ -6479,6 +6479,37 @@ Verifiche del 5 ottobre 2026:
   Preservati i 23 file WIP; solo cinque integrazioni proprie nel file misto standardProject.ts.
   Nessun JSON macchina, asset reale, segreto o file di lavoro estraneo nel commit pubblico.
 
+## 182. Funzioni valore e closure Unified nella pipeline (30 ottobre 2026)
+
+- **Priorità**: chiudere i residui della fase 3 prima di nuove fasi Unified, Optix o AI.
+- **Funzionamento**: dichiarazioni anticipate e di blocco, espressioni/arrow sincrone, alias,
+  argomenti e ritorni funzione, catture vive dopo il ritorno e ambienti indipendenti; funzioni
+  in array/oggetti, riferimenti Modules/Local, helper privati ed export pubblici callable.
+- **Timer**: callback per riferimento e arrow concise, funzione fissata alla registrazione,
+  ambiente per riferimento e ordine factory/ritardo; invalidazione al cambio contesto.
+  Conservate le callback inline e di modulo precedenti, inclusi limiti e controlli firme.
+- **Sicurezza/analisi**: nessun eval o API host, 16 livelli, budget condivisi, nomi API riservati
+  diagnosticati, argomenti semplici/numero esatto. Funzioni non convertite in scritture PLC o
+  JSON; oggetti finti e prototipi rifiutati. Analisi tag attraverso parametri, factory,
+  catture e timer; mantenuti membership e staging dei TagSet. Inizializzatori senza chiamate
+  con effetti collaterali. Nessuna apertura del trasporto o aggiramento dell'autorizzazione.
+- **Pipeline**: nuova IR 3, lettori v1/v2/v3 per eventi/faceplate/dinamiche/task e VM autonoma;
+  catalogo JSON v1. Runtime esistente da aggiornare e script da ricompilare/salvare esplicitamente.
+  La prova del pannello nuovo ha trovato e corretto la deduzione never[] dei Data Log vuoti:
+  ora si genera anche la dichiarazione di tipi dalla stessa sorgente, senza duplicare lo schema.
+- **Verifiche mirate**: 245 casi distinti nei 13 file relativi a script, dati, moduli, scope,
+  trasporto, eventi, faceplate, timer e Scheduler (243 di base più due guardie aggiunte;
+  rieseguite soltanto le suite interessate dalle correzioni successive). TypeScript/Vite
+  dell'editor e typecheck/build del pannello generato. Browser Edge sul build: riferimento
+  di modulo, closure restituita, callback concisa, IR 1/2/3 e dispose che cancella i timer;
+  zero richieste esterne e zero richieste write tag. Fixture sintetica autonoma dedicata.
+- **Limiti/stato**: funzioni valore e closure chiuse nel contratto descritto in ARCHITETTURA-HMI.
+  Restano classi, spread, this, async/generator e callback Array, eventi/API/object model
+  restanti, librerie versionate e Scheduler unico server. WCU-EVT-05/07 e fase 3 restano
+  PARZIALE per quei punti: nessuna chiusura artificiale, nessun passaggio a Optix/AI.
+  Preservati byte per byte i 23 file WIP, con sole integrazioni proprie nel file misto
+  standardProject.ts. Commit pubblico solo codice, documentazione e fixture sintetiche.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

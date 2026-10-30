@@ -623,13 +623,50 @@ invalidano i contesti al cambio pagina/uscita dalla prova. La prova funziona anc
 PLC simulati. Non aggiunge scritture PLC, eval o accesso host; le API colore specifiche degli
 altri controlli restano da coprire. Tranche e verifiche sono ai punti 79 e 82 di `LAVORO.md`.
 
-Non e' un motore JavaScript completo: restano classi, spread, funzioni come valori, closure generiche,
+Non e' un motore JavaScript completo: restano classi, spread, this, async/generator come funzioni valore, callback Array,
 semantiche JavaScript oltre la IR e librerie versionate. Gli scope dei blocchi supportati,
 var di funzione, TDZ e callback sono verificati al punto 181. L'isolamento completo dei contesti
 JavaScript per istanza faceplate e lo Scheduler server industriale richiedono altro lavoro.
 Il trasporto MQTT/OPC UA è integrato nelle continuazioni della IR, non equivale a un motore JavaScript
 completo o alla conferma PLC. Stato e verifiche sono in `LAVORO.md`, punti 71, 74, 76 e 91;
 `WCU-EVT-05/07` rimangono parziali e non certificano un HMI collegato alla macchina.
+
+### Funzioni valore e closure nella IR 3 (182)
+
+Il compilatore emette IR 3; il catalogo resta v1. La VM interpreta dichiarazioni di funzione,
+espressioni e arrow sincrone senza eval, oggetti Function host o accesso al filesystem/rete.
+Ogni funzione conserva il proprio ambiente lessicale per riferimento, anche dopo il ritorno
+della funzione creatrice; parametri e variabili di chiamate diverse restano separati.
+Sono ammessi passaggio/ritorno, funzioni in array/oggetti, riferimenti Modules/Local ed export
+const/let contenenti una funzione. Gli import di modulo restano in sola lettura.
+
+I timer conservano la funzione scelta alla registrazione: riassegnare la variabile callback
+non cambia un timer esistente, mentre le mutazioni delle variabili catturate restano visibili.
+La factory viene valutata prima del ritardo, nell'ordine degli argomenti. Il contesto invalidato
+ferma le chiamate e il dispose cancella i timer. Le forme inline e Modules/Local preesistenti
+restano compatibili. Le dipendenze tag si propagano attraverso argomenti, factory e catture.
+
+I budget CPU/operazioni e trasporto sono condivisi con le chiamate annidate; la profondità è
+limitata a 16. Fino a 32 parametri semplici e numero esatto di argomenti; niente default, rest,
+destructuring, this, costruttori o funzioni async/generator. I nomi API riservati non sono
+ammessi per nomi/parametri delle nuove funzioni. Una funzione non è un valore PLC, grafico o
+JSON: va chiamata e ne va usato il risultato scalare. I riferimenti non si possono costruire
+con oggetti/JSON dell'utente; prototipi e API host rimangono inaccessibili.
+
+Le definizioni globali possono conservare funzioni private o esportate come valori. Le chiamate
+con effetti collaterali, i timer e i comandi continuano a partire dagli eventi o dalle operazioni
+pianificate; non si eseguono negli inizializzatori globali. Un catalogo Data Log vuoto riceve il
+tipo condiviso nel progetto generato, senza dedurre never[] e bloccare il typecheck.
+
+Per i pannelli esistenti: aggiornare esplicitamente il Runtime e ricompilare/salvare gli script,
+compresi eventi, faceplate e Moduli JavaScript. I lettori attuali accettano IR 1/2/3; la v1
+conserva i binding piatti e la v2 gli scope lessicali. Non vengono riscritti progetti aperti e
+non è garantito che vecchi Runtime riconoscano la IR 3. Funzioni/closure sono chiuse entro
+questo contratto; linguaggio completo, object model e Scheduler server restano aperti.
+
+Riferimenti: [timer Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/timers-rt-unified/description-timers-rt-unified)
+e [ambiente delle funzioni ECMAScript](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html#sec-ecmascript-function-objects).
+
 
 Il plugin desktop e i tre helper vengono mappati esplicitamente in `$RESOURCE/scripts`, dove
 il backend li cerca. La regressione usa il resolver risorse Tauri reale; sono stati controllati

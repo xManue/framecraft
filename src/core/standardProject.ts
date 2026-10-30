@@ -1,3 +1,4 @@
+import dataLogBrowserTypes from "../../runtime/data-log-browser.d.mts?raw";
 import { standardPageSource, standardPageTemplates, planPageNumber, type StandardPagePlan, type StandardPageTemplateId } from "./hmiPages";
 import { guidedAlarmCatalog, guidedDataLogCatalog, guidedPageSource, guidedProjectIssues, guidedProjectPending, guidedResourceCatalog, type GuidedPage, type GuidedProjectSpec } from "./guidedProject";
 import { guidedTemplateBehaviors } from "./templateBehavior";
@@ -341,7 +342,8 @@ import { createHmiDataLogClient } from "./framecraftHmiDataLogClient";
 import { resolveHmiTagDynamization, resolveHmiTagReference } from "./framecraftHmiTagBinding";
 import scriptCatalogJson from "../framecraft.scripts.json";
 import faceplateCatalogJson from "../framecraft.faceplates.json";
-import dataLogCatalogJson from "../framecraft.logs.json";
+import dataLogCatalogSource from "../framecraft.logs.json";
+const dataLogCatalogJson = dataLogCatalogSource as import("./framecraftHmiDataLogTypes").HmiDataLogCatalog;
 import alarmCatalogJson from "../framecraft.alarms.json";
 import { createAlarmEngine, type AlarmSnapshot, type AlarmCommand } from "../runtime/alarm-engine.mjs";
 import { createHmiAlarmControl } from "./framecraftHmiAlarmControl";
@@ -362,7 +364,7 @@ import type { ConnectionDiagnostic } from "./framecraftGateway";
 
 type HmiEventType = "Activated" | "ContextTapped" | "Deactivated" | "Down" | "KeyDown" | "KeyUp" | "Loaded" | "Tapped" | "DoubleTapped" | "Up" | "Change" | "GestureDetected" | "Unloaded" | "HotKey" | "InterfaceEvent" | "Initialized" | "CommandFired";
 type HmiGesture = "Unknown" | "SwipeRight" | "SwipeLeft" | "SwipeUp" | "SwipeDown";
-interface ScriptProgram { version: 1 | 2; statements: unknown[] }
+interface ScriptProgram { version: 1 | 2 | 3; statements: unknown[] }
 type RuntimeTimerCallback = { kind: "inline"; program: ScriptProgram } | { kind: "function"; call: unknown };
 interface RuntimeTimerContext { isActive?: () => boolean; localTags?: ReadonlySet<string>; localTagValues?: Record<string, string>; screenItems?: unknown }
 interface EventBinding { event: HmiEventType; script: string; program?: ScriptProgram }
@@ -739,7 +741,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   };
   const executeDynamic = (element: Element, item: DynamicBinding) => {
     if (item.kind !== "Script") return;
-    if (!item.program || ![1, 2].includes(item.program.version) || !Array.isArray(item.program.statements)) {
+    if (!item.program || ![1, 2, 3].includes(item.program.version) || !Array.isArray(item.program.statements)) {
       reportOnce(element, item.property + ":compile", "[HMI dinamica " + item.property + "] script non compilato: salvalo da Framecraft.");
       return;
     }
@@ -905,7 +907,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   });
   const executeScheduledTask = async (task: ScheduledTask, cause: "interval" | "once" | "tag" | "calendar" | "alarm", alarm?: RuntimeAlarmNotification) => {
     if (!runtimeActive) return;
-    if (!task.program || ![1, 2].includes(task.program.version) || !Array.isArray(task.program.statements)) {
+    if (!task.program || ![1, 2, 3].includes(task.program.version) || !Array.isArray(task.program.statements)) {
       (options.error ?? console.error)("[HMI TASK " + task.name + "] script non compilato: salvalo da Framecraft.");
       return;
     }
@@ -992,7 +994,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     if (!propertyFlashingSurface.allowsReactions(element)) return;
     if (!["Initialized", "Loaded", "Unloaded"].includes(eventType) && !propertyFlashingSurface.allowsInteraction(element)) return;
     for (const binding of bindings(element).filter((item) => item.event === eventType)) {
-      if (!binding.program || ![1, 2].includes(binding.program.version) || !Array.isArray(binding.program.statements)) {
+      if (!binding.program || ![1, 2, 3].includes(binding.program.version) || !Array.isArray(binding.program.statements)) {
         (options.error ?? console.error)(\`[HMI \${eventType}] script non compilato: salvalo da Framecraft.\`);
         continue;
       }
@@ -1010,7 +1012,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     if (!runtimeActive || !propertyFlashingSurface.allowsInteraction(element)) return;
     const handler = faceplateBinding(element)?.eventBindings?.[name];
     if (!handler) return;
-    if (!handler.program || ![1, 2].includes(handler.program.version) || !Array.isArray(handler.program.statements)) {
+    if (!handler.program || ![1, 2, 3].includes(handler.program.version) || !Array.isArray(handler.program.statements)) {
       (options.error ?? console.error)("[HMI FACEPLATE " + name + "] script non compilato: salvalo da Framecraft.");
       return;
     }
@@ -2022,6 +2024,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/framecraftHmiTrend.ts", content: hmiTrendRuntimeModuleSource() },
     { path: "src/framecraftHmiFunctionTrend.ts", content: hmiFunctionTrendRuntimeModuleSource() },
     { path: "src/framecraftHmiDataLogs.ts", content: hmiDataLogRuntimeModuleSource() },
+    { path: "src/framecraftHmiDataLogTypes.d.ts", content: dataLogBrowserTypes.replaceAll('"./data-log-deadband.mjs"', '"../runtime/data-log-deadband.mjs"') },
     { path: "src/framecraftHmiExpression.ts", content: hmiExpressionSource },
     { path: "src/framecraftHmiTagBinding.ts", content: hmiTagBindingSource.replace('"./hmiExpression"', '"./framecraftHmiExpression"') },
     { path: "src/framecraftHmiRuntime.ts", content: hmiRuntimeSource() },

@@ -146,7 +146,7 @@ describe("moduli JavaScript HMI", () => {
     expect(writeFile).toHaveBeenCalledTimes(1);
     const saved = JSON.parse(writeFile.mock.calls[0][1]);
     expect(saved.globalModules[0]).toMatchObject({ alias: "Utilities" });
-    expect(saved.globalModules[0].functions[0].program).toMatchObject({ version: 2 });
+    expect(saved.globalModules[0].functions[0].program).toMatchObject({ version: 3 });
     await act(async () => root.unmount());
     container.remove();
   });
@@ -177,7 +177,7 @@ describe("moduli JavaScript HMI", () => {
     expect(container.textContent).toContain("ultima: Operazione 1");
     await act(async () => button("Compila e salva").click());
     const saved = JSON.parse(writeFile.mock.calls[0][1]);
-    expect(saved.scheduledTasks[0]).toMatchObject({ id: "task-1", name: "Operazione 1", trigger: { kind: "interval", intervalMs: 1000 }, program: { version: 2 } });
+    expect(saved.scheduledTasks[0]).toMatchObject({ id: "task-1", name: "Operazione 1", trigger: { kind: "interval", intervalMs: 1000 }, program: { version: 3 } });
     await act(async () => root.unmount());
     container.remove();
   });

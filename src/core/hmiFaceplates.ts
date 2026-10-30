@@ -155,7 +155,7 @@ function eventBindingRecord(value: unknown): Record<string, HmiFaceplateEventBin
     const script = item.script.trim();
     const inspection = inspectHmiScript(script);
     const serialized = item.program as HmiScriptProgram | undefined;
-    const program = serialized && [1, 2].includes(serialized.version) && Array.isArray(serialized.statements) ? serialized : inspection.program;
+    const program = serialized && [1, 2, 3].includes(serialized.version) && Array.isArray(serialized.statements) ? serialized : inspection.program;
     return [[name, { script, ...(program ? { program } : {}) }]];
   }));
 }

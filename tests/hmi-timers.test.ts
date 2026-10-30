@@ -78,7 +78,7 @@ describe("HMIRuntime.Timers", () => {
   });
 
   it("rifiuta callback, firme, ritardi e contesti timer non validi", () => {
-    expect(inspectHmiScript("HMIRuntime.Timers.SetTimeout(fetch, 10);").error).toContain("callback inline");
+    expect(inspectHmiScript("HMIRuntime.Timers.SetTimeout(fetch, 10);").error).toContain("API host fetch");
     expect(executeHmiScript(inspectHmiScript("HMIRuntime.Timers.SetTimeout(() => {}, 1);").program!, {}).error).toContain("gestore timer");
     const manager = createHmiTimerManager(() => undefined, undefined, fakeClock().clock);
     expect(executeHmiScript(inspectHmiScript("HMIRuntime.Timers.SetTimeout(() => {}, -1);").program!, {}, { timerManager: manager }).error).toContain("UInt32");

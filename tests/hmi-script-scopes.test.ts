@@ -122,7 +122,7 @@ describe("scope lessicali degli script Unified", () => {
   });
 
   it("distingue la vecchia IR piatta e rifiuta versioni sconosciute prima dei comandi", () => {
-    const program=compile("let value=1; if(true){let value=2;} return value;"); expect(program.version).toBe(2);
+    const program=compile("let value=1; if(true){let value=2;} return value;"); expect(program.version).toBe(3);
     const legacy={...program,version:1 as const}; expect(executeHmiScript(legacy,{}).returned).toBe(2); expect(executeHmiScript(program,{}).returned).toBe(1);
     const catchProgram={...compile("const error='outer';try{return missing;}catch(error){}return error;"),version:1 as const}; expect(executeHmiScript(catchProgram,{}).returned).toBe("outer");
     const emptyCatch={...compile("let error;try{return missing;}catch(error){HMIRuntime.Trace(error);}return error;"),version:1 as const}, caught=executeHmiScript(emptyCatch,{}); expect(caught.traces[0]).toContain("missing non definita");expect(caught.error).toContain("non ha ancora un valore");
