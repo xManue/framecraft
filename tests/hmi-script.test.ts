@@ -43,7 +43,7 @@ describe("sandbox script HMI", () => {
       ],
     }));
     const parsed = parseHmiScriptCatalog(serialized);
-    expect(JSON.parse(serialized).localDefinitions[0].functions[0].program.version).toBe(1);
+    expect(JSON.parse(serialized).localDefinitions[0].functions[0].program.version).toBe(2);
     expect(Object.keys(hmiScriptFunctions(parsed, "2001", "events"))).toContain("Local.EventOnly");
     expect(Object.keys(hmiScriptFunctions(parsed, "2001", "events"))).not.toContain("Local.DynamicOnly");
     expect(hmiScriptModulesRuntimeSource()).toContain("const identifier = /");

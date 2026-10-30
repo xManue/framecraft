@@ -6447,6 +6447,38 @@ Verifiche del 5 ottobre 2026:
   attivo. Preservati i 23 file WIP precedenti; solo due integrazioni proprie in standardProject.ts.
   Nessun JSON macchina, immagine reale o segreto pubblicato.
 
+## 181. Chiusura degli scope nei blocchi script Unified (30 ottobre 2026)
+
+- **Priorità**: ritorno alla fase 3 Unified già aperta, prima di altre famiglie, Optix e AI.
+  Riprodotti tre errori reali: let di un if sovrascriveva il nome esterno, il nome restava
+  leggibile fuori dal blocco e poteva sovrascrivere una costante esterna.
+- **Correzione**: frame lessicali per blocchi espliciti/if/switch/try/catch/finally, var di
+  funzione, dichiarazioni lessicali predisposte e TDZ, ripristino dei frame su return/errori.
+  Catch e Promise non cancellano parametri/variabili esterne omonime; i timer inline catturano
+  il frame del blocco anche dopo la sua uscita. Switch con fall-through e break corretti.
+- **Valori mancanti**: una variabile senza assegnazione non viene trasformata in null/vuoto
+  e inviata come zero al PLC. Errore esplicito in lettura, anche da export; assegnazioni
+  successive ammesse. Prova con trasporto strumentato: zero chiamate read/write e comandi.
+- **Analisi**: dipendenze dei tag nei blocchi, catture tardive, possibili assegnazioni prima/
+  dopo il timer e var attraverso i rami; binding lessicali nascosti non escono dal blocco.
+  Return di un callback Promise distinto da quello dello script. Nessun eval o parser nel Runtime.
+- **Compatibilità/pipeline**: programma IR 2, catalogo JSON sempre v1; esecuzione IR 1 con scope
+  piatti conservata e versioni sconosciute rifiutate. Lettori eventi/faceplate e quattro ingressi
+  del Runtime generato accettano v1/v2. Per vecchi pannelli: aggiornamento Runtime esplicito e
+  ricompilazione/salvataggio dei sorgenti, senza riscrivere automaticamente progetti aperti.
+- **Verifiche**: 213 casi distinti in 12 file mirati, senza sommare ripetizioni; VM, moduli,
+  export, contesti, trasporto, eventi, faceplate, timer e Scheduler. Esportazione ed esecuzione
+  effettiva del modulo autonomo. Browser sul pannello generato: click IR 2 con nome esterno
+  conservato, timer con cattura di blocco e programma IR 1; typecheck/build del pannello e
+  dell'editor. Nessuna scrittura/richiesta write PLC o richiesta esterna nella prova browser.
+  Nessuna suite generale, agente, modifica nativa o dipendenza nuova.
+- **Stato**: scope dei blocchi supportati completati e guida aggiornata con fonti Siemens/ECMA.
+  WCU-EVT-05/07 e fase 3 restano aperti per funzioni come valori/closure generiche, linguaggio/API/
+  eventi restanti, Scheduler server, driver avanzati e librerie versionate. Nessuna chiusura
+  artificiale della fase o dei gate industriali. Il lavoro prosegue sulla stessa fase Unified.
+  Preservati i 23 file WIP; solo cinque integrazioni proprie nel file misto standardProject.ts.
+  Nessun JSON macchina, asset reale, segreto o file di lavoro estraneo nel commit pubblico.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

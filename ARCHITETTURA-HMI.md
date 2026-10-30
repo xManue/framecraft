@@ -458,6 +458,42 @@ serializzato nel catalogo: ricaricare la pagina, cambiare catalogo o riavviare i
 nuovi contesti. Le variabili senza `export` restano private: gli altri moduli non possono leggerle
 tramite il namespace, ma possono chiamare le funzioni che il proprietario espone.
 
+### Scope dei blocchi e compatibilità degli script (30 ottobre 2026)
+
+La IR 2 distingue `var` di funzione da `let`/`const` dei blocchi. Un nome dichiarato in un
+blocco non modifica una variabile esterna omonima e non diventa leggibile dopo il blocco.
+Le assegnazioni a variabili esterne continuano invece a modificarle. La dichiarazione lessicale
+deve precedere l'uso: letture o assegnazioni nella TDZ producono un errore esplicito.
+`switch` condivide lo scope dei case e applica fall-through e break; catch, finally e callback
+Promise ripristinano gli scope anche quando interrompono il flusso. I timer inline conservano
+per riferimento lo scope in cui sono stati creati, fino alla sua invalidazione.
+
+```js
+let value = 1;
+if (true) { const value = 2; }
+HMIRuntime.Trace(value); // 1, anche nel Runtime esportato
+```
+
+Il sottoinsieme IR non rappresenta `undefined`: leggere una variabile non assegnata genera
+un errore, anche attraverso un export. Non viene convertita implicitamente in null, stringa
+vuota o comando zero. Assegna un valore iniziale o scrivilo prima di leggerla; `let value;`
+seguito da `value = 5;` è ammesso. `null` scritto esplicitamente resta un valore distinto.
+
+Il formato del catalogo script resta versione 1; la **versione del singolo programma** è 2.
+I lettori aggiornati accettano anche programmi IR 1, mantenendo il loro scope piatto dove
+non era possibile distinguere var da let. Un programma di versione sconosciuta non viene eseguito.
+Per usare gli scope nuovi in un pannello esistente aggiorna esplicitamente i file Runtime e
+ricompila/salva gli script dal sorgente, incluse azioni e binding dei faceplate. Nei Moduli
+JavaScript usa **Compila e salva**. Non viene riscritto automaticamente un progetto aperto;
+la modifica del solo esecutore non ricostruisce il tipo delle dichiarazioni IR 1.
+
+L'analisi delle dipendenze segue gli scope e conserva in modo prudente i tag possibili prima
+e dopo assegnazioni e catture dei timer. Un return del callback non è un return dello script.
+Verifiche e limiti sono al punto 181 di LAVORO.md. Riferimenti: [scripting Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/runtime-scripting-rt-unified/introduction-to-runtime-scripting-rt-unified),
+[regole Siemens sulle dichiarazioni](https://support.industry.siemens.com/cs/attachments/109758536/109758536_Unified_JS_Styleguide_V10_en.pdf)
+e [blocchi/case ECMAScript](https://tc39.es/ecma262/2026/multipage/ecmascript-language-statements-and-declarations.html#sec-blockdeclarationinstantiation).
+Questo chiude l'isolamento dei blocchi supportati, senza dichiarare un motore JavaScript completo.
+
 La definizione di un modulo globale ammette `export let count = 0;`, `export const step = 1;`
 e `export var enabled = true;`, oppure export nominati come `export { count as current };`.
 Gli script leggono `Modules.Counter.count` (o `Modules.Counter.current` nell'esempio con alias).
@@ -587,8 +623,9 @@ invalidano i contesti al cambio pagina/uscita dalla prova. La prova funziona anc
 PLC simulati. Non aggiunge scritture PLC, eval o accesso host; le API colore specifiche degli
 altri controlli restano da coprire. Tranche e verifiche sono ai punti 79 e 82 di `LAVORO.md`.
 
-Non e' un motore JavaScript completo: restano classi, spread e funzioni come valori, closure generiche,
-scoping di blocco/hoisting completo e librerie versionate. L'isolamento completo dei contesti
+Non e' un motore JavaScript completo: restano classi, spread, funzioni come valori, closure generiche,
+semantiche JavaScript oltre la IR e librerie versionate. Gli scope dei blocchi supportati,
+var di funzione, TDZ e callback sono verificati al punto 181. L'isolamento completo dei contesti
 JavaScript per istanza faceplate e lo Scheduler server industriale richiedono altro lavoro.
 Il trasporto MQTT/OPC UA è integrato nelle continuazioni della IR, non equivale a un motore JavaScript
 completo o alla conferma PLC. Stato e verifiche sono in `LAVORO.md`, punti 71, 74, 76 e 91;

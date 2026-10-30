@@ -88,7 +88,7 @@ function normalized(value: unknown): HmiEventBinding | undefined {
   const script = item.script.trim();
   const compiled = inspectHmiScript(script);
   const serialized = item.program as HmiScriptProgram | undefined;
-  const program = serialized?.version === 1 && Array.isArray(serialized.statements) ? serialized : compiled.program;
+  const program = serialized && [1, 2].includes(serialized.version) && Array.isArray(serialized.statements) ? serialized : compiled.program;
   return { event: item.event as HmiEventType, script, ...(program ? { program } : {}) };
 }
 

@@ -29,7 +29,9 @@ export type HmiScriptExpression =
   | { kind: "timer-set"; mode: "timeout" | "interval"; callback: HmiScriptTimerCallback; delay: HmiScriptExpression };
 
 export type HmiScriptStatement =
-  | { kind: "declare"; name: string; value?: HmiScriptExpression; constant?: boolean }
+  | { kind: "declare"; name: string; value?: HmiScriptExpression; constant?: boolean; functionScoped?: boolean }
+  | { kind: "block"; statements: HmiScriptStatement[] }
+  | { kind: "break" }
   | { kind: "assign"; name: string; value: HmiScriptExpression }
   | { kind: "member-set"; object: HmiScriptExpression; key: HmiScriptExpression; value: HmiScriptExpression }
   | { kind: "expression"; value: HmiScriptExpression }
@@ -58,7 +60,8 @@ export type HmiScriptStatement =
   | { kind: "switch"; value: HmiScriptExpression; cases: { test?: HmiScriptExpression; statements: HmiScriptStatement[] }[] };
 
 export interface HmiScriptProgram {
-  version: 1;
+  /** IR 1 keeps flat legacy bindings; IR 2 has lexical scopes and explicit var declarations. */
+  version: 1 | 2;
   statements: HmiScriptStatement[];
   exports?: { name: string; local: string }[];
 }
@@ -154,6 +157,10 @@ type RuntimeValue = HmiScriptScalar | TagReference | TagSetReference | HmiScript
 export interface HmiScriptScope {
   values: Map<string, RuntimeValue>;
   constants: Set<string>;
+  /** A lexical binding before its declaration (TDZ), not a readable null value. */
+  uninitialized?: Set<string>;
+  /** Undefined is not an IR scalar: reject reads until a value has been assigned. */
+  unassigned?: Set<string>;
   parent?: HmiScriptScope;
   initializer?: HmiScriptProgram;
   status: "new" | "initializing" | "ready" | "failed";
@@ -361,7 +368,7 @@ function compileTimerCallback(node: t.CallExpression["arguments"][number] | unde
   if (node && (t.isFunctionExpression(node) || t.isArrowFunctionExpression(node))) {
     if (node.async || node.generator || node.params.length) fail(`${label} richiede una callback sincrona senza parametri`, node);
     if (!t.isBlockStatement(node.body)) fail(`${label} richiede una callback con blocco { ... }`, node.body);
-    return { kind: "inline", program: { version: 1, statements: compileBlock(node.body) } };
+    return { kind: "inline", program: { version: 2, statements: compileBlock(node.body) } };
   }
   if (node && t.isMemberExpression(node)) {
     const name = dottedName(node);
@@ -732,12 +739,14 @@ function compileBlock(node: t.Statement | t.BlockStatement | null | undefined): 
   const statements = t.isBlockStatement(node) ? node.body : [node];
   const result: HmiScriptStatement[] = [];
   for (const statement of statements) {
-    if (t.isEmptyStatement(statement) || t.isBreakStatement(statement)) continue;
+    if (t.isEmptyStatement(statement)) continue;
+    if (t.isBreakStatement(statement)) { result.push({ kind: "break" }); continue; }
+    if (t.isBlockStatement(statement)) { result.push({ kind: "block", statements: compileBlock(statement) }); continue; }
     if (t.isVariableDeclaration(statement)) {
       for (const declaration of statement.declarations) {
         if (!t.isIdentifier(declaration.id)) fail("Sono ammesse solo variabili con nome semplice", declaration);
         if (declaration.init && !t.isExpression(declaration.init)) fail("Valore iniziale non supportato", declaration.init);
-        result.push({ kind: "declare", name: declaration.id.name, ...(declaration.init ? { value: compileExpression(declaration.init) } : {}), ...(statement.kind === "const" ? { constant: true } : {}) });
+        result.push({ kind: "declare", name: declaration.id.name, ...(declaration.init ? { value: compileExpression(declaration.init) } : {}), ...(statement.kind === "const" ? { constant: true } : {}), ...(statement.kind === "var" ? { functionScoped: true } : {}) });
       }
       continue;
     }
@@ -1019,11 +1028,49 @@ function updateStaticTagSet(expression: HmiScriptExpression, locals: Map<string,
   if (sets.length === 1) sets[0].entries = entries;
 }
 
-function inspectStatements(statements: readonly HmiScriptStatement[], read: Set<string>, written: Set<string>, locals: Map<string, HmiScriptExpression>, asyncState: { value: boolean }): boolean {
+function inspectStatements(statements: readonly HmiScriptStatement[], read: Set<string>, written: Set<string>, locals: Map<string, HmiScriptExpression>, asyncState: { value: boolean }, lexicalBlocks = true): boolean {
   let hasReturn = false;
+  const callbacks: { program: HmiScriptProgram; bindings: Map<string, HmiScriptExpression> }[] = [];
+  for (const statement of statements) if (lexicalBlocks && statement.kind === "declare" && !statement.functionScoped) locals.delete(statement.name);
+  const captureCallbacks = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    const item = value as Record<string, unknown>;
+    if (item.kind === "timer-set" && item.callback && typeof item.callback === "object") {
+      const callback = item.callback as HmiScriptTimerCallback;
+      if (callback.kind === "inline") callbacks.push({ program: callback.program, bindings: new Map(locals) });
+      captureCallbacks(item.delay); return;
+    }
+    for (const [key, child] of Object.entries(item)) {
+      if (!["statements", "consequent", "alternate", "cases", "success", "failure", "final"].includes(key)) captureCallbacks(child);
+    }
+  };
+  const functionVars = (body: readonly HmiScriptStatement[], names = new Set<string>()): Set<string> => {
+    for (const statement of body) {
+      if (statement.kind === "declare" && (statement.functionScoped || !lexicalBlocks)) names.add(statement.name);
+      else if (statement.kind === "block") functionVars(statement.statements, names);
+      else if (statement.kind === "if") { functionVars(statement.consequent, names); functionVars(statement.alternate, names); }
+      else if (statement.kind === "switch") for (const entry of statement.cases) functionVars(entry.statements, names);
+      else if (statement.kind === "try") { functionVars(statement.statements, names); functionVars(statement.failure?.statements ?? [], names); functionVars(statement.final, names); }
+    }
+    return names;
+  };
+  const mergeBindings = (child: Map<string, HmiScriptExpression>, body: readonly HmiScriptStatement[], functionBody = false, excluded: string[] = []) => {
+    const vars = functionVars(body), hidden = new Set([...excluded, ...body.flatMap(statement => lexicalBlocks && statement.kind === "declare" && !statement.functionScoped ? [statement.name] : []), ...(functionBody ? vars : [])]);
+    for (const [name, value] of child) if (!hidden.has(name) && (locals.has(name) || !functionBody && vars.has(name))) {
+      const before = locals.get(name); locals.set(name, before && before !== value ? staticChoice([before, value])! : value);
+    }
+  };
+  const inspectNested = (body: readonly HmiScriptStatement[], bindings?: Record<string, HmiScriptExpression>, functionBody = false) => {
+    const child = new Map(locals); for (const [name, value] of Object.entries(bindings ?? {})) child.set(name, value);
+    const returned = inspectStatements(body, read, written, child, asyncState, lexicalBlocks);
+    mergeBindings(child, body, functionBody, Object.keys(bindings ?? {})); return returned;
+  };
   for (const statement of statements) {
+    captureCallbacks(statement);
     if (statement.kind === "declare" || statement.kind === "assign") {
       if (statement.value) { walkExpression(statement.value, read, locals); locals.set(statement.name, bindStaticData(statement.value, locals)); }
+    } else if (statement.kind === "block") {
+      hasReturn = inspectNested(statement.statements) || hasReturn;
     } else if (statement.kind === "member-set") {
       walkExpression(statement.object, read, locals); walkExpression(statement.key, read, locals); walkExpression(statement.value, read, locals);
       for (const target of staticValues(statement.object, locals)) if (target.kind === "tag-ref") written.add(target.name);
@@ -1099,52 +1146,39 @@ function inspectStatements(statements: readonly HmiScriptStatement[], read: Set<
         if (statement.operation === "read") read.add(entry.name);
         else if (entry.value) written.add(entry.name);
       }
-      const successLocals = new Map(locals);
-      if (statement.success?.name) successLocals.set(statement.success.name, statement.set);
-      if (statement.success) hasReturn = inspectStatements(statement.success.statements, read, written, successLocals, asyncState) || hasReturn;
-      const failureLocals = new Map(locals);
-      if (statement.failure?.name) failureLocals.set(statement.failure.name, { kind: "literal", value: 0 });
-      if (statement.failure) hasReturn = inspectStatements(statement.failure.statements, read, written, failureLocals, asyncState) || hasReturn;
+      if (statement.success) inspectNested(statement.success.statements, statement.success.name ? { [statement.success.name]: statement.set } : undefined, true);
+      if (statement.failure) inspectNested(statement.failure.statements, statement.failure.name ? { [statement.failure.name]: { kind: "literal", value: 0 } } : undefined, true);
     } else if (statement.kind === "bit") {
       walkExpression(statement.tag, read, locals); walkExpression(statement.bit, read, locals);
       const tag = staticTag(statement.tag, locals); if (tag) written.add(tag);
     } else if (statement.kind === "if") {
       walkExpression(statement.test, read, locals);
-      const consequentReturn = inspectStatements(statement.consequent, read, written, new Map(locals), asyncState);
-      const alternateReturn = inspectStatements(statement.alternate, read, written, new Map(locals), asyncState);
+      const consequentReturn = inspectNested(statement.consequent);
+      const alternateReturn = inspectNested(statement.alternate);
       hasReturn = consequentReturn || alternateReturn || hasReturn;
     } else if (statement.kind === "switch") {
       walkExpression(statement.value, read, locals);
+      const switchLocals = new Map(locals), body = statement.cases.flatMap(entry => entry.statements);
+      for (const declaration of body) if (lexicalBlocks && declaration.kind === "declare" && !declaration.functionScoped) switchLocals.delete(declaration.name);
       for (const entry of statement.cases) {
-        if (entry.test) walkExpression(entry.test, read, locals);
-        hasReturn = inspectStatements(entry.statements, read, written, new Map(locals), asyncState) || hasReturn;
+        if (entry.test) walkExpression(entry.test, read, switchLocals);
+        hasReturn = inspectStatements(entry.statements, read, written, switchLocals, asyncState, lexicalBlocks) || hasReturn;
       }
+      mergeBindings(switchLocals, body);
     } else if (statement.kind === "try") {
-      hasReturn = inspectStatements(statement.statements, read, written, new Map(locals), asyncState) || hasReturn;
-      const failureLocals = new Map(locals);
-      if (statement.failure?.name) failureLocals.set(statement.failure.name, { kind: "literal", value: 0 });
-      if (statement.failure) hasReturn = inspectStatements(statement.failure.statements, read, written, failureLocals, asyncState) || hasReturn;
-      hasReturn = inspectStatements(statement.final, read, written, new Map(locals), asyncState) || hasReturn;
+      hasReturn = inspectNested(statement.statements) || hasReturn;
+      if (statement.failure) hasReturn = inspectNested(statement.failure.statements, statement.failure.name ? { [statement.failure.name]: { kind: "literal", value: 0 } } : undefined) || hasReturn;
+      hasReturn = inspectNested(statement.final) || hasReturn;
     }
   }
-  return hasReturn;
-}
-
-function inspectTimerCallbacks(program: HmiScriptProgram, read: Set<string>, written: Set<string>, asyncState: { value: boolean }, locals: Map<string, HmiScriptExpression> = new Map()) {
-  const visit = (value: unknown) => {
-    if (!value || typeof value !== "object") return;
-    const item = value as Record<string, unknown>;
-    if (item.kind === "timer-set" && item.callback && typeof item.callback === "object") {
-      const callback = item.callback as HmiScriptTimerCallback;
-      if (callback.kind === "inline") {
-        inspectStatements(callback.program.statements, read, written, new Map(locals), asyncState);
-        visit(callback.program);
-      }
-      return;
+  for (const callback of callbacks) {
+    for (const [name, value] of locals) {
+      const before = callback.bindings.get(name);
+      callback.bindings.set(name, before && before !== value ? staticChoice([before, value])! : value);
     }
-    for (const child of Object.values(item)) visit(child);
-  };
-  visit(program);
+    inspectStatements(callback.program.statements, read, written, callback.bindings, asyncState, callback.program.version === 2);
+  }
+  return hasReturn;
 }
 
 function inspectModuleVariables(program: HmiScriptProgram, variables: Readonly<Record<string, HmiScriptRuntimeVariable>>, read: Set<string>, written: Set<string>, asyncState: { value: boolean }, bindings: Map<string, HmiScriptExpression> = new Map(), stack: string[] = []): Map<string, HmiScriptExpression> {
@@ -1159,7 +1193,7 @@ function inspectModuleVariables(program: HmiScriptProgram, variables: Readonly<R
       if (bindings.has(name)) return;
       inspectModuleVariables(binding.definition, variables, read, written, asyncState, bindings, [...stack, name]);
       const locals = new Map(bindings);
-      inspectStatements(binding.definition.statements, read, written, locals, asyncState);
+      inspectStatements(binding.definition.statements, read, written, locals, asyncState, binding.definition.version === 2);
       const expression = staticValue({ kind: "local", name: binding.name }, locals);
       if (expression) bindings.set(name, expression);
       return;
@@ -1188,13 +1222,12 @@ function inspectModuleDependencies(program: HmiScriptProgram, functions: Readonl
         const globalDefinition = definition.globalDefinition ?? definition.globalScope?.initializer;
         if (globalDefinition) {
           if (variables) inspectModuleVariables(globalDefinition, variables, read, written, asyncState, bindings);
-          inspectStatements(globalDefinition.statements, read, written, bindings, asyncState);
+          inspectStatements(globalDefinition.statements, read, written, bindings, asyncState, globalDefinition.version === 2);
         }
         for (let index = 0; index < definition.parameters.length; index += 1) {
           bindings.set(definition.parameters[index], bindStaticData(item.arguments[index] as HmiScriptExpression, callerLocals));
         }
-        inspectStatements(definition.program.statements, read, written, bindings, asyncState);
-        inspectTimerCallbacks(definition.program, read, written, asyncState, bindings);
+        inspectStatements(definition.program.statements, read, written, bindings, asyncState, definition.program.version === 2);
         const returnedTags = (value: unknown) => {
           if (!value || typeof value !== "object") return;
           const statement = value as Record<string, unknown>;
@@ -1213,6 +1246,7 @@ function inspectModuleDependencies(program: HmiScriptProgram, functions: Readonl
 
 export function inspectHmiScriptProgram(program: HmiScriptProgram, functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>, definition?: HmiScriptProgram, parameters: readonly string[] = [], variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>): HmiScriptInspection {
   try {
+    if (!program || ![1, 2].includes(program.version) || !Array.isArray(program.statements)) throw new Error("Versione dello script non supportata: aggiorna il Runtime e ricompila il sorgente.");
     const read = new Set<string>();
     const written = new Set<string>();
     const asyncState = { value: false };
@@ -1221,10 +1255,9 @@ export function inspectHmiScriptProgram(program: HmiScriptProgram, functions?: R
       inspectModuleVariables(program, variables, read, written, asyncState, locals);
       if (definition) inspectModuleVariables(definition, variables, read, written, asyncState, locals);
     }
-    if (definition) inspectStatements(definition.statements, read, written, locals, asyncState);
+    if (definition) inspectStatements(definition.statements, read, written, locals, asyncState, definition.version === 2);
     for (const parameter of parameters) locals.set(parameter, { kind: "literal", value: null });
-    const hasReturn = inspectStatements(program.statements, read, written, locals, asyncState);
-    inspectTimerCallbacks(program, read, written, asyncState, locals);
+    const hasReturn = inspectStatements(program.statements, read, written, locals, asyncState, program.version === 2);
     if (functions) inspectModuleDependencies(program, functions, read, written, asyncState, [], variables, locals);
     return { tagsRead: [...read], tagsWritten: [...written], hasReturn, hasAsync: asyncState.value, program };
   } catch (caught) {
@@ -1239,7 +1272,7 @@ export function inspectHmiScript(source: string, functions?: Readonly<Record<str
     const file = parse(`async function __framecraftScript() {\n${source}\n}`, { sourceType: "module" });
     const declaration = file.program.body[0];
     if (!t.isFunctionDeclaration(declaration) || !t.isBlockStatement(declaration.body)) fail("Script non leggibile");
-    return inspectHmiScriptProgram({ version: 1, statements: compileBlock(declaration.body) }, functions, definition, parameters, variables);
+    return inspectHmiScriptProgram({ version: 2, statements: compileBlock(declaration.body) }, functions, definition, parameters, variables);
   } catch (caught) {
     return { tagsRead: [], tagsWritten: [], hasReturn: false, hasAsync: false, error: caught instanceof Error ? caught.message : String(caught) };
   }
@@ -1269,7 +1302,7 @@ export function inspectHmiScriptDefinition(source: string, allowExports = false)
         statements.push(...compileBlock(item));
       }
     }
-    return inspectHmiScriptProgram({ version: 1, statements, ...(exports.length ? { exports } : {}) });
+    return inspectHmiScriptProgram({ version: 2, statements, ...(exports.length ? { exports } : {}) });
   } catch (caught) {
     return { tagsRead: [], tagsWritten: [], hasReturn: false, hasAsync: false, error: caught instanceof Error ? caught.message : String(caught) };
   }
@@ -1466,12 +1499,14 @@ function dataArrayMethod(target: RuntimeValue, method: string, args: RuntimeValu
 }
 
 function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<Record<string, string>>, options: HmiScriptExecutionOptions = {}): ScriptCoroutine<HmiScriptExecution> {
+  if (!program || ![1, 2].includes(program.version) || !Array.isArray(program.statements)) return { writes: {}, traces: [], navigation: [], operatorMessages: [], faceplateEvents: [], tagStatus: {}, steps: 0, error: "Versione dello script non supportata. Aggiorna il Runtime e ricompila lo script nell’editor; nessun comando eseguito." };
+  const lexicalBlocks = program.version === 2;
   const values = { ...input };
   const localScope = options.initializingScope ?? createHmiScriptScope(undefined, options.closureScope ?? options.globalScope);
-  const locals = localScope.values;
+  let lexicalScope = localScope, functionScope = localScope, locals = localScope.values;
   for (const [name, value] of Object.entries(options.locals ?? {})) locals.set(name, value);
   const ownerOf = (name: string): HmiScriptScope | undefined => {
-    for (let scope: HmiScriptScope | undefined = localScope; scope; scope = scope.parent) {
+    for (let scope: HmiScriptScope | undefined = lexicalScope; scope; scope = scope.parent) {
       if (!scope.active) throw new Error("Il contesto script non e' piu' attivo.");
       if (scope.values.has(name)) return scope;
     }
@@ -1516,7 +1551,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
   let steps = 0;
   const tick = () => {
     if (options.signal?.aborted || options.isActive && !options.isActive()) throw new Error("Il contesto script non e' piu' attivo; nessun nuovo comando viene inviato.");
-    for (let scope: HmiScriptScope | undefined = localScope; scope; scope = scope.parent) if (!scope.active) throw new Error("Il contesto script non e' piu' attivo.");
+    for (let scope: HmiScriptScope | undefined = lexicalScope; scope; scope = scope.parent) if (!scope.active) throw new Error("Il contesto script non e' piu' attivo.");
     steps += 1;
     if (steps > maxSteps) throw new Error(`Script interrotto dopo ${maxSteps} operazioni.`);
     if (elapsed() > timeoutMs) throw new Error(`Script interrotto dopo ${timeoutMs} ms.`);
@@ -1596,6 +1631,8 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         return options.screenItems.resolve(expression.name === "Screen" ? "screen" : expression.name === "Faceplate" ? "faceplate" : "item");
       }
       if (!owner) throw new Error(`Variabile locale ${expression.name} non definita.`);
+      if (owner.uninitialized?.has(expression.name)) throw new Error(`La variabile ${expression.name} non e' ancora inizializzata: sposta la dichiarazione prima dell'uso.`);
+      if (owner.unassigned?.has(expression.name)) throw new Error(`La variabile ${expression.name} non ha ancora un valore: assegnalo prima di leggerla o inviarla al PLC.`);
       return owner.values.get(expression.name)!;
     }
     if (expression.kind === "module-variable") {
@@ -1603,6 +1640,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       if (!binding?.globalScope || !binding.definition.exports?.some((entry) => entry.local === binding.name && expression.name.endsWith(`.${entry.name}`))) throw new Error(`Variabile pubblica HMI ${expression.name} non esportata o modulo non disponibile.`);
       (yield* initializeScope(binding.globalScope));
       if (!binding.globalScope.values.has(binding.name)) throw new Error(`Variabile pubblica HMI ${expression.name} non inizializzata.`);
+      if (binding.globalScope.uninitialized?.has(binding.name) || binding.globalScope.unassigned?.has(binding.name)) throw new Error(`La variabile pubblica ${expression.name} non ha ancora un valore: inizializzala nel modulo proprietario.`);
       return binding.globalScope.values.get(binding.name)!;
     }
     if (expression.kind === "array" || expression.kind === "object") {
@@ -1802,7 +1840,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       const delay = number((yield* evaluate(expression.delay)));
       if (!Number.isInteger(delay) || delay < 0 || delay > 0xffffffff) throw new Error("Il ritardo del timer deve essere un UInt32 in millisecondi.");
       if (!options.timerManager) throw new Error("Il contesto corrente non dispone di un gestore timer.");
-      return options.timerManager.set(expression.mode, expression.callback, delay, { functions: options.functions, variables: options.variables, globalScope: options.globalScope, screenItems: options.screenItems, transport: options.transport, transportTimeoutMs: options.transportTimeoutMs, localTags: options.localTags, localTagValues: options.localTagValues, signal: options.signal, isActive: options.isActive, ...(expression.callback.kind === "inline" ? { closureScope: localScope } : {}) });
+      return options.timerManager.set(expression.mode, expression.callback, delay, { functions: options.functions, variables: options.variables, globalScope: options.globalScope, screenItems: options.screenItems, transport: options.transport, transportTimeoutMs: options.transportTimeoutMs, localTags: options.localTags, localTagValues: options.localTagValues, signal: options.signal, isActive: options.isActive, ...(expression.callback.kind === "inline" ? { closureScope: lexicalScope } : {}) });
     }
     const left = (yield* evaluate(expression.left));
     if (expression.operator === "&&" && !truthy(left)) return false;
@@ -1940,19 +1978,58 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     }
     return target;
   };
-  type Flow = { returned: true; value?: RuntimeValue } | undefined;
-  const run = function* (statements: readonly HmiScriptStatement[]): ScriptCoroutine<Flow> {
+  let preparations = 0;
+  const prepareStep = () => {
+    if (++preparations > Math.min(65536, maxSteps * 4) || elapsed() > timeoutMs) throw new Error("Preparazione degli scope interrotta: lo script supera il budget di esecuzione.");
+    if (options.signal?.aborted || options.isActive && !options.isActive()) throw new Error("Il contesto script non e' piu' attivo; nessun nuovo comando viene inviato.");
+  };
+  const hoistVars = (statements: readonly HmiScriptStatement[]) => {
+    if (!lexicalBlocks) return;
+    for (const statement of statements) {
+      prepareStep();
+      if (statement.kind === "declare" && statement.functionScoped && !functionScope.values.has(statement.name)) { functionScope.values.set(statement.name, null); (functionScope.unassigned ??= new Set()).add(statement.name); }
+      else if (statement.kind === "block") hoistVars(statement.statements);
+      else if (statement.kind === "if") { hoistVars(statement.consequent); hoistVars(statement.alternate); }
+      else if (statement.kind === "switch") for (const entry of statement.cases) hoistVars(entry.statements);
+      else if (statement.kind === "try") { hoistVars(statement.statements); hoistVars(statement.failure?.statements ?? []); hoistVars(statement.final); }
+      // Promise handlers and timer programs own their function declarations.
+    }
+  };
+  const prepareLexicals = (statements: readonly HmiScriptStatement[]) => {
+    if (!lexicalBlocks) return;
+    lexicalScope.uninitialized ??= new Set();
+    for (const statement of statements) {
+      prepareStep();
+      if (statement.kind !== "declare" || statement.functionScoped) continue;
+      if (locals.has(statement.name)) throw new Error(`La variabile ${statement.name} e' gia' dichiarata nello stesso scope.`);
+      locals.set(statement.name, null); lexicalScope.uninitialized.add(statement.name);
+      if (statement.constant) lexicalScope.constants.add(statement.name);
+    }
+  };
+  type Flow = { returned?: true; broken?: true; value?: RuntimeValue } | undefined;
+  const runBody = function* (statements: readonly HmiScriptStatement[]): ScriptCoroutine<Flow> {
     for (const statement of statements) {
       tick();
       if (statement.kind === "declare") {
-        locals.set(statement.name, statement.value ? (yield* evaluate(statement.value)) : null);
-        if (statement.constant) localScope.constants.add(statement.name);
+        const owner = statement.functionScoped ? ownerOf(statement.name) ?? functionScope : lexicalScope;
+        if (statement.value) { owner.values.set(statement.name, (yield* evaluate(statement.value))); owner.unassigned?.delete(statement.name); }
+        else if (!statement.functionScoped) { owner.values.set(statement.name, null); (owner.unassigned ??= new Set()).add(statement.name); }
+        owner.uninitialized?.delete(statement.name);
+        if (statement.constant) owner.constants.add(statement.name);
+      } else if (statement.kind === "block") {
+        if (!lexicalBlocks) throw new Error("Un blocco lessicale richiede la ricompilazione dello script in IR 2.");
+        const flow = (yield* run(statement.statements, "block")); if (flow) return flow;
+      } else if (statement.kind === "break") {
+        if (!lexicalBlocks) throw new Error("break richiede la ricompilazione dello script in IR 2.");
+        return { broken: true };
       }
       else if (statement.kind === "assign") {
         const owner = ownerOf(statement.name);
         if (!owner) throw new Error(`Variabile locale ${statement.name} non definita.`);
+        if (owner.uninitialized?.has(statement.name)) throw new Error(`La variabile ${statement.name} non e' ancora inizializzata: sposta la dichiarazione prima dell'uso.`);
         if (owner.constants.has(statement.name)) throw new Error(`La costante ${statement.name} non puo' essere riassegnata.`);
         owner.values.set(statement.name, (yield* evaluate(statement.value)));
+        owner.unassigned?.delete(statement.name);
       } else if (statement.kind === "member-set") {
         const object = (yield* evaluate(statement.object)), key = dataKey((yield* evaluate(statement.key))), value = (yield* evaluate(statement.value));
         if (isDataReference(object)) dataSet(object, key, value, tick);
@@ -2138,15 +2215,11 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         try {
           const target = statement.operation === "read" ? (yield* readTarget(statement.set, statement.mode, statement.maxAge)) : (yield* writeTarget(statement.set, statement.mode, statement.qcd));
           if (statement.success) {
-            if (statement.success.name) locals.set(statement.success.name, target);
-            (yield* run(statement.success.statements));
-            if (statement.success.name) locals.delete(statement.success.name);
+            (yield* run(statement.success.statements, "function", statement.success.name ? { [statement.success.name]: target } : undefined));
           }
         } catch (caught) {
           if (!statement.failure) throw caught;
-          if (statement.failure.name) locals.set(statement.failure.name, faultCode(caught));
-          (yield* run(statement.failure.statements));
-          if (statement.failure.name) locals.delete(statement.failure.name);
+          (yield* run(statement.failure.statements, "function", statement.failure.name ? { [statement.failure.name]: faultCode(caught) } : undefined));
         }
       } else if (statement.kind === "bit") {
         const name = tagName((yield* evaluate(statement.tag)));
@@ -2165,26 +2238,33 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         const next = statement.operation === "set" ? current | mask : statement.operation === "reset" ? current & ~mask : current ^ mask;
         values[name] = String(next); writes[name] = String(next);
       } else if (statement.kind === "if") {
-        const flow = (yield* run(truthy((yield* evaluate(statement.test))) ? statement.consequent : statement.alternate));
+        const flow = (yield* run(truthy((yield* evaluate(statement.test))) ? statement.consequent : statement.alternate, "block"));
         if (flow) return flow;
       } else if (statement.kind === "switch") {
         const value = scalar((yield* evaluate(statement.value)));
+        const parentScope = lexicalScope; if (lexicalBlocks) lexicalScope = createHmiScriptScope(undefined, lexicalScope); locals = lexicalScope.values;
+        try {
+        prepareLexicals(statement.cases.flatMap(entry => entry.statements));
         const entry = (yield* findScriptValue(statement.cases, function* (candidate) { return candidate.test && scalar((yield* evaluate(candidate.test))) === value; }))
           ?? statement.cases.find((candidate) => !candidate.test);
-        if (entry) { const flow = (yield* run(entry.statements)); if (flow) return flow; }
+        if (entry) for (let index = statement.cases.indexOf(entry); index < statement.cases.length; index++) {
+          const flow = (yield* run(statement.cases[index].statements, "current", undefined, false));
+          if (flow?.broken) break;
+          if (flow) return flow;
+          if (!lexicalBlocks) break;
+        }
+        } finally { lexicalScope = parentScope; locals = lexicalScope.values; }
       } else if (statement.kind === "try") {
         let flow: Flow;
         try {
           try {
-            flow = (yield* run(statement.statements));
+            flow = (yield* run(statement.statements, "block"));
           } catch (caught) {
             if (!statement.failure) throw caught;
-            if (statement.failure.name) locals.set(statement.failure.name, faultCode(caught));
-            try { flow = (yield* run(statement.failure.statements)); }
-            finally { if (statement.failure.name) locals.delete(statement.failure.name); }
+            flow = (yield* run(statement.failure.statements, "block", statement.failure.name ? { [statement.failure.name]: faultCode(caught) } : undefined));
           }
         } finally {
-          const finalFlow = (yield* run(statement.final));
+          const finalFlow = (yield* run(statement.final, "block"));
           if (finalFlow) return finalFlow;
         }
         if (flow) return flow;
@@ -2192,12 +2272,34 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     }
     return undefined;
   };
+  const run = function* (statements: readonly HmiScriptStatement[], mode: "current" | "block" | "function" = "current", bindings?: Record<string, RuntimeValue>, prepare = true): ScriptCoroutine<Flow> {
+    const previousScope = lexicalScope, previousFunction = functionScope;
+    const legacyBindings = !lexicalBlocks && mode === "block" ? Object.keys(bindings ?? {}).map(name => ({ name, exists: locals.has(name), value: locals.get(name), constant: lexicalScope.constants.has(name), unassigned: lexicalScope.unassigned?.has(name), pending: lexicalScope.uninitialized?.has(name) })) : [];
+    if (mode === "function" || mode === "block" && lexicalBlocks) { lexicalScope = createHmiScriptScope(undefined, lexicalScope); locals = lexicalScope.values; }
+    if (mode === "function") functionScope = lexicalScope;
+    try {
+      for (const [name, value] of Object.entries(bindings ?? {})) { locals.set(name, value); lexicalScope.unassigned?.delete(name); lexicalScope.uninitialized?.delete(name); }
+      if (mode === "function") hoistVars(statements);
+      if (prepare) prepareLexicals(statements);
+      return (yield* runBody(statements));
+    } finally {
+      for (const binding of legacyBindings) {
+        if (binding.exists) previousScope.values.set(binding.name, binding.value!); else previousScope.values.delete(binding.name);
+        if (binding.constant) previousScope.constants.add(binding.name); else previousScope.constants.delete(binding.name);
+        if (binding.unassigned) (previousScope.unassigned ??= new Set()).add(binding.name); else previousScope.unassigned?.delete(binding.name);
+        if (binding.pending) (previousScope.uninitialized ??= new Set()).add(binding.name); else previousScope.uninitialized?.delete(binding.name);
+      }
+      lexicalScope = previousScope; functionScope = previousFunction; locals = lexicalScope.values;
+    }
+  };
   try {
     for (let scope = localScope.parent; scope; scope = scope.parent) {
       (yield* initializeScope(scope));
     }
     if (!localScope.active) throw new Error("Il contesto script non e' piu' attivo.");
+    hoistVars(program.statements);
     const flow = (yield* run(program.statements));
+    if (flow?.broken) throw new Error("break richiede un blocco switch attivo.");
     return { ...(flow?.returned && flow.value !== undefined ? options.returnByReference ? { returnedReference: flow.value } : { returned: scalar(flow.value) } : {}), writes, traces, navigation, operatorMessages, faceplateEvents, tagStatus: { ...statusByTag }, steps, ...(options.transport ? { reads, commands } : {}) };
   } catch (caught) {
     return { writes, traces, navigation, operatorMessages, faceplateEvents, tagStatus: { ...statusByTag }, steps, error: faultMessage(caught), ...(options.transport ? { reads, commands } : {}) };
@@ -2249,5 +2351,5 @@ export async function executeHmiScriptAsync(program: HmiScriptProgram, input: Re
 /** Il progetto generato non porta con se' Babel: riceve il programma gia' compilato nell'attributo
  * e solo questo piccolo esecutore. Le funzioni sono le stesse usate dai test dell'editor. */
 export function hmiScriptRuntimeModuleSource(): string {
-  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectTimerCallbacks)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
+  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
 }

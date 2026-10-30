@@ -362,7 +362,7 @@ import type { ConnectionDiagnostic } from "./framecraftGateway";
 
 type HmiEventType = "Activated" | "ContextTapped" | "Deactivated" | "Down" | "KeyDown" | "KeyUp" | "Loaded" | "Tapped" | "DoubleTapped" | "Up" | "Change" | "GestureDetected" | "Unloaded" | "HotKey" | "InterfaceEvent" | "Initialized" | "CommandFired";
 type HmiGesture = "Unknown" | "SwipeRight" | "SwipeLeft" | "SwipeUp" | "SwipeDown";
-interface ScriptProgram { version: 1; statements: unknown[] }
+interface ScriptProgram { version: 1 | 2; statements: unknown[] }
 type RuntimeTimerCallback = { kind: "inline"; program: ScriptProgram } | { kind: "function"; call: unknown };
 interface RuntimeTimerContext { isActive?: () => boolean; localTags?: ReadonlySet<string>; localTagValues?: Record<string, string>; screenItems?: unknown }
 interface EventBinding { event: HmiEventType; script: string; program?: ScriptProgram }
@@ -739,7 +739,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   };
   const executeDynamic = (element: Element, item: DynamicBinding) => {
     if (item.kind !== "Script") return;
-    if (!item.program || item.program.version !== 1 || !Array.isArray(item.program.statements)) {
+    if (!item.program || ![1, 2].includes(item.program.version) || !Array.isArray(item.program.statements)) {
       reportOnce(element, item.property + ":compile", "[HMI dinamica " + item.property + "] script non compilato: salvalo da Framecraft.");
       return;
     }
@@ -905,7 +905,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   });
   const executeScheduledTask = async (task: ScheduledTask, cause: "interval" | "once" | "tag" | "calendar" | "alarm", alarm?: RuntimeAlarmNotification) => {
     if (!runtimeActive) return;
-    if (!task.program || task.program.version !== 1 || !Array.isArray(task.program.statements)) {
+    if (!task.program || ![1, 2].includes(task.program.version) || !Array.isArray(task.program.statements)) {
       (options.error ?? console.error)("[HMI TASK " + task.name + "] script non compilato: salvalo da Framecraft.");
       return;
     }
@@ -992,7 +992,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     if (!propertyFlashingSurface.allowsReactions(element)) return;
     if (!["Initialized", "Loaded", "Unloaded"].includes(eventType) && !propertyFlashingSurface.allowsInteraction(element)) return;
     for (const binding of bindings(element).filter((item) => item.event === eventType)) {
-      if (!binding.program || binding.program.version !== 1 || !Array.isArray(binding.program.statements)) {
+      if (!binding.program || ![1, 2].includes(binding.program.version) || !Array.isArray(binding.program.statements)) {
         (options.error ?? console.error)(\`[HMI \${eventType}] script non compilato: salvalo da Framecraft.\`);
         continue;
       }
@@ -1010,7 +1010,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     if (!runtimeActive || !propertyFlashingSurface.allowsInteraction(element)) return;
     const handler = faceplateBinding(element)?.eventBindings?.[name];
     if (!handler) return;
-    if (!handler.program || handler.program.version !== 1 || !Array.isArray(handler.program.statements)) {
+    if (!handler.program || ![1, 2].includes(handler.program.version) || !Array.isArray(handler.program.statements)) {
       (options.error ?? console.error)("[HMI FACEPLATE " + name + "] script non compilato: salvalo da Framecraft.");
       return;
     }
