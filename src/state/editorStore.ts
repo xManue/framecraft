@@ -275,7 +275,7 @@ export interface EditorState {
   createStandardProject: (config: StandardProjectConfig) => Promise<void>;
   applyAiProposal: (snapshot: AiEditSnapshot, proposal: AiProposal, accepted: string[]) => Promise<boolean>;
   applyAiPageProposal: (snapshot: AiEditSnapshot, proposal: AiProposal, accepted: string[]) => Promise<boolean>;
-  refreshAiProjectFiles: (root: string, files: string[]) => Promise<void>;
+  refreshAiProjectFiles: (root: string, files: string[], context?: { label: string; read: (root: string, path: string) => Promise<string | null> }) => Promise<void>;
   openProject: (root: string) => Promise<void>;
   removeRecentProject: (root: string) => void;
   closeProject: () => Promise<void>;
@@ -1431,14 +1431,14 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         await get().openProject(root);
       } catch (error) { set({ loading: false }); reportError(error); }
     },
-    async refreshAiProjectFiles(root, files) {
+    async refreshAiProjectFiles(root, files, context) {
       const project = get().project;
       if (!project || project.root !== root) return;
       runtime.listBindingRequest = undefined; runtime.projectIndexRequest = undefined; runtime.callSiteRequest = undefined;
       const open = get().document, relative = open?.file.replaceAll("\\", "/").slice(root.replaceAll("\\", "/").replace(/\/$/, "").length + 1);
       try {
         if (open && relative && files.includes(relative)) {
-          const source = await desktopBridge.readAiProjectFile(root, relative);
+          const source = await (context?.read ?? desktopBridge.readAiProjectFile)(root, relative);
           if (get().project === project && get().document === open) {
             if (get().dirty) reportWarning("I file su disco sono stati aggiornati. La bozza aperta è conservata: confrontala prima di salvare.");
             else {
@@ -1450,7 +1450,7 @@ const createEditorState: StateCreator<EditorState> = (set, get) => {
         const pages = await inspectPages(project);
         if (get().project === project) set({ pages: pages.pages, pageCategories: pages.pageCategories, routerFile: pages.routerFile, routerEditable: pages.routerEditable });
         if (get().project === project) await get().refreshPlcVariables();
-      } catch (error) { if (get().project === project) reportWarning(`File AI aggiornati; rilettura dell’editor da verificare: ${error instanceof Error ? error.message : String(error)}`); }
+      } catch (error) { if (get().project === project) reportWarning(`File ${context?.label ?? "AI"} aggiornati; rilettura dell’editor da verificare: ${error instanceof Error ? error.message : String(error)}`); }
     },
     async applyAiPageProposal(snapshot, proposal, accepted) {
       const state = get(), project = state.project, open = state.document;

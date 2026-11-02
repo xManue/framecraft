@@ -6613,6 +6613,49 @@ Verifiche del 5 ottobre 2026:
   Solo dati sintetici e broker loopback. Nessun PLC reale, TLS macchina o deployment
   distribuito certificati da queste prove; nessuna dipendenza o modifica nativa.
 
+## 186. Aggiornamento assistito dei componenti Runtime (2 novembre 2026)
+
+- **Fase 3 Unified**: ora i progetti precedenti possono ricevere insieme il servizio Node e
+  il Runtime browser dal menu Pannello → Aggiorna componenti del pannello. Non basta pulire
+  la cache Vite e non vengono aggiornati automaticamente i progetti aperti.
+- **Confronto locale**: pacchetto completo, impronte SHA-256 della base generata, versione dei
+  componenti e blocco del downgrade. File diversi senza impronta o modificati richiedono
+  confronto e consenso; il codice da applicare è integrabile e controllato sintatticamente.
+  Personalizzazioni di una base già attuale vengono conservate. Moduli di libreria Unified
+  versionati/master copy restano una funzione distinta ancora aperta.
+- **Perimetro**: runtime/*, helper src/framecraft*, metadati di versione. Pagine, immagini,
+  CSS del progetto, package/lockfile principali, cataloghi esistenti e .framecraft-runtime
+  non vengono sostituiti. Cataloghi mancanti solo vuoti/disabilitati. Per quelli già presenti
+  si controlla la presenza, senza caricare il contenuto nel confronto. runtime/package.json
+  mantiene chiavi/script/dipendenze estranei e mostra quando servirà npm install.
+- **Scritture native**: solo dalla finestra editor e nel progetto/generazione ancora aperti,
+  con limiti e blocco di link/junction/hard link, duplicati e percorsi estranei. La bozza
+  sporca impedisce l’operazione; l’anteprima viene fermata. Il gateway configurato deve avere
+  la porta libera, riservata per tutta la mutazione per impedirne l’avvio concorrente.
+- **Backup e recovery**: journal e metadati sono preparati/sincronizzati prima delle scritture;
+  pubblicazione del backup per rename della cartella, poi sostituzioni atomiche per file.
+  Errore a metà batch: rollback con confronto; modifiche esterne conservate e stato da
+  recuperare quando il ripristino non può essere completato. Interruzioni riconciliate dai
+  contenuti prima/dopo, senza presumere che la scrittura sia finita. Backup incompleti prima
+  degli altri, anche dopo una correzione dell’orologio. Ripristino disponibile dalla finestra.
+- **Avvio del servizio**: guard e launcher prima degli altri componenti, ordine inverso al
+  ripristino. I launcher caricano il servizio solo dopo il guard: gateway e monitor MQTT rifiutano
+  l’avvio, anche con corpo del servizio mancante, con metadati di aggiornamento pendenti
+  o illeggibili. Nessuna installazione, connessione PLC, ripartenza automatica o modifica
+  degli archivi operativi causata dall’updater.
+- **Riservatezza**: journal .env.runtime-update.json, negato dalle regole Vite per .env.*;
+  nuovi pannelli negano anche l’intera cartella backup. I payload delle copie non vengono
+  inviati ad AI/servizi esterni. Cartella locale .framecraft/runtime-updates esclusa da Git.
+- **Verifiche mirate**: 107 casi TypeScript/React in nove file e 15 test Rust del modulo,
+  senza suite generale. Flusso browser Edge dalla build dell’editor con bridge sintetico,
+  viewport 1366/640, VM esportata, aggiornamento e ripristino, 37 file preservati. Stesso
+  scaffold nativo, TypeScript dell’intero pannello, build Vite e HMI riaperto funzionanti;
+  dipendenze già installate riutilizzate, nessuna installazione/rete. Servizi fermi con update
+  pendente; richiesta HTTP al journal rifiutata (403) anche con il vecchio deny Vite.
+  Scritture e recovery reali provati nei test filesystem nativi; il bridge del test browser
+  non è un collaudo IPC end-to-end della finestra desktop. Guasti fisici, ACL/deployment,
+  progetti macchina personalizzati e interoperabilità su PLC restano gate di produzione.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

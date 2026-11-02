@@ -1981,17 +1981,64 @@ Le scritture mantengono audit, abilitazioni, tipi e protezioni delle ricette; MQ
 confermano il trasporto previsto dal driver, non l’effetto sulla macchina. Nessun write-wait,
 QCD o lettura CPU forzata viene simulato come riuscito.
 
-### Progetti precedenti
+### Progetti precedenti: aggiornamento dall’editor
 
-Aggiornare insieme i file runtime/gateway*, operator-policy*, operator-auth*, start-gateway,
-scheduler-* e review-scheduler, le relative dipendenze comuni del Runtime e gli script del
-runtime/package.json; lato browser aggiornare src/framecraftHmiRuntime e framecraftGateway.
-Il generatore include tutti questi file nei nuovi progetti. Non basta riavviare o cancellare
-la cache Vite: un vecchio browser può ancora pianificare operazioni per client. Non mescolare
-il servizio nuovo con il browser vecchio. Conservare e confrontare le personalizzazioni prima
-della migrazione; l’editor non sovrascrive automaticamente il codice del progetto. Collaudare
-prima su un broker/PLC di prova senza comandi macchina. La migrazione automatica e la ridondanza
-multihost rimangono lavori separati.
+Apri **Pannello → Aggiorna componenti del pannello**. L’editor confronta insieme il servizio
+Node e gli helper del browser con quelli della versione corrente, senza scrivere durante il
+confronto. La finestra mantiene dimensioni stabili; i dettagli mostrano prima/dopo e permettono
+di integrare il codice personalizzato. La sintassi viene controllata, non eseguita.
+
+1. Salva o conserva la bozza aperta. Arresta il servizio PLC e gli eventuali avvii gestiti dal
+   sistema: il gateway configurato deve avere una porta fissa libera. L’app la riserva durante
+   l’operazione e ferma anche l’anteprima, che resta ferma al termine.
+2. Confronta i file indicati: possono essere personalizzati oppure appartenere a una versione
+   senza impronte. Integra le personalizzazioni da mantenere e conferma il confronto. I file
+   della stessa base già attuale restano conservati; un editor più vecchio non fa downgrade.
+3. Scegli **Crea backup e aggiorna**. Il pacchetto viene applicato insieme: niente selezione
+   arbitraria che lasci servizio e browser di versioni diverse. Le scritture sono atomiche
+   per file, con journal precedente al batch e rollback controllato; non sono uno swap atomico
+   dell’intero progetto. Una modifica esterna fa fermare l’operazione senza sovrascriverla.
+4. Se cambiano le dipendenze del servizio, esegui npm install nella cartella runtime e verifica
+   il lockfile prima di riavviare. L’updater non installa né contatta broker/PLC. Il package
+   principale, i suoi lockfile, le pagine, le immagini e il CSS del progetto non sono aggiornati.
+5. Verifica il pannello e riavvia esplicitamente anteprima/servizio. In **Script** scegli un
+   account locale abilitato per lo Scheduler centrale: il browser non esegue più le operazioni
+   pianificate quando il gateway è attivo. Non basta cancellare la cache Vite.
+
+I cataloghi esistenti, gli utenti e .framecraft-runtime restano invariati. I cataloghi necessari
+che mancano vengono proposti solo vuoti/disabilitati. Le credenziali non sono migrate. Il
+marcatore framecraft.runtime-components.json contiene versione e impronte dei componenti;
+va conservato con il progetto. La base serve a riconoscere le personalizzazioni, non firma
+il software né dimostra che i comandi della macchina siano corretti.
+
+### Backup dei componenti e avvio incompleto
+
+Le copie prima/dopo sono locali in .framecraft/runtime-updates/ID/. Il contenuto del backup è
+nel file .env.runtime-update.json: il server Vite Framecraft ne nega l’accesso HTTP tramite
+le regole .env.*. I nuovi progetti negano anche l’intera cartella; eventuali server personalizzati
+vanno configurati per non pubblicare .framecraft. La cartella è esclusa da Git; non spostare
+questi file in public o dist. Non vengono inviati all’AI o a servizi esterni.
+
+Da **Backup e ripristino** puoi recuperare un aggiornamento interrotto o tornare ai componenti
+precedenti. Le righe incomplete hanno precedenza anche se l’orologio del PC è cambiato.
+L’operazione controlla i contenuti attuali: non sovrascrive modifiche fatte dopo il backup.
+Se il ripristino non può terminare, conserva journal e ID indicato e fai confrontare i file;
+non cancellare i metadati per forzare l’avvio. Nuovi aggiornamenti restano bloccati.
+
+I launcher di gateway e monitor MQTT controllano i metadati prima di caricare i servizi o
+aprire connessioni, anche quando manca il corpo di un servizio. Con aggiornamento
+pendente o stato non verificabile escono con RUNTIME_UPDATE_PENDING e indicano il percorso
+nell’editor per il recupero. Il guard viene installato prima dei launcher e questi prima
+degli altri componenti; al ripristino l’ordine è inverso. Non equivale a ridondanza multihost
+né a un collaudo contro perdita di alimentazione e guasti del disco sul target.
+
+Il backup riguarda il codice dei componenti: non ripristina tag, configurazioni, utenti,
+ricette operative, audit o archivi. Prima di tornare a una versione precedente verifica la
+compatibilità con i dati e le personalizzazioni correnti. Proteggi e salva separatamente gli
+archivi operativi. Lo storico locale è limitato a 256 backup: archivia quelli conclusi quando
+serve, senza rimuovere quelli incompleti. I progetti copiati conservano le copie precedenti,
+ma il ripristino resta vincolato alla cartella d’origine; un backup incompleto copiato richiede
+verifica nella cartella originale.
 
 ## Prima della produzione
 

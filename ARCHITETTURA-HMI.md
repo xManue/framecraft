@@ -979,5 +979,27 @@ claim e highwater di Once/Calendar sono persistenti. Crash o esito incerto richi
 esplicita prima di riavviare lo Scheduler. Non esiste failover automatico fra browser o
 processi. Le ricevute di trasporto restano distinte dalle conferme PLC. Le API grafiche non
 hanno un target sul server; linguaggio completo, object model, librerie versionate, driver
-avanzati, migrazione dei Runtime personalizzati e collaudo industriale/distribuito rimangono
-aperti. Procedura, limiti e recovery in runtime/README.md.
+avanzati e collaudo industriale/distribuito rimangono aperti. L’aggiornamento assistito dei
+componenti è al punto 186; la verifica sulle personalizzazioni macchina resta necessaria.
+Procedura, limiti e recovery in runtime/README.md.
+
+
+## Aggiornamento dei componenti del progetto (LAVORO 186)
+
+Il planner confronta il pacchetto completo dell’editor con i soli componenti del progetto.
+I cataloghi esistenti sono conservati per presenza; le impronte descrivono la base generata,
+così una personalizzazione non viene scambiata per la versione standard. Il marcatore pubblico
+framecraft.runtime-components.json registra versione e impronte senza dati macchina. Il
+generatore include il marcatore anche nei nuovi progetti; un editor precedente non fa downgrade.
+
+L’operazione Tauri controlla progetto/generazione/finestra, perimetro, dimensioni, link e valori
+prima/dopo. Mantiene il blocco condiviso delle modifiche, progetto e anteprima; riserva la porta
+del gateway abilitato. Il journal locale conserva le due versioni prima del primo file mutato.
+Il batch non è una transazione filesystem unica: errore, rollback e ripresa sono espliciti,
+con conflitti conservati. Guard e launcher precedono il resto del servizio; il servizio non
+parte quando un aggiornamento è incompleto. Nessuna scrittura su PLC, utenti o storage operativo.
+
+Ripristino dei componenti e restore degli archivi HMI sono procedure distinte. Compatibilità
+delle personalizzazioni/dati con la versione ripristinata, ACL, power loss reale e IPC desktop
+richiedono ancora il collaudo di produzione. I test Rust provano file e lock; il browser con
+bridge sintetico prova UX, compilazione e funzionamento del pannello generato.

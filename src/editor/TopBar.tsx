@@ -15,6 +15,7 @@ import { layoutPresets, snapGrids, useEditorStore, type UiDensity, type WorkLayo
 import { PlcConnectionsDialog } from "./PlcConnectionsDialog";
 import { AlarmsDialog } from "./AlarmsDialog";
 import { RecipesDialog } from "./RecipesDialog";
+import { RuntimeUpdateDialog } from "./RuntimeUpdateDialog";
 import { formatEditorShortcut, type EditorCommandId } from "../../scripts/editor-shortcuts.mjs";
 import { useEditorShortcuts } from "../state/editorShortcuts";
 import { useEditorGuidance } from "../state/editorGuidance";
@@ -108,6 +109,7 @@ export function TopBar() {
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [alarmsOpen, setAlarmsOpen] = useState(false);
   const [recipesOpen, setRecipesOpen] = useState(false);
+  const [runtimeUpdateOpen, setRuntimeUpdateOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<TopMenu>();
   const menuRef = useRef<HTMLElement>(null);
 
@@ -203,6 +205,7 @@ export function TopBar() {
             {activeMenu === "panel" && <div className="topbar-dropdown" role="menu" aria-label="Pannello">
               <button role="menuitem" disabled={!previewUrl} onClick={() => runAndClose(() => void openPreview())}><Play size={15} /><span><strong>Prova pannello</strong><small>Apri il Runtime senza strumenti di modifica</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => useEditorAi.getState().show("edit"))}><HelpCircle size={15} /><span><strong>Chat AI · Codex</strong><small>Conversazione del progetto, allegati e proposte da approvare</small></span></button>
+              <button role="menuitem" onClick={() => runAndClose(() => setRuntimeUpdateOpen(true))}><RefreshCw size={15}/><span><strong>Aggiorna componenti del pannello</strong><small>Confronto, backup e ripristino di servizio PLC e Runtime</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => void checkProject())}><FileCheck2 size={15} /><span><strong>Controlla pannello</strong><small>Trova errori, tag mancanti e parti incomplete</small></span></button>
               <div className="topbar-menu-separator" />
               <button role="menuitem" onClick={() => runAndClose(() => setLeftPanel("plc"))}><Gauge size={15} /><span><strong>Variabili PLC e valori di prova</strong><small>Catalogo e prova locale dell’HMI, senza collegare un PLC</small></span></button>
@@ -242,5 +245,6 @@ export function TopBar() {
     {connectionsOpen && <PlcConnectionsDialog key={project.root} onClose={() => setConnectionsOpen(false)} />}
     {alarmsOpen && <AlarmsDialog key={project.root} onClose={() => setAlarmsOpen(false)} />}
     {recipesOpen && <RecipesDialog key={project.root} onClose={() => setRecipesOpen(false)} />}
+    {runtimeUpdateOpen && <RuntimeUpdateDialog key={project.root} onClose={() => setRuntimeUpdateOpen(false)} />}
   </>;
 }

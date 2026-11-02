@@ -20,6 +20,15 @@ function requireDesktop() {
 }
 
 export const desktopBridge = {
+  async readRuntimeUpdate(root: string, paths: string[], catalogPresenceOnly = true): Promise<import("../core/runtimeUpdate").RuntimeUpdateSnapshot> {
+    requireDesktop(); return invoke("read_runtime_update", { root, paths, catalogPresenceOnly });
+  },
+  async applyRuntimeUpdate(root: string, generation: number, changes: import("../core/runtimeUpdate").RuntimeUpdateChange[]): Promise<string> {
+    requireDesktop(); return invoke("apply_runtime_update", { root, generation, changes });
+  },
+  async restoreRuntimeUpdate(root: string, generation: number, backup: string): Promise<void> {
+    requireDesktop(); return invoke("restore_runtime_update", { root, generation, backup });
+  },
   async readRecipeApplyConfiguration(root: string): Promise<RecipeApplyConfigurationSnapshot> {
     requireDesktop(); return invoke("read_recipe_apply_configuration", { root });
   },

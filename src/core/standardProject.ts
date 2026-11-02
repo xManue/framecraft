@@ -1,3 +1,8 @@
+import { runtimeBundleVersion, runtimeManifestPath } from "./runtimeUpdate";
+import runtimeUpdateGuardSource from "../../runtime/runtime-update-guard.mjs?raw";
+import gatewayServiceSource from "../../runtime/gateway-service.mjs?raw";
+import mqttServiceSource from "../../runtime/mqtt-service.mjs?raw";
+import runtimeUpdateGuardTypes from "../../runtime/runtime-update-guard.d.mts?raw";
 import schedulerReviewSource from "../../runtime/review-scheduler.mjs?raw";
 import schedulerServiceSource from "../../runtime/scheduler-service.mjs?raw";
 import schedulerServiceTypes from "../../runtime/scheduler-service.d.mts?raw";
@@ -1912,6 +1917,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
   return [
     { path: ".gitignore", content: "node_modules/\ndist/\n.framecraft/\n.framecraft-runtime/\n.framecraft-workspace.json\n*.log\n*.tsbuildinfo\n.env\n.env.*\n!.env.example\n*.pem\n*.key\n*.pfx\n*.p12\n" },
     { path: "src/App.tsx", content: appSource(machineName, planned, mobile, config.guided?.requirements?.startPageId) },
+    { path: runtimeManifestPath, content: JSON.stringify({ version: 1, bundleVersion: runtimeBundleVersion, files: {} }, null, 2) + "\n" },
     { path: "framecraft.header.json", content: JSON.stringify(config.guided?.header ?? newPanelHeader(), null, 2) + "\n" },
     { path: "src/framecraftPanelHeader.ts", content: panelHeaderSource.replace('"./hmiTagBinding"', '"./framecraftHmiTagBinding"') },
     { path: "src/framecraftPanelHeaderUi.tsx", content: panelHeaderUiSource },
@@ -2001,6 +2007,10 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/framecraftHmiAlarmSummary.ts", content: alarmSummarySource.replaceAll('"../../scripts/hmi-alarm-summary.mjs"', '"./framecraftHmiAlarmSummary.mjs"') },
     { path: "framecraft.alarms.json", content: JSON.stringify(config.guided ? guidedAlarmCatalog(config.guided) : emptyAlarmCatalog(), null, 2) + "\n" },
     { path: "runtime/gateway.d.mts", content: gatewayTypes },
+    { path: "runtime/gateway-service.mjs", content: gatewayServiceSource },
+    { path: "runtime/mqtt-service.mjs", content: mqttServiceSource },
+    { path: "runtime/runtime-update-guard.mjs", content: runtimeUpdateGuardSource },
+    { path: "runtime/runtime-update-guard.d.mts", content: runtimeUpdateGuardTypes },
     { path: "runtime/start-gateway.mjs", content: gatewayStartSource },
     { path: "runtime/review-scheduler.mjs", content: schedulerReviewSource },
     { path: "runtime/scheduler-service.mjs", content: schedulerServiceSource },

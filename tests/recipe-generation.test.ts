@@ -75,7 +75,7 @@ describe("ricette nel servizio realmente esportato", () => {
     expect(byPath.get("src/framecraftHmiRecipeApplyClient.ts")).toContain('"../runtime/recipe-apply.mjs"'); expect(byPath.get("src/framecraftHmiRecipeApply.ts")).toContain('"./framecraftHmiRecipeApplyClient"');
     expect(byPath.get("src/framecraftHmiRecipeControl.ts")).toContain('"./framecraftHmiRecipeApply"'); expect(byPath.get("src/framecraftHmiRecipeClient.ts")).toContain('"./framecraftHmiRecipeApplyClient"');
     expect(JSON.parse(byPath.get("framecraft.recipe-plc.json")!)).toEqual({ version: 1, schemas: [] });
-    expect(byPath.get("src/framecraftHmiRecipeControl.ts")).toContain('"./framecraftHmiRecipePlc"'); expect(byPath.get("src/framecraftHmiRecipePlc.ts")).toContain('"../runtime/recipe-plc.mjs"'); expect(byPath.get("runtime/start-gateway.mjs")).toContain("framecraft.recipe-plc.json");
+    expect(byPath.get("src/framecraftHmiRecipeControl.ts")).toContain('"./framecraftHmiRecipePlc"'); expect(byPath.get("src/framecraftHmiRecipePlc.ts")).toContain('"../runtime/recipe-plc.mjs"'); expect(byPath.get("runtime/gateway-service.mjs")).toContain("framecraft.recipe-plc.json");
     expect(JSON.parse(byPath.get("framecraft.recipes.json")!)).toEqual({ version: 1, schemas: [] }); expect(files.some(file => file.path.startsWith(".framecraft-runtime/"))).toBe(false);
   });
   it("avvia il servizio distribuito, conserva i dati reali importati e nega accesso senza identità server", async () => {

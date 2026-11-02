@@ -11,7 +11,7 @@ describe("generatore nuovo pannello standard", () => {
     const files = standardProjectFiles({ machineName: "Alarm pipeline", layout: "desktop-mobile", sections: ["alarms"] });
     const file = (path: string) => files.find((item) => item.path === path)!.content;
     expect(JSON.parse(file("framecraft.alarms.json")).alarms).toEqual([]);
-    expect(file("runtime/gateway.mjs")).toContain('from "./alarm-engine.mjs"'); expect(file("runtime/start-gateway.mjs")).toContain("framecraft.alarms.json");
+    expect(file("runtime/gateway.mjs")).toContain('from "./alarm-engine.mjs"'); expect(file("runtime/gateway-service.mjs")).toContain("framecraft.alarms.json");
     expect(file("src/framecraftGateway.ts")).toContain('from "../runtime/alarm-engine.mjs"'); expect(file("src/framecraftHmiAlarmControl.ts")).toContain('from "./framecraftHmiAlarmControl.mjs"');
     expect(file("src/framecraftHmiAlarmControl.mjs")).toContain('from "../runtime/alarm-labels.mjs"'); expect(file("src/framecraftHmiAlarmControl.d.mts")).toContain('from "../runtime/alarm-engine.mjs"');
     expect(file("src/framecraftHmiRuntime.ts")).toContain("acceptAlarmSnapshot(snapshot.alarms)"); expect(file("runtime/alarm-engine.d.mts")).toContain("AlarmSnapshot");
@@ -554,6 +554,6 @@ describe("generatore nuovo pannello standard", () => {
     const app = standardProjectFiles({ machineName: "Linea {A} <test>", layout: "desktop", sections: ["main"] })
       .find((file) => file.path === "src/App.tsx")!.content;
     expect(() => parse(app, { sourceType: "module", plugins: ["jsx", "typescript"] })).not.toThrow();
-    expect(app).toContain('{"Linea {A} test"}');
+    expect(app).toContain(JSON.stringify("Linea {A} test"));
   });
 });
