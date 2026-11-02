@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { createServerScheduler } from "./scheduler-service.mjs";
+import { SchedulerError } from "./scheduler-store.mjs";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { createMqttPlcConnection, normalizeMqttTagValue } from "./mqtt-driver.mjs";
 import { createOpcUaPlcConnection } from "./opcua-driver.mjs";
@@ -64,7 +66,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
   const archiveEnabled = options.alarmCatalog?.archive?.enabled === true;
   const historyFault = error => { if (!historyError) { historyError = error instanceof AlarmHistoryError ? error : new AlarmHistoryError("ALARM_HISTORY_STORAGE"); safeNotify(options.onHistoryDiagnostic, { type: "alarm-history", code: historyError.code, error: historyError.message, remedy: historyError.remedy }); } };
   const historyCapture = () => ({ state: historyError ? "error" : !archiveEnabled ? "disabled" : historyRunning ? "recording" : "stopped", unconfirmedInThisRun: historyMissed, ...(historyError ? { code: historyError.code } : {}) });
-  const alarms = options.alarmCatalog !== undefined ? createAlarmEngine(options.alarmCatalog, variables, { onEvent: options.onAlarmEvent, onEvents: events => {
+  const alarms = options.alarmCatalog !== undefined ? createAlarmEngine(options.alarmCatalog, variables, { onEvent: event => { safeNotify(options.onAlarmEvent,event); scheduler?.alarm(event); }, onEvents: events => {
     if (!archiveEnabled) return;
     try { if (historyError || !historyRunning || !options.alarmHistory) throw historyError ?? new AlarmHistoryError("ALARM_HISTORY_STORAGE"); options.alarmHistory.append(events); }
     catch (error) { historyMissed = Math.min(Number.MAX_SAFE_INTEGER, historyMissed + events.length); historyFault(error); }
@@ -79,14 +81,16 @@ export function createPlcGateway(catalog, variables, options = {}) {
     write: (rows, receipt) => options.dataLogStore.append(rows, receipt),
     read: tag => { const owner = owners.get(tag), sample = owner?.driver.read(tag); return owner?.driver.state === "connected" ? sample : { ...sample, tag, qualityCode: 0, lastError: "Offline" }; }, onError: reportDataLog }) : undefined;
   const dataLogCapture = () => ({ ...(dataLogFault ? { state: "error", written: dataLogEngine?.status().written ?? 0, code: dataLogFault.code } : dataLogEngine?.status() ?? { state: "stopped", written: 0 }), instanceId: dataLogInstanceId });
+  let scheduler, schedulerFault = options.schedulerUnavailable, schedulerStore = options.schedulerStore;
+  const schedulerReport = event => safeNotify(options.onSchedulerDiagnostic,event);
   let alarmTimer;
   const connections = enabled.map((connection) => {
     const driver = (connection.protocol === "opcua" ? createOpcUaPlcConnection : createMqttPlcConnection)(connection, variables, {
       resolveSecret: options.resolveSecret,
       onError: options.onError,
       onDiagnostic: record,
-      onSample: (sample) => { alarms?.updateSample(sample); dataLogEngine?.update(sample); },
-      onState: (state) => { states.set(connection.id, { ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) }); safeNotify(options.onState, state); },
+      onSample: (sample) => { alarms?.updateSample(sample); dataLogEngine?.update(sample); scheduler?.sample(sample); },
+      onState: (state) => { if (state.state !== "connected") scheduler?.disconnect(connection.bindings.map(b => b.tag)); states.set(connection.id, { ...state, ...(state.diagnostic ? { diagnostic: { ...state.diagnostic } } : {}) }); safeNotify(options.onState, state); },
     });
     for (const binding of connection.bindings) {
       if (owners.has(binding.tag)) throw new Error("Un tag non può avere due sorgenti PLC attive.");
@@ -110,7 +114,41 @@ export function createPlcGateway(catalog, variables, options = {}) {
     if (!request?.writable || !response || response.access === "write" || request.connectionId !== response.connectionId) return;
     return { connected: () => request.driver.state === "connected" && response.driver.state === "connected", read: () => response.driver.read(profile.responseTag), write: frame => request.driver.write(profile.requestTag, frame) };
   } }) : undefined;
+  const schedulerSamples = () => [...owners.values()].flatMap(({name,driver,access}) => { const sample=driver.read(name); return sample && access !== "write" ? [{...sample,qualityCode:driver.state === "connected" ? sample.qualityCode : 0}] : []; });
+  if (options.schedulerCatalog?.schedulerService?.enabled !== undefined && typeof options.schedulerCatalog.schedulerService.enabled !== "boolean") schedulerFault = new SchedulerError("SCHEDULER_CONFIG");
+  if (options.schedulerCatalog?.schedulerService?.enabled === true && !schedulerFault) try {
+    if (!options.operatorAuth?.authorizeService || !schedulerStore || !options.schedulerRuntime) throw new SchedulerError("SCHEDULER_CONFIG");
+    scheduler = createServerScheduler({ catalog:options.schedulerCatalog,runtime:options.schedulerRuntime,store:schedulerStore,samples:schedulerSamples,authorize:(account,capability)=>options.operatorAuth.authorizeService(account,capability),onDiagnostic:schedulerReport,onTrace:options.onSchedulerTrace,
+      transport:{
+        async read(request,signal) {
+          const owner=owners.get(request.tag),sample=owner?.driver.read(request.tag);
+          if (signal.aborted || stopping || request.mode !== 0 || request.maxAge === 0 || request.maxAge !== undefined && (!Number.isInteger(request.maxAge) || request.maxAge < 0 || request.maxAge > 0xffffffff) || !owner || owner.access === "write" || owner.driver.state !== "connected" || sample?.value === undefined || sample.lastError || (sample.qualityCode & 0xc0) !== 0xc0) throw failure(503,"WRITE_OFFLINE");
+          const age=Math.max(Date.now()-sample.receivedAt,sample.opcUaStatusCode !== undefined ? 0 : Date.now()-(sample.sourceTimestamp ?? sample.receivedAt));
+          if (request.maxAge !== undefined && age > request.maxAge) throw failure(503,"WRITE_OFFLINE");
+          return {value:sample.value,status:{qualityCode:sample.qualityCode,timeStamp:sample.sourceTimestamp ?? sample.receivedAt,lastError:0,errorDescription:""}};
+        },
+        async write(request,signal,account) {
+          const owner=owners.get(request.tag),id=randomUUID();
+          if (request.mode !== 0 || request.qcd) throw failure(403,"WRITE_DENIED");
+          const actor=await options.operatorAuth.authorizeService(account,"tags.write",{tag:request.tag});
+          const scope=auditContext("tags.write",{kind:"tag",id:request.tag},id,actor);
+          const result=await runAudited(options.audit,scope,async()=>{
+            if (options.recipeApplyUnavailable || protectionFault || !owner?.writable || protectedTags.has(request.tag)) throw failure(403,"WRITE_DENIED");
+            try { normalizeMqttTagValue(request.value,owner.dataType); } catch { throw failure(400,"WRITE_INVALID"); }
+            if (owner.driver.state !== "connected") throw failure(503,"WRITE_OFFLINE");
+            // Check revocation again after the durable audit write and immediately before driver access.
+            await options.operatorAuth.authorizeService(account,"tags.write",{tag:request.tag});
+            if (stopping || signal.aborted) throw failure(503,"GATEWAY_OFFLINE");
+            return {id,outcome:"delivered",...await owner.driver.write(request.tag,request.value)};
+          },receipt=>({outcome:receipt.outcome,code:receipt.delivery === "broker-ack" ? "WRITE_BROKER_ACK" : receipt.delivery === "opcua-service" ? "WRITE_OPCUA_SERVICE" : "WRITE_TRANSPORT"}),()=>!stopping && !signal.aborted);
+          return result;
+        },
+      },
+    });
+  } catch (error) { schedulerFault=error instanceof SchedulerError ? error : new SchedulerError("SCHEDULER_CONFIG"); schedulerReport({type:"scheduler",code:schedulerFault.code,error:schedulerFault.message,remedy:schedulerFault.remedy}); }
+  const schedulerSnapshot = () => { try { return scheduler?.snapshot() ?? {state:schedulerFault ? "error" : "disabled",owner:"server",...(schedulerFault ? {diagnostic:{code:schedulerFault.code,error:schedulerFault.message,remedy:schedulerFault.remedy}} : {})}; } catch { return {state:"error",owner:"server",diagnostic:{code:"SCHEDULER_STORAGE",error:new SchedulerError().message,remedy:new SchedulerError().remedy}}; } };
   const snapshot = () => ({ version: 1, allowWrites: config.allowWrites === true,
+    scheduler: schedulerSnapshot(),
     alarmHistory: historyCapture(),
     dataLogs: dataLogCapture(),
     ...(alarms ? { alarms: { ...alarms.snapshot(), actionsEnabled: !!options.operatorAuth || typeof options.authorizeAlarmAction === "function" } } : {}),
@@ -442,6 +480,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         if (!stopping && alarms?.snapshot().shelving?.enabled) { alarmTimer = setInterval(() => alarms.tick(), 500); alarmTimer.unref?.(); }
         if (!stopping && dataLogEngine && !dataLogFault) { dataLogEngine.start(); dataLogTimer = setInterval(() => { try { options.dataLogStore.maintain(); } catch (error) { reportDataLog(error); } }, 60000); dataLogTimer.unref?.(); }
         if (!stopping) await Promise.allSettled(connections.map((driver) => driver.start()));
+        if (!stopping && scheduler) try { await scheduler.start(); } catch { /* Reported by Scheduler; no browser failover. */ }
       })();
       return startTask;
     },
@@ -449,9 +488,9 @@ export function createPlcGateway(catalog, variables, options = {}) {
       if (stopTask) return stopTask; stopping = true; clearInterval(alarmTimer); clearInterval(dataLogTimer); options.operatorAuth?.close();
       stopTask = (async () => {
         server.closeAllConnections();
-        const applyStopped = applyEngine?.stop();
+        const applyStopped = applyEngine?.stop(), schedulerStopped = scheduler?.stop();
         await Promise.allSettled(connections.map((driver) => driver.stop()));
-        await applyStopped;
+        await applyStopped; await schedulerStopped;
         await Promise.allSettled([...recipeTasks]);
         await Promise.allSettled([...noteTasks]);
         await Promise.allSettled([...commands.values()].map(entry => entry.result));
@@ -460,7 +499,7 @@ export function createPlcGateway(catalog, variables, options = {}) {
         await startTask?.catch(() => {});
         if (historyRunning) { try { options.alarmHistory.finish(alarms.snapshot().sequence, historyMissed); } catch (error) { historyFault(error); } historyRunning = false; }
         const closed = server.listening ? new Promise((resolve) => server.close(resolve)) : Promise.resolve(); server.closeAllConnections();
-        await closed; commands.clear();
+        await closed; commands.clear(); schedulerStore?.close();
       })();
       return stopTask;
     },

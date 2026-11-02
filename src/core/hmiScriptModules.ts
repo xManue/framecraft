@@ -61,6 +61,7 @@ export interface HmiScriptCatalog {
   localDefinitions: HmiLocalScriptDefinition[];
   scheduledTasks: HmiScheduledTask[];
   schedulerDefinition?: HmiScriptGlobalDefinition;
+  schedulerService?: { enabled: boolean; accountId: string };
 }
 
 const identifier = /^[A-Za-z_$][\w$]*$/;
@@ -206,7 +207,7 @@ export function parseHmiScriptCatalog(value: unknown): HmiScriptCatalog {
   const scheduledTasks = Array.isArray(catalog.scheduledTasks)
     ? catalog.scheduledTasks.map((item, index) => normalizeTask(item, index, schedulerDefinition)).filter((item): item is HmiScheduledTask => Boolean(item))
     : [];
-  return { version: 1, globalModules, localDefinitions, scheduledTasks, ...(schedulerDefinition ? { schedulerDefinition } : {}) };
+  return { version: 1, globalModules, localDefinitions, scheduledTasks, ...(schedulerDefinition ? { schedulerDefinition } : {}), ...(catalog.schedulerService && typeof catalog.schedulerService === "object" ? { schedulerService: { enabled: (catalog.schedulerService as { enabled?: unknown }).enabled === true, accountId: String((catalog.schedulerService as { accountId?: unknown }).accountId ?? "") } } : {}) };
 }
 
 export function serializeHmiScriptCatalog(value: HmiScriptCatalog): string {
@@ -223,6 +224,7 @@ export function serializeHmiScriptCatalog(value: HmiScriptCatalog): string {
   return `${JSON.stringify({
     version: 1,
     ...(catalog.schedulerDefinition ? { schedulerDefinition: catalog.schedulerDefinition } : {}),
+    ...(catalog.schedulerService ? { schedulerService: catalog.schedulerService } : {}),
     globalModules: catalog.globalModules.map((module) => ({ ...module, functions: module.functions.map(cleanFunction) })),
     localDefinitions: catalog.localDefinitions.map((definition) => ({ ...definition, functions: definition.functions.map(cleanFunction) })),
     scheduledTasks: catalog.scheduledTasks.map((task) => ({
@@ -241,6 +243,8 @@ export function serializeHmiScriptCatalog(value: HmiScriptCatalog): string {
 
 export function hmiScriptCatalogIssues(catalog: HmiScriptCatalog): string[] {
   const issues: string[] = [];
+  if (catalog.schedulerService?.enabled && !/^[a-f0-9-]{36}$/.test(catalog.schedulerService.accountId)) issues.push("Scheduler del servizio: scegli un account locale HMI abilitato.");
+  if (catalog.schedulerService?.enabled) for (const task of catalog.scheduledTasks) if (task.enabled && task.trigger.kind === "interval" && task.trigger.intervalMs < 100) issues.push(`${task.name}: sul servizio usa un intervallo di almeno 100 ms.`);
   const variables = hmiScriptVariables(catalog);
   const aliases = new Set<string>();
   for (const module of catalog.globalModules) {

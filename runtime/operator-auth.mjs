@@ -102,6 +102,16 @@ export function createLocalOperatorAuth(options) {
       try { await appendAudit(options.audit, auditContext("session.logout", null, null, session.actor), "logged-out", "AUTH_LOGOUT"); } catch { fail("AUTH_AUDIT_UNCERTAIN"); }
       return { body: { user: null, csrfToken: null, expiresInMs: 0 }, cookie: cookie("", 0) };
     },
+    // Explicit server delegation, never exposed as an HTTP login or inferred from a browser session.
+    async authorizeService(accountId, capability, context) {
+      if (!operatorCapabilities.includes(capability)) fail("AUTH_PERMISSION");
+      const { store } = await load(), account = store.accounts.find(item => item.id === accountId && !item.disabled);
+      if (!account) fail("AUTH_REQUIRED");
+      const actor = `local:${store.id}:${account.id}`;
+      if (!account.capabilities.includes("scheduler.execute") || !account.capabilities.includes(capability)) fail("AUTH_PERMISSION",actor);
+      if (!operatorResourceAllowed(store,account.id,capability,context)) fail("AUTH_RESOURCE",actor);
+      return actor;
+    },
     async authorize(request, capability, mutation = true, context) {
       if (!operatorCapabilities.includes(capability)) fail("AUTH_PERMISSION");
       const { session, account, store } = await active(request, mutation);

@@ -16,16 +16,17 @@ import { RecipeApplyError, emptyRecipeApplyConfig, parseRecipeApplyConfig } from
 import { openRecipeApplyStore } from "./recipe-apply-store.mjs";
 import { DataLogError, parseServiceDataLogs } from "./data-log.mjs";
 import { openDataLogStore } from "./data-log-store.mjs";
+import { openSchedulerStore, SchedulerError } from "./scheduler-store.mjs";
 
 const root = new URL("../", import.meta.url);
 const json = process.argv.includes("--json");
 const logger = createRuntimeLogger({ directory: fileURLToPath(new URL(".framecraft-runtime/logs/gateway/", root)), json });
-let gateway, runtimeAudit, alarmHistory, recipeApplyStore, dataLogStore, stopping = false;
+let gateway, runtimeAudit, alarmHistory, recipeApplyStore, dataLogStore, schedulerStore, stopping = false;
 function reportRecipe(error) {
   const safe = error instanceof RecipeStoreError ? error : new RecipeStoreError("RECIPE_STORAGE");
   process.stderr.write((json ? JSON.stringify({ type: "recipe", code: safe.code, error: safe.message, remedy: safe.remedy }) : safe.message + ". " + safe.remedy) + "\n"); return safe;
 }
-async function stop() { if (stopping) return; stopping = true; await gateway?.stop(); recipeApplyStore?.close(); alarmHistory?.close(); dataLogStore?.close(); runtimeAudit?.close(); await logger.close(); }
+async function stop() { if (stopping) return; stopping = true; await gateway?.stop(); schedulerStore?.close(); recipeApplyStore?.close(); alarmHistory?.close(); dataLogStore?.close(); runtimeAudit?.close(); await logger.close(); }
 for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void stop(); });
 try {
   const catalog = JSON.parse(await readFile(new URL("framecraft.connections.json", root), "utf8"));
@@ -84,7 +85,20 @@ try {
       if (!operatorAuth || !recipeStore) throw new RecipeApplyError("RECIPE_APPLY_DISABLED");
       recipeApplyStore = openRecipeApplyStore({ root: fileURLToPath(root), namespace: authConfig.namespace });
     } catch (error) { recipeApplyUnavailable = error instanceof RecipeApplyError ? error : new RecipeApplyError("RECIPE_APPLY_STORAGE"); reportRecipeApply({ type: "recipe-apply", code: recipeApplyUnavailable.code, error: recipeApplyUnavailable.message, remedy: recipeApplyUnavailable.remedy }); }
-    gateway = createPlcGateway(catalog, plc.variables, { dataLogCatalog, dataLogStore, dataLogUnavailable, onDataLogDiagnostic: reportDataLog, alarmCatalog, alarmHistory, historyUnavailable, onHistoryDiagnostic: event => process.stderr.write(JSON.stringify(event) + "\n"), recipeStore, recipeUnavailable, recipePlcCatalog, recipePlcUnavailable, onRecipePlcDiagnostic: reportRecipePlc, recipeApplyConfig, recipeApplyNamespace: authConfig?.namespace, recipeApplyStore, recipeApplyUnavailable, onRecipeApplyDiagnostic: reportRecipeApply, operatorAuth, operatorUnavailable, audit: runtimeAudit, onDiagnostic: (event) => logger.write(event),
+    let schedulerCatalog, schedulerRuntime, schedulerUnavailable;
+    const onSchedulerDiagnostic = event => process.stderr.write(JSON.stringify(event)+"\n");
+    try {
+      let source; try { source=await readFile(new URL("framecraft.scripts.json",root),"utf8"); } catch(error) { if(error.code !== "ENOENT") throw error; }
+      if(source !== undefined) {
+        if(source.length > 4194304) throw new SchedulerError("SCHEDULER_CONFIG"); schedulerCatalog=JSON.parse(source);
+        if(schedulerCatalog.schedulerService?.enabled !== undefined && typeof schedulerCatalog.schedulerService.enabled !== "boolean") throw new SchedulerError("SCHEDULER_CONFIG");
+        if(schedulerCatalog.schedulerService?.enabled === true) {
+          if(!authConfig?.enabled || !operatorAuth) throw new SchedulerError("SCHEDULER_CONFIG");
+          schedulerRuntime=await import("./scheduler-program.mjs"); schedulerStore=openSchedulerStore({root:fileURLToPath(root),namespace:authConfig.namespace});
+        }
+      }
+    } catch(error) { schedulerUnavailable=error instanceof SchedulerError ? error : new SchedulerError("SCHEDULER_CONFIG"); onSchedulerDiagnostic({type:"scheduler",code:schedulerUnavailable.code,error:schedulerUnavailable.message,remedy:schedulerUnavailable.remedy}); }
+    gateway = createPlcGateway(catalog, plc.variables, { schedulerCatalog,schedulerRuntime,schedulerStore,schedulerUnavailable,onSchedulerDiagnostic,onSchedulerTrace:event=>process.stdout.write(JSON.stringify(event)+"\n"), dataLogCatalog, dataLogStore, dataLogUnavailable, onDataLogDiagnostic: reportDataLog, alarmCatalog, alarmHistory, historyUnavailable, onHistoryDiagnostic: event => process.stderr.write(JSON.stringify(event) + "\n"), recipeStore, recipeUnavailable, recipePlcCatalog, recipePlcUnavailable, onRecipePlcDiagnostic: reportRecipePlc, recipeApplyConfig, recipeApplyNamespace: authConfig?.namespace, recipeApplyStore, recipeApplyUnavailable, onRecipeApplyDiagnostic: reportRecipeApply, operatorAuth, operatorUnavailable, audit: runtimeAudit, onDiagnostic: (event) => logger.write(event),
       onRecipeDiagnostic: event => process.stderr.write((json ? JSON.stringify(event) : event.error + ". " + event.remedy) + "\n"),
       onState: (state) => process.stdout.write(JSON.stringify({ type: "connection", ...state }) + "\n") });
     if (!stopping) {
@@ -97,4 +111,4 @@ try {
   if (error instanceof RecipeStoreError) reportRecipe(error);
   else logger.write(error instanceof ConnectionOperationError ? error.diagnostic : connectionDiagnostic("CONFIGURATION", { protocol: "gateway", technicalCode: error.code }));
   await stop(); process.exitCode = 1;
-} finally { if (!gateway || stopping) { recipeApplyStore?.close(); runtimeAudit?.close(); alarmHistory?.close(); dataLogStore?.close(); } if (!gateway) await logger.close(); else await logger.flush(); }
+} finally { if (!gateway || stopping) { schedulerStore?.close(); recipeApplyStore?.close(); runtimeAudit?.close(); alarmHistory?.close(); dataLogStore?.close(); } if (!gateway) await logger.close(); else await logger.flush(); }

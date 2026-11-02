@@ -1,3 +1,8 @@
+import schedulerReviewSource from "../../runtime/review-scheduler.mjs?raw";
+import schedulerServiceSource from "../../runtime/scheduler-service.mjs?raw";
+import schedulerServiceTypes from "../../runtime/scheduler-service.d.mts?raw";
+import schedulerStoreSource from "../../runtime/scheduler-store.mjs?raw";
+import schedulerStoreTypes from "../../runtime/scheduler-store.d.mts?raw";
 import dataLogBrowserTypes from "../../runtime/data-log-browser.d.mts?raw";
 import { standardPageSource, standardPageTemplates, planPageNumber, type StandardPagePlan, type StandardPageTemplateId } from "./hmiPages";
 import { guidedAlarmCatalog, guidedDataLogCatalog, guidedPageSource, guidedProjectIssues, guidedProjectPending, guidedResourceCatalog, type GuidedPage, type GuidedProjectSpec } from "./guidedProject";
@@ -408,7 +413,7 @@ interface ScheduledTask {
 
 const scriptCatalog = scriptCatalogJson as never;
 const faceplateCatalog = faceplateCatalogJson as { types?: FaceplateType[] };
-const scheduledTasks = ((scriptCatalogJson as { scheduledTasks?: ScheduledTask[] }).scheduledTasks ?? []).filter((task) => task && task.enabled);
+const scheduledTasks = runtimeCatalogJson.gateway.enabled ? [] : ((scriptCatalogJson as { scheduledTasks?: ScheduledTask[] }).scheduledTasks ?? []).filter((task) => task && task.enabled);
 
 const values: Record<string, string> = Object.create(null);
 const tagStatus: Record<string, { qualityCode?: number; qualityKnown?: boolean; timeStamp?: string | number; lastError?: number; errorDescription?: string; localValue?: boolean }> = Object.create(null);
@@ -1136,7 +1141,8 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     const total = gatewaySnapshot?.connections.length ?? 0;
     const invalid = gatewaySnapshot?.samples.filter((sample) => sample.lastError || sample.qualityCode !== undefined && (sample.qualityCode & 0xc0) === 0).length ?? 0;
     const archiveFault = gatewaySnapshot?.alarmHistory?.state === "error" && state === "connected";
-    const label = (!gatewayConfig.enabled ? "PLC: da configurare" : state !== "connected" ? "Gateway non collegato" : !total ? "Nessuna connessione" : "PLC " + connected + "/" + total + (invalid ? " · tag Bad" : "")) + (archiveFault ? " · archivio allarmi!" : "");
+    const schedulerFault = state === "connected" && (gatewaySnapshot?.scheduler?.state === "error" || Boolean(gatewaySnapshot?.scheduler?.diagnostic));
+    const label = (!gatewayConfig.enabled ? "PLC: da configurare" : state !== "connected" ? "Gateway non collegato" : !total ? "Nessuna connessione" : "PLC " + connected + "/" + total + (invalid ? " · tag Bad" : "")) + (archiveFault ? " · archivio allarmi!" : "") + (schedulerFault ? " · Scheduler!" : "");
     for (const element of document.querySelectorAll<HTMLElement>("[data-framecraft-gateway-status]")) {
       if (element.textContent !== label) element.textContent = label;
       element.title = "Apri lo stato PLC per diagnostica e guida. Stato del trasporto MQTT/OPC UA, non conferma di esecuzione PLC.";
@@ -1147,7 +1153,8 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     for (const element of document.querySelectorAll<HTMLElement>("[data-framecraft-plc-summary]")) {
       const text = !gatewayConfig.enabled ? "Collegamento disabilitato. Configura Pannello → Connessioni PLC e avvia il servizio Node; salvare non apre la rete." : state !== "connected" ? "Il pannello non raggiunge il gateway. Controlla servizio, porta e proxy; i valori non sono aggiornati e i comandi non vengono accodati." : connected + "/" + total + " connessioni disponibili. " + invalid + " tag non validi. Connesso non equivale a qualità Good o esecuzione PLC.";
       const archiveError = archiveFault ? new AlarmHistoryError(gatewaySnapshot!.alarmHistory!.code!) : undefined;
-      const summary = text + (archiveError ? " " + archiveError.message + ". " + archiveError.remedy + " Eventi senza conferma di registrazione in questo avvio: " + gatewaySnapshot!.alarmHistory!.unconfirmedInThisRun : "");
+      const schedulerDiagnostic = gatewaySnapshot?.scheduler?.diagnostic;
+      const summary = text + (schedulerDiagnostic ? " Scheduler: " + schedulerDiagnostic.error + " Come risolvere: " + schedulerDiagnostic.remedy : "") + (archiveError ? " " + archiveError.message + ". " + archiveError.remedy + " Eventi senza conferma di registrazione in questo avvio: " + gatewaySnapshot!.alarmHistory!.unconfirmedInThisRun : "");
       if (element.textContent !== summary) element.textContent = summary;
     }
     for (const list of document.querySelectorAll<HTMLElement>("[data-framecraft-plc-connections]")) {
@@ -1995,10 +2002,18 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "framecraft.alarms.json", content: JSON.stringify(config.guided ? guidedAlarmCatalog(config.guided) : emptyAlarmCatalog(), null, 2) + "\n" },
     { path: "runtime/gateway.d.mts", content: gatewayTypes },
     { path: "runtime/start-gateway.mjs", content: gatewayStartSource },
+    { path: "runtime/review-scheduler.mjs", content: schedulerReviewSource },
+    { path: "runtime/scheduler-service.mjs", content: schedulerServiceSource },
+    { path: "runtime/scheduler-service.d.mts", content: schedulerServiceTypes },
+    { path: "runtime/scheduler-store.mjs", content: schedulerStoreSource },
+    { path: "runtime/scheduler-store.d.mts", content: schedulerStoreTypes },
+    { path: "runtime/scheduler-vm.mjs", content: hmiScriptRuntimeModuleSource() },
+    { path: "runtime/scheduler-modules.mjs", content: hmiScriptModulesRuntimeSource().replaceAll('"./framecraftScriptRuntime"', '"./scheduler-vm.mjs"') },
+    { path: "runtime/scheduler-program.mjs", content: 'export * from "./scheduler-vm.mjs";\nexport * from "./scheduler-modules.mjs";\n' + hmiScheduleRuntimeSource() + hmiTimersRuntimeSource() },
     { path: "runtime/vite-gateway.mjs", content: gatewayProxySource },
     { path: "runtime/vite-gateway.d.mts", content: gatewayProxyTypes },
     { path: "runtime/README.md", content: mqttReadmeSource },
-    { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs", operators: "node manage-operators.mjs", audit: "node read-audit.mjs", "recipe-interface": "node print-recipe-interface.mjs" }, dependencies: { mqtt: "5.16.0", "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } }, null, 2) + "\n" },
+    { path: "runtime/package.json", content: JSON.stringify({ name: "framecraft-plc-runtime", private: true, type: "module", engines: { node: ">=22.13.0" }, scripts: { mqtt: "node start-mqtt.mjs", gateway: "node start-gateway.mjs", scheduler: "node review-scheduler.mjs", operators: "node manage-operators.mjs", audit: "node read-audit.mjs", "recipe-interface": "node print-recipe-interface.mjs" }, dependencies: { mqtt: "5.16.0", "node-opcua-client": "2.186.17", "node-opcua-certificate-manager": "2.186.17", "node-opcua-debug": "2.186.7" } }, null, 2) + "\n" },
     { path: "framecraft.connections.json", content: JSON.stringify({ version: 1, connections: [] }, null, 2) + "\n" },
     { path: "framecraft.templates.json", content: JSON.stringify({ version: 1, scope: "bundled-template-base-contracts", templates: [...standardPageTemplates.map(template => template.behavior), ...Object.values(guidedTemplateBehaviors())] }, null, 2) + "\n" },
     { path: "framecraft.runtime.json", content: JSON.stringify({ version: 1, gateway: { enabled: false, path: "/_framecraft/plc/v1", pollMs: 250 } }, null, 2) + "\n" },

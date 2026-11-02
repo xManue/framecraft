@@ -9,6 +9,7 @@ export function operatorAdminJournalKey(namespace: string, root: string): string
 }
 export const operatorCapabilityLabels: Record<OperatorCapability, string> = {
   "dataLogs.read": "Consultare tutti i Data Log del servizio", "dataLogs.sample": "Campionare i Data Log su richiesta",
+  "scheduler.execute": "Eseguire operazioni pianificate sul servizio",
   "audit.read": "Consultare il registro attività del servizio",
   "alarms.comments.read": "Consultare le note degli allarmi consentiti", "alarms.comment": "Aggiungere note agli allarmi consentiti", "alarms.history.read": "Consultare tutto l’archivio storico degli allarmi",
   "recipes.import": "Importare più ricette da file (creazione e sostituzione)",

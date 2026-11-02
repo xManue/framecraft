@@ -20,6 +20,7 @@ export interface GatewayConfig {
   enabled: boolean; host?: "127.0.0.1"; port: number; tokenEnv: string; allowedOrigins: string[]; allowWrites?: boolean;
 }
 export interface GatewaySnapshot {
+  scheduler?: { state: string; owner: string; diagnostic?: { code: string; error: string; remedy: string }; history?: unknown[] };
   dataLogs?: DataLogCapture & { instanceId: string };
   alarmHistory?: AlarmHistoryCapture;
   alarms?: AlarmSnapshot;
@@ -33,6 +34,12 @@ export function createPlcGateway(
   catalog: ConnectionCatalog,
   variables: readonly { name: string; dataType: string; access: "read" | "write" | "read-write" }[],
   options?: Pick<MqttConnectionCallbacks, "resolveSecret" | "onState" | "onError" | "onDiagnostic"> & { alarmCatalog?: AlarmCatalog; onAlarmEvent?: (event: AlarmEvent) => void; authorizeAlarmAction?: (request: IncomingMessage, command: AlarmCommand) => string | undefined | Promise<string | undefined>;
+    schedulerCatalog?: any;
+    schedulerRuntime?: any;
+    schedulerStore?: import("./scheduler-store.mjs").SchedulerStore;
+    schedulerUnavailable?: import("./scheduler-store.mjs").SchedulerError;
+    onSchedulerTrace?: (event: { type: string; task: string; runId: string; timestamp: string; message: string }) => void;
+    onSchedulerDiagnostic?: (event: { type: string; code: string; error: string; remedy: string; task?: string }) => void;
     recipeStore?: RecipeStore;
     dataLogCatalog?: unknown;
     dataLogStore?: DataLogStore;

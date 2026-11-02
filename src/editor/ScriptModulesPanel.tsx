@@ -11,6 +11,7 @@ import {
   type HmiScheduledTask,
   type HmiScheduledTaskTrigger,
 } from "../core/hmiScriptModules";
+import type { OperatorAccountSummary } from "../core/operatorAccounts";
 import { joinProjectPath } from "../core/paths";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
@@ -69,6 +70,9 @@ export function ScriptModulesPanel() {
   const [scheduler, setScheduler] = useState<HmiSchedulerState>(() => createHmiSchedulerState(emptyHmiScriptCatalog()));
   const [schedulerLog, setSchedulerLog] = useState<string>();
   const [runningTask, setRunningTask] = useState(false);
+  const [schedulerAccounts, setSchedulerAccounts] = useState<OperatorAccountSummary[]>([]);
+  const [accountsError, setAccountsError] = useState<string>();
+  const [accountsRefresh, setAccountsRefresh] = useState(0);
   const [testAlarm, setTestAlarm] = useState({ alarmClass: "Warning", state: "Incoming", priority: 8, name: "Alarm_Test" });
 
   useEffect(() => {
@@ -76,6 +80,19 @@ export function ScriptModulesPanel() {
     setScheduler(createHmiSchedulerState(stored, Date.now(), simulation.values));
     setDirty(false); setSaved(false); setSchedulerLog(undefined);
   }, [stored]);
+  useEffect(() => {
+    let current = true;
+    setSchedulerAccounts([]); setAccountsError(undefined);
+    if (!project || !catalog.schedulerService?.enabled) return;
+    const read = async () => {
+      try {
+        const snapshot = await desktopBridge.readOperatorAccounts(project.root);
+        if (current) setSchedulerAccounts(snapshot.accounts);
+      } catch { if (current) setAccountsError("Elenco account non disponibile. Apri Account del pannello per configurare gli utenti locali, poi ricarica l’elenco."); }
+    };
+    void read();
+    return () => { current = false; };
+  }, [project?.root, catalog.schedulerService?.enabled, accountsRefresh]);
   const validated = useMemo(() => parseHmiScriptCatalog(catalog), [catalog]);
   const issues = useMemo(() => hmiScriptCatalogIssues(validated), [validated]);
   const owner = selection?.kind === "global" ? catalog.globalModules[selection.owner] : selection?.kind === "local" ? catalog.localDefinitions[selection.owner] : undefined;
@@ -186,6 +203,19 @@ export function ScriptModulesPanel() {
   return <div className="panel-content script-panel">
     <div className="panel-title"><span>MODULI JAVASCRIPT</span><small>{catalog.globalModules.length + catalog.localDefinitions.length + catalog.scheduledTasks.length}</small></div>
     <p className="script-intro">Funzioni compilate nella sandbox HMI. Usa <code>Modules.Alias.Funzione()</code> ovunque e <code>Local.Funzione()</code> nella pagina e nel contesto scelti.</p>
+    <section className="script-scheduler-test" aria-label="Scheduler del servizio">
+      <label><input type="checkbox" checked={catalog.schedulerService?.enabled ?? false} onChange={event => change({ ...catalog, schedulerService: { enabled:event.target.checked,accountId:catalog.schedulerService?.accountId ?? "" } })} /> Esegui le operazioni sul servizio centrale</label>
+      {catalog.schedulerService?.enabled && <>
+        <label>Account del servizio<select aria-label="Account locale Scheduler" value={catalog.schedulerService.accountId} onChange={event => change({...catalog,schedulerService:{enabled:true,accountId:event.target.value}})}>
+          <option value="">Scegli un account locale</option>
+          {catalog.schedulerService.accountId && !schedulerAccounts.some(account => account.id === catalog.schedulerService!.accountId) && <option value={catalog.schedulerService.accountId} disabled>Account configurato non disponibile</option>}
+          {schedulerAccounts.map(account => <option key={account.id} value={account.id} disabled={account.disabled || !account.capabilities.includes("scheduler.execute")}>{account.name} · {account.username}{account.disabled ? " · disabilitato" : !account.capabilities.includes("scheduler.execute") ? " · abilita operazioni pianificate" : ""}</option>)}
+        </select></label>
+        <div className="script-toolbar"><button onClick={() => void useEditorStore.getState().openUserAccess()}>Account del pannello</button><button onClick={() => setAccountsRefresh(value => value + 1)}>Ricarica elenco</button></div>
+        {accountsError && <p role="status" className="script-intro">{accountsError}</p>}
+      </>}
+      <p className="script-intro">Con il gateway PLC attivo, lo Scheduler viene eseguito una sola volta sul server, anche con più pannelli aperti. L’account richiede scheduler.execute e i permessi sui tag. Salva e riavvia il servizio dopo le modifiche. La prova qui sotto usa soltanto valori simulati.</p>
+    </section>
     <div className="script-toolbar"><button onClick={addGlobal}><Plus size={13} /> Modulo globale</button><button onClick={addLocal}><Plus size={13} /> Definizione pagina</button><button onClick={addTask}><Clock3 size={13} /> Operazione pianificata</button></div>
     <div className="script-module-list">
       {catalog.globalModules.map((item, index) => <button key={`g:${index}`} className={selection?.kind === "global" && selection.owner === index ? "active" : ""} onClick={() => setSelection({ kind: "global", owner: index })}><Braces size={14} /><span><strong>{item.name}</strong><small>Modules.{item.alias} · {item.functions.length} funzioni</small></span></button>)}

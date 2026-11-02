@@ -11,6 +11,7 @@ export interface HmiGatewaySample {
   receivedAt: number; retained?: boolean; lastError?: string; errorDescription?: string; serverTimestamp?: number; opcUaStatusCode?: number;
 }
 export interface HmiGatewaySnapshot {
+  scheduler?: { state: string; owner: "server"; diagnostic?: { code: string; error: string; remedy: string } };
   dataLogs?: DataLogCapture & { instanceId: string };
   alarmHistory?: AlarmHistoryCapture;
   alarms?: AlarmSnapshot;
@@ -116,6 +117,11 @@ export function createHmiGatewayClient(options: HmiGatewayOptions = {}) {
     if (value.alarms !== undefined) value.alarms = parseAlarmSnapshot(value.alarms);
     if (value.alarmHistory !== undefined) value.alarmHistory = parseAlarmHistoryCapture(value.alarmHistory);
     if (value.dataLogs !== undefined) value.dataLogs = parseDataLogCapture(value.dataLogs);
+    if (value.scheduler !== undefined) {
+      const scheduler=value.scheduler;
+      if (!scheduler || typeof scheduler !== "object" || scheduler.owner !== "server" || !["disabled","stopped","starting","running","stopping","error"].includes(scheduler.state) || scheduler.diagnostic !== undefined && (!scheduler.diagnostic || !/^[A-Z][A-Z0-9_]{0,63}$/.test(scheduler.diagnostic.code) || typeof scheduler.diagnostic.error !== "string" || scheduler.diagnostic.error.length > 1000 || typeof scheduler.diagnostic.remedy !== "string" || scheduler.diagnostic.remedy.length > 1000)) throw new Error("Stato Scheduler non valido.");
+      value.scheduler={state:scheduler.state,owner:"server",...(scheduler.diagnostic ? {diagnostic:{code:scheduler.diagnostic.code,error:scheduler.diagnostic.error,remedy:scheduler.diagnostic.remedy}} : {})};
+    }
     return value;
   };
   const poll = async (token: number) => {

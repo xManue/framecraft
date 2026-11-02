@@ -6,6 +6,7 @@ export interface LocalOperatorAuth {
   login(request: IncomingMessage, input: unknown): Promise<{ body: OperatorSession; cookie: string }>;
   logout(request: IncomingMessage): Promise<{ body: OperatorSession; cookie: string }>;
   authorize(request: IncomingMessage, capability: OperatorCapability, mutation?: boolean, context?: OperatorResourceContext): Promise<string>;
+  authorizeService(accountId: string, capability: OperatorCapability, context?: OperatorResourceContext): Promise<string>;
   close(): void;
 }
 export function createLocalOperatorAuth(options: { file: string; config: OperatorAuthConfig; allowedOrigins: string[]; audit?: RuntimeAudit; now?: () => number; onEvent?: (event: { type: "operator"; code: string; actor?: string; timestamp: string }) => void }): LocalOperatorAuth;

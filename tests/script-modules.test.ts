@@ -4,10 +4,10 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { writeFile } = vi.hoisted(() => ({ writeFile: vi.fn() }));
+const { writeFile, readOperatorAccounts } = vi.hoisted(() => ({ writeFile: vi.fn(), readOperatorAccounts: vi.fn() }));
 vi.mock("../src/filesystem/desktopBridge", () => ({
   desktopAvailable: true,
-  desktopBridge: { writeFile, readFile: vi.fn() },
+  desktopBridge: { writeFile, readFile: vi.fn(), readOperatorAccounts },
 }));
 
 import { emptyHmiScriptCatalog, parseHmiScriptCatalog } from "../src/core/hmiScriptModules";
@@ -24,7 +24,7 @@ const project = {
 };
 
 beforeEach(() => {
-  writeFile.mockReset();
+  writeFile.mockReset(); readOperatorAccounts.mockReset(); readOperatorAccounts.mockResolvedValue({accounts:[]});
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   useEditorStore.setState({
     project,
@@ -37,6 +37,22 @@ beforeEach(() => {
 });
 
 describe("moduli JavaScript HMI", () => {
+  it("richiede una scelta esplicita dell’account e mostra solo permessi reali", async () => {
+    const id="12345678-1234-4234-8234-123456789012";
+    readOperatorAccounts.mockResolvedValue({accounts:[{id,name:"Servizio test",username:"scheduler",disabled:false,capabilities:["scheduler.execute"]},{id:"blocked",name:"Utente senza permesso",username:"viewer",disabled:false,capabilities:[]}]});
+    const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
+    try {
+      await act(async()=>root.render(createElement(ScriptModulesPanel)));
+      const enabled=container.querySelector<HTMLInputElement>('[aria-label="Scheduler del servizio"] input[type="checkbox"]')!;
+      await act(async()=>enabled.click());
+      const select=container.querySelector<HTMLSelectElement>('[aria-label="Account locale Scheduler"]')!;
+      expect(select.value).toBe("");expect(select.querySelector<HTMLOptionElement>('option[value="blocked"]')!.disabled).toBe(true);
+      await act(async()=>{select.value=id;select.dispatchEvent(new Event("change",{bubbles:true}));});
+      expect(select.selectedOptions[0].textContent).toContain("Servizio test");
+      const save=container.querySelector<HTMLButtonElement>(".resource-save")!;
+      await act(async()=>save.click());expect(JSON.parse(writeFile.mock.calls[0][1]).schedulerService).toEqual({enabled:true,accountId:id});
+    } finally {await act(async()=>root.unmount());container.remove();}
+  });
   it("spiega e salva configurazioni strutturate senza aggiungere selettori o toolbar", async () => {
     const container = document.createElement("div"); document.body.append(container);
     const root = createRoot(container);

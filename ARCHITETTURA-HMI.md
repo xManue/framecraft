@@ -627,7 +627,8 @@ altri controlli restano da coprire. Tranche e verifiche sono ai punti 79 e 82 di
 Non e' un motore JavaScript completo: restano classi, spread, async/generator come funzioni valore,
 semantiche JavaScript oltre la IR e librerie versionate. Gli scope dei blocchi supportati,
 var di funzione, TDZ e callback sono verificati al punto 181. L'isolamento completo dei contesti
-JavaScript per istanza faceplate e lo Scheduler server industriale richiedono altro lavoro.
+JavaScript per istanza faceplate e il collaudo industriale dello Scheduler richiedono altro lavoro.
+L’ownership e l’esecutore server per progetto/host sono presenti al punto 185.
 Il trasporto MQTT/OPC UA è integrato nelle continuazioni della IR, non equivale a un motore JavaScript
 completo o alla conferma PLC. Stato e verifiche sono in `LAVORO.md`, punti 71, 74, 76 e 91;
 `WCU-EVT-05/07` rimangono parziali e non certificano un HMI collegato alla macchina.
@@ -664,7 +665,8 @@ Per i pannelli esistenti: aggiornare esplicitamente il Runtime e ricompilare/sal
 compresi eventi, faceplate e Moduli JavaScript. I lettori attuali accettano IR 1/2/3/4/5; la v1
 conserva i binding piatti e la v2 gli scope lessicali. Non vengono riscritti progetti aperti e
 non è garantito che vecchi Runtime riconoscano la IR 3. Funzioni/closure sono chiuse entro
-questo contratto; linguaggio completo, object model e Scheduler server restano aperti.
+questo contratto; linguaggio completo e object model restano aperti. Scheduler server e recovery
+sono aggiunti al punto 185, con collaudo industriale/distribuito ancora separato.
 
 Riferimenti: [timer Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/timers-rt-unified/description-timers-rt-unified)
 e [ambiente delle funzioni ECMAScript](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html#sec-ecmascript-function-objects).
@@ -962,3 +964,20 @@ Build e test dimostrano integrita' tecnica; non dimostrano da soli la fedelta' d
 - schermate Formati quando si vede soltanto il menu;
 - KPI o pannelli dati dentro schermate che nella foto sono vuote;
 - comportamento responsive del contenuto quando lo standard usa una tela fissa.
+
+
+## Scheduler nel servizio PLC (LAVORO 185)
+
+Il generatore consegna anche una VM IR Node senza parser/eval, i contesti globali isolati
+Scheduler e i trigger del servizio. Il gateway è l’unico proprietario delle connessioni e
+riusa i controlli di scrittura, l’audit e i limiti per risorsa di un account locale scelto
+esplicitamente. Ogni accesso al driver ricontrolla la delega; la sessione browser non è
+un’identità del servizio. Il Runtime browser non pianifica task quando il gateway è abilitato.
+
+SQLite mantiene l’ownership OS della cartella fino al termine dello stop/drain; occurrence
+claim e highwater di Once/Calendar sono persistenti. Crash o esito incerto richiedono verifica
+esplicita prima di riavviare lo Scheduler. Non esiste failover automatico fra browser o
+processi. Le ricevute di trasporto restano distinte dalle conferme PLC. Le API grafiche non
+hanno un target sul server; linguaggio completo, object model, librerie versionate, driver
+avanzati, migrazione dei Runtime personalizzati e collaudo industriale/distribuito rimangono
+aperti. Procedura, limiti e recovery in runtime/README.md.

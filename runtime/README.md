@@ -1930,6 +1930,69 @@ e [Optix 1.8 Recipes editor](https://www.rockwellautomation.com/en-pr/docs/facto
 Entrambi distinguono gestione dei set, lettura dal controller e applicazione; Framecraft implementa
 qui soltanto la lettura scalare dalla cache e il salvataggio esplicito nell’archivio.
 
+## Scheduler centrale
+
+Nei nuovi progetti, apri **Script → Operazioni pianificate** e abilita l’esecuzione sul
+servizio centrale. Scegli esplicitamente un account locale HMI: serve la capacità
+**Eseguire operazioni pianificate sul servizio** (scheduler.execute). Le scritture richiedono
+anche tags.write e i limiti sui singoli tag. Crea/modifica questi account da Account del pannello;
+non è l’account ChatGPT e non viene riutilizzata la sessione di un browser. Nessun account è
+creato o abilitato automaticamente. Compila e salva, poi riavvia il servizio gateway.
+
+Interval, Once, Calendar, Tag e Alarm vengono gestiti dal servizio Node, anche senza browser.
+Con gateway abilitato, il browser smette di pianificare le operazioni: se il servizio manca,
+non subentra un client. I pulsanti di prova dell’editor continuano a usare la simulazione.
+Le librerie e lo stato globale Scheduler restano nella IR, senza eval, filesystem o ambiente
+host; sul server non c’è una schermata da modificare o sulla quale aprire popup.
+
+Un lock SQLite esclusivo impedisce a due servizi di acquisire lo Scheduler della stessa
+cartella. Il claim è persistito prima dello script; un crash lascia un esito incerto.
+L’ownership resta acquisita durante lo stop e l’attesa dei comandi già partiti. Non è una
+lease con scadenza e non autorizza takeover quando un processo è soltanto lento o sospeso.
+Questo è un singolo host/progetto: copie del progetto, cluster e filesystem di rete richiedono
+coordinamento ulteriore e non sono una configurazione ridondata supportata da questa funzione.
+
+La coda è limitata a 64 operazioni e coalescente per task; massimo 256 task/timer, tempi da
+100 ms. Non recupera intervalli arretrati. Il calendario usa il fuso locale del server;
+Once/Calendar persi da oltre 5 s vengono saltati, quelli già consumati non sono ripetuti
+quando l’orologio torna indietro. Il primo campione tag e la riconnessione creano una baseline;
+serve qualità Good esplicita per generare una variazione. Con MQTT configura qualityPath nel
+mapping: l’assenza della qualità non viene trasformata in Good. I trigger Alarm ricevono solo
+le nuove notifiche del motore; lo stato iniziale non viene rigiocato.
+
+Errori, rimedi e stato sono nella diagnostica PLC e nell’output JSON del servizio. Lo storico
+locale è in .framecraft-runtime/scheduler/state.sqlite: massimo 1000 righe recenti, conservando
+anche quelle incerte. HMIRuntime.Trace viene emesso come scheduler-trace con task/runId:
+massimo 20 messaggi per esecuzione, budget 50/minuto, messaggi da 500 caratteri. Lo stato espone
+il numero di trace scartati. I messaggi scritti dallo script sono espliciti: evitarvi password
+o segreti; nessun payload dei comandi viene aggiunto automaticamente al log.
+
+Un errore di script/trasporto ferma lo Scheduler. Dopo un esito incerto o un’interruzione,
+anche il riavvio resta bloccato finché la macchina non è stata verificata. Con il servizio
+**arrestato**, nella cartella runtime:
+
+    npm run scheduler -- status
+    npm run scheduler -- review ID_ESECUZIONE
+
+Il secondo comando è una verifica amministrativa locale sull’ID mostrato dal primo, conserva
+il codice originale e registra lo stato reviewed. Non ritenta né annulla il comando e non
+certifica lo stato PLC. Dopo aver verificato ogni esito incerto, riavvia il servizio.
+Le scritture mantengono audit, abilitazioni, tipi e protezioni delle ricette; MQTT/OPC UA
+confermano il trasporto previsto dal driver, non l’effetto sulla macchina. Nessun write-wait,
+QCD o lettura CPU forzata viene simulato come riuscito.
+
+### Progetti precedenti
+
+Aggiornare insieme i file runtime/gateway*, operator-policy*, operator-auth*, start-gateway,
+scheduler-* e review-scheduler, le relative dipendenze comuni del Runtime e gli script del
+runtime/package.json; lato browser aggiornare src/framecraftHmiRuntime e framecraftGateway.
+Il generatore include tutti questi file nei nuovi progetti. Non basta riavviare o cancellare
+la cache Vite: un vecchio browser può ancora pianificare operazioni per client. Non mescolare
+il servizio nuovo con il browser vecchio. Conservare e confrontare le personalizzazioni prima
+della migrazione; l’editor non sovrascrive automaticamente il codice del progetto. Collaudare
+prima su un broker/PLC di prova senza comandi macchina. La migrazione automatica e la ridondanza
+multihost rimangono lavori separati.
+
 ## Prima della produzione
 
 Usare Node LTS supportato (baseline di deployment: Node 24), servizio gestito, segreti protetti,

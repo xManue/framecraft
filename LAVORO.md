@@ -6574,12 +6574,52 @@ Verifiche del 5 ottobre 2026:
   dei gate produzione/licenze/target. Preservati i 23 file WIP e pubblicato solo codice,
   documentazione e fixture sintetiche; integrazioni proprie isolate in standardProject.ts.
 
+## 185. Scheduler unico nel servizio PLC (2 novembre 2026)
+
+- **Priorità rispettata**: chiusura dell’ownership Scheduler nella fase 3 Unified, prima di
+  altre fasi, Optix o AI. Non equivale alla chiusura del linguaggio/API/eventi ancora aperti.
+- **Un solo esecutore per progetto/host**: operazioni Interval/Once/Calendar/Tags/Alarms e
+  callback timer nel servizio Node. Con gateway attivo il Runtime browser non pianifica
+  operazioni, anche quando il servizio non è disponibile. Nessun fallback fra browser.
+- **Stato durevole**: SQLite con lock esclusivo mantenuto dal sistema operativo, claim prima
+  dell’esecuzione e storico limitato. La morte del processo libera il lock; l’esecuzione
+  rimasta in corso diventa incerta. Nessun replay di Once/Calendar già consumati, nessuna
+  raffica di intervalli arretrati. Intervalli monotoni; calendario locale con protezione
+  dall’orologio che torna indietro. Scadenze Once/Calendar in ritardo di oltre 5 s saltate.
+- **Guasti e recovery**: uno script/trasporto fallito arresta lo Scheduler; gli esiti incerti
+  bloccano anche gli avvii successivi. Verifica esplicita con il servizio fermo tramite
+  npm run scheduler -- status e review ID_ESECUZIONE; non ritenta né annulla un comando.
+- **Account esplicito**: scelta per nome fra gli account locali HMI, nessun account automatico
+  o riuso della sessione browser. Capacità scheduler.execute e, per scrivere, tags.write
+  sulle risorse ammesse. Revoca ricontrollata prima dell’accesso al driver e dopo l’audit.
+  Restano i blocchi ricette, tipi, abilitazioni del gateway/connessione e stato del driver.
+  Ricevute MQTT/OPC UA distinte dalla conferma applicativa PLC; QCD e write-wait non inventati.
+- **Trigger e limiti**: primo campione e riconnessione stabiliscono una baseline; tag senza
+  qualità Good esplicita non generano trigger. Allarmi dal motore condiviso, senza replay
+  iniziale. Coda 64, coalescenza delle operazioni già pendenti, 256 operazioni/timer,
+  intervalli e timer da 100 ms. Trace identificati e limitati; errori con rimedio nella
+  diagnostica PLC, storico locale e gate di verifica dopo un’interruzione.
+- **Pipeline**: generazione dei moduli Node IR 1–5, servizio, CLI di verifica, tipi e script
+  npm nel progetto standard. L’editor compila il catalogo e offre account per nome,
+  ricarica elenco, accesso alla gestione utenti e prova su soli valori simulati.
+  I vecchi Runtime richiedono migrazione coordinata di servizio e browser: non vengono
+  sovrascritti automaticamente file di progetto personalizzati. La sola cache Vite non
+  aggiorna questi file. Procedura e limiti in runtime/README.md.
+- **Verifiche mirate**: 99 casi distinti in otto file, senza suite generale. Motore/stato,
+  crash di un processo reale, esclusione fra servizi,
+  trigger, clock/recovery, account/revoca, risorse, audit, trasporto MQTT e pannello esportato.
+  Build TypeScript/Vite; due browser Edge headless, un comando per variazione, refresh e
+  riavvio senza replay; blocco dopo interruzione e ripresa solo dopo verifica esplicita CLI.
+  Solo dati sintetici e broker loopback. Nessun PLC reale, TLS macchina o deployment
+  distribuito certificati da queste prove; nessuna dipendenza o modifica nativa.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima
   di proseguire con altre famiglie, Optix o AI. La prima fase aperta è la 3, script ed eventi:
   verificare e completare scoping/closure, object model ed eventi, trasporto e proprietà delle
-  API e ownership Scheduler; non dichiarare conclusa la fase con il solo sottoinsieme IR.
+  API e driver; ownership Scheduler centralizzata al punto 185. Non dichiarare conclusa la fase
+  con il solo sottoinsieme IR.
 
 - **Azioni/utenti — produzione**: estendere ACL di lettura/per-record, gruppi e audit completo/firme/archiviazione server.
   I permessi/PIN nel browser non sostituiscono un confine sicuro né interblocchi PLC.
@@ -6598,7 +6638,7 @@ Verifiche del 5 ottobre 2026:
 
 - **Roadmap WinCC, fase 3 da completare**: eventi specifici dei controlli, object model restante,
   JavaScript oltre il sottoinsieme IR, analisi di flusso intermodulo completa, closure/scoping
-  completi, moduli di libreria/versionati, ownership server degli eventi allarmi, conferme PLC e altri metodi/driver
+  completi, moduli di libreria/versionati, conferme PLC e altri metodi/driver
   (`WCU-DYN-06`, `WCU-EVT-01/04/05/06/07/10`).
 - **Roadmap WinCC, fase 4 da completare**: altre proprietà colore specifiche oltre la prima API
   `PropertyFlashing` del punto 79, audit accessibilità generale e dimensioni minime dei target
