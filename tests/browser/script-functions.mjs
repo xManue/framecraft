@@ -18,11 +18,13 @@ try{
   const {parseHmiScriptCatalog,serializeHmiScriptCatalog,hmiScriptFunctions}=await editor.ssrLoadModule('/src/core/hmiScriptModules.ts');
   const catalog=parseHmiScriptCatalog({globalModules:[{name:'Counter',alias:'Counter',globalDefinition:{source:'let offset=0;'},functions:[{name:'Create',parameters:['start'],source:'let value=start+offset;return ()=>{value=value+1;return value;};'}]}]});
   await writeFile(path.join(generated,'framecraft.scripts.json'),serializeHmiScriptCatalog(catalog));
-  const functions=hmiScriptFunctions(catalog),attrs=(source,version)=>{const inspected=inspectHmiScript(source,functions);assert.equal(inspected.error,undefined);const program=version?{...inspected.program,version}:inspected.program;return JSON.stringify([{event:'Tapped',script:source,program}]).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');};
+  const functions=hmiScriptFunctions(catalog),attrs=(source,version)=>{const inspected=inspectHmiScript(source,functions);assert.equal(inspected.error,undefined);const program=JSON.parse(JSON.stringify(inspected.program));if(version){const downgrade=value=>{if(!value||typeof value!=="object")return;if(Array.isArray(value.statements))value.version=version;for(const child of Object.values(value))downgrade(child);};downgrade(program);}return JSON.stringify([{event:'Tapped',script:source,program}]).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');};
   let html=await readFile(new URL('../fixtures/script-functions-panel.html',import.meta.url),'utf8');
   html=html.replace('__FUNCTIONS__',attrs("const create=Modules.Counter.Create;const next=create(4);HMIRuntime.Trace('FUNCTION_VALUE='+next());HMIRuntime.Timers.SetTimeout(()=>HMIRuntime.Trace('FUNCTION_TIMER='+next()),30);"))
     .replace('__LEGACY_ONE__',attrs("let value=1;if(true){let value=2;}HMIRuntime.Trace('LEGACY_ONE='+value);",1))
     .replace('__LEGACY_TWO__',attrs("let value=1;if(true){let value=2;}HMIRuntime.Trace('LEGACY_TWO='+value);",2))
+    .replace('__LEGACY_THREE__',attrs("function make(value){return ()=>value;}const read=make(7);HMIRuntime.Trace('LEGACY_THREE='+read());",3))
+    .replace('__ARRAYS__',attrs("const values=[3,1,2].map(value=>value*2).filter(value=>value>2);values.sort((a,b)=>a-b);HMIRuntime.Trace('ARRAYS='+JSON.stringify(values));HMIRuntime.Trace('REDUCE='+values.reduce((sum,value)=>sum+value,0));HMIRuntime.Trace('MISSING='+String(values.find(value=>false)));HMIRuntime.Trace('SPARSE='+JSON.stringify([,1].map(value=>value*2)));"))
     .replace('__CANCEL__',attrs("const fn=()=>HMIRuntime.Trace('CANCEL_MUST_NOT_FIRE');HMIRuntime.Timers.SetTimeout(fn,1000);HMIRuntime.Trace('CANCEL_SCHEDULED');"));
   await writeFile(path.join(generated,'index.html'),html);await copyFile(new URL('../fixtures/audit-runtime-tsconfig.json',import.meta.url),path.join(generated,'tsconfig.script-qa.json'));
   execFileSync(process.execPath,[path.join(root,'node_modules/typescript/bin/tsc'),'-p','tsconfig.script-qa.json'],{cwd:generated,encoding:'utf8',windowsHide:true});
@@ -37,9 +39,10 @@ try{
   const until=async check=>{const limit=Date.now()+10000;while(!check()){if(Date.now()>limit)throw Error('Missing script trace: '+JSON.stringify({traces,errors}));await new Promise(resolve=>setTimeout(resolve,25));}};
   await until(()=>traces.some(text=>text.includes('FUNCTION_VALUE=5'))&&traces.some(text=>text.includes('FUNCTION_TIMER=6')));
   await page.locator('#legacy-one').click();await page.locator('#legacy-two').click();await until(()=>traces.some(text=>text.includes('LEGACY_ONE=2'))&&traces.some(text=>text.includes('LEGACY_TWO=1')));
+  await page.locator('#legacy-three').click();await page.locator('#arrays').click();await until(()=>['LEGACY_THREE=7','ARRAYS=[4,6]','REDUCE=10','MISSING=undefined','SPARSE=[null,2]'].every(expected=>traces.some(text=>text.includes(expected))));
   await page.locator('#cancel').click();await until(()=>traces.some(text=>text.includes('CANCEL_SCHEDULED')));await page.evaluate(()=>window.disposeScriptFixture());await new Promise(resolve=>setTimeout(resolve,1200));
   assert.ok(!traces.some(text=>text.includes('CANCEL_MUST_NOT_FIRE')));assert.deepEqual(errors,[]);assert.equal(external,0);assert.equal(tagWrites,0);
-  console.log(JSON.stringify({passed:true,generated,builtPanel:true,runtimeTypecheck:true,generatedBuild:true,moduleFunctionReference:true,returnedClosure:true,conciseTimerCallback:true,ir1:true,ir2:true,ir3:true,disposeClearsTimers:true,external,tagWrites}));
+  console.log(JSON.stringify({passed:true,generated,builtPanel:true,runtimeTypecheck:true,generatedBuild:true,moduleFunctionReference:true,returnedClosure:true,conciseTimerCallback:true,ir1:true,ir2:true,ir3:true,ir4:true,arrayCallbacks:true,undefinedValues:true,sparseArrays:true,disposeClearsTimers:true,external,tagWrites}));
 }finally{
   await browser?.close();if(server)await new Promise(resolve=>server.httpServer.close(resolve));await editor?.close();
 }

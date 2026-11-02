@@ -5,6 +5,8 @@ export type HmiScriptScalar = string | number | boolean | null;
 
 export type HmiScriptExpression =
   | { kind: "literal"; value: HmiScriptScalar }
+  | { kind: "undefined" }
+  | { kind: "array-hole" }
   | { kind: "function-value"; parameters: string[]; program: HmiScriptProgram; name?: string }
   | { kind: "invoke"; callee: HmiScriptExpression; arguments: HmiScriptExpression[] }
   | { kind: "local"; name: string }
@@ -63,8 +65,8 @@ export type HmiScriptStatement =
   | { kind: "switch"; value: HmiScriptExpression; cases: { test?: HmiScriptExpression; statements: HmiScriptStatement[] }[] };
 
 export interface HmiScriptProgram {
-  /** IR 1: legacy flat bindings. IR 2: lexical blocks. IR 3: callable values and closures. */
-  version: 1 | 2 | 3;
+  /** IR 1: legacy flat bindings. IR 2: lexical blocks. IR 3: callable values and closures. IR 4: undefined, sparse arrays and callbacks. */
+  version: 1 | 2 | 3 | 4;
   statements: HmiScriptStatement[];
   exports?: { name: string; local: string }[];
 }
@@ -157,7 +159,9 @@ type TagSetReference = { readonly tagSet: TagSetState };
 type DataReference = { readonly data: RuntimeValue[] | Record<string, RuntimeValue> };
 type FunctionReference = { readonly scriptFunction: { parameters: readonly string[]; program: HmiScriptProgram; scope?: HmiScriptScope; functions?: HmiScriptExecutionOptions["functions"]; variables?: HmiScriptExecutionOptions["variables"]; globalScope?: HmiScriptScope; name?: string } };
 
-type RuntimeValue = FunctionReference | HmiScriptScalar | TagReference | TagSetReference | HmiScriptPopupReference | HmiScriptScreenItemReference | DataReference;
+type UndefinedReference = { readonly undefinedValue: true; readonly reason?: string };
+
+type RuntimeValue = UndefinedReference | FunctionReference | HmiScriptScalar | TagReference | TagSetReference | HmiScriptPopupReference | HmiScriptScreenItemReference | DataReference;
 
 export interface HmiScriptScope {
   values: Map<string, RuntimeValue>;
@@ -383,12 +387,12 @@ function compileFunctionValue(node: t.FunctionExpression | t.ArrowFunctionExpres
     const action = compileCallStatement(node.body);
     statements = [!["expression", "module-call", "timer-set", "tag-set-read"].includes(action.kind) ? action : { kind: "return", value: compileExpression(node.body) }];
   } else statements = [{ kind: "return", value: compileExpression(node.body) }];
-  return { kind: "function-value", parameters, program: { version: 3, statements }, ...("id" in node && node.id ? { name: node.id.name } : {}) };
+  return { kind: "function-value", parameters, program: { version: 4, statements }, ...("id" in node && node.id ? { name: node.id.name } : {}) };
 }
 
 function compileTimerCallback(node: t.CallExpression["arguments"][number] | undefined, label: string): Extract<HmiScriptExpression, { kind: "timer-set" }>["callback"] {
   if (!node || !t.isExpression(node)) fail(label + " richiede una funzione e il ritardo in millisecondi.");
-  if ((t.isFunctionExpression(node) || t.isArrowFunctionExpression(node)) && !node.async && !node.generator && !node.params.length && t.isBlockStatement(node.body) && !("id" in node && node.id)) return { kind: "inline", program: { version: 3, statements: compileBlock(node.body) } };
+  if ((t.isFunctionExpression(node) || t.isArrowFunctionExpression(node)) && !node.async && !node.generator && !node.params.length && t.isBlockStatement(node.body) && !("id" in node && node.id)) return { kind: "inline", program: { version: 4, statements: compileBlock(node.body) } };
   if (t.isMemberExpression(node)) {
     const name = dottedName(node);
     if (name && (/^Modules\.[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*$/.test(name) || /^Local\.[A-Za-z_$][\w$]*$/.test(name))) return { kind: "function", call: { kind: "module-call", name, arguments: [] } };
@@ -476,7 +480,7 @@ function compileExpression(node: t.Expression | t.JSXNamespacedName | t.Argument
   if (constant) return constant;
   if (t.isArrayExpression(node)) {
     if (node.elements.length > 1024) fail("Un array supera 1024 elementi", node);
-    return { kind: "array", items: node.elements.map((item) => item ? compileExpression(item) : { kind: "literal", value: null }) };
+    return { kind: "array", items: node.elements.map((item) => item ? compileExpression(item) : { kind: "array-hole" }) };
   }
   if (t.isObjectExpression(node)) {
     if (node.properties.length > 1024) fail("Un oggetto supera 1024 proprieta'", node);
@@ -488,7 +492,7 @@ function compileExpression(node: t.Expression | t.JSXNamespacedName | t.Argument
     }) };
   }
   if (t.isIdentifier(node)) {
-    if (node.name === "undefined") return { kind: "literal", value: null };
+    if (node.name === "undefined") return { kind: "undefined" };
     return { kind: "local", name: node.name };
   }
   if (t.isUnaryExpression(node)) {
@@ -517,9 +521,9 @@ function compileExpression(node: t.Expression | t.JSXNamespacedName | t.Argument
       if (node.arguments.some((argument) => t.isSpreadElement(argument) || t.isArgumentPlaceholder(argument))) fail("Argomenti spread non supportati nelle funzioni HMI", node);
       return { kind: "module-call", name, arguments: node.arguments.map(compileExpression) };
     }
-    if (t.isMemberExpression(node.callee) && t.isExpression(node.callee.object) && ["push", "pop", "shift", "unshift", "indexOf", "lastIndexOf", "includes", "slice", "join", "toString", "reverse", "sort", "splice"].includes(memberName(node.callee) ?? "")) {
+    if (t.isMemberExpression(node.callee) && t.isExpression(node.callee.object) && ["push", "pop", "shift", "unshift", "indexOf", "lastIndexOf", "includes", "slice", "join", "toString", "reverse", "sort", "splice", "map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight"].includes(memberName(node.callee) ?? "")) {
       if (node.arguments.some((item) => t.isSpreadElement(item) || t.isArgumentPlaceholder(item))) fail("Argomenti spread non supportati", node);
-      if (memberName(node.callee) === "sort" && node.arguments.length) fail("Array.sort con comparatore non e' ancora supportato nella sandbox.", node);
+
       return { kind: "array-method", object: compileExpression(node.callee.object), method: memberName(node.callee)!, arguments: node.arguments.map(compileExpression) };
     }
     const popup = compilePopupOpen(node);
@@ -748,7 +752,7 @@ function compileCallStatement(call: t.CallExpression): HmiScriptStatement {
   if (t.isMemberExpression(call.callee) && memberName(call.callee) === "Write" && t.isExpression(call.callee.object)) {
     return { kind: "write", tag: compileExpression(call.callee.object), value: callArguments(call, 1, "Write")[0] };
   }
-  if (t.isMemberExpression(call.callee) && ["push", "pop", "shift", "unshift", "indexOf", "lastIndexOf", "includes", "slice", "join", "toString", "reverse", "sort", "splice"].includes(memberName(call.callee) ?? "")) {
+  if (t.isMemberExpression(call.callee) && ["push", "pop", "shift", "unshift", "indexOf", "lastIndexOf", "includes", "slice", "join", "toString", "reverse", "sort", "splice", "map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight"].includes(memberName(call.callee) ?? "")) {
     return { kind: "expression", value: compileExpression(call) };
   }
   return { kind: "expression", value: compileExpression(call) };
@@ -868,7 +872,14 @@ function updateStaticArray(expression: Extract<HmiScriptExpression, { kind: "arr
 
 type StaticFunction = Extract<HmiScriptExpression, { kind: "function-value" }> & { bindings?: Map<string, HmiScriptExpression>; inspecting?: boolean };
 
+let hmiInspectionBudget: { remaining: number; deadline: number; arrayDepth: number } | undefined;
+function inspectionStep() {
+  const budget = hmiInspectionBudget;
+  if (budget && (--budget.remaining < 0 || (budget.remaining & 127) === 0 && Date.now() > budget.deadline)) throw new Error("Ispezione dello script interrotta: il calcolo e' troppo complesso. Riduci il numero di callback o dividi lo script in funzioni piu' semplici.");
+}
+
 function inspectCallable(expression: HmiScriptExpression, args: HmiScriptExpression[], locals: Map<string, HmiScriptExpression>, read = new Set<string>(), written = new Set<string>(), asyncState = { value: false }): HmiScriptExpression[] {
+  inspectionStep();
   const result: HmiScriptExpression[] = [];
   for (const candidate of staticValues(expression, locals)) {
     if (candidate.kind !== "function-value") continue;
@@ -895,6 +906,35 @@ function inspectCallable(expression: HmiScriptExpression, args: HmiScriptExpress
     } finally { fn.inspecting = false; }
   }
   return result;
+}
+
+function inspectArrayCallback(expression: Extract<HmiScriptExpression, { kind: "array-method" }>, locals: Map<string, HmiScriptExpression>, read = new Set<string>(), written = new Set<string>(), asyncState = { value: false }): HmiScriptExpression[] {
+  inspectionStep();
+  const budget = hmiInspectionBudget;
+  if (budget && budget.arrayDepth >= 32) throw new Error("Ispezione dello script interrotta: troppe callback Array annidate (massimo 32).");
+  if (budget) budget.arrayDepth++;
+  try {
+  const method = expression.method;
+  if (!["map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight", "sort"].includes(method) || !expression.arguments.length) return [];
+  const arrays = staticValues(expression.object, locals).filter((value): value is StaticArray => value.kind === "array");
+  const items = arrays.flatMap(array => staticArrayItems(array)).filter(item => item.kind !== "array-hole");
+  const element = staticChoice(items) ?? { kind: "undefined" } as HmiScriptExpression;
+  const position: HmiScriptExpression = { kind: "local", name: "" };
+  const reducing = method === "reduce" || method === "reduceRight";
+  const seed = expression.arguments[1] ?? element;
+  const callbackArgs = reducing ? [staticChoice([bindStaticData(seed, locals), element])!, element, position, expression.object] : method === "sort" ? [element, element] : [element, position, expression.object];
+  const returns = inspectCallable(expression.arguments[0], callbackArgs, locals, read, written, asyncState);
+  for (const value of returns) for (const tag of staticTags(value, locals, true)) read.add(tag);
+  if (method === "map") return [{ kind: "array", items: returns, possibleItems: returns } as StaticArray];
+  if (method === "flatMap") {
+    const flat = returns.flatMap(value => value.kind === "array" ? staticArrayItems(value) : [value]);
+    return [{ kind: "array", items: flat, possibleItems: flat } as StaticArray];
+  }
+  if (reducing) return [bindStaticData(seed, locals), ...returns];
+  if (["find", "findLast"].includes(method)) return [...items, { kind: "undefined" }];
+  if (method === "filter") return arrays.map(array => ({ ...array, possibleItems: [...staticArrayItems(array)] }));
+  return [];
+  } finally { if (budget) budget.arrayDepth--; }
 }
 
 function walkExpression(expression: HmiScriptExpression, read: Set<string>, locals: Map<string, HmiScriptExpression>) {
@@ -958,6 +998,7 @@ function walkExpression(expression: HmiScriptExpression, read: Set<string>, loca
 }
 
 function staticValues(expression: HmiScriptExpression, locals: Map<string, HmiScriptExpression>, path: Set<HmiScriptExpression> = new Set()): HmiScriptExpression[] {
+  inspectionStep();
   if (path.has(expression) || path.size >= 64) return [];
   const next = new Set(path); next.add(expression);
   const resolve = (value: HmiScriptExpression) => staticValues(value, locals, next);
@@ -994,6 +1035,7 @@ function staticValues(expression: HmiScriptExpression, locals: Map<string, HmiSc
     return candidates.map((name) => ({ kind: "tag-ref", name }));
   }
   if (expression.kind === "array-method") {
+    if (["map", "flatMap", "filter", "find", "findLast", "reduce", "reduceRight"].includes(expression.method)) return inspectArrayCallback(expression, locals);
     const arrays = resolve(expression.object).filter((value): value is StaticArray => value.kind === "array");
     if (["pop", "shift"].includes(expression.method)) return arrays.flatMap((array) => staticArrayItems(array).flatMap(resolve));
     if (["reverse", "sort"].includes(expression.method)) return arrays.map((array) => array.possibleItems ? array : { ...array, possibleItems: [...array.items] });
@@ -1100,6 +1142,7 @@ function inspectStatements(statements: readonly HmiScriptStatement[], read: Set<
     if (!value || typeof value !== "object") return;
     const item = value as Record<string, unknown>;
     if (item.kind === "function-value") { callbacks.push({ program: item.program as HmiScriptProgram, bindings: new Map(locals), parameters: item.parameters as string[] }); return; }
+    if (item.kind === "array-method") inspectArrayCallback(item as unknown as Extract<HmiScriptExpression, {kind:"array-method"}>, locals, read, written, asyncState);
     if (item.kind === "invoke") inspectCallable(item.callee as HmiScriptExpression, item.arguments as HmiScriptExpression[], locals, read, written, asyncState);
     if (item.kind === "timer-set" && item.callback && typeof item.callback === "object") {
       const callback = item.callback as Extract<HmiScriptExpression, {kind:"timer-set"}>["callback"];
@@ -1296,7 +1339,7 @@ function inspectModuleDependencies(program: HmiScriptProgram, functions: Readonl
       if (!definition) {
         if (variables?.[item.name]) {
           const reference: HmiScriptExpression = { kind: "module-variable", name: item.name };
-          const bindingProgram: HmiScriptProgram = { version: 3, statements: [{ kind: "expression", value: reference }] };
+          const bindingProgram: HmiScriptProgram = { version: 4, statements: [{ kind: "expression", value: reference }] };
           const bindings = inspectModuleVariables(bindingProgram, variables, read, written, asyncState, new Map(callerLocals), [], functions);
           inspectCallable(reference, item.arguments as HmiScriptExpression[], bindings, read, written, asyncState); return;
         }
@@ -1335,8 +1378,10 @@ function inspectModuleDependencies(program: HmiScriptProgram, functions: Readonl
 }
 
 export function inspectHmiScriptProgram(program: HmiScriptProgram, functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>, definition?: HmiScriptProgram, parameters: readonly string[] = [], variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>): HmiScriptInspection {
+  const previousBudget = hmiInspectionBudget;
+  hmiInspectionBudget = { remaining: 100000, deadline: Date.now() + 500, arrayDepth: 0 };
   try {
-    if (!program || ![1, 2, 3].includes(program.version) || !Array.isArray(program.statements)) throw new Error("Versione dello script non supportata: aggiorna il Runtime e ricompila il sorgente.");
+    if (!program || ![1, 2, 3, 4].includes(program.version) || !Array.isArray(program.statements)) throw new Error("Versione dello script non supportata: aggiorna il Runtime e ricompila il sorgente.");
     const read = new Set<string>();
     const written = new Set<string>();
     const asyncState = { value: false };
@@ -1352,7 +1397,7 @@ export function inspectHmiScriptProgram(program: HmiScriptProgram, functions?: R
     return { tagsRead: [...read], tagsWritten: [...written], hasReturn, hasAsync: asyncState.value, program };
   } catch (caught) {
     return { tagsRead: [], tagsWritten: [], hasReturn: false, hasAsync: false, error: caught instanceof Error ? caught.message : String(caught) };
-  }
+  } finally { hmiInspectionBudget = previousBudget; }
 }
 
 export function inspectHmiScript(source: string, functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>, definition?: HmiScriptProgram, parameters: readonly string[] = [], variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>): HmiScriptInspection {
@@ -1362,7 +1407,7 @@ export function inspectHmiScript(source: string, functions?: Readonly<Record<str
     const file = parse(`async function __framecraftScript() {\n${source}\n}`, { sourceType: "module" });
     const declaration = file.program.body[0];
     if (!t.isFunctionDeclaration(declaration) || !t.isBlockStatement(declaration.body)) fail("Script non leggibile");
-    return inspectHmiScriptProgram({ version: 3, statements: compileBlock(declaration.body) }, functions, definition, parameters, variables);
+    return inspectHmiScriptProgram({ version: 4, statements: compileBlock(declaration.body) }, functions, definition, parameters, variables);
   } catch (caught) {
     return { tagsRead: [], tagsWritten: [], hasReturn: false, hasAsync: false, error: caught instanceof Error ? caught.message : String(caught) };
   }
@@ -1392,7 +1437,7 @@ export function inspectHmiScriptDefinition(source: string, allowExports = false)
         statements.push(...compileBlock(item));
       }
     }
-    return inspectHmiScriptProgram({ version: 3, statements, ...(exports.length ? { exports } : {}) });
+    return inspectHmiScriptProgram({ version: 4, statements, ...(exports.length ? { exports } : {}) });
   } catch (caught) {
     return { tagsRead: [], tagsWritten: [], hasReturn: false, hasAsync: false, error: caught instanceof Error ? caught.message : String(caught) };
   }
@@ -1406,7 +1451,13 @@ function normal(value: string): HmiScriptScalar {
   return value;
 }
 
-function truthy(value: RuntimeValue): boolean {
+function undefinedValue(reason?: string): UndefinedReference { return { undefinedValue: true, ...(reason ? { reason } : {}) }; }
+
+function isUndefinedReference(value: RuntimeValue): value is UndefinedReference { return typeof value === "object" && value !== null && "undefinedValue" in value; }
+
+function truthy(value: RuntimeValue, modern = false): boolean {
+  if (isUndefinedReference(value)) return false;
+  if (modern && typeof value === "string") return value.length > 0;
   if (typeof value === "object" && value !== null) return true;
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
@@ -1426,6 +1477,7 @@ function isPopupReference(value: RuntimeValue): value is HmiScriptPopupReference
 }
 
 function number(value: RuntimeValue): number {
+  if (isUndefinedReference(value)) throw new Error(value.reason ?? "Valore assente (undefined): assegna un valore numerico prima di usarlo in un calcolo.");
   if (typeof value === "object" && value !== null) throw new Error("Un riferimento tag non e' un numero.");
   const converted = Number(value);
   if (!Number.isFinite(converted)) throw new Error(`"${String(value)}" non e' un numero.`);
@@ -1437,6 +1489,7 @@ function isFunctionReference(value: RuntimeValue): value is FunctionReference {
 }
 
 function scalar(value: RuntimeValue): HmiScriptScalar {
+  if (isUndefinedReference(value)) throw new Error(value.reason ?? "Valore assente (undefined): assegna un valore prima di inviarlo al PLC o usarlo come proprieta' grafica.");
   if (isFunctionReference(value)) throw new Error("Una funzione non puo' essere usata come valore PLC, testo, proprieta' o JSON: chiamala e usa il risultato.");
   if (isDataReference(value)) throw new Error("Un valore strutturato richiede un membro scalare o JSON.stringify(), non puo' essere usato direttamente come valore PLC/proprieta'.");
   if (value && typeof value === "object" && "screenItemId" in value) throw new Error("Un riferimento grafico richiede una proprieta' scalare, per esempio Font.Size, non puo' essere usato come valore PLC/proprieta'.");
@@ -1445,7 +1498,7 @@ function scalar(value: RuntimeValue): HmiScriptScalar {
 }
 
 function dataKey(value: RuntimeValue): string {
-  const key = String(scalar(value) ?? "null");
+  const key = isUndefinedReference(value) ? "undefined" : String(scalar(value) ?? "null");
   if (key.length > 128 || ["__proto__", "prototype", "constructor", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"].includes(key)) throw new Error("Proprieta' " + key.slice(0, 128) + " non ammessa nella sandbox.");
   return key;
 }
@@ -1464,34 +1517,34 @@ function checkData(value: RuntimeValue, tick: () => void, forbidden?: DataRefere
   const entries = Array.isArray(value.data) ? value.data : Object.values(value.data);
   if (entries.length > 1024) throw new Error("Una raccolta dati supera il limite di 1024 elementi.");
   path.add(value);
-  for (const item of entries) checkData(item, tick, forbidden, depth + 1, path);
+  for (const item of Array.isArray(value.data) ? Object.values(value.data) : entries) checkData(item, tick, forbidden, depth + 1, path);
   path.delete(value);
 }
 
-function dataGet(value: DataReference, key: string): RuntimeValue {
+function dataGet(value: DataReference, key: string, modern = false): RuntimeValue {
   if (Array.isArray(value.data)) {
     if (key === "length") return value.data.length;
     if (!/^(?:0|[1-9][0-9]*)$/.test(key)) throw new Error("Un array richiede un indice intero non negativo o length.");
     const index = Number(key);
     if (index >= 1024) throw new Error("Un indice array supera il limite di 1024 elementi.");
-    return value.data[index] ?? null;
+    return Object.prototype.hasOwnProperty.call(value.data, index) ? value.data[index] : modern ? undefinedValue() : null;
   }
-  return Object.prototype.hasOwnProperty.call(value.data, key) ? value.data[key] : null;
+  return Object.prototype.hasOwnProperty.call(value.data, key) ? value.data[key] : modern ? undefinedValue() : null;
 }
 
-function dataSet(target: DataReference, key: string, value: RuntimeValue, tick: () => void) {
+function dataSet(target: DataReference, key: string, value: RuntimeValue, tick: () => void, modern = false) {
   checkData(value, tick, target, 1);
   if (Array.isArray(target.data)) {
     if (key === "length") {
       const length = number(value);
       if (!Number.isInteger(length) || length < 0 || length > 1024) throw new Error("La lunghezza array deve essere tra 0 e 1024.");
-      while (target.data.length < length) { tick(); target.data.push(null); }
+      if (!modern) while (target.data.length < length) { tick(); target.data.push(null); }
       target.data.length = length;
     } else {
       if (!/^(?:0|[1-9][0-9]*)$/.test(key)) throw new Error("Un array richiede un indice intero non negativo.");
       const index = Number(key);
       if (index >= 1024) throw new Error("Un indice array supera il limite di 1024 elementi.");
-      while (target.data.length <= index) { tick(); target.data.push(null); }
+      if (!modern) while (target.data.length <= index) { tick(); target.data.push(null); }
       target.data[index] = value;
     }
   } else {
@@ -1501,11 +1554,12 @@ function dataSet(target: DataReference, key: string, value: RuntimeValue, tick: 
 }
 
 function dataString(value: RuntimeValue, tick: () => void, depth = 0): string {
+  if (isUndefinedReference(value)) return "undefined";
   tick();
   if (depth >= 32) throw new Error("I dati strutturati superano 32 livelli.");
   if (!isDataReference(value)) return String(scalar(value));
   if (!Array.isArray(value.data)) return "[object Object]";
-  const parts = value.data.map((item) => item === null ? "" : dataString(item, tick, depth + 1));
+  const parts = value.data.map((item) => item === null || isUndefinedReference(item) ? "" : dataString(item, tick, depth + 1));
   if (parts.reduce((sum, item) => sum + item.length, 0) + Math.max(0, parts.length - 1) > 20000) throw new Error("Il testo dell'array supera 20000 caratteri.");
   return parts.join(",");
 }
@@ -1527,13 +1581,15 @@ function dataFromJson(value: unknown, tick: () => void, depth = 0): RuntimeValue
   return { data: Object.assign(Object.create(null), Object.fromEntries(entries.map(([key, item]) => [dataKey(key), dataFromJson(item, tick, depth + 1)]))) };
 }
 
-function dataJson(value: RuntimeValue, tick: () => void): string {
+function dataJson(value: RuntimeValue, tick: () => void): string | UndefinedReference {
+  if (isUndefinedReference(value)) return value;
   checkData(value, tick);
   let length = 0;
   const convert = (item: RuntimeValue, depth: number): unknown => {
     tick();
     if (depth >= 32) throw new Error("I dati JSON superano 32 livelli.");
     let result: unknown;
+    if (isUndefinedReference(item)) return undefined;
     if (!isDataReference(item)) {
       const primitive = scalar(item);
       if (typeof primitive === "string" && primitive.length > 20000) throw new Error("Il JSON supera 20000 caratteri.");
@@ -1544,7 +1600,7 @@ function dataJson(value: RuntimeValue, tick: () => void): string {
       result = item.data.map((child) => convert(child, depth + 1));
     } else {
       length += 2;
-      result = Object.assign(Object.create(null), Object.fromEntries(Object.entries(item.data).map(([key, child]) => {
+      result = Object.assign(Object.create(null), Object.fromEntries(Object.entries(item.data).filter(([, child]) => !isUndefinedReference(child)).map(([key, child]) => {
         length += JSON.stringify(dataKey(key)).length + 2;
         return [key, convert(child, depth + 1)];
       })));
@@ -1555,28 +1611,38 @@ function dataJson(value: RuntimeValue, tick: () => void): string {
   return JSON.stringify(convert(value, 0));
 }
 
-function dataArrayMethod(target: RuntimeValue, method: string, args: RuntimeValue[], tick: () => void): RuntimeValue {
+function dataArrayMethod(target: RuntimeValue, method: string, args: RuntimeValue[], tick: () => void, modern = false): RuntimeValue {
   if (!isDataReference(target) || !Array.isArray(target.data)) throw new Error(method + " richiede un array.");
   const array = target.data;
   const count = (minimum: number, maximum: number) => { if (args.length < minimum || args.length > maximum) throw new Error(method + " richiede da " + minimum + " a " + maximum + " argomenti."); };
-  const index = (value: RuntimeValue | undefined, fallback: number) => value === undefined ? fallback : Math.trunc(number(value));
+  const index = (value: RuntimeValue | undefined, fallback: number) => value === undefined || modern && isUndefinedReference(value) ? fallback : Math.trunc(number(value));
   const additions = (items: RuntimeValue[], removed = 0) => {
     if (array.length - removed + items.length > 1024) throw new Error("L'array supera il limite di 1024 elementi.");
     for (const item of items) checkData(item, tick, target, 1);
   };
   tick();
   if (method === "push" || method === "unshift") { additions(args); return method === "push" ? array.push(...args) : array.unshift(...args); }
-  if (method === "pop" || method === "shift") { count(0, 0); return (method === "pop" ? array.pop() : array.shift()) ?? null; }
+  if (method === "pop" || method === "shift") { count(0, 0); const value = method === "pop" ? array.pop() : array.shift(); return value === undefined ? modern ? undefinedValue() : null : value; }
   if (method === "indexOf" || method === "lastIndexOf" || method === "includes") {
     count(1, 2);
-    const start = index(args[1], method === "lastIndexOf" ? array.length - 1 : 0);
+    const start = modern && args.length > 1 && isUndefinedReference(args[1]) ? 0 : index(args[1], method === "lastIndexOf" ? array.length - 1 : 0);
+    if (modern && isUndefinedReference(args[0])) {
+      const reverse = method === "lastIndexOf", step = reverse ? -1 : 1;
+      let position = start < 0 ? array.length + start : start;
+      position = reverse ? Math.min(position, array.length - 1) : Math.max(0, position);
+      for (; position >= 0 && position < array.length; position += step) {
+        tick(); const present = Object.prototype.hasOwnProperty.call(array, position);
+        if ((!present && method === "includes") || present && isUndefinedReference(array[position])) return method === "includes" ? true : position;
+      }
+      return method === "includes" ? false : -1;
+    }
     return method === "includes" ? array.includes(args[0], start) : method === "indexOf" ? array.indexOf(args[0], start) : array.lastIndexOf(args[0], start);
   }
   if (method === "slice") { count(0, 2); return { data: array.slice(index(args[0], 0), index(args[1], array.length)) }; }
   if (method === "join" || method === "toString") {
     count(0, method === "join" ? 1 : 0);
-    const separator = args[0] === undefined ? "," : dataString(args[0], tick);
-    const parts = array.map((item) => item === null ? "" : dataString(item, tick));
+    const separator = args[0] === undefined || modern && isUndefinedReference(args[0]) ? "," : dataString(args[0], tick);
+    const parts = array.map((item) => item === null || isUndefinedReference(item) ? "" : dataString(item, tick));
     if (parts.reduce((sum, item) => sum + item.length, 0) + Math.max(0, parts.length - 1) * separator.length > 20000) throw new Error("Il testo dell'array supera 20000 caratteri.");
     return parts.join(separator);
   }
@@ -1593,9 +1659,87 @@ function dataArrayMethod(target: RuntimeValue, method: string, args: RuntimeValu
   throw new Error("Metodo Array " + method + " non supportato.");
 }
 
+function* dataArrayCallbackMethod(target: RuntimeValue, method: string, args: RuntimeValue[], tick: () => void, invoke: (fn: FunctionReference, args: RuntimeValue[]) => ScriptCoroutine<RuntimeValue>): ScriptCoroutine<RuntimeValue> {
+  if (!isDataReference(target) || !Array.isArray(target.data)) throw new Error(method + " richiede un array.");
+  const array = target.data, length = array.length;
+  if (length > 1024) throw new Error("L'array supera 1024 elementi.");
+  const reducing = method === "reduce" || method === "reduceRight", sorting = method === "sort";
+  const minimum = sorting ? 0 : 1, maximum = reducing ? 2 : 1;
+  if (args.length < minimum || args.length > maximum) throw new Error(method + " richiede da " + minimum + " a " + maximum + " argomenti; thisArg non e' ancora supportato.");
+  const fn = args[0];
+  if (!(sorting && (fn === undefined || isUndefinedReference(fn))) && !isFunctionReference(fn)) throw new Error("La callback di " + method + " deve essere una funzione HMI.");
+  const call = function* (values: RuntimeValue[]): ScriptCoroutine<RuntimeValue> {
+    tick();
+    if (!isFunctionReference(fn)) throw new Error("Callback non valida.");
+    return yield* invoke(fn, fn.scriptFunction.parameters.map((_, index) => values[index] === undefined ? undefinedValue() : values[index]));
+  };
+  if (sorting) {
+    let rows = Object.values(array);
+    const compare = function* (left: RuntimeValue, right: RuntimeValue): ScriptCoroutine<number> {
+      tick();
+      if (isUndefinedReference(left)) return isUndefinedReference(right) ? 0 : 1;
+      if (isUndefinedReference(right)) return -1;
+      if (!isFunctionReference(fn)) { const a = dataString(left, tick), b = dataString(right, tick); return a < b ? -1 : a > b ? 1 : 0; }
+      const value = yield* call([left, right]);
+      const order = isUndefinedReference(value) ? 0 : Number(scalar(value));
+      return Number.isNaN(order) ? 0 : order;
+    };
+    for (let width = 1; width < rows.length; width *= 2) {
+      const output: RuntimeValue[] = [];
+      for (let start = 0; start < rows.length; start += width * 2) {
+        const middle = Math.min(start + width, rows.length), end = Math.min(start + width * 2, rows.length);
+        let left = start, right = middle;
+        while (left < middle || right < end) {
+          tick();
+          if (left < middle && (right >= end || (yield* compare(rows[left], rows[right])) <= 0)) output.push(rows[left++]); else output.push(rows[right++]);
+        }
+      }
+      rows = output;
+    }
+    for (let index = 0; index < rows.length; index++) { tick(); array[index] = rows[index]; }
+    for (let index = rows.length; index < length; index++) { tick(); delete array[index]; }
+    checkData(target, tick); return target;
+  }
+  const reverse = ["reduceRight", "findLast", "findLastIndex"].includes(method), step = reverse ? -1 : 1;
+  let index = reverse ? length - 1 : 0;
+  const inside = () => index >= 0 && index < length;
+  let accumulator: RuntimeValue = args[1] === undefined ? undefinedValue() : args[1];
+  if (reducing && args.length < 2) {
+    while (inside() && !Object.prototype.hasOwnProperty.call(array, index)) { tick(); index += step; }
+    if (!inside()) throw new Error(method + " su un array vuoto richiede un valore iniziale.");
+    accumulator = array[index]; index += step;
+  }
+  const mapped: RuntimeValue[] = method === "map" ? new Array(length) : [];
+  const visitsHoles = ["find", "findIndex", "findLast", "findLastIndex"].includes(method);
+  const append = (value: RuntimeValue) => { if (mapped.length >= 1024) throw new Error("Il risultato di " + method + " supera 1024 elementi."); checkData(value, tick); mapped.push(value); };
+  for (; inside(); index += step) {
+    tick();
+    const present = Object.prototype.hasOwnProperty.call(array, index);
+    if (!present && !visitsHoles) continue;
+    const value = present ? array[index] : undefinedValue();
+    const result = yield* call(reducing ? [accumulator, value, index, target] : [value, index, target]);
+    if (reducing) { accumulator = result; continue; }
+    if (method === "map") { checkData(result, tick); mapped[index] = result; }
+    else if (method === "flatMap") {
+      if (isDataReference(result) && Array.isArray(result.data)) { for (const key of Object.keys(result.data)) append(result.data[Number(key)]); } else append(result);
+    } else if (method === "filter") { if (truthy(result, true)) append(value); }
+    else if (method === "some" && truthy(result, true)) return true;
+    else if (method === "every" && !truthy(result, true)) return false;
+    else if (visitsHoles && truthy(result, true)) return method === "find" || method === "findLast" ? value : index;
+  }
+  if (reducing) { checkData(accumulator, tick); return accumulator; }
+  if (method === "forEach" || method === "find" || method === "findLast") return undefinedValue();
+  if (method === "some") return false;
+  if (method === "every") return true;
+  if (method === "findIndex" || method === "findLastIndex") return -1;
+  const result: DataReference = { data: mapped }; checkData(result, tick); return result;
+}
+
 function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<Record<string, string>>, options: HmiScriptExecutionOptions = {}): ScriptCoroutine<HmiScriptExecution> {
-  if (!program || ![1, 2, 3].includes(program.version) || !Array.isArray(program.statements)) return { writes: {}, traces: [], navigation: [], operatorMessages: [], faceplateEvents: [], tagStatus: {}, steps: 0, error: "Versione dello script non supportata. Aggiorna il Runtime e ricompila lo script nell’editor; nessun comando eseguito." };
+  if (!program || ![1, 2, 3, 4].includes(program.version) || !Array.isArray(program.statements)) return { writes: {}, traces: [], navigation: [], operatorMessages: [], faceplateEvents: [], tagStatus: {}, steps: 0, error: "Versione dello script non supportata. Aggiorna il Runtime e ricompila lo script nell’editor; nessun comando eseguito." };
   const lexicalBlocks = program.version >= 2;
+  const modern = program.version >= 4;
+  const truth = (value: RuntimeValue) => truthy(value, modern);
   const values = { ...input };
   const localScope = options.initializingScope ?? createHmiScriptScope(undefined, options.closureScope ?? options.globalScope);
   let lexicalScope = localScope, functionScope = localScope, locals = localScope.values;
@@ -1716,9 +1860,16 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       scope.status = "ready";
     }
   };
+  const arrayValues = function* (items: HmiScriptExpression[]): ScriptCoroutine<RuntimeValue[]> {
+    const values: RuntimeValue[] = [];
+    for (const item of items) { if (item.kind === "array-hole") { if (!modern) throw new Error("Un array sparso richiede IR 4."); tick(); values.length++; } else values.push(yield* evaluate(item)); }
+    return values;
+  };
   const evaluate = function* (expression: HmiScriptExpression): ScriptCoroutine<RuntimeValue> {
     tick();
     if (expression.kind === "literal") return expression.value;
+    if (expression.kind === "undefined") { if (!modern) throw new Error("undefined richiede IR 4: ricompila lo script."); return undefinedValue(); }
+    if (expression.kind === "array-hole") throw new Error("Una posizione array vuota e' ammessa solo in un array IR 4.");
     if (expression.kind === "local") {
       const owner = ownerOf(expression.name);
       if (!owner && ["Screen", "Faceplate", "item"].includes(expression.name)) {
@@ -1727,7 +1878,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       }
       if (!owner) throw new Error(`Variabile locale ${expression.name} non definita.`);
       if (owner.uninitialized?.has(expression.name)) throw new Error(`La variabile ${expression.name} non e' ancora inizializzata: sposta la dichiarazione prima dell'uso.`);
-      if (owner.unassigned?.has(expression.name)) throw new Error(`La variabile ${expression.name} non ha ancora un valore: assegnalo prima di leggerla o inviarla al PLC.`);
+      if (owner.unassigned?.has(expression.name)) { const message = `La variabile ${expression.name} non ha ancora un valore: assegnalo prima di leggerla o inviarla al PLC.`; if (modern) return undefinedValue(message); throw new Error(message); }
       return owner.values.get(expression.name)!;
     }
     if (expression.kind === "function-value") {
@@ -1753,18 +1904,25 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       if (!binding?.globalScope || !binding.definition.exports?.some((entry) => entry.local === binding.name && expression.name.endsWith(`.${entry.name}`))) throw new Error(`Variabile pubblica HMI ${expression.name} non esportata o modulo non disponibile.`);
       (yield* initializeScope(binding.globalScope));
       if (!binding.globalScope.values.has(binding.name)) throw new Error(`Variabile pubblica HMI ${expression.name} non inizializzata.`);
-      if (binding.globalScope.uninitialized?.has(binding.name) || binding.globalScope.unassigned?.has(binding.name)) throw new Error(`La variabile pubblica ${expression.name} non ha ancora un valore: inizializzala nel modulo proprietario.`);
+      if (binding.globalScope.uninitialized?.has(binding.name)) throw new Error(`La variabile pubblica ${expression.name} non ha ancora un valore: inizializzala nel modulo proprietario.`);
+      if (binding.globalScope.unassigned?.has(binding.name)) { const message = `La variabile pubblica ${expression.name} non ha ancora un valore: inizializzala nel modulo proprietario.`; if (modern) return undefinedValue(message); throw new Error(message); }
       return binding.globalScope.values.get(binding.name)!;
     }
     if (expression.kind === "array" || expression.kind === "object") {
       if ((expression.kind === "array" ? expression.items.length : expression.entries.length) > 1024) throw new Error("Una raccolta dati supera il limite di 1024 elementi.");
       const result: DataReference = expression.kind === "array"
-        ? { data: (yield* mapScriptValues(expression.items, evaluate)) }
+        ? { data: (yield* arrayValues(expression.items)) }
         : { data: Object.assign(Object.create(null), Object.fromEntries((yield* mapScriptValues(expression.entries, function* (item) { return [dataKey(item.name), (yield* evaluate(item.value))]; })))) };
       checkData(result, tick);
       return result;
     }
-    if (expression.kind === "array-method") return dataArrayMethod((yield* evaluate(expression.object)), expression.method, (yield* mapScriptValues(expression.arguments, evaluate)), tick);
+    if (expression.kind === "array-method") {
+      const callback = ["map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight"].includes(expression.method);
+      if (!modern && (callback || expression.method === "sort" && expression.arguments.length)) throw new Error("Le callback Array richiedono IR 4: aggiorna il Runtime e ricompila lo script.");
+      const target = yield* evaluate(expression.object), args = yield* mapScriptValues(expression.arguments, evaluate);
+      if (callback || expression.method === "sort" && modern) return yield* dataArrayCallbackMethod(target, expression.method, args, tick, invokeFunction);
+      return dataArrayMethod(target, expression.method, args, tick, modern);
+    }
     if (expression.kind === "screen-item") {
       if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
       const name = scalar((yield* evaluate(expression.name)));
@@ -1793,7 +1951,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     }
     if (expression.kind === "member") {
       const object = (yield* evaluate(expression.object)), key = dataKey((yield* evaluate(expression.key)));
-      if (isDataReference(object)) return dataGet(object, key);
+      if (isDataReference(object)) return dataGet(object, key, modern);
       if (object && typeof object === "object" && "screenItemId" in object) {
         if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
         return options.screenItems.get(object, key);
@@ -1868,22 +2026,25 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       throw new Error(`${expression.property} richiede un tag o un TagSet.`);
     }
     if (expression.kind === "unary") {
+      if (modern && expression.operator === "typeof" && expression.value.kind === "local" && !ownerOf(expression.value.name) && !["Screen", "Faceplate", "item"].includes(expression.value.name)) return "undefined";
       const value = (yield* evaluate(expression.value));
+      if (expression.operator === "typeof" && isUndefinedReference(value)) return "undefined";
       if (expression.operator === "typeof" && isFunctionReference(value)) return "function";
       if (expression.operator === "typeof" && typeof value === "object") return "object";
-      if (expression.operator === "!") return !truthy(value);
+      if (expression.operator === "!") return !truth(value);
       if (expression.operator === "+") return number(value);
       if (expression.operator === "-") return -number(value);
       if (expression.operator === "~") return ~number(value);
       return typeof scalar(value);
     }
-    if (expression.kind === "conditional") return (yield* evaluate(truthy((yield* evaluate(expression.test))) ? expression.consequent : expression.alternate));
+    if (expression.kind === "conditional") return (yield* evaluate(truth((yield* evaluate(expression.test))) ? expression.consequent : expression.alternate));
     if (expression.kind === "call") {
       const args = (yield* mapScriptValues(expression.arguments, evaluate));
       const first = args[0];
-      if (expression.name === "Boolean") return truthy(first);
-      if (expression.name === "Number") return number(first);
-      if (expression.name === "String") return isDataReference(first) ? dataString(first, tick) : String(scalar(first));
+      if (expression.name === "Boolean") return truth(modern && !args.length ? undefinedValue() : first);
+      if (expression.name === "Number") return modern && !args.length ? 0 : number(first);
+      if (expression.name === "String" && modern && !args.length) return "";
+      if (expression.name === "String") return isUndefinedReference(first) ? "undefined" : isDataReference(first) ? dataString(first, tick) : String(scalar(first));
       if (expression.name === "HMIRuntime.Math.RGB") {
         if (args.length !== 3 || args.some((argument) => typeof argument !== "number" || !Number.isInteger(argument) || argument < 0 || argument > 255)) throw new Error("HMIRuntime.Math.RGB richiede tre interi da 0 a 255.");
         return (0xff000000 | (number(args[0]) << 16) | (number(args[1]) << 8) | number(args[2])) >>> 0;
@@ -1926,7 +2087,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       }));
       mergeNested(nested);
       if (nested.error) throw new Error(`${expression.name}: ${nested.error}`);
-      return "returnedReference" in nested ? nested.returnedReference ?? null : "returned" in nested ? nested.returned ?? null : null;
+      return "returnedReference" in nested ? nested.returnedReference! : "returned" in nested ? nested.returned! : definition.program.version >= 4 ? undefinedValue() : null;
     }
     if (expression.kind === "popup-open") {
       if (!options.popupManager) throw new Error("Il contesto corrente non dispone di un gestore popup faceplate.");
@@ -1943,10 +2104,10 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       const popupWindowName = expression.popupWindowName ? String(scalar((yield* evaluate(expression.popupWindowName))) ?? "").trim() || undefined : undefined;
       return options.popupManager.open({
         scope: expression.scope, faceplateType, title, interfaceValues,
-        parentBound: expression.scope === "faceplate" ? !truthy(expression.independentWindow ? (yield* evaluate(expression.independentWindow)) : false) : expression.parentBound,
-        invisible: expression.invisible ? truthy((yield* evaluate(expression.invisible))) : false,
+        parentBound: expression.scope === "faceplate" ? !truth(expression.independentWindow ? (yield* evaluate(expression.independentWindow)) : false) : expression.parentBound,
+        invisible: expression.invisible ? truth((yield* evaluate(expression.invisible))) : false,
         ...(popupWindowName ? { popupWindowName } : {}),
-        adaptWindow: expression.adaptWindow ? truthy((yield* evaluate(expression.adaptWindow))) : true,
+        adaptWindow: expression.adaptWindow ? truth((yield* evaluate(expression.adaptWindow))) : true,
         left: (yield* coordinate(expression.left, 10, "Left")), top: (yield* coordinate(expression.top, 10, "Top")),
         width: (yield* coordinate(expression.width, 100, "Width", true)), height: (yield* coordinate(expression.height, 100, "Height", true)),
       });
@@ -1970,27 +2131,28 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         if (target === undefined || !isFunctionReference(target) || target.scriptFunction.parameters.length) throw new Error("La callback del timer deve essere una funzione HMI senza parametri.");
         closureScope = createHmiScriptScope(undefined, lexicalScope);
         closureScope.values.set("__framecraftTimerCallback", target); closureScope.constants.add("__framecraftTimerCallback");
-        callback = { kind: "inline", program: { version: 3, statements: [{ kind: "expression", value: { kind: "invoke", callee: { kind: "local", name: "__framecraftTimerCallback" }, arguments: [] } }] } };
+        callback = { kind: "inline", program: { version: 4, statements: [{ kind: "expression", value: { kind: "invoke", callee: { kind: "local", name: "__framecraftTimerCallback" }, arguments: [] } }] } };
       }
       return options.timerManager.set(expression.mode, callback, delay, { functions: options.functions, variables: options.variables, globalScope: options.globalScope, screenItems: options.screenItems, transport: options.transport, transportTimeoutMs: options.transportTimeoutMs, localTags: options.localTags, localTagValues: options.localTagValues, signal: options.signal, isActive: options.isActive, ...(closureScope ? { closureScope } : {}) });
     }
     const left = (yield* evaluate(expression.left));
-    if (expression.operator === "&&" && !truthy(left)) return false;
-    if (expression.operator === "||" && truthy(left)) return true;
-    if (expression.operator === "??" && left !== null) return left;
+    if (expression.operator === "&&" && !truth(left)) return modern ? left : false;
+    if (expression.operator === "||" && truth(left)) return modern ? left : true;
+    if (expression.operator === "??" && left !== null && !isUndefinedReference(left)) return left;
     const right = (yield* evaluate(expression.right));
     switch (expression.operator) {
-      case "&&": return truthy(right);
+      case "&&": return modern ? right : truth(right);
       case "||": case "??": return right;
-      case "==": return scalar(left) == scalar(right); // semantica JavaScript esplicitamente richiesta dallo script
-      case "!=": return scalar(left) != scalar(right);
-      case "===": return left === right;
-      case "!==": return left !== right;
-      case "<": return number(left) < number(right);
-      case "<=": return number(left) <= number(right);
-      case ">": return number(left) > number(right);
-      case ">=": return number(left) >= number(right);
-      case "+": return typeof scalar(left) === "string" || typeof scalar(right) === "string" ? `${String(scalar(left))}${String(scalar(right))}` : number(left) + number(right);
+      case "==": return isUndefinedReference(left) || isUndefinedReference(right) ? (isUndefinedReference(left) || left === null) && (isUndefinedReference(right) || right === null) : scalar(left) == scalar(right); // semantica JavaScript esplicitamente richiesta dallo script
+      case "!=": return isUndefinedReference(left) || isUndefinedReference(right) ? !((isUndefinedReference(left) || left === null) && (isUndefinedReference(right) || right === null)) : scalar(left) != scalar(right);
+      case "===": return isUndefinedReference(left) && isUndefinedReference(right) || left === right;
+      case "!==": return !(isUndefinedReference(left) && isUndefinedReference(right) || left === right);
+      case "<": return isUndefinedReference(left) || isUndefinedReference(right) ? false : number(left) < number(right);
+      case "<=": return isUndefinedReference(left) || isUndefinedReference(right) ? false : number(left) <= number(right);
+      case ">": return isUndefinedReference(left) || isUndefinedReference(right) ? false : number(left) > number(right);
+      case ">=": return isUndefinedReference(left) || isUndefinedReference(right) ? false : number(left) >= number(right);
+      case "+": if (modern && (isUndefinedReference(left) && typeof right === "string" || typeof left === "string" && isUndefinedReference(right))) return dataString(left, tick) + dataString(right, tick);
+        return typeof scalar(left) === "string" || typeof scalar(right) === "string" ? `${String(scalar(left))}${String(scalar(right))}` : number(left) + number(right);
       case "-": return number(left) - number(right);
       case "*": return number(left) * number(right);
       case "/": { const divisor = number(right); if (!divisor) throw new Error("Divisione per zero."); return number(left) / divisor; }
@@ -2146,7 +2308,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     }));
     mergeNested(nested);
     if (nested.error) throw new Error(nested.error);
-    return "returnedReference" in nested ? nested.returnedReference ?? null : nested.returned ?? null;
+    return "returnedReference" in nested ? nested.returnedReference! : "returned" in nested ? nested.returned! : fn.program.version >= 4 ? undefinedValue() : null;
   };
   const prepareLexicals = (statements: readonly HmiScriptStatement[]) => {
     if (!lexicalBlocks) return;
@@ -2194,7 +2356,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         owner.unassigned?.delete(statement.name);
       } else if (statement.kind === "member-set") {
         const object = (yield* evaluate(statement.object)), key = dataKey((yield* evaluate(statement.key))), value = (yield* evaluate(statement.value));
-        if (isDataReference(object)) dataSet(object, key, value, tick);
+        if (isDataReference(object)) dataSet(object, key, value, tick, modern);
         else if (object && typeof object === "object" && "screenItemId" in object) {
           if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
           options.screenItems.set(object, key, scalar(value));
@@ -2400,7 +2562,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         const next = statement.operation === "set" ? current | mask : statement.operation === "reset" ? current & ~mask : current ^ mask;
         values[name] = String(next); writes[name] = String(next);
       } else if (statement.kind === "if") {
-        const flow = (yield* run(truthy((yield* evaluate(statement.test))) ? statement.consequent : statement.alternate, "block"));
+        const flow = (yield* run(truth((yield* evaluate(statement.test))) ? statement.consequent : statement.alternate, "block"));
         if (flow) return flow;
       } else if (statement.kind === "switch") {
         const value = scalar((yield* evaluate(statement.value)));
@@ -2513,5 +2675,5 @@ export async function executeHmiScriptAsync(program: HmiScriptProgram, input: Re
 /** Il progetto generato non porta con se' Babel: riceve il programma gia' compilato nell'attributo
  * e solo questo piccolo esecutore. Le funzioni sono le stesse usate dai test dell'editor. */
 export function hmiScriptRuntimeModuleSource(): string {
-  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\n${String(inspectCallable)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(isFunctionReference)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
+  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\nlet hmiInspectionBudget;\n${String(inspectionStep)}\n${String(inspectCallable)}\n${String(inspectArrayCallback)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(undefinedValue)}\n${String(isUndefinedReference)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(isFunctionReference)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(dataArrayCallbackMethod)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
 }

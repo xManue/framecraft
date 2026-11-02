@@ -474,14 +474,15 @@ if (true) { const value = 2; }
 HMIRuntime.Trace(value); // 1, anche nel Runtime esportato
 ```
 
-Il sottoinsieme IR non rappresenta `undefined`: leggere una variabile non assegnata genera
-un errore, anche attraverso un export. Non viene convertita implicitamente in null, stringa
-vuota o comando zero. Assegna un valore iniziale o scrivilo prima di leggerla; `let value;`
-seguito da `value = 5;` è ammesso. `null` scritto esplicitamente resta un valore distinto.
+Le IR 1/2/3 non rappresentano undefined: leggere una variabile non assegnata genera un errore.
+La IR 4 lo rappresenta internamente: typeof, confronti, callback e JSON lo distinguono da null.
+Usarlo come valore PLC o proprieta' grafica genera un errore prima del trasporto; non diventa
+null, stringa vuota o comando zero. La TDZ prima della dichiarazione continua a impedire la
+lettura. Assegna un valore o controlla esplicitamente il risultato (183).
 
-Il formato del catalogo script resta versione 1; la **versione del singolo programma** è 2.
-I lettori aggiornati accettano anche programmi IR 1, mantenendo il loro scope piatto dove
-non era possibile distinguere var da let. Un programma di versione sconosciuta non viene eseguito.
+Il catalogo script resta versione 1; i programmi nuovi usano la IR 4. I lettori aggiornati
+accettano IR 1/2/3/4: binding piatti nella v1, scope nella v2, funzioni nella v3 e valori
+assenti/array nella v4. Una versione sconosciuta non viene eseguita.
 Per usare gli scope nuovi in un pannello esistente aggiorna esplicitamente i file Runtime e
 ricompila/salva gli script dal sorgente, incluse azioni e binding dei faceplate. Nei Moduli
 JavaScript usa **Compila e salva**. Non viene riscritto automaticamente un progetto aperto;
@@ -557,8 +558,8 @@ La sandbox impedisce cicli, API host, getter/setter e accesso a prototipi anche 
 calcolate o JSON. Limiti: 1024 elementi/proprietà per raccolta, chiavi fino a 128 caratteri,
 scansioni e conversioni fino a 32 livelli, testo/JSON fino a 20000 caratteri; rimangono i budget
 di operazioni e tempo dell'interprete. Sono massimi, non una garanzia che un dato grande rientri
-nel budget predefinito. Le estensioni degli array vengono riempite con null: undefined e sparse
-array non hanno ancora la distinzione completa di JavaScript. Le azioni e le mutazioni vanno
+nel budget predefinito. Le IR 1/2/3 riempiono le estensioni degli array con null; la IR 4
+conserva le posizioni assenti, distinte dai null espliciti (183). Le azioni e le mutazioni vanno
 nei corpi delle funzioni o nello script Update, non negli inizializzatori.
 Questi dati di configurazione non implementano il trasporto di array/struct/UDT PLC: `WCU-TAG-04`
 resta parziale e richiede contratti tipizzati e driver reali.
@@ -623,7 +624,7 @@ invalidano i contesti al cambio pagina/uscita dalla prova. La prova funziona anc
 PLC simulati. Non aggiunge scritture PLC, eval o accesso host; le API colore specifiche degli
 altri controlli restano da coprire. Tranche e verifiche sono ai punti 79 e 82 di `LAVORO.md`.
 
-Non e' un motore JavaScript completo: restano classi, spread, this, async/generator come funzioni valore, callback Array,
+Non e' un motore JavaScript completo: restano classi, spread, this, async/generator come funzioni valore, thisArg,
 semantiche JavaScript oltre la IR e librerie versionate. Gli scope dei blocchi supportati,
 var di funzione, TDZ e callback sono verificati al punto 181. L'isolamento completo dei contesti
 JavaScript per istanza faceplate e lo Scheduler server industriale richiedono altro lavoro.
@@ -633,7 +634,7 @@ completo o alla conferma PLC. Stato e verifiche sono in `LAVORO.md`, punti 71, 7
 
 ### Funzioni valore e closure nella IR 3 (182)
 
-Il compilatore emette IR 3; il catalogo resta v1. La VM interpreta dichiarazioni di funzione,
+Il punto 182 ha introdotto la IR 3; i programmi nuovi usano la IR 4 (183). Il catalogo resta v1. La VM interpreta dichiarazioni di funzione,
 espressioni e arrow sincrone senza eval, oggetti Function host o accesso al filesystem/rete.
 Ogni funzione conserva il proprio ambiente lessicale per riferimento, anche dopo il ritorno
 della funzione creatrice; parametri e variabili di chiamate diverse restano separati.
@@ -659,7 +660,7 @@ pianificate; non si eseguono negli inizializzatori globali. Un catalogo Data Log
 tipo condiviso nel progetto generato, senza dedurre never[] e bloccare il typecheck.
 
 Per i pannelli esistenti: aggiornare esplicitamente il Runtime e ricompilare/salvare gli script,
-compresi eventi, faceplate e Moduli JavaScript. I lettori attuali accettano IR 1/2/3; la v1
+compresi eventi, faceplate e Moduli JavaScript. I lettori attuali accettano IR 1/2/3/4; la v1
 conserva i binding piatti e la v2 gli scope lessicali. Non vengono riscritti progetti aperti e
 non è garantito che vecchi Runtime riconoscano la IR 3. Funzioni/closure sono chiuse entro
 questo contratto; linguaggio completo, object model e Scheduler server restano aperti.
@@ -667,6 +668,40 @@ questo contratto; linguaggio completo, object model e Scheduler server restano a
 Riferimenti: [timer Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/timers-rt-unified/description-timers-rt-unified)
 e [ambiente delle funzioni ECMAScript](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html#sec-ecmascript-function-objects).
 
+
+### Callback Array e valori assenti nella IR 4 (183)
+
+I 25 metodi Array comprendono map, flatMap, filter, forEach, find/findIndex, findLast/findLastIndex,
+some/every, reduce/reduceRight e sort con comparatore. Le callback usano le coroutine dei
+moduli: nessun eval/Function host, budget condivisi, abort e trasporto sequenziale. Ricevono
+valore, indice e array; reduce aggiunge l'accumulatore e sort passa i due valori confrontati.
+Parametri ulteriori ricevono undefined. thisArg resta da implementare insieme a this e viene
+rifiutato, invece di essere ignorato.
+
+L'iterazione usa la lunghezza iniziale e osserva le modifiche alle posizioni successive.
+Map conserva i vuoti, filter/flatMap li saltano, find li visita come undefined. Reduce senza
+valore iniziale su array vuoto segnala un errore. Sort e' stabile, conserva l'identita' dell'array
+e ordina una lista prima di riscriverlo: un errore nel comparatore non lo riordina a meta'. Le
+mutazioni esplicite del comparatore rimangono; i vuoti seguono gli undefined alla fine.
+
+Undefined usa un riferimento opaco interno, non ricostruibile con JSON/oggetti utente. Sono
+coerenti typeof, confronti con null, ??, truthiness e gli operandi restituiti da &&/||. Nei JSON
+le proprieta' undefined si omettono e negli array diventano null, come i vuoti. I parametri
+opzionali undefined usano i valori predefiniti. Una conversione numerica di undefined viene
+rifiutata prima di scrivere al PLC. NaN/Infinity, coercizioni arbitrarie degli oggetti e altre
+semantiche JavaScript restano oltre il contratto: non si dichiara un motore JavaScript completo.
+
+L'analisi propaga prudentemente tag e risultati; non ricostruisce tag inventati da dati esterni.
+Anche l'ispezione ha limiti: 100000 passi, 500 ms e 32 livelli di callback Array annidate; il
+budget si ripristina dopo errori. Restano 1024 elementi per raccolta, 32 livelli di dati e i
+budget della VM. Negli inizializzatori si conservano le funzioni; le chiamate partono da eventi
+o Scheduler. Ogni scrittura produce una ricevuta distinta, senza fingere conferme PLC nella cache.
+
+Per i pannelli esistenti: aggiornare esplicitamente il Runtime e ricompilare/salvare gli script.
+I programmi IR 1/2/3 mantengono le semantiche precedenti e non vengono riscritti dall'esecutore.
+Le prove comprendono 54 scenari confrontati con JavaScript nativo, ripetuti nella VM autonoma,
+e un pannello compilato nel browser con IR 1/2/3/4.
+Riferimento: [collezioni indicizzate ECMAScript 2026](https://tc39.es/ecma262/2026/multipage/indexed-collections.html).
 
 Il plugin desktop e i tre helper vengono mappati esplicitamente in `$RESOURCE/scripts`, dove
 il backend li cerca. La regressione usa il resolver risorse Tauri reale; sono stati controllati

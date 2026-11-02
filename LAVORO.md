@@ -6510,6 +6510,39 @@ Verifiche del 5 ottobre 2026:
   Preservati byte per byte i 23 file WIP, con sole integrazioni proprie nel file misto
   standardProject.ts. Commit pubblico solo codice, documentazione e fixture sintetiche.
 
+## 183. Callback Array, valori assenti e IR 4 Unified (2 novembre 2026)
+
+- **Chiusura fase 3**: map/flatMap/filter/forEach, ricerche avanti/indietro, some/every,
+  reduce/reduceRight e sort stabile con comparatore, nella VM e nel Runtime esportato.
+  Sono 25 metodi Array; i dodici nuovi usano le funzioni/closure del punto 182.
+- **Semantica**: lunghezza iniziale, mutazioni durante le callback, vuoti conservati/saltati
+  per metodo, sort con identita' originale e copia di lavoro, accumulatori strutturati,
+  callback di modulo e parametri ulteriori undefined.
+- **Valori assenti**: IR 4 distingue undefined, null e posizioni vuote; typeof, confronti,
+  truthiness, &&/||, ??, JSON e argomenti opzionali coerenti nei casi supportati. Scritture PLC
+  e proprieta' grafiche senza valore rifiutate prima del trasporto, anche dopo find, accessi
+  mancanti e Number(undefined): niente conversione implicita in null, stringa vuota o zero.
+- **Limiti/sicurezza**: budget condivisi, abort, raccolte limitate e anti-ciclo; ispezione
+  limitata a 100000 passi/500 ms/32 callback annidate, ripristinata dopo errore. Nessuna API host,
+  eval o Function in produzione. Chiamate Array vietate negli inizializzatori; e' ammesso
+  conservare funzioni per invocarle dagli eventi o dallo Scheduler.
+- **Trasporto**: letture nelle callback/comparatori e scritture ordinate senza retry automatici;
+  ricevute distinte e cache non modificata come se il PLC avesse confermato l'applicazione.
+- **Pipeline**: lettori IR 1/2/3/4, catalogo JSON v1. Programmi vecchi preservati; Runtime e
+  sorgenti da aggiornare/ricompilare esplicitamente. Fixture IR 3 con programmi annidati
+  serializzati tutti in v3, oltre a IR 1/2 e IR 4.
+- **Verifica del 30 ottobre, codice rivalidato il 2 novembre**: 309 test mirati in 14 file;
+  64 casi nel nuovo file, inclusi 54 confronti con JavaScript nativo, ripetuti anche nel modulo
+  VM esportato. Abort, trasporto, nessuna scrittura senza valore, overflow, firme e ispezione
+  complessa. TypeScript/Vite editor e typecheck/build pannello passati. Browser Edge sul build:
+  callback, sort/reduce, undefined, array sparsi, IR 1/2/3/4 e dispose timer; zero richieste
+  esterne/write tag. Nessuna suite generale, agente, dipendenza nuova o modifica nativa.
+- **Stato residuo**: this/thisArg, classi, spread, async/generator, altre semantiche JavaScript,
+  API/object model, librerie versionate e Scheduler unico server ancora aperti. Fase 3 e
+  WCU-EVT-05/07 restano PARZIALE; Optix/AI rinviati. Gate produzione, licenze e target ancora
+  aperti. Preservati i 23 file WIP, con sole integrazioni proprie nel file misto standardProject.ts;
+  nessun dato macchina pubblico.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

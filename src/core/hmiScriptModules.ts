@@ -113,7 +113,7 @@ function globalDefinitionOf(value: unknown, allowExports = false): HmiScriptGlob
       if (item.kind === "function-value" || item.kind === "function-declare") return false;
       if (item.kind === "local" && ["Screen", "Faceplate", "item"].includes(String(item.name))) return true;
       if (["invoke", "module-call", "timer-set", "popup-open", "popup-property", "screen-item", "property-flashing"].includes(String(item.kind))) return true;
-      if (item.kind === "array-method" && ["push", "pop", "shift", "unshift", "sort", "reverse", "splice"].includes(String(item.method))) return true;
+      if (item.kind === "array-method" && ["push", "pop", "shift", "unshift", "sort", "reverse", "splice", "map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight"].includes(String(item.method))) return true;
       return Object.values(item).some(unsafe);
     };
     if (inspection.program.statements.some((statement) => !["declare", "function-declare"].includes(statement.kind) || unsafe(statement))) {

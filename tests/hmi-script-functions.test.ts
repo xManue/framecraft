@@ -102,7 +102,7 @@ describe("funzioni valore e closure Unified",()=>{
   });
   it("esegue e ispeziona la stessa IR nel Runtime esportato, conservando IR 1/2",()=>{
     const exported:Record<string,any>={};new Function("exports",transpileModule(hmiScriptRuntimeModuleSource(),{compilerOptions:{module:ModuleKind.CommonJS,target:ScriptTarget.ES2022}}).outputText)(exported);
-    const program=compile("function factory(tag){return ()=>tag.Read();}const read=factory(Tags('Speed'));return read();");expect(program.version).toBe(3);expect(exported.executeHmiScript(program,{Speed:"7"}).returned).toBe(7);expect(exported.inspectHmiScriptProgram(program).tagsRead).toContain("Speed");
+    const program=compile("function factory(tag){return ()=>tag.Read();}const read=factory(Tags('Speed'));return read();");expect(program.version).toBe(4);expect(exported.executeHmiScript(program,{Speed:"7"}).returned).toBe(7);expect(exported.inspectHmiScriptProgram(program).tagsRead).toContain("Speed");
     for(const version of [1,2])expect(exported.executeHmiScript({version,statements:[{kind:"return",value:{kind:"literal",value:7}}]},{}).returned).toBe(7);
   });
 });

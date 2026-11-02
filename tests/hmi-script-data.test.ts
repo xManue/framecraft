@@ -249,7 +249,7 @@ describe("dati strutturati negli script HMI", () => {
     const program = inspectHmiScript("return JSON.parse(Tags('Config').Read()).length;").program!;
     expect(executeHmiScript(program, { Config: JSON.stringify(Array(1025).fill(1)) }, { maxSteps: 10000 }).error).toContain("1024");
     expect(executeHmiScript(program, { Config: "[1,2,3,4,5]" }, { maxSteps: 5 }).error).toContain("5 operazioni");
-    expect(inspectHmiScript("const a = [2, 1]; a.sort((a, b) => a - b);").error).toBeDefined();
+    expect(run("const a = [2, 1]; a.sort((a, b) => a - b);return JSON.stringify(a);").returned).toBe("[1,2]");
   });
 
   it("mantiene non operativi gli inizializzatori, anche con metodi su array", () => {
