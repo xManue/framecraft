@@ -87,7 +87,7 @@ describe('callback Array e valori assenti nella IR 4',()=>{
   it('controlla firme, callback, array vuoti, capacità e budget',()=>{
     expect(run('return [].reduce((a,b)=>a+b);').error).toContain('valore iniziale');
     expect(run('return [].map(null);').error).toContain('funzione HMI');
-    expect(run('return [].map(value=>value,{});').error).toContain('thisArg');
+    expect(run('return [].map(function(value){return this.value;},{}).length;').returned).toBe(0);
     expect(run("[1,2,3].forEach(value=>{Tags('Command').Write(value);});",{maxSteps:5}).error).toContain('operazioni');
     const program=compile("const a=JSON.parse(Tags('Config').Read());a.flatMap(value=>[value,value]);Tags('Command').Write(1);");const result=executeHmiScript(program,{Config:JSON.stringify(Array(600).fill(1))},{maxSteps:100000,timeoutMs:5000});expect(result.error).toContain('1024');expect(result.writes).toEqual({});
   });

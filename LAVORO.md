@@ -6543,6 +6543,37 @@ Verifiche del 5 ottobre 2026:
   aperti. Preservati i 23 file WIP, con sole integrazioni proprie nel file misto standardProject.ts;
   nessun dato macchina pubblico.
 
+## 184. This, receiver, call/apply/bind e IR 5 Unified (2 novembre 2026)
+
+- **Contesti**: this alias di Screen negli script grafici, risolto pigramente senza oggetti DOM
+  esposti; Scheduler, moduli e inizializzatori non acquisiscono implicitamente il receiver UI.
+  Arrow lessicali, funzioni normali strict, metodi semplici e funzione estratta senza receiver.
+  Timer e callback Promise gia' supportate conservano o isolano this secondo la forma scelta.
+- **Chiamate**: call/apply/bind interpretati nella VM, compresi estrazione, call.call, bind
+  ripetuti e argomenti parziali; thisArg Array, name/length readonly e array-like per apply.
+  Primo receiver bound preservato; primitive/null non convertiti in un oggetto globale.
+  IR 5 segue l'arita' JS: parametri mancanti undefined, argomenti ulteriori valutati/ignorati;
+  i vecchi programmi mantengono i rispettivi contratti. Dati mancanti ancora bloccati sul PLC.
+- **Analisi**: propagazione dei tag attraverso this, callback, call/apply e bind. Corretto un
+  ciclo scoperto nella prova browser: this.Items(...) sconosciuto non viene reinterpretato
+  nel contesto del chiamato. Coperti call e bind su un receiver grafico, con regressione.
+- **Confini**: this.Items opera soltanto sullo Screen, non sul riferimento Font; prototipi,
+  constructor e API host restano inaccessibili. Scope invalidati prima di inviare comandi,
+  budget condivisi, 16 chiamate utente, 32 wrapper e 1024 argomenti applicati/conservati.
+- **Pipeline**: nuova IR 5, lettori 1/2/3/4/5 per eventi, dinamiche, task e faceplate; catalogo
+  JSON v1. Aggiornamento Runtime e ricompilazione/salvataggio espliciti per i pannelli esistenti.
+- **Verifica**: 377 test mirati nei 16 file coinvolti, inclusi 53 casi nuovi con 42 scenari
+  confrontati con JS strict e ripetuti nel modulo VM esportato. Tag/dati/trasporto, timer,
+  Promise, modulo globale, Scheduler, arita' legacy, invalidazione, limiti e proprieta' grafiche.
+  TypeScript/Vite editor e typecheck/build pannello passati. Browser Edge sul build: modifica
+  reale del testo via this.Items/call, thisArg, bound function, timer arrow/normale, IR 1–5;
+  zero richieste esterne/write tag. Nessuna suite generale, agente o dipendenza nuova.
+- **Stato**: this/receiver chiusi nel contratto di ARCHITETTURA-HMI; restano classi, spread,
+  async/generator e altre semantiche/API, object model completo, librerie versionate e Scheduler
+  unico server. WCU-EVT-05/07 e fase 3 ancora PARZIALE. Nessun passaggio a Optix/AI o chiusura
+  dei gate produzione/licenze/target. Preservati i 23 file WIP e pubblicato solo codice,
+  documentazione e fixture sintetiche; integrazioni proprie isolate in standardProject.ts.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

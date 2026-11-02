@@ -31,7 +31,8 @@ describe("sandbox script HMI", () => {
     const catalog = parseHmiScriptCatalog({ globalModules: [{ name: "Loop", alias: "Loop", functions: [{ name: "Again", parameters: [], source: "return Modules.Loop.Again();" }] }] });
     const functions = hmiScriptFunctions(catalog);
     expect(executeHmiScript(inspectHmiScript("return Modules.Loop.Again();").program!, {}, { functions }).error).toContain("ricorsiva");
-    expect(executeHmiScript(inspectHmiScript("return Modules.Loop.Again(1);").program!, {}, { functions }).error).toContain("richiede 0 argomenti");
+    const legacyFunctions=Object.fromEntries(Object.entries(functions).map(([name,definition])=>[name,{...definition,program:{...definition.program,version:4 as const}}]));
+    expect(executeHmiScript(inspectHmiScript("return Modules.Loop.Again(1);").program!, {}, { functions: legacyFunctions }).error).toContain("richiede 0 argomenti");
   });
 
   it("serializza programmi compilati e separa il contesto locale", () => {
@@ -43,7 +44,7 @@ describe("sandbox script HMI", () => {
       ],
     }));
     const parsed = parseHmiScriptCatalog(serialized);
-    expect(JSON.parse(serialized).localDefinitions[0].functions[0].program.version).toBe(4);
+    expect(JSON.parse(serialized).localDefinitions[0].functions[0].program.version).toBe(5);
     expect(Object.keys(hmiScriptFunctions(parsed, "2001", "events"))).toContain("Local.EventOnly");
     expect(Object.keys(hmiScriptFunctions(parsed, "2001", "events"))).not.toContain("Local.DynamicOnly");
     expect(hmiScriptModulesRuntimeSource()).toContain("const identifier = /");

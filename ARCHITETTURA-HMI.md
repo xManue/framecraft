@@ -480,9 +480,9 @@ Usarlo come valore PLC o proprieta' grafica genera un errore prima del trasporto
 null, stringa vuota o comando zero. La TDZ prima della dichiarazione continua a impedire la
 lettura. Assegna un valore o controlla esplicitamente il risultato (183).
 
-Il catalogo script resta versione 1; i programmi nuovi usano la IR 4. I lettori aggiornati
-accettano IR 1/2/3/4: binding piatti nella v1, scope nella v2, funzioni nella v3 e valori
-assenti/array nella v4. Una versione sconosciuta non viene eseguita.
+Il catalogo script resta versione 1; i programmi nuovi usano la IR 5. I lettori aggiornati
+accettano IR 1/2/3/4/5: binding piatti nella v1, scope nella v2, funzioni nella v3, valori
+assenti/array nella v4 e this/receiver nella v5. Una versione sconosciuta non viene eseguita.
 Per usare gli scope nuovi in un pannello esistente aggiorna esplicitamente i file Runtime e
 ricompila/salva gli script dal sorgente, incluse azioni e binding dei faceplate. Nei Moduli
 JavaScript usa **Compila e salva**. Non viene riscritto automaticamente un progetto aperto;
@@ -624,7 +624,7 @@ invalidano i contesti al cambio pagina/uscita dalla prova. La prova funziona anc
 PLC simulati. Non aggiunge scritture PLC, eval o accesso host; le API colore specifiche degli
 altri controlli restano da coprire. Tranche e verifiche sono ai punti 79 e 82 di `LAVORO.md`.
 
-Non e' un motore JavaScript completo: restano classi, spread, this, async/generator come funzioni valore, thisArg,
+Non e' un motore JavaScript completo: restano classi, spread, async/generator come funzioni valore,
 semantiche JavaScript oltre la IR e librerie versionate. Gli scope dei blocchi supportati,
 var di funzione, TDZ e callback sono verificati al punto 181. L'isolamento completo dei contesti
 JavaScript per istanza faceplate e lo Scheduler server industriale richiedono altro lavoro.
@@ -634,7 +634,7 @@ completo o alla conferma PLC. Stato e verifiche sono in `LAVORO.md`, punti 71, 7
 
 ### Funzioni valore e closure nella IR 3 (182)
 
-Il punto 182 ha introdotto la IR 3; i programmi nuovi usano la IR 4 (183). Il catalogo resta v1. La VM interpreta dichiarazioni di funzione,
+Il punto 182 ha introdotto la IR 3; i programmi nuovi usano la IR 5 (184). Il catalogo resta v1. La VM interpreta dichiarazioni di funzione,
 espressioni e arrow sincrone senza eval, oggetti Function host o accesso al filesystem/rete.
 Ogni funzione conserva il proprio ambiente lessicale per riferimento, anche dopo il ritorno
 della funzione creatrice; parametri e variabili di chiamate diverse restano separati.
@@ -648,8 +648,9 @@ ferma le chiamate e il dispose cancella i timer. Le forme inline e Modules/Local
 restano compatibili. Le dipendenze tag si propagano attraverso argomenti, factory e catture.
 
 I budget CPU/operazioni e trasporto sono condivisi con le chiamate annidate; la profondità è
-limitata a 16. Fino a 32 parametri semplici e numero esatto di argomenti; niente default, rest,
-destructuring, this, costruttori o funzioni async/generator. I nomi API riservati non sono
+limitata a 16. Fino a 32 parametri semplici: le IR 3/4 richiedono il numero esatto di argomenti; la IR 5
+usa undefined per quelli mancanti e valuta/ignora gli ulteriori. Niente default, rest,
+destructuring, costruttori o funzioni async/generator. I nomi API riservati non sono
 ammessi per nomi/parametri delle nuove funzioni. Una funzione non è un valore PLC, grafico o
 JSON: va chiamata e ne va usato il risultato scalare. I riferimenti non si possono costruire
 con oggetti/JSON dell'utente; prototipi e API host rimangono inaccessibili.
@@ -660,7 +661,7 @@ pianificate; non si eseguono negli inizializzatori globali. Un catalogo Data Log
 tipo condiviso nel progetto generato, senza dedurre never[] e bloccare il typecheck.
 
 Per i pannelli esistenti: aggiornare esplicitamente il Runtime e ricompilare/salvare gli script,
-compresi eventi, faceplate e Moduli JavaScript. I lettori attuali accettano IR 1/2/3/4; la v1
+compresi eventi, faceplate e Moduli JavaScript. I lettori attuali accettano IR 1/2/3/4/5; la v1
 conserva i binding piatti e la v2 gli scope lessicali. Non vengono riscritti progetti aperti e
 non è garantito che vecchi Runtime riconoscano la IR 3. Funzioni/closure sono chiuse entro
 questo contratto; linguaggio completo, object model e Scheduler server restano aperti.
@@ -675,8 +676,7 @@ I 25 metodi Array comprendono map, flatMap, filter, forEach, find/findIndex, fin
 some/every, reduce/reduceRight e sort con comparatore. Le callback usano le coroutine dei
 moduli: nessun eval/Function host, budget condivisi, abort e trasporto sequenziale. Ricevono
 valore, indice e array; reduce aggiunge l'accumulatore e sort passa i due valori confrontati.
-Parametri ulteriori ricevono undefined. thisArg resta da implementare insieme a this e viene
-rifiutato, invece di essere ignorato.
+Parametri ulteriori ricevono undefined. La IR 4 rifiuta thisArg; la IR 5 lo supporta (184).
 
 L'iterazione usa la lunghezza iniziale e osserva le modifiche alle posizioni successive.
 Map conserva i vuoti, filter/flatMap li saltano, find li visita come undefined. Reduce senza
@@ -702,6 +702,45 @@ I programmi IR 1/2/3 mantengono le semantiche precedenti e non vengono riscritti
 Le prove comprendono 54 scenari confrontati con JavaScript nativo, ripetuti nella VM autonoma,
 e un pannello compilato nel browser con IR 1/2/3/4.
 Riferimento: [collezioni indicizzate ECMAScript 2026](https://tc39.es/ecma262/2026/multipage/indexed-collections.html).
+
+### This, receiver e function intrinsics nella IR 5 (184)
+
+Negli eventi e nelle dinamizzazioni grafiche this e' un alias opaco di Screen, non window/DOM.
+Il binding e' risolto solo quando serve: creare una closure puramente dati non richiede un DOM
+attivo. this.Items(nome) e PropertyFlashing usano i resolver e le proprieta' gia' controllati;
+Items richiede la schermata e non ammette un riferimento Font come receiver. Il contesto
+Scheduler non acquisisce una schermata, anche se il chiamante fornisce un manager grafico.
+I moduli e i loro inizializzatori hanno this undefined in modalita' strict.
+
+Le funzioni normali ricevono this dal receiver della chiamata a metodo; una funzione estratta
+non mantiene implicitamente l'oggetto. Le arrow catturano il binding lessicale, anche dopo
+il ritorno e nei timer. Le callback Promise gia' supportate hanno lo stesso comportamento:
+arrow con il binding esterno, funzioni normali con undefined; il chiamante viene ripristinato.
+
+call/apply/bind sono riferimenti interni interpretati nella VM, senza Function.prototype host.
+Supportano anche estrazione, call.call, argomenti parziali e bind ripetuti: prevale il primo
+receiver, mentre gli argomenti si concatenano. apply accetta array, array sparsi e oggetti
+array-like con length; null/undefined indicano nessun argomento. I receiver primitivi restano
+primitivi: non vengono trasformati nel globale. name e length sono sola lettura. I metodi
+semplici negli oggetti sono ammessi; getter/setter, costruttori e prototipi rimangono esclusi.
+
+thisArg funziona nei metodi Array che lo prevedono; reduce e sort non acquisiscono un receiver.
+Le arrow e le funzioni gia' bound ignorano un nuovo thisArg. Nei programmi IR 5 le funzioni
+ricevono undefined per parametri mancanti, valutano gli argomenti ulteriori e li ignorano se
+non dichiarati. Valori mancanti destinati al PLC vengono ancora rifiutati prima del trasporto.
+I programmi IR 1/2/3/4 mantengono i rispettivi contratti, compresa l'arita' esatta delle funzioni.
+
+Restano i limiti di 16 chiamate utente, 32 livelli di wrapper, 1024 argomenti applicati o
+conservati e i budget condivisi. Un bind creato in un contesto chiuso non invia nuovi comandi.
+L'analisi dei tag conserva receiver e bound argument; un receiver grafico non ricostruibile
+rimane sconosciuto, senza reinterpretarlo come this della funzione chiamata o creare cicli.
+I binding, i manager e gli intrinsics interni non vengono serializzati nella IR.
+
+La pipeline nuova emette IR 5 e legge IR 1/2/3/4/5. Per i pannelli esistenti occorre aggiornare
+esplicitamente il Runtime e ricompilare/salvare gli script. Non e' completato l'object model
+Screen/controlli: questo punto copre il contesto delle chiamate e le API grafiche gia' esposte.
+Riferimenti: [Screen Unified V21](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/ui.activescreen-rt-unified/screen-rt-unified/description-screen-rt-unified)
+e [function intrinsics ECMAScript](https://tc39.es/ecma262/2026/multipage/fundamental-objects.html).
 
 Il plugin desktop e i tre helper vengono mappati esplicitamente in `$RESOURCE/scripts`, dove
 il backend li cerca. La regressione usa il resolver risorse Tauri reale; sono stati controllati

@@ -372,10 +372,10 @@ export function hmiScriptGlobalDefinition(catalog: HmiScriptCatalog, scope?: str
 
 function scriptContextManagerRuntime(createScope: typeof createHmiScriptScope, execute: typeof executeHmiScript, functionsFor: typeof hmiScriptFunctions, definitionFor: typeof hmiScriptGlobalDefinition, variablesFor: typeof hmiScriptVariables) {
   let currentCatalog: HmiScriptCatalog | undefined;
-  const contexts = new Map<string, { scope?: string; context: HmiRuntimeScriptContext; namespaces: Map<string, HmiScriptScope>; options: Pick<HmiScriptExecutionOptions, "functions" | "variables" | "globalScope"> }>();
+  const contexts = new Map<string, { scope?: string; context: HmiRuntimeScriptContext; namespaces: Map<string, HmiScriptScope>; options: Pick<HmiScriptExecutionOptions, "functions" | "variables" | "globalScope" | "scriptContext"> }>();
   const deactivate = (namespaces: Map<string, HmiScriptScope>) => { for (const scope of namespaces.values()) scope.active = false; };
   const manager = {
-    options(catalog: HmiScriptCatalog, scope?: string | number, context: HmiRuntimeScriptContext = "events"): Pick<HmiScriptExecutionOptions, "functions" | "variables" | "globalScope"> {
+    options(catalog: HmiScriptCatalog, scope?: string | number, context: HmiRuntimeScriptContext = "events"): Pick<HmiScriptExecutionOptions, "functions" | "variables" | "globalScope" | "scriptContext"> {
       if (catalog !== currentCatalog) { manager.dispose(); currentCatalog = catalog; }
       const wanted = scope === undefined ? undefined : String(scope);
       const key = JSON.stringify([context, context === "scheduler" ? null : wanted]);
@@ -395,7 +395,7 @@ function scriptContextManagerRuntime(createScope: typeof createHmiScriptScope, e
       const globalScope = getScope("Local", local);
       const functions = functionsFor(catalog, context === "scheduler" ? undefined : wanted, context === "dynamizations" ? context : "events", getScope);
       const variables = variablesFor(catalog, getScope);
-      const options = { functions, variables, globalScope };
+      const options = { functions, variables, globalScope, scriptContext: context };
       contexts.set(key, { scope: wanted, context, namespaces, options });
       return options;
     },

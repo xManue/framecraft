@@ -42,8 +42,8 @@ describe("HMIRuntime.Timers", () => {
     const fired: string[] = [];
     const fake = fakeClock();
     let manager: ReturnType<typeof createHmiTimerManager>;
-    manager = createHmiTimerManager(async (callback) => {
-      const result = await executeHmiScriptAsync(callbackProgram(callback), {}, { functions, timerManager: manager });
+    manager = createHmiTimerManager(async (callback, _timer, context) => {
+      const result = await executeHmiScriptAsync(callbackProgram(callback), {}, { ...context, functions, timerManager: manager });
       fired.push(result.writes.Tick);
     }, undefined, fake.clock);
     const setup = inspectHmiScript('const timerId = HMIRuntime.Timers.SetInterval(Modules.Clock.Tick, 1000); Tags("Timer.Id").Write(timerId);', functions);
@@ -63,8 +63,8 @@ describe("HMIRuntime.Timers", () => {
     const fake = fakeClock();
     const writes: Record<string, string>[] = [];
     let manager: ReturnType<typeof createHmiTimerManager>;
-    manager = createHmiTimerManager(async (callback) => {
-      const result = await executeHmiScriptAsync(callbackProgram(callback), { Source: "7" }, { timerManager: manager });
+    manager = createHmiTimerManager(async (callback, _timer, context) => {
+      const result = await executeHmiScriptAsync(callbackProgram(callback), { Source: "7" }, { ...context, timerManager: manager });
       writes.push(result.writes);
     }, undefined, fake.clock);
     const inspection = inspectHmiScript('HMIRuntime.Timers.SetTimeout(() => { Tags("Result").Write(Tags("Source").Read()); }, 250);');
@@ -83,7 +83,8 @@ describe("HMIRuntime.Timers", () => {
     const manager = createHmiTimerManager(() => undefined, undefined, fakeClock().clock);
     expect(executeHmiScript(inspectHmiScript("HMIRuntime.Timers.SetTimeout(() => {}, -1);").program!, {}, { timerManager: manager }).error).toContain("UInt32");
     const catalog = parseHmiScriptCatalog({ globalModules: [{ name: "Bad", alias: "Bad", functions: [{ name: "NeedsValue", parameters: ["value"], source: "return value;" }] }] });
-    expect(inspectHmiScript("HMIRuntime.Timers.SetInterval(Modules.Bad.NeedsValue, 10);", hmiScriptFunctions(catalog)).error).toContain("richiede 1 argomenti");
+    const legacyFunctions=hmiScriptFunctions(catalog);legacyFunctions["Modules.Bad.NeedsValue"].program={...legacyFunctions["Modules.Bad.NeedsValue"].program,version:4};
+    expect(inspectHmiScript("HMIRuntime.Timers.SetInterval(Modules.Bad.NeedsValue, 10);", legacyFunctions).error).toContain("richiede 1 argomenti");
     expect(executeHmiScript(inspectHmiScript("HMIRuntime.Timers.ClearTimeout(1);").program!, {}).error).toContain("gestore timer");
   });
 });

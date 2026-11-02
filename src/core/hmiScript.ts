@@ -6,8 +6,9 @@ export type HmiScriptScalar = string | number | boolean | null;
 export type HmiScriptExpression =
   | { kind: "literal"; value: HmiScriptScalar }
   | { kind: "undefined" }
+  | { kind: "this" }
   | { kind: "array-hole" }
-  | { kind: "function-value"; parameters: string[]; program: HmiScriptProgram; name?: string }
+  | { kind: "function-value"; parameters: string[]; program: HmiScriptProgram; name?: string; arrow?: boolean; displayName?: string }
   | { kind: "invoke"; callee: HmiScriptExpression; arguments: HmiScriptExpression[] }
   | { kind: "local"; name: string }
   | { kind: "module-variable"; name: string }
@@ -51,8 +52,8 @@ export type HmiScriptStatement =
   | { kind: "tag-set-write"; set: HmiScriptExpression; async?: boolean; mode?: HmiScriptExpression; qcd?: boolean }
   | { kind: "qcd-write"; target: HmiScriptExpression; arguments: HmiScriptExpression[] }
   | { kind: "operator-write"; target: HmiScriptExpression; reason: HmiScriptExpression; value?: HmiScriptExpression }
-  | { kind: "tag-set-promise"; operation: "read" | "write"; set: HmiScriptExpression; mode?: HmiScriptExpression; maxAge?: HmiScriptExpression; qcd?: boolean; success?: { name?: string; statements: HmiScriptStatement[] }; failure?: { name?: string; statements: HmiScriptStatement[] } }
-  | { kind: "try"; statements: HmiScriptStatement[]; failure?: { name?: string; statements: HmiScriptStatement[] }; final: HmiScriptStatement[] }
+  | { kind: "tag-set-promise"; operation: "read" | "write"; set: HmiScriptExpression; mode?: HmiScriptExpression; maxAge?: HmiScriptExpression; qcd?: boolean; success?: { name?: string; arrow?: boolean; statements: HmiScriptStatement[] }; failure?: { name?: string; arrow?: boolean; statements: HmiScriptStatement[] } }
+  | { kind: "try"; statements: HmiScriptStatement[]; failure?: { name?: string; arrow?: boolean; statements: HmiScriptStatement[] }; final: HmiScriptStatement[] }
   | { kind: "bit"; operation: "set" | "reset" | "toggle"; tag: HmiScriptExpression; bit: HmiScriptExpression }
   | { kind: "navigate"; target: HmiScriptExpression }
   | { kind: "module-call"; call: Extract<HmiScriptExpression, { kind: "module-call" }> }
@@ -65,8 +66,8 @@ export type HmiScriptStatement =
   | { kind: "switch"; value: HmiScriptExpression; cases: { test?: HmiScriptExpression; statements: HmiScriptStatement[] }[] };
 
 export interface HmiScriptProgram {
-  /** IR 1: legacy flat bindings. IR 2: lexical blocks. IR 3: callable values and closures. IR 4: undefined, sparse arrays and callbacks. */
-  version: 1 | 2 | 3 | 4;
+  /** IR 1: legacy flat bindings. IR 2: lexical blocks. IR 3: callable values and closures. IR 4: undefined, sparse arrays and callbacks. IR 5: this and receiver semantics. */
+  version: 1 | 2 | 3 | 4 | 5;
   statements: HmiScriptStatement[];
   exports?: { name: string; local: string }[];
 }
@@ -157,7 +158,10 @@ interface RuntimeTagStatus { qualityCode: number; timeStamp: string | number; la
 type TagSetState = { names: string[]; pending: Record<string, HmiScriptScalar>; status: Record<string, RuntimeTagStatus>; lastError: number; errorDescription: string };
 type TagSetReference = { readonly tagSet: TagSetState };
 type DataReference = { readonly data: RuntimeValue[] | Record<string, RuntimeValue> };
-type FunctionReference = { readonly scriptFunction: { parameters: readonly string[]; program: HmiScriptProgram; scope?: HmiScriptScope; functions?: HmiScriptExecutionOptions["functions"]; variables?: HmiScriptExecutionOptions["variables"]; globalScope?: HmiScriptScope; name?: string } };
+type FunctionIntrinsic = "call" | "apply" | "bind" | "screen-items";
+interface HmiScriptThisBinding { value?: RuntimeValue; screenItems?: HmiScriptScreenItemManager }
+
+type FunctionReference = { readonly scriptFunction: { parameters: readonly string[]; program: HmiScriptProgram; scope?: HmiScriptScope; functions?: HmiScriptExecutionOptions["functions"]; variables?: HmiScriptExecutionOptions["variables"]; globalScope?: HmiScriptScope; name?: string; arrow?: boolean; lexicalThis?: HmiScriptThisBinding; intrinsic?: FunctionIntrinsic; bound?: { target: FunctionReference; thisArg: RuntimeValue; args: RuntimeValue[]; depth: number; count: number } } };
 
 type UndefinedReference = { readonly undefinedValue: true; readonly reason?: string };
 
@@ -225,6 +229,10 @@ export interface HmiScriptExecutionOptions {
   locals?: Readonly<Record<string, RuntimeValue>>;
   globalScope?: HmiScriptScope;
   closureScope?: HmiScriptScope;
+  /** This esplicito e binding interno; nessun oggetto host viene esposto allo script. */
+  thisValue?: RuntimeValue;
+  thisBinding?: HmiScriptThisBinding;
+  scriptContext?: "events" | "dynamizations" | "scheduler";
   /** Interno: le dichiarazioni iniziali appartengono al contesto, non a una chiamata. */
   initializingScope?: HmiScriptScope;
   tagStatus?: Readonly<Record<string, HmiScriptTagStatus>>;
@@ -280,6 +288,8 @@ export interface HmiScriptTimerContext extends Pick<HmiScriptExecutionOptions, "
   variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>;
   globalScope?: HmiScriptScope;
   closureScope?: HmiScriptScope;
+  thisBinding?: HmiScriptThisBinding;
+  scriptContext?: HmiScriptExecutionOptions["scriptContext"];
 }
 
 const safeCalls = new Set(["Boolean", "Number", "String", "Math.abs", "Math.round", "Math.floor", "Math.ceil", "Math.min", "Math.max", "HMIRuntime.Math.RGB"]);
@@ -373,7 +383,7 @@ function compileTagSetFactory(call: t.CallExpression): HmiScriptExpression | und
   return { kind: "tag-set", entries: compileTagSetEntries(argument, name) };
 }
 
-function compileFunctionValue(node: t.FunctionExpression | t.ArrowFunctionExpression | t.FunctionDeclaration): Extract<HmiScriptExpression, { kind: "function-value" }> {
+function compileFunctionValue(node: t.FunctionExpression | t.ArrowFunctionExpression | t.FunctionDeclaration | t.ObjectMethod): Extract<HmiScriptExpression, { kind: "function-value" }> {
   if (node.async || node.generator) fail("Le funzioni valore devono essere sincrone; await resta disponibile nelle azioni TagSet previste.", node);
   if (node.params.length > 32 || node.params.some(parameter => !t.isIdentifier(parameter))) fail("La funzione richiede fino a 32 parametri con nome semplice, senza valori predefiniti, rest o destructuring.", node);
   const parameters = node.params.map(parameter => (parameter as t.Identifier).name);
@@ -387,12 +397,11 @@ function compileFunctionValue(node: t.FunctionExpression | t.ArrowFunctionExpres
     const action = compileCallStatement(node.body);
     statements = [!["expression", "module-call", "timer-set", "tag-set-read"].includes(action.kind) ? action : { kind: "return", value: compileExpression(node.body) }];
   } else statements = [{ kind: "return", value: compileExpression(node.body) }];
-  return { kind: "function-value", parameters, program: { version: 4, statements }, ...("id" in node && node.id ? { name: node.id.name } : {}) };
+  return { kind: "function-value", parameters, program: { version: 5, statements }, arrow: t.isArrowFunctionExpression(node), ...("id" in node && node.id ? { name: node.id.name } : {}) };
 }
 
 function compileTimerCallback(node: t.CallExpression["arguments"][number] | undefined, label: string): Extract<HmiScriptExpression, { kind: "timer-set" }>["callback"] {
   if (!node || !t.isExpression(node)) fail(label + " richiede una funzione e il ritardo in millisecondi.");
-  if ((t.isFunctionExpression(node) || t.isArrowFunctionExpression(node)) && !node.async && !node.generator && !node.params.length && t.isBlockStatement(node.body) && !("id" in node && node.id)) return { kind: "inline", program: { version: 4, statements: compileBlock(node.body) } };
   if (t.isMemberExpression(node)) {
     const name = dottedName(node);
     if (name && (/^Modules\.[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*$/.test(name) || /^Local\.[A-Za-z_$][\w$]*$/.test(name))) return { kind: "function", call: { kind: "module-call", name, arguments: [] } };
@@ -475,6 +484,7 @@ function compilePopupOpen(call: t.CallExpression): Extract<HmiScriptExpression, 
 
 function compileExpression(node: t.Expression | t.JSXNamespacedName | t.ArgumentPlaceholder | t.SpreadElement): HmiScriptExpression {
   if (!t.isExpression(node)) fail("Espressione non supportata", node);
+  if (t.isThisExpression(node)) return { kind: "this" };
   if (t.isFunctionExpression(node) || t.isArrowFunctionExpression(node)) return compileFunctionValue(node);
   const constant = literal(node);
   if (constant) return constant;
@@ -485,10 +495,17 @@ function compileExpression(node: t.Expression | t.JSXNamespacedName | t.Argument
   if (t.isObjectExpression(node)) {
     if (node.properties.length > 1024) fail("Un oggetto supera 1024 proprieta'", node);
     return { kind: "object", entries: node.properties.map((item) => {
-      if (!t.isObjectProperty(item) || item.computed || !t.isExpression(item.value)) fail("Sono ammesse proprieta' di dati, senza getter, metodi, spread o chiavi calcolate", item);
+      if (t.isObjectMethod(item) && item.kind === "method" && !item.computed) {
+        const key = t.isIdentifier(item.key) ? item.key.name : t.isStringLiteral(item.key) || t.isNumericLiteral(item.key) ? String(item.key.value) : undefined;
+        if (key === undefined) fail("Nome metodo non supportato.", item);
+        return { name: dataKey(key), value: { ...compileFunctionValue(item), displayName: String(key) } };
+      }
+      if (!t.isObjectProperty(item) || item.computed || !t.isExpression(item.value)) fail("Sono ammesse proprieta' di dati e metodi semplici, senza getter/setter, spread o chiavi calcolate", item);
       const key = t.isIdentifier(item.key) ? item.key.name : t.isStringLiteral(item.key) || t.isNumericLiteral(item.key) ? item.key.value : undefined;
       if (key === undefined) fail("Nome proprieta' non supportato", item);
-      return { name: dataKey(key), value: compileExpression(item.value) };
+      const value = compileExpression(item.value);
+      if (value.kind === "function-value" && !value.name) value.displayName = String(key);
+      return { name: dataKey(key), value };
     }) };
   }
   if (t.isIdentifier(node)) {
@@ -636,13 +653,13 @@ function compileTagSetMutation(call: t.CallExpression): HmiScriptStatement | und
     : { kind: "tag-set-remove", set: compileExpression(call.callee.object), names: entries.map((entry) => entry.name) };
 }
 
-function promiseCallback(node: t.CallExpression["arguments"][number] | undefined, label: string): { name?: string; statements: HmiScriptStatement[] } {
+function promiseCallback(node: t.CallExpression["arguments"][number] | undefined, label: string): { name?: string; arrow?: boolean; statements: HmiScriptStatement[] } {
   if (!node || (!t.isFunctionExpression(node) && !t.isArrowFunctionExpression(node)) || node.async || node.generator) {
     fail(`${label} richiede una funzione sincrona`, node && t.isNode(node) ? node : undefined);
   }
   if (node.params.length > 1 || node.params.some((param) => !t.isIdentifier(param))) fail(`${label} accetta al massimo un parametro con nome semplice`, node);
   if (!t.isBlockStatement(node.body)) fail(`${label} richiede un blocco { ... }`, node.body);
-  return { ...(node.params[0] && t.isIdentifier(node.params[0]) ? { name: node.params[0].name } : {}), statements: compileBlock(node.body) };
+  return { ...(node.params[0] && t.isIdentifier(node.params[0]) ? { name: node.params[0].name } : {}), arrow: t.isArrowFunctionExpression(node), statements: compileBlock(node.body) };
 }
 
 function compilePromiseStatement(call: t.CallExpression): HmiScriptStatement | undefined {
@@ -774,7 +791,9 @@ function compileBlock(node: t.Statement | t.BlockStatement | null | undefined): 
       for (const declaration of statement.declarations) {
         if (!t.isIdentifier(declaration.id)) fail("Sono ammesse solo variabili con nome semplice", declaration);
         if (declaration.init && !t.isExpression(declaration.init)) fail("Valore iniziale non supportato", declaration.init);
-        result.push({ kind: "declare", name: declaration.id.name, ...(declaration.init ? { value: compileExpression(declaration.init) } : {}), ...(statement.kind === "const" ? { constant: true } : {}), ...(statement.kind === "var" ? { functionScoped: true } : {}) });
+        const value = declaration.init ? compileExpression(declaration.init) : undefined;
+        if (value?.kind === "function-value" && !value.name) value.displayName = declaration.id.name;
+        result.push({ kind: "declare", name: declaration.id.name, ...(value ? { value } : {}), ...(statement.kind === "const" ? { constant: true } : {}), ...(statement.kind === "var" ? { functionScoped: true } : {}) });
       }
       continue;
     }
@@ -870,22 +889,41 @@ function updateStaticArray(expression: Extract<HmiScriptExpression, { kind: "arr
   }
 }
 
-type StaticFunction = Extract<HmiScriptExpression, { kind: "function-value" }> & { bindings?: Map<string, HmiScriptExpression>; inspecting?: boolean };
+type StaticFunction = Extract<HmiScriptExpression, { kind: "function-value" }> & { bindings?: Map<string, HmiScriptExpression>; inspecting?: boolean; lexicalThis?: HmiScriptExpression; intrinsic?: "call" | "apply" | "bind"; bound?: { target: HmiScriptExpression; receiver: HmiScriptExpression; arguments: HmiScriptExpression[] } };
 
-let hmiInspectionBudget: { remaining: number; deadline: number; arrayDepth: number } | undefined;
+let hmiInspectionBudget: { remaining: number; deadline: number; arrayDepth: number; callDepth: number } | undefined;
 function inspectionStep() {
   const budget = hmiInspectionBudget;
   if (budget && (--budget.remaining < 0 || (budget.remaining & 127) === 0 && Date.now() > budget.deadline)) throw new Error("Ispezione dello script interrotta: il calcolo e' troppo complesso. Riduci il numero di callback o dividi lo script in funzioni piu' semplici.");
 }
 
-function inspectCallable(expression: HmiScriptExpression, args: HmiScriptExpression[], locals: Map<string, HmiScriptExpression>, read = new Set<string>(), written = new Set<string>(), asyncState = { value: false }): HmiScriptExpression[] {
+function inspectCallable(expression: HmiScriptExpression, args: HmiScriptExpression[], locals: Map<string, HmiScriptExpression>, read = new Set<string>(), written = new Set<string>(), asyncState = { value: false }, receiver?: HmiScriptExpression): HmiScriptExpression[] {
   inspectionStep();
+  const budget = hmiInspectionBudget;
+  if (budget && budget.callDepth >= 32) throw new Error("Ispezione dello script interrotta: troppe chiamate di funzione annidate.");
+  if (budget) budget.callDepth++;
+  try {
   const result: HmiScriptExpression[] = [];
   for (const candidate of staticValues(expression, locals)) {
     if (candidate.kind !== "function-value") continue;
     const fn = bindStaticData(candidate, locals) as StaticFunction;
     if (fn.inspecting) continue;
+    if (fn.bound) { result.push(...inspectCallable(fn.bound.target, [...fn.bound.arguments, ...args], locals, read, written, asyncState, fn.bound.receiver)); continue; }
+    if (fn.intrinsic) {
+      if (!receiver) continue;
+      const context: HmiScriptExpression = args[0] ?? { kind: "undefined" };
+      if (fn.intrinsic === "call") result.push(...inspectCallable(receiver, args.slice(1), locals, read, written, asyncState, context));
+      else if (fn.intrinsic === "apply") {
+        for (const target of staticValues(receiver, locals)) if (target.kind === "function-value") {
+          const values = target.parameters.map((_, index): HmiScriptExpression => args[1] ? { kind: "member", object: args[1], key: { kind: "literal", value: index } } : { kind: "undefined" });
+          result.push(...inspectCallable(target, values, locals, read, written, asyncState, context));
+        }
+      } else for (const target of staticValues(receiver, locals)) if (target.kind === "function-value") result.push(Object.assign({ ...target, parameters: target.parameters.slice(Math.max(0, args.length - 1)) }, { bound: { target: bindStaticData(target, locals), receiver: staticChoice(staticValues(context, locals)) ?? { kind: "local", name: "" }, arguments: args.slice(1).map(value => bindStaticData(value, locals)) } }));
+      continue;
+    }
     const bindings = new Map(fn.bindings ?? locals);
+    const context = fn.arrow ? fn.lexicalThis ?? { kind: "undefined" } as HmiScriptExpression : receiver ?? { kind: "undefined" } as HmiScriptExpression;
+    bindings.set("[this]", staticChoice(staticValues(context, locals)) ?? { kind: "local", name: "" });
     if (fn.name) bindings.set(fn.name, fn);
     for (let index = 0; index < fn.parameters.length; index++) {
       if (args[index]) bindings.set(fn.parameters[index], bindStaticData(args[index], locals)); else bindings.delete(fn.parameters[index]);
@@ -906,6 +944,11 @@ function inspectCallable(expression: HmiScriptExpression, args: HmiScriptExpress
     } finally { fn.inspecting = false; }
   }
   return result;
+  } finally { if (budget) budget.callDepth--; }
+}
+
+function inspectInvocation(expression: Extract<HmiScriptExpression, { kind: "invoke" }>, locals: Map<string, HmiScriptExpression>, read = new Set<string>(), written = new Set<string>(), asyncState = { value: false }): HmiScriptExpression[] {
+  return inspectCallable(expression.callee, expression.arguments, locals, read, written, asyncState, expression.callee.kind === "member" ? expression.callee.object : undefined);
 }
 
 function inspectArrayCallback(expression: Extract<HmiScriptExpression, { kind: "array-method" }>, locals: Map<string, HmiScriptExpression>, read = new Set<string>(), written = new Set<string>(), asyncState = { value: false }): HmiScriptExpression[] {
@@ -916,14 +959,18 @@ function inspectArrayCallback(expression: Extract<HmiScriptExpression, { kind: "
   try {
   const method = expression.method;
   if (!["map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight", "sort"].includes(method) || !expression.arguments.length) return [];
-  const arrays = staticValues(expression.object, locals).filter((value): value is StaticArray => value.kind === "array");
+  const targets = staticValues(expression.object, locals);
+  const methods = targets.flatMap(value => value.kind === "object" ? value.entries.filter(entry => entry.name === method).map(entry => entry.value) : []);
+  const methodReturns = methods.flatMap(value => inspectCallable(value, expression.arguments, locals, read, written, asyncState, expression.object));
+  const arrays = targets.filter((value): value is StaticArray => value.kind === "array");
+  if (!arrays.length && methods.length) return methodReturns;
   const items = arrays.flatMap(array => staticArrayItems(array)).filter(item => item.kind !== "array-hole");
   const element = staticChoice(items) ?? { kind: "undefined" } as HmiScriptExpression;
   const position: HmiScriptExpression = { kind: "local", name: "" };
   const reducing = method === "reduce" || method === "reduceRight";
   const seed = expression.arguments[1] ?? element;
   const callbackArgs = reducing ? [staticChoice([bindStaticData(seed, locals), element])!, element, position, expression.object] : method === "sort" ? [element, element] : [element, position, expression.object];
-  const returns = inspectCallable(expression.arguments[0], callbackArgs, locals, read, written, asyncState);
+  const returns = inspectCallable(expression.arguments[0], callbackArgs, locals, read, written, asyncState, !reducing && method !== "sort" ? expression.arguments[1] : undefined);
   for (const value of returns) for (const tag of staticTags(value, locals, true)) read.add(tag);
   if (method === "map") return [{ kind: "array", items: returns, possibleItems: returns } as StaticArray];
   if (method === "flatMap") {
@@ -1002,9 +1049,10 @@ function staticValues(expression: HmiScriptExpression, locals: Map<string, HmiSc
   if (path.has(expression) || path.size >= 64) return [];
   const next = new Set(path); next.add(expression);
   const resolve = (value: HmiScriptExpression) => staticValues(value, locals, next);
+  if (expression.kind === "this") { const binding = locals.get("[this]"); return binding ? resolve(binding) : []; }
   if (expression.kind === "invoke") {
     if (expression.arguments.length === 1 && staticValues(expression.callee, locals, next).some(value => value.kind === "tag-set")) return staticValues({ kind: "tag-set-item", set: expression.callee, tag: expression.arguments[0] }, locals, next);
-    return inspectCallable(expression.callee, expression.arguments, locals);
+    return inspectInvocation(expression, locals);
   }
   if (expression.kind === "local" || expression.kind === "module-variable") {
     const binding = locals.get(expression.name);
@@ -1016,7 +1064,14 @@ function staticValues(expression: HmiScriptExpression, locals: Map<string, HmiSc
     const names = keys.flatMap((key) => key.kind === "literal" ? [String(key.value)] : []);
     const result: HmiScriptExpression[] = [];
     for (const object of resolve(expression.object)) {
-      if (object.kind === "object") {
+      if (object.kind === "function-value") {
+        const keys = known ? names : ["call", "apply", "bind", "name", "length"];
+        for (const key of keys) {
+          if (["call", "apply", "bind"].includes(key)) result.push(Object.assign({ kind: "function-value" as const, parameters: key === "apply" ? ["thisArg", "arguments"] : ["thisArg"], program: { version: 5 as const, statements: [] } }, { intrinsic: key }));
+          else if (key === "length") result.push({ kind: "literal", value: object.parameters.length });
+          else if (key === "name") result.push({ kind: "literal", value: object.name ?? object.displayName ?? "" });
+        }
+      } else if (object.kind === "object") {
         for (const entry of object.entries) if (!known || names.includes(entry.name)) result.push(...resolve(entry.value));
       } else if (object.kind === "array") {
         const possible = (object as StaticArray).possibleItems;
@@ -1073,8 +1128,9 @@ function staticTags(expression: HmiScriptExpression, locals: Map<string, HmiScri
 }
 
 function bindStaticData(expression: HmiScriptExpression, locals: Map<string, HmiScriptExpression>): HmiScriptExpression {
-  if (expression.kind === "function-value") return (expression as StaticFunction).bindings ? expression : Object.assign({ ...expression }, { bindings: locals });
-  if (expression.kind === "invoke") return staticChoice(inspectCallable(expression.callee, expression.arguments, locals)) ?? expression;
+  if (expression.kind === "this") return locals.get("[this]") ?? expression;
+  if (expression.kind === "function-value") return (expression as StaticFunction).bindings ? expression : Object.assign({ ...expression }, { bindings: locals, ...(expression.arrow ? { lexicalThis: locals.get("[this]") ?? { kind: "undefined" } } : {}) });
+  if (expression.kind === "invoke") return staticChoice(inspectInvocation(expression, locals)) ?? expression;
   if (expression.kind === "array") return { ...expression, items: expression.items.map((item) => bindStaticData(item, locals)) };
   if (expression.kind === "object") return { ...expression, entries: expression.entries.map((entry) => ({ ...entry, value: bindStaticData(entry.value, locals) })) };
   if (expression.kind === "tag-set") return { ...expression, entries: expression.entries.map((entry) => ({ ...entry, ...(entry.value ? { value: bindStaticData(entry.value, locals) } : {}) })) };
@@ -1143,7 +1199,7 @@ function inspectStatements(statements: readonly HmiScriptStatement[], read: Set<
     const item = value as Record<string, unknown>;
     if (item.kind === "function-value") { callbacks.push({ program: item.program as HmiScriptProgram, bindings: new Map(locals), parameters: item.parameters as string[] }); return; }
     if (item.kind === "array-method") inspectArrayCallback(item as unknown as Extract<HmiScriptExpression, {kind:"array-method"}>, locals, read, written, asyncState);
-    if (item.kind === "invoke") inspectCallable(item.callee as HmiScriptExpression, item.arguments as HmiScriptExpression[], locals, read, written, asyncState);
+    if (item.kind === "invoke") inspectInvocation(item as unknown as Extract<HmiScriptExpression, {kind:"invoke"}>, locals, read, written, asyncState);
     if (item.kind === "timer-set" && item.callback && typeof item.callback === "object") {
       const callback = item.callback as Extract<HmiScriptExpression, {kind:"timer-set"}>["callback"];
       if (callback.kind === "inline") callbacks.push({ program: callback.program, bindings: new Map(locals) });
@@ -1339,13 +1395,13 @@ function inspectModuleDependencies(program: HmiScriptProgram, functions: Readonl
       if (!definition) {
         if (variables?.[item.name]) {
           const reference: HmiScriptExpression = { kind: "module-variable", name: item.name };
-          const bindingProgram: HmiScriptProgram = { version: 4, statements: [{ kind: "expression", value: reference }] };
+          const bindingProgram: HmiScriptProgram = { version: 5, statements: [{ kind: "expression", value: reference }] };
           const bindings = inspectModuleVariables(bindingProgram, variables, read, written, asyncState, new Map(callerLocals), [], functions);
           inspectCallable(reference, item.arguments as HmiScriptExpression[], bindings, read, written, asyncState); return;
         }
         throw new Error("Funzione HMI " + item.name + " non definita o non importata nel contesto corrente.");
       }
-      if (definition.parameters.length !== item.arguments.length) throw new Error(`${item.name} richiede ${definition.parameters.length} argomenti, ricevuti ${item.arguments.length}.`);
+      if (definition.program.version < 5 && definition.parameters.length !== item.arguments.length) throw new Error(`${item.name} richiede ${definition.parameters.length} argomenti, ricevuti ${item.arguments.length}.`);
       if (stack.includes(item.name)) throw new Error(`Chiamata ricorsiva non ammessa: ${[...stack, item.name].join(" -> ")}.`);
       for (const tag of definition.tagsRead ?? []) read.add(tag);
       for (const tag of definition.tagsWritten ?? []) written.add(tag);
@@ -1379,9 +1435,9 @@ function inspectModuleDependencies(program: HmiScriptProgram, functions: Readonl
 
 export function inspectHmiScriptProgram(program: HmiScriptProgram, functions?: Readonly<Record<string, HmiScriptRuntimeFunction>>, definition?: HmiScriptProgram, parameters: readonly string[] = [], variables?: Readonly<Record<string, HmiScriptRuntimeVariable>>): HmiScriptInspection {
   const previousBudget = hmiInspectionBudget;
-  hmiInspectionBudget = { remaining: 100000, deadline: Date.now() + 500, arrayDepth: 0 };
+  hmiInspectionBudget = { remaining: 100000, deadline: Date.now() + 500, arrayDepth: 0, callDepth: 0 };
   try {
-    if (!program || ![1, 2, 3, 4].includes(program.version) || !Array.isArray(program.statements)) throw new Error("Versione dello script non supportata: aggiorna il Runtime e ricompila il sorgente.");
+    if (!program || ![1, 2, 3, 4, 5].includes(program.version) || !Array.isArray(program.statements)) throw new Error("Versione dello script non supportata: aggiorna il Runtime e ricompila il sorgente.");
     const read = new Set<string>();
     const written = new Set<string>();
     const asyncState = { value: false };
@@ -1407,7 +1463,7 @@ export function inspectHmiScript(source: string, functions?: Readonly<Record<str
     const file = parse(`async function __framecraftScript() {\n${source}\n}`, { sourceType: "module" });
     const declaration = file.program.body[0];
     if (!t.isFunctionDeclaration(declaration) || !t.isBlockStatement(declaration.body)) fail("Script non leggibile");
-    return inspectHmiScriptProgram({ version: 4, statements: compileBlock(declaration.body) }, functions, definition, parameters, variables);
+    return inspectHmiScriptProgram({ version: 5, statements: compileBlock(declaration.body) }, functions, definition, parameters, variables);
   } catch (caught) {
     return { tagsRead: [], tagsWritten: [], hasReturn: false, hasAsync: false, error: caught instanceof Error ? caught.message : String(caught) };
   }
@@ -1437,7 +1493,7 @@ export function inspectHmiScriptDefinition(source: string, allowExports = false)
         statements.push(...compileBlock(item));
       }
     }
-    return inspectHmiScriptProgram({ version: 4, statements, ...(exports.length ? { exports } : {}) });
+    return inspectHmiScriptProgram({ version: 5, statements, ...(exports.length ? { exports } : {}) });
   } catch (caught) {
     return { tagsRead: [], tagsWritten: [], hasReturn: false, hasAsync: false, error: caught instanceof Error ? caught.message : String(caught) };
   }
@@ -1659,19 +1715,19 @@ function dataArrayMethod(target: RuntimeValue, method: string, args: RuntimeValu
   throw new Error("Metodo Array " + method + " non supportato.");
 }
 
-function* dataArrayCallbackMethod(target: RuntimeValue, method: string, args: RuntimeValue[], tick: () => void, invoke: (fn: FunctionReference, args: RuntimeValue[]) => ScriptCoroutine<RuntimeValue>): ScriptCoroutine<RuntimeValue> {
+function* dataArrayCallbackMethod(target: RuntimeValue, method: string, args: RuntimeValue[], tick: () => void, invoke: (fn: FunctionReference, args: RuntimeValue[], receiver?: RuntimeValue) => ScriptCoroutine<RuntimeValue>, receiverSupport = false): ScriptCoroutine<RuntimeValue> {
   if (!isDataReference(target) || !Array.isArray(target.data)) throw new Error(method + " richiede un array.");
   const array = target.data, length = array.length;
   if (length > 1024) throw new Error("L'array supera 1024 elementi.");
   const reducing = method === "reduce" || method === "reduceRight", sorting = method === "sort";
-  const minimum = sorting ? 0 : 1, maximum = reducing ? 2 : 1;
-  if (args.length < minimum || args.length > maximum) throw new Error(method + " richiede da " + minimum + " a " + maximum + " argomenti; thisArg non e' ancora supportato.");
+  const minimum = sorting ? 0 : 1, maximum = reducing ? 2 : !sorting && receiverSupport ? 2 : 1;
+  if (args.length < minimum || args.length > maximum) throw new Error(method + " richiede da " + minimum + " a " + maximum + " argomenti; thisArg non e' disponibile in questo contesto.");
   const fn = args[0];
   if (!(sorting && (fn === undefined || isUndefinedReference(fn))) && !isFunctionReference(fn)) throw new Error("La callback di " + method + " deve essere una funzione HMI.");
   const call = function* (values: RuntimeValue[]): ScriptCoroutine<RuntimeValue> {
     tick();
     if (!isFunctionReference(fn)) throw new Error("Callback non valida.");
-    return yield* invoke(fn, fn.scriptFunction.parameters.map((_, index) => values[index] === undefined ? undefinedValue() : values[index]));
+    return yield* invoke(fn, fn.scriptFunction.program.version >= 5 ? values : fn.scriptFunction.parameters.map((_, index) => values[index] === undefined ? undefinedValue() : values[index]), !sorting && !reducing && receiverSupport && args.length > 1 ? args[1] : undefinedValue());
   };
   if (sorting) {
     let rows = Object.values(array);
@@ -1736,8 +1792,17 @@ function* dataArrayCallbackMethod(target: RuntimeValue, method: string, args: Ru
 }
 
 function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<Record<string, string>>, options: HmiScriptExecutionOptions = {}): ScriptCoroutine<HmiScriptExecution> {
-  if (!program || ![1, 2, 3, 4].includes(program.version) || !Array.isArray(program.statements)) return { writes: {}, traces: [], navigation: [], operatorMessages: [], faceplateEvents: [], tagStatus: {}, steps: 0, error: "Versione dello script non supportata. Aggiorna il Runtime e ricompila lo script nell’editor; nessun comando eseguito." };
+  if (!program || ![1, 2, 3, 4, 5].includes(program.version) || !Array.isArray(program.statements)) return { writes: {}, traces: [], navigation: [], operatorMessages: [], faceplateEvents: [], tagStatus: {}, steps: 0, error: "Versione dello script non supportata. Aggiorna il Runtime e ricompila lo script nell’editor; nessun comando eseguito." };
   const lexicalBlocks = program.version >= 2;
+  let thisBinding: HmiScriptThisBinding = options.thisBinding ?? ("thisValue" in options ? { value: options.thisValue === undefined ? undefinedValue() : options.thisValue } : program.version >= 5 && !options.initializingScope && options.scriptContext !== "scheduler" && options.screenItems ? { screenItems: options.screenItems } : { value: undefinedValue() });
+  const currentThis = (): RuntimeValue => thisBinding.value !== undefined ? thisBinding.value : (thisBinding.value = thisBinding.screenItems ? thisBinding.screenItems.resolve("screen") : undefinedValue());
+  const referenceEquality = (left: RuntimeValue, right: RuntimeValue): boolean | undefined => {
+    if (program.version < 5) return undefined;
+    if (left && right && typeof left === "object" && typeof right === "object" && "screenItemId" in left && "screenItemId" in right) return left.screenItemId === right.screenItemId && left.screenPropertyPath === right.screenPropertyPath;
+    if (isFunctionReference(left) && isFunctionReference(right) && left.scriptFunction.intrinsic && right.scriptFunction.intrinsic) return left.scriptFunction.intrinsic === right.scriptFunction.intrinsic;
+    if (isDataReference(left) && isDataReference(right)) return left === right;
+    return undefined;
+  };
   const modern = program.version >= 4;
   const truth = (value: RuntimeValue) => truthy(value, modern);
   const values = { ...input };
@@ -1854,7 +1919,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     if (scope.status === "initializing") throw new Error("Inizializzazione ricorsiva del contesto script.");
     if (scope.status === "new" && scope.initializer) {
       scope.status = "initializing";
-      const initialized = (yield* executeHmiScriptCoroutine(scope.initializer, values, { ...options, locals: undefined, globalScope: undefined, closureScope: undefined, initializingScope: scope, maxSteps: Math.max(1, maxSteps - steps), timeoutMs: Math.max(1, timeoutMs - elapsed()) }));
+      const initialized = (yield* executeHmiScriptCoroutine(scope.initializer, values, { ...options, locals: undefined, globalScope: undefined, closureScope: undefined, initializingScope: scope, thisBinding: { value: undefinedValue() }, maxSteps: Math.max(1, maxSteps - steps), timeoutMs: Math.max(1, timeoutMs - elapsed()) }));
       mergeNested(initialized);
       if (initialized.error) { scope.status = "failed"; scope.error = initialized.error; throw new Error(initialized.error); }
       scope.status = "ready";
@@ -1865,92 +1930,20 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     for (const item of items) { if (item.kind === "array-hole") { if (!modern) throw new Error("Un array sparso richiede IR 4."); tick(); values.length++; } else values.push(yield* evaluate(item)); }
     return values;
   };
-  const evaluate = function* (expression: HmiScriptExpression): ScriptCoroutine<RuntimeValue> {
-    tick();
-    if (expression.kind === "literal") return expression.value;
-    if (expression.kind === "undefined") { if (!modern) throw new Error("undefined richiede IR 4: ricompila lo script."); return undefinedValue(); }
-    if (expression.kind === "array-hole") throw new Error("Una posizione array vuota e' ammessa solo in un array IR 4.");
-    if (expression.kind === "local") {
-      const owner = ownerOf(expression.name);
-      if (!owner && ["Screen", "Faceplate", "item"].includes(expression.name)) {
-        if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
-        return options.screenItems.resolve(expression.name === "Screen" ? "screen" : expression.name === "Faceplate" ? "faceplate" : "item");
-      }
-      if (!owner) throw new Error(`Variabile locale ${expression.name} non definita.`);
-      if (owner.uninitialized?.has(expression.name)) throw new Error(`La variabile ${expression.name} non e' ancora inizializzata: sposta la dichiarazione prima dell'uso.`);
-      if (owner.unassigned?.has(expression.name)) { const message = `La variabile ${expression.name} non ha ancora un valore: assegnalo prima di leggerla o inviarla al PLC.`; if (modern) return undefinedValue(message); throw new Error(message); }
-      return owner.values.get(expression.name)!;
+  const intrinsics = new Map<FunctionIntrinsic, FunctionReference>();
+  const intrinsicFunction = (intrinsic: FunctionIntrinsic): FunctionReference => {
+    let fn = intrinsics.get(intrinsic);
+    if (!fn) { fn = { scriptFunction: { intrinsic, name: intrinsic === "screen-items" ? "Items" : intrinsic, parameters: intrinsic === "apply" ? ["thisArg", "arguments"] : ["thisArg"], program: { version: 5, statements: [] } } }; intrinsics.set(intrinsic, fn); }
+    return fn;
+  };
+  const readMember = (object: RuntimeValue, key: string): RuntimeValue => {
+    if (program.version >= 5 && isFunctionReference(object)) {
+      if (key === "length") return object.scriptFunction.parameters.length;
+      if (key === "name") return object.scriptFunction.name ?? "";
+      if (["call", "apply", "bind"].includes(key)) return intrinsicFunction(key as FunctionIntrinsic);
     }
-    if (expression.kind === "function-value") {
-      if (program.version < 3) throw new Error("Le funzioni valore richiedono IR 3: ricompila lo script.");
-      return makeFunction(expression);
-    }
-    if (expression.kind === "invoke") {
-      if (program.version < 3) throw new Error("Le chiamate a funzioni valore richiedono IR 3: ricompila lo script.");
-      const target = (yield* evaluate(expression.callee));
-      const args = (yield* mapScriptValues(expression.arguments, evaluate));
-      if (isTagSetReference(target) && args.length === 1) {
-        const name = tagName(args[0]);
-        if (!target.tagSet.names.includes(name)) throw new Error("Il tag " + name + " non appartiene al TagSet.");
-        return { tag: name, tagSet: target.tagSet };
-      }
-      if (!isFunctionReference(target)) throw new Error("Il valore selezionato non e' una funzione HMI.");
-      return (yield* invokeFunction(target, args));
-    }
-    if (expression.kind === "module-variable") {
-      const definition = options.functions?.[expression.name];
-      if (definition) return { scriptFunction: { parameters: definition.parameters, program: definition.program, scope: definition.globalScope, globalScope: definition.globalScope, functions: options.functions, variables: options.variables, name: expression.name } };
-      const binding = options.variables?.[expression.name];
-      if (!binding?.globalScope || !binding.definition.exports?.some((entry) => entry.local === binding.name && expression.name.endsWith(`.${entry.name}`))) throw new Error(`Variabile pubblica HMI ${expression.name} non esportata o modulo non disponibile.`);
-      (yield* initializeScope(binding.globalScope));
-      if (!binding.globalScope.values.has(binding.name)) throw new Error(`Variabile pubblica HMI ${expression.name} non inizializzata.`);
-      if (binding.globalScope.uninitialized?.has(binding.name)) throw new Error(`La variabile pubblica ${expression.name} non ha ancora un valore: inizializzala nel modulo proprietario.`);
-      if (binding.globalScope.unassigned?.has(binding.name)) { const message = `La variabile pubblica ${expression.name} non ha ancora un valore: inizializzala nel modulo proprietario.`; if (modern) return undefinedValue(message); throw new Error(message); }
-      return binding.globalScope.values.get(binding.name)!;
-    }
-    if (expression.kind === "array" || expression.kind === "object") {
-      if ((expression.kind === "array" ? expression.items.length : expression.entries.length) > 1024) throw new Error("Una raccolta dati supera il limite di 1024 elementi.");
-      const result: DataReference = expression.kind === "array"
-        ? { data: (yield* arrayValues(expression.items)) }
-        : { data: Object.assign(Object.create(null), Object.fromEntries((yield* mapScriptValues(expression.entries, function* (item) { return [dataKey(item.name), (yield* evaluate(item.value))]; })))) };
-      checkData(result, tick);
-      return result;
-    }
-    if (expression.kind === "array-method") {
-      const callback = ["map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight"].includes(expression.method);
-      if (!modern && (callback || expression.method === "sort" && expression.arguments.length)) throw new Error("Le callback Array richiedono IR 4: aggiorna il Runtime e ricompila lo script.");
-      const target = yield* evaluate(expression.object), args = yield* mapScriptValues(expression.arguments, evaluate);
-      if (callback || expression.method === "sort" && modern) return yield* dataArrayCallbackMethod(target, expression.method, args, tick, invokeFunction);
-      return dataArrayMethod(target, expression.method, args, tick, modern);
-    }
-    if (expression.kind === "screen-item") {
-      if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
-      const name = scalar((yield* evaluate(expression.name)));
-      if (typeof name !== "string" || !name.trim() || name.length > 128) throw new Error("Items richiede un nome oggetto HMI non vuoto, fino a 128 caratteri.");
-      return options.screenItems.resolve(expression.scope, name);
-    }
-    if (expression.kind === "property-flashing") {
-      if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
-      const target = (yield* evaluate(expression.item));
-      if (!target || typeof target !== "object" || !("screenItemId" in target)) throw new Error("PropertyFlashing richiede un oggetto Screen/Faceplate, non dati o tag.");
-      return options.screenItems.propertyFlashing(target, (yield* mapScriptValues(expression.arguments, function* (argument) { return scalar((yield* evaluate(argument))); })));
-    }
-    if (expression.kind === "data-call") {
-      const argument = (yield* evaluate(expression.arguments[0]));
-      if (expression.name === "JSON.parse") {
-        const text = String(scalar(argument) ?? "null");
-        if (text.length > 20000) throw new Error("Il JSON supera 20000 caratteri.");
-        return dataFromJson(JSON.parse(text), tick);
-      }
-      if (expression.name === "JSON.stringify") return dataJson(argument, tick);
-      if (!isDataReference(argument)) throw new Error(expression.name + " richiede un oggetto o un array di dati.");
-      const entries = Object.entries(argument.data);
-      return { data: expression.name === "Object.keys" ? entries.map(([key]) => key)
-        : expression.name === "Object.values" ? entries.map(([, value]) => value)
-          : entries.map(([key, value]) => ({ data: [key, value] })) };
-    }
-    if (expression.kind === "member") {
-      const object = (yield* evaluate(expression.object)), key = dataKey((yield* evaluate(expression.key)));
+    if (program.version >= 5 && key === "Items" && object && typeof object === "object" && "screenItemId" in object && !object.screenPropertyPath && options.screenItems && object.screenItemId === options.screenItems.resolve("screen").screenItemId) return intrinsicFunction("screen-items");
+
       if (isDataReference(object)) return dataGet(object, key, modern);
       if (object && typeof object === "object" && "screenItemId" in object) {
         if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
@@ -1980,7 +1973,103 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         if (key === "ErrorDescription") return status.errorDescription;
       }
       throw new Error("Il valore non espone la proprieta' " + key + " nella sandbox.");
+  };
+  const evaluate = function* (expression: HmiScriptExpression): ScriptCoroutine<RuntimeValue> {
+    tick();
+    if (expression.kind === "literal") return expression.value;
+    if (expression.kind === "this") { if (program.version < 5) throw new Error("this richiede IR 5: aggiorna il Runtime e ricompila lo script."); return currentThis(); }
+    if (expression.kind === "undefined") { if (!modern) throw new Error("undefined richiede IR 4: ricompila lo script."); return undefinedValue(); }
+    if (expression.kind === "array-hole") throw new Error("Una posizione array vuota e' ammessa solo in un array IR 4.");
+    if (expression.kind === "local") {
+      const owner = ownerOf(expression.name);
+      if (!owner && ["Screen", "Faceplate", "item"].includes(expression.name)) {
+        if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
+        return options.screenItems.resolve(expression.name === "Screen" ? "screen" : expression.name === "Faceplate" ? "faceplate" : "item");
+      }
+      if (!owner) throw new Error(`Variabile locale ${expression.name} non definita.`);
+      if (owner.uninitialized?.has(expression.name)) throw new Error(`La variabile ${expression.name} non e' ancora inizializzata: sposta la dichiarazione prima dell'uso.`);
+      if (owner.unassigned?.has(expression.name)) { const message = `La variabile ${expression.name} non ha ancora un valore: assegnalo prima di leggerla o inviarla al PLC.`; if (modern) return undefinedValue(message); throw new Error(message); }
+      return owner.values.get(expression.name)!;
     }
+    if (expression.kind === "function-value") {
+      if (program.version < 3) throw new Error("Le funzioni valore richiedono IR 3: ricompila lo script.");
+      return makeFunction(expression);
+    }
+    if (expression.kind === "invoke") {
+      if (program.version < 3) throw new Error("Le chiamate a funzioni valore richiedono IR 3: ricompila lo script.");
+      let receiver: RuntimeValue = undefinedValue();
+      let target: RuntimeValue;
+      if (program.version >= 5 && expression.callee.kind === "member") {
+        receiver = yield* evaluate(expression.callee.object);
+        target = readMember(receiver, dataKey(yield* evaluate(expression.callee.key)));
+      } else target = yield* evaluate(expression.callee);
+      const args = (yield* mapScriptValues(expression.arguments, evaluate));
+      if (isTagSetReference(target) && args.length === 1) {
+        const name = tagName(args[0]);
+        if (!target.tagSet.names.includes(name)) throw new Error("Il tag " + name + " non appartiene al TagSet.");
+        return { tag: name, tagSet: target.tagSet };
+      }
+      if (!isFunctionReference(target)) throw new Error("Il valore selezionato non e' una funzione HMI.");
+      return (yield* invokeFunction(target, args, receiver));
+    }
+    if (expression.kind === "module-variable") {
+      const definition = options.functions?.[expression.name];
+      if (definition) return { scriptFunction: { parameters: definition.parameters, program: definition.program, scope: definition.globalScope, globalScope: definition.globalScope, functions: options.functions, variables: options.variables, name: expression.name } };
+      const binding = options.variables?.[expression.name];
+      if (!binding?.globalScope || !binding.definition.exports?.some((entry) => entry.local === binding.name && expression.name.endsWith(`.${entry.name}`))) throw new Error(`Variabile pubblica HMI ${expression.name} non esportata o modulo non disponibile.`);
+      (yield* initializeScope(binding.globalScope));
+      if (!binding.globalScope.values.has(binding.name)) throw new Error(`Variabile pubblica HMI ${expression.name} non inizializzata.`);
+      if (binding.globalScope.uninitialized?.has(binding.name)) throw new Error(`La variabile pubblica ${expression.name} non ha ancora un valore: inizializzala nel modulo proprietario.`);
+      if (binding.globalScope.unassigned?.has(binding.name)) { const message = `La variabile pubblica ${expression.name} non ha ancora un valore: inizializzala nel modulo proprietario.`; if (modern) return undefinedValue(message); throw new Error(message); }
+      return binding.globalScope.values.get(binding.name)!;
+    }
+    if (expression.kind === "array" || expression.kind === "object") {
+      if ((expression.kind === "array" ? expression.items.length : expression.entries.length) > 1024) throw new Error("Una raccolta dati supera il limite di 1024 elementi.");
+      const result: DataReference = expression.kind === "array"
+        ? { data: (yield* arrayValues(expression.items)) }
+        : { data: Object.assign(Object.create(null), Object.fromEntries((yield* mapScriptValues(expression.entries, function* (item) { return [dataKey(item.name), (yield* evaluate(item.value))]; })))) };
+      checkData(result, tick);
+      return result;
+    }
+    if (expression.kind === "array-method") {
+      const callback = ["map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight"].includes(expression.method);
+      if (!modern && (callback || expression.method === "sort" && expression.arguments.length)) throw new Error("Le callback Array richiedono IR 4: aggiorna il Runtime e ricompila lo script.");
+      const target = yield* evaluate(expression.object), args = yield* mapScriptValues(expression.arguments, evaluate);
+      if (program.version >= 5 && isDataReference(target) && !Array.isArray(target.data)) {
+        const method = dataGet(target, expression.method, true);
+        if (!isFunctionReference(method)) throw new Error("Il membro " + expression.method + " non e' una funzione.");
+        return yield* invokeFunction(method, args, target);
+      }
+      if (callback || expression.method === "sort" && modern) return yield* dataArrayCallbackMethod(target, expression.method, args, tick, invokeFunction, program.version >= 5);
+      return dataArrayMethod(target, expression.method, args, tick, modern);
+    }
+    if (expression.kind === "screen-item") {
+      if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
+      const name = scalar((yield* evaluate(expression.name)));
+      if (typeof name !== "string" || !name.trim() || name.length > 128) throw new Error("Items richiede un nome oggetto HMI non vuoto, fino a 128 caratteri.");
+      return options.screenItems.resolve(expression.scope, name);
+    }
+    if (expression.kind === "property-flashing") {
+      if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
+      const target = (yield* evaluate(expression.item));
+      if (!target || typeof target !== "object" || !("screenItemId" in target)) throw new Error("PropertyFlashing richiede un oggetto Screen/Faceplate, non dati o tag.");
+      return options.screenItems.propertyFlashing(target, (yield* mapScriptValues(expression.arguments, function* (argument) { return scalar((yield* evaluate(argument))); })));
+    }
+    if (expression.kind === "data-call") {
+      const argument = (yield* evaluate(expression.arguments[0]));
+      if (expression.name === "JSON.parse") {
+        const text = String(scalar(argument) ?? "null");
+        if (text.length > 20000) throw new Error("Il JSON supera 20000 caratteri.");
+        return dataFromJson(JSON.parse(text), tick);
+      }
+      if (expression.name === "JSON.stringify") return dataJson(argument, tick);
+      if (!isDataReference(argument)) throw new Error(expression.name + " richiede un oggetto o un array di dati.");
+      const entries = Object.entries(argument.data);
+      return { data: expression.name === "Object.keys" ? entries.map(([key]) => key)
+        : expression.name === "Object.values" ? entries.map(([, value]) => value)
+          : entries.map(([key, value]) => ({ data: [key, value] })) };
+    }
+    if (expression.kind === "member") return readMember((yield* evaluate(expression.object)), dataKey((yield* evaluate(expression.key))));
     if (expression.kind === "tag-ref") return { tag: expression.name };
     if (expression.kind === "tag-set") {
       const pending: Record<string, HmiScriptScalar> = {};
@@ -2066,7 +2155,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         }
         throw new Error("Funzione HMI " + expression.name + " non definita o non importata nel contesto corrente.");
       }
-      if (definition.parameters.length !== expression.arguments.length) {
+      if (definition.program.version < 5 && definition.parameters.length !== expression.arguments.length) {
         throw new Error(`${expression.name} richiede ${definition.parameters.length} argomenti, ricevuti ${expression.arguments.length}.`);
       }
       const stack = options.callStack ?? [];
@@ -2077,7 +2166,8 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         ...options,
         maxSteps: Math.max(1, maxSteps - steps),
         timeoutMs: Math.max(1, timeoutMs - elapsed()),
-        locals: Object.fromEntries(definition.parameters.map((parameter, index) => [parameter, args[index] ?? null])),
+        locals: Object.fromEntries(definition.parameters.map((parameter, index) => [parameter, args[index] === undefined ? definition.program.version >= 5 ? undefinedValue() : null : args[index]])),
+        thisBinding: { value: undefinedValue() },
         globalScope: definition.globalScope,
         closureScope: undefined,
         initializingScope: undefined,
@@ -2131,9 +2221,9 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         if (target === undefined || !isFunctionReference(target) || target.scriptFunction.parameters.length) throw new Error("La callback del timer deve essere una funzione HMI senza parametri.");
         closureScope = createHmiScriptScope(undefined, lexicalScope);
         closureScope.values.set("__framecraftTimerCallback", target); closureScope.constants.add("__framecraftTimerCallback");
-        callback = { kind: "inline", program: { version: 4, statements: [{ kind: "expression", value: { kind: "invoke", callee: { kind: "local", name: "__framecraftTimerCallback" }, arguments: [] } }] } };
+        callback = { kind: "inline", program: { version: 5, statements: [{ kind: "expression", value: { kind: "invoke", callee: { kind: "local", name: "__framecraftTimerCallback" }, arguments: [] } }] } };
       }
-      return options.timerManager.set(expression.mode, callback, delay, { functions: options.functions, variables: options.variables, globalScope: options.globalScope, screenItems: options.screenItems, transport: options.transport, transportTimeoutMs: options.transportTimeoutMs, localTags: options.localTags, localTagValues: options.localTagValues, signal: options.signal, isActive: options.isActive, ...(closureScope ? { closureScope } : {}) });
+      return options.timerManager.set(expression.mode, callback, delay, { functions: options.functions, variables: options.variables, globalScope: options.globalScope, screenItems: options.screenItems, thisBinding, scriptContext: options.scriptContext, transport: options.transport, transportTimeoutMs: options.transportTimeoutMs, localTags: options.localTags, localTagValues: options.localTagValues, signal: options.signal, isActive: options.isActive, ...(closureScope ? { closureScope } : {}) });
     }
     const left = (yield* evaluate(expression.left));
     if (expression.operator === "&&" && !truth(left)) return modern ? left : false;
@@ -2143,10 +2233,10 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     switch (expression.operator) {
       case "&&": return modern ? right : truth(right);
       case "||": case "??": return right;
-      case "==": return isUndefinedReference(left) || isUndefinedReference(right) ? (isUndefinedReference(left) || left === null) && (isUndefinedReference(right) || right === null) : scalar(left) == scalar(right); // semantica JavaScript esplicitamente richiesta dallo script
-      case "!=": return isUndefinedReference(left) || isUndefinedReference(right) ? !((isUndefinedReference(left) || left === null) && (isUndefinedReference(right) || right === null)) : scalar(left) != scalar(right);
-      case "===": return isUndefinedReference(left) && isUndefinedReference(right) || left === right;
-      case "!==": return !(isUndefinedReference(left) && isUndefinedReference(right) || left === right);
+      case "==": return referenceEquality(left, right) ?? (isUndefinedReference(left) || isUndefinedReference(right) ? (isUndefinedReference(left) || left === null) && (isUndefinedReference(right) || right === null) : scalar(left) == scalar(right)); // semantica JavaScript esplicitamente richiesta dallo script
+      case "!=": return referenceEquality(left, right) === undefined ? isUndefinedReference(left) || isUndefinedReference(right) ? !((isUndefinedReference(left) || left === null) && (isUndefinedReference(right) || right === null)) : scalar(left) != scalar(right) : !referenceEquality(left, right);
+      case "===": return referenceEquality(left, right) ?? (isUndefinedReference(left) && isUndefinedReference(right) || left === right);
+      case "!==": return !(referenceEquality(left, right) ?? (isUndefinedReference(left) && isUndefinedReference(right) || left === right));
       case "<": return isUndefinedReference(left) || isUndefinedReference(right) ? false : number(left) < number(right);
       case "<=": return isUndefinedReference(left) || isUndefinedReference(right) ? false : number(left) <= number(right);
       case ">": return isUndefinedReference(left) || isUndefinedReference(right) ? false : number(left) > number(right);
@@ -2291,21 +2381,55 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
   };
   const makeFunction = (expression: Extract<HmiScriptExpression, { kind: "function-value" }>, declaration = false): FunctionReference => {
     const scope = expression.name && !declaration ? createHmiScriptScope(undefined, lexicalScope) : lexicalScope;
-    const result: FunctionReference = { scriptFunction: { parameters: expression.parameters, program: expression.program, scope, globalScope: options.globalScope, functions: options.functions, variables: options.variables, name: expression.name } };
+    const result: FunctionReference = { scriptFunction: { parameters: expression.parameters, program: expression.program, scope, globalScope: options.globalScope, functions: options.functions, variables: options.variables, name: expression.name ?? expression.displayName, arrow: program.version >= 5 && expression.arrow, ...(expression.arrow ? { lexicalThis: thisBinding } : {}) } };
     if (expression.name && !declaration) { scope.values.set(expression.name, result); scope.constants.add(expression.name); }
     return result;
   };
-  const invokeFunction = function* (reference: FunctionReference, args: RuntimeValue[]): ScriptCoroutine<RuntimeValue> {
-    const fn = reference.scriptFunction, stack = options.callStack ?? [];
+  const invokeFunction = function* (reference: FunctionReference, args: RuntimeValue[], receiver: RuntimeValue = undefinedValue(), intrinsicDepth = 0): ScriptCoroutine<RuntimeValue> {
+    tick();
+    if (intrinsicDepth >= 32) throw new Error("Troppi livelli di call/apply/bind (massimo 32).");
+    let fn = reference.scriptFunction;
+    for (let depth = 0; ; depth++) {
+      if (depth > 32 || args.length > 1024) throw new Error("La funzione supera il limite di bind o di 1024 argomenti.");
+      for (let scope = fn.scope; scope; scope = scope.parent) if (!scope.active) throw new Error("Il contesto della funzione non e' piu' attivo.");
+      if (!fn.bound) break;
+      tick(); receiver = fn.bound.thisArg; args = [...fn.bound.args, ...args]; fn = fn.bound.target.scriptFunction;
+    }
+    if (fn.intrinsic) {
+      if (fn.intrinsic === "screen-items") {
+        if (!options.screenItems || !receiver || typeof receiver !== "object" || !("screenItemId" in receiver) || receiver.screenPropertyPath || receiver.screenItemId !== options.screenItems.resolve("screen").screenItemId) throw new Error("Items richiede la schermata come contesto this.");
+        if (args.length !== 1 || typeof args[0] !== "string" || !args[0].trim() || args[0].length > 128) throw new Error("Items richiede un nome oggetto HMI, fino a 128 caratteri.");
+        return options.screenItems.resolve("screen", args[0]);
+      }
+      if (!isFunctionReference(receiver)) throw new Error(fn.intrinsic + " richiede una funzione HMI come contesto.");
+      const context = args[0] === undefined ? undefinedValue() : args[0];
+      if (fn.intrinsic === "call") return yield* invokeFunction(receiver, args.slice(1), context, intrinsicDepth + 1);
+      if (fn.intrinsic === "apply") {
+        const source = args[1]; const applied: RuntimeValue[] = [];
+        if (source !== undefined && source !== null && !isUndefinedReference(source)) {
+          if (!isDataReference(source)) throw new Error("apply richiede un array o un oggetto con length.");
+          const rawLength = dataGet(source, "length", true), numericLength = isUndefinedReference(rawLength) ? 0 : Number(scalar(rawLength));
+          const length = Number.isNaN(numericLength) || numericLength <= 0 ? 0 : Math.trunc(numericLength);
+          if (!Number.isFinite(length) || length > 1024) throw new Error("apply supera il limite di 1024 argomenti.");
+          for (let index = 0; index < length; index++) { tick(); applied.push(dataGet(source, String(index), true)); }
+        }
+        return yield* invokeFunction(receiver, applied, context, intrinsicDepth + 1);
+      }
+      const target = receiver.scriptFunction, prefix = args.slice(1), depth = (target.bound?.depth ?? 0) + 1, count = (target.bound?.count ?? 0) + prefix.length;
+      if (depth > 32 || count > 1024) throw new Error("bind supera 32 livelli o 1024 argomenti conservati.");
+      return { scriptFunction: { parameters: target.parameters.slice(prefix.length), program: target.program, name: "bound " + (target.name ?? ""), scope: lexicalScope, bound: { target: receiver, thisArg: context, args: prefix, depth, count } } };
+    }
+    const stack = options.callStack ?? [];
     if (stack.length >= 16) throw new Error("Troppi livelli di chiamata fra funzioni HMI (massimo 16).");
-    if (args.length !== fn.parameters.length) throw new Error("La funzione " + (fn.name ?? "anonima") + " richiede " + fn.parameters.length + " argomenti, ricevuti " + args.length + ".");
-    const nested = (yield* executeHmiScriptCoroutine(fn.program, values, { ...options,
+    if (fn.program.version < 5 && args.length !== fn.parameters.length) throw new Error("La funzione " + (fn.name ?? "anonima") + " richiede " + fn.parameters.length + " argomenti, ricevuti " + args.length + ".");
+    const nested = yield* executeHmiScriptCoroutine(fn.program, values, { ...options,
       maxSteps: Math.max(1, maxSteps - steps), timeoutMs: Math.max(1, timeoutMs - elapsed()),
-      locals: Object.fromEntries(fn.parameters.map((parameter, index) => [parameter, args[index]])),
+      locals: Object.fromEntries(fn.parameters.map((parameter, index) => [parameter, args[index] === undefined ? undefinedValue() : args[index]])),
+      thisBinding: fn.arrow ? fn.lexicalThis ?? { value: undefinedValue() } : { value: receiver },
       globalScope: fn.globalScope, closureScope: fn.scope, initializingScope: undefined,
       functions: fn.functions, variables: fn.variables, tagStatus: { ...options.tagStatus, ...statusByTag },
       callStack: [...stack, fn.name ?? "callback"], returnByReference: true,
-    }));
+    });
     mergeNested(nested);
     if (nested.error) throw new Error(nested.error);
     return "returnedReference" in nested ? nested.returnedReference! : "returned" in nested ? nested.returned! : fn.program.version >= 4 ? undefinedValue() : null;
@@ -2539,11 +2663,11 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         try {
           const target = statement.operation === "read" ? (yield* readTarget(statement.set, statement.mode, statement.maxAge)) : (yield* writeTarget(statement.set, statement.mode, statement.qcd));
           if (statement.success) {
-            (yield* run(statement.success.statements, "function", statement.success.name ? { [statement.success.name]: target } : undefined));
+            (yield* run(statement.success.statements, "function", statement.success.name ? { [statement.success.name]: target } : undefined, true, statement.success.arrow ? thisBinding : { value: undefinedValue() }));
           }
         } catch (caught) {
           if (!statement.failure) throw caught;
-          (yield* run(statement.failure.statements, "function", statement.failure.name ? { [statement.failure.name]: faultCode(caught) } : undefined));
+          (yield* run(statement.failure.statements, "function", statement.failure.name ? { [statement.failure.name]: faultCode(caught) } : undefined, true, statement.failure.arrow ? thisBinding : { value: undefinedValue() }));
         }
       } else if (statement.kind === "bit") {
         const name = tagName((yield* evaluate(statement.tag)));
@@ -2596,8 +2720,9 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     }
     return undefined;
   };
-  const run = function* (statements: readonly HmiScriptStatement[], mode: "current" | "block" | "function" = "current", bindings?: Record<string, RuntimeValue>, prepare = true): ScriptCoroutine<Flow> {
-    const previousScope = lexicalScope, previousFunction = functionScope;
+  const run = function* (statements: readonly HmiScriptStatement[], mode: "current" | "block" | "function" = "current", bindings?: Record<string, RuntimeValue>, prepare = true, functionThis?: HmiScriptThisBinding): ScriptCoroutine<Flow> {
+    const previousScope = lexicalScope, previousFunction = functionScope, previousThis = thisBinding;
+    if (functionThis) thisBinding = functionThis;
     const legacyBindings = !lexicalBlocks && mode === "block" ? Object.keys(bindings ?? {}).map(name => ({ name, exists: locals.has(name), value: locals.get(name), constant: lexicalScope.constants.has(name), unassigned: lexicalScope.unassigned?.has(name), pending: lexicalScope.uninitialized?.has(name) })) : [];
     if (mode === "function" || mode === "block" && lexicalBlocks) { lexicalScope = createHmiScriptScope(undefined, lexicalScope); locals = lexicalScope.values; }
     if (mode === "function") functionScope = lexicalScope;
@@ -2613,7 +2738,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         if (binding.unassigned) (previousScope.unassigned ??= new Set()).add(binding.name); else previousScope.unassigned?.delete(binding.name);
         if (binding.pending) (previousScope.uninitialized ??= new Set()).add(binding.name); else previousScope.uninitialized?.delete(binding.name);
       }
-      lexicalScope = previousScope; functionScope = previousFunction; locals = lexicalScope.values;
+      lexicalScope = previousScope; functionScope = previousFunction; locals = lexicalScope.values; thisBinding = previousThis;
     }
   };
   try {
@@ -2675,5 +2800,5 @@ export async function executeHmiScriptAsync(program: HmiScriptProgram, input: Re
 /** Il progetto generato non porta con se' Babel: riceve il programma gia' compilato nell'attributo
  * e solo questo piccolo esecutore. Le funzioni sono le stesse usate dai test dell'editor. */
 export function hmiScriptRuntimeModuleSource(): string {
-  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\nlet hmiInspectionBudget;\n${String(inspectionStep)}\n${String(inspectCallable)}\n${String(inspectArrayCallback)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(undefinedValue)}\n${String(isUndefinedReference)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(isFunctionReference)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(dataArrayCallbackMethod)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
+  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\nlet hmiInspectionBudget;\n${String(inspectionStep)}\n${String(inspectCallable)}\n${String(inspectInvocation)}\n${String(inspectArrayCallback)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(undefinedValue)}\n${String(isUndefinedReference)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(isFunctionReference)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(dataArrayCallbackMethod)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
 }

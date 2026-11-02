@@ -32,7 +32,7 @@ describe("catalogo faceplate Unified", () => {
       eventBindings: { Selected: { script: 'Tags("Pack.Selected").Write(index);' } },
     };
     expect(parseHmiFaceplateBinding(serializeHmiFaceplateBinding(binding))).toMatchObject(binding);
-    expect(JSON.parse(serializeHmiFaceplateBinding(binding)).eventBindings.Selected.program.version).toBe(4);
+    expect(JSON.parse(serializeHmiFaceplateBinding(binding)).eventBindings.Selected.program.version).toBe(5);
     expect(parseHmiFaceplateBinding("non-json")).toBeUndefined();
   });
 

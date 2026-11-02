@@ -66,9 +66,9 @@ describe("funzioni valore e closure Unified",()=>{
   it("applica budget e limite di profondità anche a ricorsione e callback",()=>{
     const recursive=run("function f(){return f();}return f();");expect(recursive.error).toContain("Troppi livelli");expect(recursive.writes).toEqual({});
     const limited=run("const f=()=>1;f();f();Tags('Command').Write(1);",{maxSteps:6});expect(limited.error).toContain("operazioni");expect(limited.writes).toEqual({});
-    expect(run("const f=x=>x;f();Tags('Command').Write(1);").error).toContain("argomenti");
+    expect(run("const f=x=>Tags('Command').Write(x);f();").error).toContain("Valore assente");
   });
-  it.each(["const f=async()=>1;","const f=function*(){return 1;};","const f=(x=1)=>x;","const f=({...x})=>x;","const f=(...x)=>x;","const f=()=>this;"])("segnala sintassi ancora non disponibile: %s",source=>expect(inspectHmiScript(source).error).toBeTruthy());
+  it.each(["const f=async()=>1;","const f=function*(){return 1;};","const f=(x=1)=>x;","const f=({...x})=>x;","const f=(...x)=>x;"])("segnala sintassi ancora non disponibile: %s",source=>expect(inspectHmiScript(source).error).toBeTruthy());
   it("mantiene TagSet callable e funzioni in lettura/scrittura con trasporto reale asincrono",async()=>{
     const callable=executeHmiScript(compile("const set=Tags.CreateTagSet(['Speed']);return set('Speed').Read();"),{Speed:"4"});expect(callable.error).toBeUndefined();expect(callable.returned).toBe(4);
     const read=vi.fn(async()=>({value:"4",status:{qualityCode:192}})),write=vi.fn(async(_request:unknown)=>({tag:"Command",outcome:"delivered" as const,delivery:"transport" as const,plcConfirmed:false as const}));
@@ -102,7 +102,7 @@ describe("funzioni valore e closure Unified",()=>{
   });
   it("esegue e ispeziona la stessa IR nel Runtime esportato, conservando IR 1/2",()=>{
     const exported:Record<string,any>={};new Function("exports",transpileModule(hmiScriptRuntimeModuleSource(),{compilerOptions:{module:ModuleKind.CommonJS,target:ScriptTarget.ES2022}}).outputText)(exported);
-    const program=compile("function factory(tag){return ()=>tag.Read();}const read=factory(Tags('Speed'));return read();");expect(program.version).toBe(4);expect(exported.executeHmiScript(program,{Speed:"7"}).returned).toBe(7);expect(exported.inspectHmiScriptProgram(program).tagsRead).toContain("Speed");
+    const program=compile("function factory(tag){return ()=>tag.Read();}const read=factory(Tags('Speed'));return read();");expect(program.version).toBe(5);expect(exported.executeHmiScript(program,{Speed:"7"}).returned).toBe(7);expect(exported.inspectHmiScriptProgram(program).tagsRead).toContain("Speed");
     for(const version of [1,2])expect(exported.executeHmiScript({version,statements:[{kind:"return",value:{kind:"literal",value:7}}]},{}).returned).toBe(7);
   });
 });
