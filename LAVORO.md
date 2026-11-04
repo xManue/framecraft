@@ -6656,6 +6656,41 @@ Verifiche del 5 ottobre 2026:
   non è un collaudo IPC end-to-end della finestra desktop. Guasti fisici, ACL/deployment,
   progetti macchina personalizzati e interoperabilità su PLC restano gate di produzione.
 
+## 187. Spread JavaScript e parametri rest nella pipeline (4 novembre 2026)
+
+- **Fase 3 Unified**: spread di array/oggetti/argomenti e parametri rest finali nelle
+  funzioni dichiarate, espressioni, arrow e metodi. Copie superficiali, riferimenti annidati,
+  override e ordine sinistro-destro conservati; array sparsi espansi in undefined, stringhe
+  iterate per code point negli elementi e per unità UTF-16 nelle proprietà, come ECMAScript.
+- **Chiamate**: funzioni locali e di modulo, call/apply/bind, metodi Array, funzioni numeriche
+  e funzioni di dati con la firma già supportata. I rest conservano closure, this, lunghezza
+  della funzione e contesto dei timer. Le API HMI con firme speciali mantengono le firme
+  esplicite attuali; non viene attribuita parità completa all’object model.
+- **Analisi dei tag**: argomenti espansi e rest restano ispezionabili. Copie di oggetti non
+  perdono gli alias annidati; rami con override incerto, array modificati e TagSet callable
+  conservano le possibili dipendenze di lettura/scrittura. Dimensioni incerte vengono
+  sovrastimate, non convertite in dipendenze vuote. Restano i limiti generali dell’analisi
+  intermodulo/di flusso indicati nella roadmap.
+- **Budget e confini**: massimo 1024 elementi/proprietà/argomenti, budget CPU e ispezione;
+  raccolta dei candidati incerti deduplicata e limitata. Nessun iteratore o prototipo host,
+  accesso al filesystem/rete o copia di capacità degli oggetti API tramite spread.
+- **Pipeline**: IR 6 per i nuovi sorgenti; lettori IR 1/2/3/4/5/6 nell’editor, negli eventi,
+  nelle dinamizzazioni, timer e Scheduler, nel servizio centrale e nel Runtime esportato.
+  Il catalogo rimane JSON v1. Versione componenti 2026.11.04.1: i progetti precedenti vanno
+  aggiornati con il confronto assistito del punto 186, poi gli script ricompilati/salvati.
+  Le IR vecchie non vengono riscritte automaticamente.
+- **Guida**: esempio richiudibile nella sezione Script e descrizione in runtime/README.md.
+  Corretto il vecchio messaggio che dichiarava ancora indisponibili le funzioni valore.
+- **Verifiche mirate**: confronto con JavaScript nativo per la semantica dei dati/chiamate,
+  dipendenze tag e copie incerte, trasporto sospeso una sola volta, serializzazione dei
+  moduli, esecuzione Scheduler con una scrittura autorizzata. Regressioni delle sole aree
+  interessate: Array, scope, closure, export, this, eventi, faceplate, timer e trasporto.
+  Prova Edge del pannello compilato, typecheck/build del Runtime generato e VM Node,
+  lettori IR 1–6, timer smaltiti, zero richieste esterne e zero comandi PLC dalla prova browser.
+- **Ancora aperto**: classi, destructuring/rest nei pattern, parametri predefiniti,
+  async/generator come funzioni valore, coercizioni e API JavaScript restanti; eventi e
+  object model, librerie versionate, driver avanzati e collaudo macchina/distribuito.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

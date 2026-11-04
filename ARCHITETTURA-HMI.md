@@ -1003,3 +1003,20 @@ Ripristino dei componenti e restore degli archivi HMI sono procedure distinte. C
 delle personalizzazioni/dati con la versione ripristinata, ACL, power loss reale e IPC desktop
 richiedono ancora il collaudo di produzione. I test Rust provano file e lock; il browser con
 bridge sintetico prova UX, compilazione e funzionamento del pannello generato.
+
+## Spread e rest nel motore script (LAVORO 187)
+
+La IR 6 descrive gli spread di elementi/argomenti e di proprietà e il parametro rest finale.
+La VM mantiene l’ordine di valutazione e i riferimenti della copia superficiale; espansioni
+e copie consumano budget e hanno cap 1024. I generatori esportano gli stessi helper di
+analisi/esecuzione nel browser e in Node, senza eval, API host o nuove dipendenze.
+
+L’analisi espande i candidati noti e conserva alias/closure. Array di forma incerta copiati
+in oggetti mantengono un candidato interno per le proprietà possibili; non assumono un
+indice inesistente né perdono i tag. Il candidato non è un campo del codice generato.
+Le alternative vengono deduplicate e limitate. Non equivale ad analisi di flusso completa.
+
+Lettori IR 1–6 in eventi/dinamizzazioni/Scheduler e servizio centrale; catalogo JSON v1.
+Versione componenti 2026.11.04.1, migrazione assistita esplicita e ricompilazione dei sorgenti.
+Le API HMI speciali, classi/destructuring/default, funzioni async/generator e le altre voci
+della fase 3 rimangono lavori distinti: questa estensione non chiude la fase Unified.

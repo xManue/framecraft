@@ -33,6 +33,13 @@ describe('central Scheduler',()=>{
     finally{const exited=new Promise<void>(resolve=>child.once('exit',()=>resolve()));child.kill();await exited;}
     const s=openSchedulerStore(f);try{expect(s.history()[0]).toMatchObject({state:'uncertain',code:'SCHEDULER_INTERRUPTED'});expect(s.claim({id:'retry',task:'task',cause:'once',scheduledAt:42,key:'key'})).toBe(false);}finally{s.close();}
   },15000);
+  it('runs compiled IR 6 spread/rest in the central service with one authorized write',async()=>{
+    const f=setup({kind:'interval',intervalMs:1000},'function sum(...values){return [...values].reduce((total,value)=>total+value,0);}Tags("Out").Write(sum(...[3,4]));');
+    expect(f.catalog.scheduledTasks[0].program?.version).toBe(6);
+    await f.engine.start();await f.advance(1000);
+    expect(f.writes).toHaveLength(1);expect(f.writes[0]).toMatchObject({tag:'Out',value:7});
+    expect(f.store.history()[0].state).toBe('completed');expect(f.authorize).toHaveBeenCalled();
+  });
   it('runs intervals once after a delay, without catch-up bursts or browser ownership',async()=>{const f=setup();await f.engine.start();await f.advance(1000);expect(f.writes).toHaveLength(1);await f.advance(10000);expect(f.writes).toHaveLength(2);expect(f.engine.snapshot()).toMatchObject({owner:'server',state:'running'});expect(f.store.history()).toHaveLength(2);});
   it('uses monotonic interval time when wall-clock time moves backwards',async()=>{const f=setup();await f.engine.start();f.setWall(f.wall()-3600000);await f.advance(1000);expect(f.writes).toHaveLength(1);});
   it('does not replay an expired once trigger or claim it again after restart',async()=>{

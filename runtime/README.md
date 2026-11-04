@@ -1930,6 +1930,41 @@ e [Optix 1.8 Recipes editor](https://www.rockwellautomation.com/en-pr/docs/facto
 Entrambi distinguono gestione dei set, lettura dal controller e applicazione; Framecraft implementa
 qui soltanto la lettura scalare dalla cache e il salvataggio esplicito nell’archivio.
 
+## JavaScript: spread e parametri rest (IR 6)
+
+Gli script possono copiare dati ed espandere argomenti con ...:
+
+```javascript
+const source = { speed: 10, steps: [10, 20] };
+const copy = { ...source, steps: [...source.steps, 30] };
+function sum(...values) {
+  return values.reduce((total, value) => total + value, 0);
+}
+HMIRuntime.Trace(sum(...copy.steps));
+```
+
+La copia è superficiale: crea il contenitore, conservando i riferimenti annidati che non
+vengono sostituiti. Gli spread di elementi/argomenti accettano array e stringhe; i buchi degli
+array diventano undefined. La copia di proprietà ignora null/undefined e mantiene l’ordine
+con gli override successivi. Gli oggetti delle API HMI non sono contenitori da enumerare.
+
+Il rest è un ultimo parametro con nome semplice in funzioni dichiarate, arrow, espressioni
+funzione o metodi. È un array nuovo, con gli stessi valori/riferimenti degli argomenti.
+La funzione conserva this/closure; il conteggio length esclude il rest. Copie, espansioni e
+argomenti restano entro 1024 valori, 32 livelli e il budget CPU; la rete non azzera i budget
+né ripete la valutazione degli argomenti quando una lettura/scrittura viene sospesa.
+
+Le chiamate a funzioni HMI, metodi Array, call/apply/bind, funzioni numeriche e dati della
+sandbox accettano argomenti espansi nelle firme supportate. Le API di sistema con firme
+speciali richiedono ancora i parametri espliciti previsti. Rest nei pattern/destructuring,
+parametri predefiniti, classi e funzioni valore async/generator restano da implementare.
+Non usare iteratori personalizzati o oggetti del sistema per aggirare questi confini.
+
+I nuovi sorgenti compilano in IR 6. Editor e Runtime attuale leggono anche IR 1–5; il
+catalogo resta v1. Nei progetti precedenti aggiorna insieme servizio/browser con
+**Pannello → Aggiorna componenti del pannello**, quindi ricompila e salva esplicitamente
+lo script da cambiare. Il codice nuovo non rende compatibile un servizio vecchio.
+
 ## Scheduler centrale
 
 Nei nuovi progetti, apri **Script → Operazioni pianificate** e abilita l’esecuzione sul
