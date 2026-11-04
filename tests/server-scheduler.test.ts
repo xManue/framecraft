@@ -33,9 +33,9 @@ describe('central Scheduler',()=>{
     finally{const exited=new Promise<void>(resolve=>child.once('exit',()=>resolve()));child.kill();await exited;}
     const s=openSchedulerStore(f);try{expect(s.history()[0]).toMatchObject({state:'uncertain',code:'SCHEDULER_INTERRUPTED'});expect(s.claim({id:'retry',task:'task',cause:'once',scheduledAt:42,key:'key'})).toBe(false);}finally{s.close();}
   },15000);
-  it('runs compiled IR 6 spread/rest in the central service with one authorized write',async()=>{
-    const f=setup({kind:'interval',intervalMs:1000},'function sum(...values){return [...values].reduce((total,value)=>total+value,0);}Tags("Out").Write(sum(...[3,4]));');
-    expect(f.catalog.scheduledTasks[0].program?.version).toBe(6);
+  it('runs compiled IR 7 bindings/defaults in the central service with one authorized write',async()=>{
+    const f=setup({kind:'interval',intervalMs:1000},'function sum({values=[3,4]}={}){const [first,...rest]=values;return first+rest.reduce((total,value)=>total+value,0);}Tags("Out").Write(sum());');
+    expect(f.catalog.scheduledTasks[0].program?.version).toBe(7);
     await f.engine.start();await f.advance(1000);
     expect(f.writes).toHaveLength(1);expect(f.writes[0]).toMatchObject({tag:'Out',value:7});
     expect(f.store.history()[0].state).toBe('completed');expect(f.authorize).toHaveBeenCalled();

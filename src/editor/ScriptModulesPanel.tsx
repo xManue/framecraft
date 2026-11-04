@@ -1,5 +1,6 @@
 import { AlertTriangle, Braces, Check, Clock3, FastForward, Play, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { patternNames } from "../core/hmiScript";
 import { advanceHmiScheduler, createHmiSchedulerState, notifyHmiSchedulerAlarm, runHmiScheduledTask, type HmiSchedulerResult, type HmiSchedulerState } from "../core/hmiScheduler";
 import {
   emptyHmiScriptCatalog,
@@ -242,13 +243,17 @@ export function ScriptModulesPanel() {
           <p className="script-intro"><code>{"const copy = { ...cfg, steps: [...cfg.steps, 30] };"}</code> crea un nuovo contenitore. La copia è superficiale: gli altri oggetti annidati restano condivisi.</p>
           <p className="script-intro"><code>{"const sum = (...values) => values.reduce((total, value) => total + value, 0); sum(...cfg.steps);"}</code> raccoglie gli argomenti in un array e li espande nella chiamata. Lo spread di elementi accetta array e stringhe, entro 1024 valori e il budget dello script.</p>
         </details>
+        <details className="script-pattern-help"><summary>Estrarre dati e scegliere valori predefiniti</summary>
+          <p className="script-intro"><code>{"const { speed = 0, steps = [] } = cfg; const [first = 0, ...others] = steps;"}</code> estrae i dati e raccoglie quelli rimanenti. Gli oggetti annidati conservano il loro riferimento.</p>
+          <p className="script-intro"><code>{"const speedOf = ({ speed = 0 } = {}) => speed;"}</code> imposta un valore quando il dato manca o vale <code>undefined</code>. <code>null</code> resta <code>null</code>. I default si valutano in ordine e possono usare i parametri già inizializzati.</p>
+        </details>
         {selection.kind === "global" && <>
           <p id="script-public-help" className="script-intro">Usa <code>export let count = 0;</code> per rendere un valore leggibile come <code>Modules.{(owner as typeof catalog.globalModules[number]).alias}.count</code>. Dall'esterno il binding è in sola lettura: per cambiarlo chiama una funzione del modulo. Senza export la variabile resta privata.</p>
           {publicVariables.length ? <div className="script-public-variables" role="region" aria-label="Variabili pubbliche del modulo">
             <strong>Variabili pubbliche · {publicVariables.length}</strong>
             <ul>{publicVariables.map((entry) => <li key={entry.name}>
               <code>Modules.{(owner as typeof catalog.globalModules[number]).alias}.{entry.name}</code>
-              <small>{publicDefinition?.statements.some((statement) => statement.kind === "declare" && statement.name === entry.local && statement.constant) ? "Costante" : "Variabile"} · sola lettura dall'esterno{entry.name !== entry.local ? ` · nome interno: ${entry.local}` : ""}</small>
+              <small>{publicDefinition?.statements.some((statement) => statement.kind === "declare" ? statement.name === entry.local && statement.constant : statement.kind === "bind" && statement.constant && patternNames(statement.pattern).includes(entry.local)) ? "Costante" : "Variabile"} · sola lettura dall'esterno{entry.name !== entry.local ? ` · nome interno: ${entry.local}` : ""}</small>
             </li>)}</ul>
           </div> : !definitionError && <p className="script-intro">Nessuna variabile pubblica: le dichiarazioni senza export sono private del modulo.</p>}
         </>}

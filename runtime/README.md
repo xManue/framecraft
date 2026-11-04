@@ -1930,7 +1930,7 @@ e [Optix 1.8 Recipes editor](https://www.rockwellautomation.com/en-pr/docs/facto
 Entrambi distinguono gestione dei set, lettura dal controller e applicazione; Framecraft implementa
 qui soltanto la lettura scalare dalla cache e il salvataggio esplicito nell’archivio.
 
-## JavaScript: spread e parametri rest (IR 6)
+## JavaScript: binding, default, spread e rest (IR 7)
 
 Gli script possono copiare dati ed espandere argomenti con ...:
 
@@ -1948,7 +1948,7 @@ vengono sostituiti. Gli spread di elementi/argomenti accettano array e stringhe;
 array diventano undefined. La copia di proprietà ignora null/undefined e mantiene l’ordine
 con gli override successivi. Gli oggetti delle API HMI non sono contenitori da enumerare.
 
-Il rest è un ultimo parametro con nome semplice in funzioni dichiarate, arrow, espressioni
+Il rest è un ultimo parametro con nome o pattern supportato in funzioni dichiarate, arrow, espressioni
 funzione o metodi. È un array nuovo, con gli stessi valori/riferimenti degli argomenti.
 La funzione conserva this/closure; il conteggio length esclude il rest. Copie, espansioni e
 argomenti restano entro 1024 valori, 32 livelli e il budget CPU; la rete non azzera i budget
@@ -1956,11 +1956,31 @@ né ripete la valutazione degli argomenti quando una lettura/scrittura viene sos
 
 Le chiamate a funzioni HMI, metodi Array, call/apply/bind, funzioni numeriche e dati della
 sandbox accettano argomenti espansi nelle firme supportate. Le API di sistema con firme
-speciali richiedono ancora i parametri espliciti previsti. Rest nei pattern/destructuring,
-parametri predefiniti, classi e funzioni valore async/generator restano da implementare.
+speciali richiedono ancora i parametri espliciti previsti. Destructuring nelle assegnazioni
+e nei catch, classi e funzioni valore async/generator restano da implementare.
 Non usare iteratori personalizzati o oggetti del sistema per aggirare questi confini.
 
-I nuovi sorgenti compilano in IR 6. Editor e Runtime attuale leggono anche IR 1–5; il
+Binding pattern e default possono essere usati nelle dichiarazioni e nei parametri:
+
+```javascript
+const { speed = 0, steps = [], ...other } = source;
+const [first = 0, ...rest] = steps;
+function speedOf({ speed = 0 } = {}) { return speed; }
+```
+
+Rinominare, annidare e calcolare le chiavi è supportato. Il default scatta solo per un dato
+mancante o undefined; null resta null. Gli inizializzatori si valutano in ordine, con un
+ambiente dei parametri separato dalle dichiarazioni var/funzioni del corpo. Una closure creata
+nel default conserva quell’ambiente. Fare riferimento a un parametro successivo non ancora
+inizializzato produce un errore, senza inventarne il valore.
+
+Il RHS di una dichiarazione si valuta una volta. Rest e oggetti annidati mantengono la copia
+superficiale e gli alias; const protegge il binding estratto. Gli export da pattern sono
+supportati nelle definizioni globali, che continuano a rifiutare azioni durante l’inizializzazione.
+Iteratori/prototipi personalizzati e oggetti delle API host restano esclusi. I pattern in catch
+e assegnazioni hanno un errore di compilazione esplicito: usa per ora nomi semplici.
+
+I nuovi sorgenti compilano in IR 7. Editor e Runtime attuale leggono anche IR 1–6; il
 catalogo resta v1. Nei progetti precedenti aggiorna insieme servizio/browser con
 **Pannello → Aggiorna componenti del pannello**, quindi ricompila e salva esplicitamente
 lo script da cambiare. Il codice nuovo non rende compatibile un servizio vecchio.

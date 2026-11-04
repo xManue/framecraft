@@ -1,4 +1,4 @@
-import { createHmiScriptScope, executeHmiScript, inspectHmiScript, inspectHmiScriptDefinition, inspectHmiScriptProgram, type HmiScriptExecutionOptions, type HmiScriptProgram, type HmiScriptRuntimeFunction, type HmiScriptRuntimeVariable, type HmiScriptScope } from "./hmiScript";
+import { patternNames, createHmiScriptScope, executeHmiScript, inspectHmiScript, inspectHmiScriptDefinition, inspectHmiScriptProgram, type HmiScriptExecutionOptions, type HmiScriptProgram, type HmiScriptRuntimeFunction, type HmiScriptRuntimeVariable, type HmiScriptScope } from "./hmiScript";
 import { hmiCalendarTriggerIssue, type HmiAlarmTrigger, type HmiCalendarTrigger } from "./hmiSchedule";
 
 export type HmiLocalScriptContext = "events" | "dynamizations";
@@ -117,11 +117,11 @@ function globalDefinitionOf(value: unknown, allowExports = false): HmiScriptGlob
       if (item.kind === "array-method" && ["push", "pop", "shift", "unshift", "sort", "reverse", "splice", "map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight"].includes(String(item.method))) return true;
       return Object.values(item).some(unsafe);
     };
-    if (inspection.program.statements.some((statement) => !["declare", "function-declare"].includes(statement.kind) || unsafe(statement))) {
+    if (inspection.program.statements.some((statement) => !["declare", "bind", "function-declare"].includes(statement.kind) || unsafe(statement))) {
       error = "La definizione globale ammette dichiarazioni di variabili e funzioni, con valori, calcoli o letture tag. Esegui le chiamate alle funzioni, le azioni e i timer negli eventi o nelle operazioni pianificate.";
     } else {
-      const invalid = inspection.program.statements.find((statement) => (statement.kind === "declare" || statement.kind === "function-declare") && reserved.has(statement.name));
-      if (invalid?.kind === "declare" || invalid?.kind === "function-declare") error = `Il nome ${invalid.name} e' riservato al Runtime HMI.`;
+      const invalid = inspection.program.statements.flatMap(statement => statement.kind === "bind" ? patternNames(statement.pattern) : statement.kind === "declare" || statement.kind === "function-declare" ? [statement.name] : []).find(name=>reserved.has(name));
+      if (invalid) error = `Il nome ${invalid} e' riservato al Runtime HMI.`;
     }
   }
   return { source, ...(error ? { error } : { program: inspection.program }) };

@@ -6691,6 +6691,42 @@ Verifiche del 5 ottobre 2026:
   async/generator come funzioni valore, coercizioni e API JavaScript restanti; eventi e
   object model, librerie versionate, driver avanzati e collaudo macchina/distribuito.
 
+## 188. Binding di array/oggetti e parametri predefiniti (4 novembre 2026)
+
+- **Fase 3 Unified**: binding pattern nelle dichiarazioni let/const/var e nei parametri di
+  funzioni, arrow e metodi: rinomina, chiavi calcolate, pattern annidati, buchi, default e rest
+  di array/oggetti. Supportati anche pattern nel parametro rest finale ed export di binding
+  globali. Non vengono confuse queste inizializzazioni con assegnazioni destructuring o catch.
+- **Semantica**: RHS unico, ordine di estrazione e default solo su undefined, mai null.
+  Gli array/stringhe usano iteratori nativi privati; la fine dell’iteratore rimane definitiva
+  anche quando un default modifica l’array sorgente. Stringhe per code point nei pattern di
+  array e proprietà UTF-16 negli oggetti. Rest superficiali e alias annidati conservati.
+- **Parametri**: inizializzazione prima del corpo, nomi riservati in TDZ, default che possono
+  vedere i parametri precedenti e this corretto. Ambiente distinto per le closure create nei
+  default: var/funzioni del corpo non diventano visibili prima e le copie var dei parametri
+  mantengono le regole JavaScript. length/bind e timer con parametri facoltativi coerenti.
+- **Analisi**: pattern e rest propagano dipendenze di lettura/scrittura, default e riferimenti
+  senza clonare gli alias già legati. Le definizioni globali restano passive e vietano nomi
+  Runtime riservati anche nei pattern; funzioni/azioni si eseguono nei contesti previsti.
+- **Budget**: limiti di raccolta, profondità e inizializzazione; i budget delle dichiarazioni
+  semplici restano quelli precedenti. Sospensione del trasporto durante un default senza
+  ripetere l’inizializzazione o i comandi già partiti. Oggetti host e iteratori personalizzati
+  non sono fornitori di dati per aggirare i limiti della sandbox.
+- **Pipeline**: IR 7 per i nuovi salvataggi, lettori 1–7 in eventi, dinamizzazioni, timer e
+  Scheduler, browser e servizio Node; catalogo JSON v1. Componenti 2026.11.04.2 da aggiornare
+  con confronto assistito, poi ricompilazione/salvataggio degli script. IR precedenti
+  conservate su disco fino al salvataggio esplicito; prova autentica anche del rest IR 6.
+- **Guida**: esempio richiudibile in Script e guida Runtime aggiornata. Gli export const
+  ottenuti da un pattern sono mostrati correttamente come Costante nell’elenco dei pubblici.
+- **Verifiche**: confronto con JavaScript nativo per binding/default/scope, TDZ, mutazioni
+  durante l’iterazione, export, alias, budget, trasporto sospeso una volta e confini globali;
+  regressioni delle sole famiglie coinvolte. Pannello compilato/typecheck, Edge e VM Node,
+  IR 1–7, timer con default e scrittura autorizzata nello Scheduler. Nessun PLC fisico nella
+  prova; classi/object model/driver e collaudo industriale restano da completare.
+- **Ancora aperto**: destructuring nelle assegnazioni e nei catch (ora errore esplicito),
+  classi, async/generator come funzioni valore, coercizioni/API restanti, eventi/controlli,
+  librerie versionate e gli altri gate della fase 3.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

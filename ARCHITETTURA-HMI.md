@@ -1020,3 +1020,20 @@ Lettori IR 1–6 in eventi/dinamizzazioni/Scheduler e servizio centrale; catalog
 Versione componenti 2026.11.04.1, migrazione assistita esplicita e ricompilazione dei sorgenti.
 Le API HMI speciali, classi/destructuring/default, funzioni async/generator e le altre voci
 della fase 3 rimangono lavori distinti: questa estensione non chiude la fase Unified.
+
+## Binding e inizializzazione dei parametri (LAVORO 188)
+
+IR 7 aggiunge pattern di binding nelle dichiarazioni/parametri, default e rest annidati.
+La coroutine inizializza i parametri prima di preparare il corpo; un ambiente distinto
+mantiene TDZ, this e closure degli inizializzatori. Le var del corpo copiano quando previsto
+il valore del parametro, senza cambiare l’ambiente catturato dai default. Le attese del
+trasporto usano la stessa coroutine e il budget residuo: il parametro non viene reinizializzato.
+
+L’analisi lega i pattern senza riclonare dati già legati e conserva i possibili tag. L’export
+di pattern mantiene gli stessi nomi/sola lettura delle variabili pubbliche; inizializzatori
+globali e nomi Runtime conservano i vincoli precedenti. I lettori accettano IR 1–7; una IR 6
+con rest precedente è ancora eseguibile. Versione componenti 2026.11.04.2 e migrazione esplicita.
+
+I pattern nelle assegnazioni/catch, classi e altre semantiche della fase 3 rimangono aperti.
+I confini dati/host, limiti di raccolta e budget valgono anche per i binding; nessun cambiamento
+a permessi server o conferme PLC. I test su fixture non certificano l’interoperabilità macchina.
