@@ -1930,7 +1930,7 @@ e [Optix 1.8 Recipes editor](https://www.rockwellautomation.com/en-pr/docs/facto
 Entrambi distinguono gestione dei set, lettura dal controller e applicazione; Framecraft implementa
 qui soltanto la lettura scalare dalla cache e il salvataggio esplicito nell’archivio.
 
-## JavaScript: binding, default, spread e rest (IR 7)
+## JavaScript: binding, assegnazioni e gestione degli errori (IR 8)
 
 Gli script possono copiare dati ed espandere argomenti con ...:
 
@@ -1956,8 +1956,8 @@ né ripete la valutazione degli argomenti quando una lettura/scrittura viene sos
 
 Le chiamate a funzioni HMI, metodi Array, call/apply/bind, funzioni numeriche e dati della
 sandbox accettano argomenti espansi nelle firme supportate. Le API di sistema con firme
-speciali richiedono ancora i parametri espliciti previsti. Destructuring nelle assegnazioni
-e nei catch, classi e funzioni valore async/generator restano da implementare.
+speciali richiedono ancora i parametri espliciti previsti. Classi, funzioni valore
+async/generator, coercizioni/operatori e oggetti Error completi restano da implementare.
 Non usare iteratori personalizzati o oggetti del sistema per aggirare questi confini.
 
 Binding pattern e default possono essere usati nelle dichiarazioni e nei parametri:
@@ -1977,10 +1977,36 @@ inizializzato produce un errore, senza inventarne il valore.
 Il RHS di una dichiarazione si valuta una volta. Rest e oggetti annidati mantengono la copia
 superficiale e gli alias; const protegge il binding estratto. Gli export da pattern sono
 supportati nelle definizioni globali, che continuano a rifiutare azioni durante l’inizializzazione.
-Iteratori/prototipi personalizzati e oggetti delle API host restano esclusi. I pattern in catch
-e assegnazioni hanno un errore di compilazione esplicito: usa per ora nomi semplici.
+Iteratori/prototipi personalizzati e oggetti delle API host restano esclusi.
 
-I nuovi sorgenti compilano in IR 7. Editor e Runtime attuale leggono anche IR 1–6; il
+Le variabili esistenti possono essere aggiornate con assegnazioni semplici o pattern:
+
+```javascript
+let speed, rest;
+({ speed = 0, ...rest } = source);
+try {
+  throw { message: "Configurazione non valida", value: speed };
+} catch ({ message }) {
+  HMIRuntime.Trace(message);
+}
+```
+
+Il RHS si valuta una volta e resta il valore dell’espressione, anche nelle concatenazioni.
+Ogni riferimento di destinazione viene risolto nel punto previsto prima del prelievo/default;
+le modifiche alla sorgente fatte durante la risoluzione sono osservabili. Costanti, TDZ,
+import in sola lettura e controlli dei setter HMI/TagSet continuano ad applicarsi. Il pattern
+non è una transazione: in caso di rifiuto i destinatari precedenti restano aggiornati. Non
+costituisce un batch PLC o una conferma applicativa della macchina.
+
+throw conserva il valore esplicito attraverso funzioni, moduli, rethrow e finally; il catch
+può estrarre array/oggetti. Gli errori delle API HMI conservano il loro codice numerico o
+messaggio previsto, senza fingere oggetti Error del browser. Un errore non gestito usa un
+messaggio esplicito limitato o testo generico; l’oggetto intero non viene pubblicato nella
+diagnostica. Anche 0, null, false, undefined e stringa vuota sono errori, se lanciati.
+Le definizioni globali rimangono passive: le assegnazioni nei loro inizializzatori non
+permettono di aggirare i divieti su azioni, timer o accessi al sistema.
+
+I nuovi sorgenti compilano in IR 8. Editor e Runtime attuale leggono anche IR 1–7; il
 catalogo resta v1. Nei progetti precedenti aggiorna insieme servizio/browser con
 **Pannello → Aggiorna componenti del pannello**, quindi ricompila e salva esplicitamente
 lo script da cambiare. Il codice nuovo non rende compatibile un servizio vecchio.

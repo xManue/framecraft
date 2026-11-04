@@ -80,16 +80,13 @@ describe('IR 7 binding patterns and parameter initialization',()=>{
   expect(executeHmiScript(compile("const {value}=Tags('Value');return value;"),{}).error).toContain('API HMI');
   expect(inspectHmiScript('const {constructor}= {constructor:1};').error).toBeTruthy();
  });
- it('reports unsupported assignment and catch patterns before execution',()=>{
-  expect(inspectHmiScript('let value;[value]=[1];').error).toBeTruthy();
-  expect(inspectHmiScript('try{return missing;}catch({message}){return message;}').error).toContain('catch');
- });
+ it('supports assignment and catch patterns in newer scripts',()=>{const result=executeHmiScript(compile("let value;try{[value]=[1];throw {message:'ok'};}catch({message}){return message+value;}"),{});expect(result.error).toBeUndefined();expect(result.returned).toBe('ok1');});
  it('keeps an authentic IR 6 rest function executable',()=>{
   const legacy:HmiScriptProgram={version:6,statements:[{kind:'function-declare',name:'read',value:{kind:'function-value',parameters:[],rest:'values',program:{version:6,statements:[{kind:'return',value:{kind:'member',object:{kind:'local',name:'values'},key:{kind:'literal',value:'length'}}}]}}},{kind:'return',value:{kind:'invoke',callee:{kind:'local',name:'read'},arguments:[{kind:'spread',value:{kind:'array',items:[{kind:'literal',value:1},{kind:'literal',value:2}]}}]}}]};
   expect(executeHmiScript(legacy,{})).toMatchObject({returned:2});
  });
  it('exports self-contained parameter and pattern semantics for browser and Node',()=>{
   const exports:Record<string,any>={};Function('exports',transpileModule(hmiScriptRuntimeModuleSource(),{compilerOptions:{module:ModuleKind.CommonJS,target:ScriptTarget.ES2022}}).outputText)(exports);
-  const program=compile('function read({value=4}={},...rest){const [first=1]=rest;return value+first;}return read();');expect(program.version).toBe(7);expect(exports.executeHmiScript(program,{}).returned).toBe(5);expect(exports.inspectHmiScriptProgram(program).error).toBeUndefined();
+  const program=compile('function read({value=4}={},...rest){const [first=1]=rest;return value+first;}return read();');expect(program.version).toBe(8);expect(exports.executeHmiScript(program,{}).returned).toBe(5);expect(exports.inspectHmiScriptProgram(program).error).toBeUndefined();
  });
 });

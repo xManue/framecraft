@@ -6727,6 +6727,42 @@ Verifiche del 5 ottobre 2026:
   classi, async/generator come funzioni valore, coercizioni/API restanti, eventi/controlli,
   librerie versionate e gli altri gate della fase 3.
 
+## 189. Espressioni di assegnazione, catch e throw (4 novembre 2026)
+
+- **Fase 3 Unified**: assegnazioni semplici e destructuring come istruzioni/espressioni,
+  con valore risultante uguale al RHS. Destinatari locali o membri, default, rest e pattern
+  annidati. La dichiarazione di nuove variabili rimane distinta dall’aggiornamento.
+- **Ordine**: riferimento di destinazione risolto prima del RHS nelle assegnazioni semplici;
+  RHS unico prima dei pattern; destinazioni prima dei singoli prelievi/default/copie rest.
+  Un destinatario che modifica la sorgente influisce sul prelievo seguente come in JavaScript.
+  Alias del RHS conservati anche nelle assegnazioni concatenate e nel valore restituito.
+- **Scritture**: controlli TDZ/const e import pubblici in sola lettura; i membri usano lo
+  stesso setter di dati, schermate/popup e voci TagSet. Tipi/range invariati e arresto sul
+  primo destinatario rifiutato. Le scritture precedenti non sono un batch atomico né una
+  conferma PLC. Lo staging TagSet non invia comandi senza l’operazione di scrittura prevista.
+- **Eccezioni**: catch con pattern e throw di scalari/dati/riferimenti dello script. Il
+  valore esplicito è mantenuto tra chiamate/moduli e rethrow, senza convertire 0/null/false/
+  undefined/stringa vuota in successo. finally conserva la precedenza. I codici numerici e
+  messaggi delle API HMI mantengono il contratto esistente; non si dichiarano Error/DOMException
+  completi. Nessuna serializzazione dell’intero payload nelle diagnostiche non gestite.
+- **Analisi**: cache di effetti/referenze per scope, raccolta limitata dei valori lanciati,
+  binding dei catch e dipendenze dei moduli raggiunti. Restano visibili tag letti/scritti
+  dopo un’assegnazione o un throw attraverso moduli che restituiscono riferimenti.
+  L’analisi è conservativa e non sostituisce i controlli di autorizzazione server.
+- **Pipeline**: IR 8 nei nuovi salvataggi; lettori 1–8 su eventi, dinamizzazioni, timer,
+  Scheduler e VM browser/Node, catalogo JSON v1. Componenti 2026.11.04.3 da aggiornare col
+  confronto assistito del punto 186 prima di salvare script ricompilati. Le vecchie IR
+  rimangono eseguibili, con le loro regole precedenti.
+- **Guida**: esempi richiudibili in Script e guida Runtime aggiornata. Inizializzatori globali
+  ancora passivi: le nuove espressioni di assegnazione non possono aggirare quel divieto.
+- **Verifiche**: 66 nuovi casi, JavaScript nativo per ordine/risultato/eccezioni e prove di
+  alias, trasporto una volta, errore numerico del trasporto, setter HMI rifiutato, range TagSet,
+  export della VM e payload non pubblicato. Regressioni mirate delle aree interessate,
+  build/typecheck e pannello compilato in Edge/Node; caso autorizzato nello Scheduler.
+  Nessun PLC fisico nella prova. I dettagli del collaudo macchina rimangono gate di produzione.
+- **Ancora aperto**: classi, async/generator come funzioni valore, coercizioni/operatori e
+  API restanti, oggetti Error completi, librerie versionate e le altre voci della fase 3.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

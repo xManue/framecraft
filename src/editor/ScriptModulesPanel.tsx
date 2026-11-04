@@ -247,6 +247,10 @@ export function ScriptModulesPanel() {
           <p className="script-intro"><code>{"const { speed = 0, steps = [] } = cfg; const [first = 0, ...others] = steps;"}</code> estrae i dati e raccoglie quelli rimanenti. Gli oggetti annidati conservano il loro riferimento.</p>
           <p className="script-intro"><code>{"const speedOf = ({ speed = 0 } = {}) => speed;"}</code> imposta un valore quando il dato manca o vale <code>undefined</code>. <code>null</code> resta <code>null</code>. I default si valutano in ordine e possono usare i parametri già inizializzati.</p>
         </details>
+        <details className="script-assignment-help"><summary>Assegnare dati e gestire errori</summary>
+          <p className="script-intro"><code>{"let speed; ({ speed = 0 } = cfg);"}</code> aggiorna una variabile già dichiarata. Puoi usare anche proprietà di oggetti e i rest. Le costanti e i controlli di scrittura dei destinatari restano applicati.</p>
+          <p className="script-intro"><code>{"try { throw { message: 'Parametro non valido' }; } catch ({ message }) { HMIRuntime.Trace(message); }"}</code> riceve il valore lanciato, anche da una funzione. Per gli errori delle API HMI restano validi i codici o messaggi indicati dalla loro guida.</p>
+        </details>
         {selection.kind === "global" && <>
           <p id="script-public-help" className="script-intro">Usa <code>export let count = 0;</code> per rendere un valore leggibile come <code>Modules.{(owner as typeof catalog.globalModules[number]).alias}.count</code>. Dall'esterno il binding è in sola lettura: per cambiarlo chiama una funzione del modulo. Senza export la variabile resta privata.</p>
           {publicVariables.length ? <div className="script-public-variables" role="region" aria-label="Variabili pubbliche del modulo">

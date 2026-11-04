@@ -1037,3 +1037,24 @@ con rest precedente è ancora eseguibile. Versione componenti 2026.11.04.2 e mig
 I pattern nelle assegnazioni/catch, classi e altre semantiche della fase 3 rimangono aperti.
 I confini dati/host, limiti di raccolta e budget valgono anche per i binding; nessun cambiamento
 a permessi server o conferme PLC. I test su fixture non certificano l’interoperabilità macchina.
+
+## Assegnazioni ed eccezioni dello script (LAVORO 189)
+
+IR 8 contiene l’espressione di assegnazione e i destinatari dei pattern. La coroutine risolve
+il riferimento prima del prelievo/default/copia, mantiene il RHS per il risultato e delega
+le scritture allo stesso setter di dati/oggetti HMI/popup/TagSet. Nessuna nuova via di invio
+al PLC o deroga ai controlli server; l’assegnazione rimane sequenziale, non una transazione.
+
+Throw espliciti hanno un contenitore interno del valore che attraversa coroutine annidate;
+il catch riceve il valore originale. Il risultato esterno non serializza quel contenitore
+né l’oggetto intero nelle diagnostiche. Le API HMI conservano i loro errori numerici/stringa.
+Gli oggetti Error completi restano un’altra parte dell’object model da implementare.
+
+La cache dell’analisi è per scope/ispezione e mantiene riferimenti/effetti delle assegnazioni.
+I possibili valori lanciati sono raccolti al punto di throw e usati nei binding catch, anche
+attraverso moduli raggiunti. Budget e limiti dei candidati impediscono ispezioni illimitate;
+restano i limiti generali dell’analisi conservativa, senza sostituire l’autorizzazione server.
+
+Lettori IR 1–8 nel Runtime esportato e servizio centrale, catalogo JSON v1 e componenti
+2026.11.04.3 da migrare esplicitamente. Classi, async/generator, coercizioni e API restanti,
+librerie versionate e collaudo industriale mantengono aperta la fase 3 Unified.
