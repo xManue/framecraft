@@ -1,5 +1,5 @@
 import { AlertTriangle, Braces, Check, Clock3, FastForward, Play, Plus, Save, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { patternNames } from "../core/hmiScript";
 import { advanceHmiScheduler, createHmiSchedulerState, notifyHmiSchedulerAlarm, runHmiScheduledTask, type HmiSchedulerResult, type HmiSchedulerState } from "../core/hmiScheduler";
 import {
@@ -16,6 +16,8 @@ import type { OperatorAccountSummary } from "../core/operatorAccounts";
 import { joinProjectPath } from "../core/paths";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
+
+const ScriptLibraryDialog=lazy(()=>import("./ScriptLibraryDialog").then(module=>({default:module.ScriptLibraryDialog})));
 
 type Selection = { kind: "global" | "local" | "task"; owner: number; fn?: number };
 const catalogName = "framecraft.scripts.json";
@@ -64,6 +66,8 @@ export function ScriptModulesPanel() {
   const currentRoute = useEditorStore((state) => state.pages.find((page) => page.id === state.activePageId)?.route ?? state.previewPath ?? "/");
   const [catalog, setCatalog] = useState<HmiScriptCatalog>(() => emptyHmiScriptCatalog());
   const [selection, setSelection] = useState<Selection>();
+  const [libraryOpen,setLibraryOpen]=useState(false);
+  useEffect(()=>setLibraryOpen(false),[project?.root]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -202,7 +206,9 @@ export function ScriptModulesPanel() {
   };
 
   return <div className="panel-content script-panel">
+    {libraryOpen&&<Suspense fallback={<p role="status">Apertura libreria…</p>}><ScriptLibraryDialog catalog={catalog} selectedAlias={selection?.kind==="global"?catalog.globalModules[selection.owner]?.alias:undefined} onApply={change} onClose={()=>setLibraryOpen(false)}/></Suspense>}
     <div className="panel-title"><span>MODULI JAVASCRIPT</span><small>{catalog.globalModules.length + catalog.localDefinitions.length + catalog.scheduledTasks.length}</small></div>
+    <button type="button" disabled={saving} onClick={()=>setLibraryOpen(true)}>Librerie · importa, esporta e aggiorna</button>
     <p className="script-intro">Funzioni compilate nella sandbox HMI. Usa <code>Modules.Alias.Funzione()</code> ovunque e <code>Local.Funzione()</code> nella pagina e nel contesto scelti.</p>
     <section className="script-scheduler-test" aria-label="Scheduler del servizio">
       <label><input type="checkbox" checked={catalog.schedulerService?.enabled ?? false} onChange={event => change({ ...catalog, schedulerService: { enabled:event.target.checked,accountId:catalog.schedulerService?.accountId ?? "" } })} /> Esegui le operazioni sul servizio centrale</label>
@@ -219,7 +225,7 @@ export function ScriptModulesPanel() {
     </section>
     <div className="script-toolbar"><button onClick={addGlobal}><Plus size={13} /> Modulo globale</button><button onClick={addLocal}><Plus size={13} /> Definizione pagina</button><button onClick={addTask}><Clock3 size={13} /> Operazione pianificata</button></div>
     <div className="script-module-list">
-      {catalog.globalModules.map((item, index) => <button key={`g:${index}`} className={selection?.kind === "global" && selection.owner === index ? "active" : ""} onClick={() => setSelection({ kind: "global", owner: index })}><Braces size={14} /><span><strong>{item.name}</strong><small>Modules.{item.alias} · {item.functions.length} funzioni</small></span></button>)}
+      {catalog.globalModules.map((item, index) => <button key={`g:${index}`} className={selection?.kind === "global" && selection.owner === index ? "active" : ""} onClick={() => setSelection({ kind: "global", owner: index })}><Braces size={14} /><span><strong>{item.name}</strong><small>Modules.{item.alias} · {item.functions.length} funzioni{item.library&&<> · {item.library.mode==="type"?"tipo":"copia"} V{item.library.version}</>}</small></span></button>)}
       {catalog.localDefinitions.map((item, index) => <button key={`l:${index}`} className={selection?.kind === "local" && selection.owner === index ? "active" : ""} onClick={() => setSelection({ kind: "local", owner: index })}><Braces size={14} /><span><strong>{item.scope}</strong><small>Locale · {item.context === "events" ? "eventi" : "dinamizzazioni"} · {item.functions.length}</small></span></button>)}
       {catalog.scheduledTasks.map((item, index) => <button key={`t:${item.id}:${index}`} className={selection?.kind === "task" && selection.owner === index ? "active" : ""} onClick={() => setSelection({ kind: "task", owner: index })}><Clock3 size={14} /><span><strong>{item.name || "Operazione senza nome"}</strong><small>{item.enabled ? "Attiva" : "Disattivata"} · {taskTriggerSummary(item.trigger)}</small></span></button>)}
       {!catalog.globalModules.length && !catalog.localDefinitions.length && !catalog.scheduledTasks.length && <p className="resource-empty">Crea un modulo per riusare calcoli, oppure un'operazione pianificata per eseguire logica a tempo o al cambio di un tag.</p>}
@@ -228,6 +234,7 @@ export function ScriptModulesPanel() {
       <header><strong>{selection.kind === "global" ? "Modulo globale" : "Definizione locale"}</strong><button onClick={removeOwner} aria-label="Elimina modulo"><Trash2 size={13} /></button></header>
       {selection.kind === "global" ? <>
         <label><span>Nome</span><input value={(owner as typeof catalog.globalModules[number]).name} onChange={(event) => replaceOwner({ ...owner, name: event.target.value })} /></label>
+        {(owner as typeof catalog.globalModules[number]).library&&<details className="script-library-pin"><summary>{(owner as typeof catalog.globalModules[number]).library?.name} · V{(owner as typeof catalog.globalModules[number]).library?.version}</summary><p className="script-intro">Versione fissata nel progetto. Per confrontare un aggiornamento apri Librerie. Le modifiche al codice saranno segnalate come personalizzazioni.</p><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{(owner as typeof catalog.globalModules[number]).library?.license}{"\n"}{(owner as typeof catalog.globalModules[number]).library?.notice}</pre><button type="button" disabled={(owner as typeof catalog.globalModules[number]).library?.mode==="copy"} onClick={()=>replaceOwner({...owner,library:{...(owner as typeof catalog.globalModules[number]).library!,mode:"copy"}})}>Rendi copia indipendente</button></details>}
         <label><span>Alias nello script</span><input value={(owner as typeof catalog.globalModules[number]).alias} onChange={(event) => replaceOwner({ ...owner, alias: event.target.value })} /></label>
       </> : <>
         <label><span>Pagina / route</span><input value={(owner as typeof catalog.localDefinitions[number]).scope} onChange={(event) => replaceOwner({ ...owner, scope: event.target.value })} /></label>

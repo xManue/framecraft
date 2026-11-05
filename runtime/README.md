@@ -2039,6 +2039,16 @@ catalogo resta v1. Nei progetti precedenti aggiorna insieme servizio/browser con
 **Pannello → Aggiorna componenti del pannello**, quindi ricompila e salva esplicitamente
 lo script da cambiare. Il codice nuovo non rende compatibile un servizio vecchio.
 
+## Librerie sorgente dei moduli
+
+Da **Script → Librerie** puoi importare una versione fissata o una copia, confrontare il
+codice e le personalizzazioni e preparare rilasci riusabili. La guida completa è
+[SCRIPT-LIBRARIES.md](https://github.com/xManue/framecraft/blob/main/SCRIPT-LIBRARIES.md) nel repository dell’editor. L’importazione
+modifica la bozza; salva i moduli per usarli e riavvia il gateway se li usa lo Scheduler
+centrale. I programmi restano quelli compilati dalla VM: le librerie non concedono permessi
+PLC e la validazione non esegue il loro codice. I metadati di versione/licenza sono
+conservati nel catalogo. La migrazione automatica delle API incompatibili resta aperta.
+
 ## Scheduler centrale
 
 Nei nuovi progetti, apri **Script → Operazioni pianificate** e abilita l’esecuzione sul

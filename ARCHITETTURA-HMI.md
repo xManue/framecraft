@@ -1072,3 +1072,18 @@ letture o comandi. Gli oggetti Error non diventano valori scalari del PLC.
 Il pacchetto Runtime 2026.11.05.1 legge IR 1–9; i programmi 1–8 non vengono ricompilati
 automaticamente e mantengono i contratti catch precedenti. Classi/prototipi e parità completa
 JavaScript restano aperti. La valutazione riproducibile del motore WASM è in ADR-JS-001.md.
+
+## Librerie dei moduli script (LAVORO 191)
+
+Il pacchetto framecraft-script-library schema 1 contiene sorgenti canonici e versioni
+rilasciate con impronte, senza IR eseguibile fidata. Il catalogo mantiene pin per modulo,
+versione, digest del codice distribuito e attribuzioni. Gli helper Runtime esistenti ignorano
+i metadati di ingegneria e consumano i programmi ricompilati: nessun nuovo privilegio o driver.
+Le copie mantengono i diritti di origine; i tipi si aggiornano solo su scelta dell'autore.
+
+La finestra e il worker vengono caricati a richiesta. Parsing/compilazione avvengono nel
+worker con limite esterno di 15 secondi e vincoli di dimensione. I confronti usano il digest
+dell'intera bozza e le basi dei singoli moduli; applicare aggiorna una sola bozza del catalogo.
+Il salvataggio resta il comando esplicito del pannello Script. I cambiamenti di API e il
+refactoring delle pagine non vengono inventati: sono bloccati nell'aggiornamento del tipo,
+con percorso copia/migrazione. Vedi SCRIPT-LIBRARIES.md per limiti e verifica riproducibile.

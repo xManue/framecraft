@@ -6784,6 +6784,26 @@ Verifiche del 5 ottobre 2026:
   con JavaScript nativo, dipendenze nelle conversioni, moduli, trasporto asincrono senza replay,
   controlli dei destinatari, servizio centrale e Runtime autonomo. Nessun PLC fisico contattato.
 
+## 191. Librerie sorgente versionate dei moduli script (5 novembre 2026)
+
+- **Fase 3 Unified**: finestra ampia e stabile da Script, caricata a richiesta; importazione e
+  rilascio di pacchetti sorgente con cronologia, identità/licenza, note e impronte SHA-256.
+  Tipi fissati a una versione e copie indipendenti; nessun aggiornamento automatico.
+- **Dipendenze e identità**: include i moduli dipendenti, blocca riferimenti mancanti, rimappa
+  gli alias interni con AST senza toccare stringhe/commenti. Un nuovo rilascio da un tipo con
+  alias diversi conserva le identità originali. Codice identico può essere collegato senza copia.
+- **Confronto**: sorgenti JavaScript affiancati, tag anche transitivi, attribuzioni, conferme
+  separate per personalizzazioni e downgrade; collisioni e versioni ripubblicate diverse bloccate.
+  API incompatibili richiedono copia/migrazione; il rifacimento automatico dei riferimenti resta aperto.
+- **Pipeline e produzione**: importazione solo in bozza, poi Salva moduli; compilazione
+  con le guardie esistenti, nessuna esecuzione durante la validazione e nessun tag/evento creato.
+  Pin/attribuzioni persistono nel catalogo; metadati malformati non vengono cancellati dal salvataggio.
+  Validazione in worker con timeout, risposte obsolete e proposte stale bloccate. Nessuna dipendenza nuova.
+- **Verifiche**: 44 casi dedicati e regressioni dei moduli, export e contesti; prova della
+  finestra compilata con worker reali, versioni/copie/alias, download riletto, dimensioni stabili,
+  blocchi stale/tamper e helper Node autonomi. Fixture sintetiche, nessun contatto con PLC reali.
+- **Guida**: SCRIPT-LIBRARIES.md; progetto con Runtime precedente da aggiornare prima di usare IR 9.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

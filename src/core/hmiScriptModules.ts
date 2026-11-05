@@ -21,11 +21,29 @@ export interface HmiScriptFunctionDefinition {
   error?: string;
 }
 
+export interface HmiScriptAttribution { id:string; name:string; version:string; license:string; notice:string }
+export interface HmiScriptLibraryPin extends HmiScriptAttribution {
+  mode:"type"|"copy"; alias:string; digest:string; release:string; attributions:HmiScriptAttribution[];
+}
+function scriptLibraryPin(value:unknown):HmiScriptLibraryPin|undefined {
+  if(!value||typeof value!=="object"||Array.isArray(value))return;
+  const item=value as Record<string,unknown>;
+  const attribution=(value:unknown):HmiScriptAttribution|undefined=>{
+    if(!value||typeof value!=="object"||Array.isArray(value))return;const v=value as Record<string,unknown>;
+    if(!["id","name","version","license","notice"].every(key=>typeof v[key]==="string")||!["id","name","version","license"].every(key=>(v[key] as string).trim())||(v.id as string).length>128||(v.name as string).length>128||(v.version as string).length>32||(v.license as string).length>256||(v.notice as string).length>8000)return;
+    return{id:v.id as string,name:v.name as string,version:v.version as string,license:v.license as string,notice:v.notice as string};
+  };
+  const origin=attribution(item);if(!origin||!["type","copy"].includes(String(item.mode))||typeof item.alias!=="string"||!/^[A-Za-z_$][\w$]*$/.test(item.alias)||typeof item.digest!=="string"||!/^[a-f0-9]{64}$/.test(item.digest)||typeof item.release!=="string"||!/^[a-f0-9]{64}$/.test(item.release)||!Array.isArray(item.attributions)||item.attributions.length>32)return;
+  const attributions=item.attributions.map(attribution);if(attributions.some(value=>!value))return;
+  return{...origin,mode:item.mode as "type"|"copy",alias:item.alias,digest:item.digest,release:item.release,attributions:attributions as HmiScriptAttribution[]};
+}
 export interface HmiGlobalScriptModule {
   name: string;
   alias: string;
   functions: HmiScriptFunctionDefinition[];
   globalDefinition?: HmiScriptGlobalDefinition;
+  library?: HmiScriptLibraryPin;
+  libraryIssue?: string;
 }
 
 export interface HmiLocalScriptDefinition {
@@ -193,7 +211,8 @@ export function parseHmiScriptCatalog(value: unknown): HmiScriptCatalog {
     const name = String(item.name ?? "").trim();
     const alias = String(item.alias ?? name).trim();
     const globalDefinition = globalDefinitionOf(item.globalDefinition, true);
-    return [{ name, alias, functions: functionsOf(item.functions, globalDefinition), ...(globalDefinition ? { globalDefinition } : {}) }];
+    const library=scriptLibraryPin(item.library),libraryIssue=item.library!==undefined&&!library?"Metadati di libreria non validi: reimporta una libreria controllata o correggi il catalogo originale prima di salvare.":typeof item.libraryIssue==="string"?item.libraryIssue:undefined;
+    return [{ name, alias, functions: functionsOf(item.functions, globalDefinition), ...(globalDefinition ? { globalDefinition } : {}), ...(library?{library}:{}), ...(libraryIssue?{libraryIssue}:{}) }];
   }) : [];
   const localDefinitions = Array.isArray(catalog.localDefinitions) ? catalog.localDefinitions.flatMap((value) => {
     if (!value || typeof value !== "object") return [];
@@ -212,6 +231,7 @@ export function parseHmiScriptCatalog(value: unknown): HmiScriptCatalog {
 
 export function serializeHmiScriptCatalog(value: HmiScriptCatalog): string {
   const catalog = parseHmiScriptCatalog(value);
+  const libraryIssue=catalog.globalModules.find(module=>module.libraryIssue)?.libraryIssue;if(libraryIssue)throw new Error(libraryIssue);
   const cleanFunction = (item: HmiScriptFunctionDefinition) => ({
     name: item.name,
     parameters: item.parameters,
@@ -248,6 +268,7 @@ export function hmiScriptCatalogIssues(catalog: HmiScriptCatalog): string[] {
   const variables = hmiScriptVariables(catalog);
   const aliases = new Set<string>();
   for (const module of catalog.globalModules) {
+    if(module.libraryIssue)issues.push(`Modules.${module.alias}: ${module.libraryIssue}`);
     if (module.globalDefinition?.error) issues.push(`Modules.${module.alias}, definizione globale: ${module.globalDefinition.error}`);
     if (!module.name.trim()) issues.push("Il nome del modulo globale e' obbligatorio.");
     if (!identifier.test(module.alias)) issues.push(`Alias globale non valido: ${module.alias}. Usa un identificatore JavaScript.`);
