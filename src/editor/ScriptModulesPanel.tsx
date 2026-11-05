@@ -1,5 +1,5 @@
 import { AlertTriangle, Braces, Check, Clock3, FastForward, Play, Plus, Save, Trash2 } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { patternNames } from "../core/hmiScript";
 import { advanceHmiScheduler, createHmiSchedulerState, notifyHmiSchedulerAlarm, runHmiScheduledTask, type HmiSchedulerResult, type HmiSchedulerState } from "../core/hmiScheduler";
 import {
@@ -17,6 +17,7 @@ import { joinProjectPath } from "../core/paths";
 import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
 
+import {setScriptDraftDirty} from '../state/scriptDraftState';
 const ScriptLibraryDialog=lazy(()=>import("./ScriptLibraryDialog").then(module=>({default:module.ScriptLibraryDialog})));
 
 type Selection = { kind: "global" | "local" | "task"; owner: number; fn?: number };
@@ -69,6 +70,8 @@ export function ScriptModulesPanel() {
   const [libraryOpen,setLibraryOpen]=useState(false);
   useEffect(()=>setLibraryOpen(false),[project?.root]);
   const [dirty, setDirty] = useState(false);
+  const draftOwner=useRef(Symbol('script-draft'));
+  useEffect(()=>{const owner=draftOwner.current;setScriptDraftDirty(owner,dirty);return()=>setScriptDraftDirty(owner,false);},[dirty]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState(false);

@@ -1,5 +1,7 @@
 import { runtimeBundleVersion, runtimeManifestPath } from "./runtimeUpdate";
 import runtimeUpdateGuardSource from "../../runtime/runtime-update-guard.mjs?raw";
+import scriptMigrationGuardSource from "../../runtime/script-migration-guard.mjs?raw";
+import scriptMigrationGuardTypes from "../../runtime/script-migration-guard.d.mts?raw";
 import gatewayServiceSource from "../../runtime/gateway-service.mjs?raw";
 import mqttServiceSource from "../../runtime/mqtt-service.mjs?raw";
 import runtimeUpdateGuardTypes from "../../runtime/runtime-update-guard.d.mts?raw";
@@ -2010,6 +2012,8 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/gateway-service.mjs", content: gatewayServiceSource },
     { path: "runtime/mqtt-service.mjs", content: mqttServiceSource },
     { path: "runtime/runtime-update-guard.mjs", content: runtimeUpdateGuardSource },
+    { path: "runtime/script-migration-guard.mjs", content: scriptMigrationGuardSource },
+    { path: "runtime/script-migration-guard.d.mts", content: scriptMigrationGuardTypes },
     { path: "runtime/runtime-update-guard.d.mts", content: runtimeUpdateGuardTypes },
     { path: "runtime/start-gateway.mjs", content: gatewayStartSource },
     { path: "runtime/review-scheduler.mjs", content: schedulerReviewSource },

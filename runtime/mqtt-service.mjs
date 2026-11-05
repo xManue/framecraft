@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createMqttPlcConnection } from "./mqtt-driver.mjs";
 import { assertRuntimeUpdateComplete, RuntimeUpdateError } from "./runtime-update-guard.mjs";
+import { assertScriptMigrationComplete, ScriptMigrationError } from "./script-migration-guard.mjs";
 import { validateMqttConnection } from "./connection-config.mjs";
 import { ConnectionOperationError, connectionDiagnostic } from "./connection-diagnostics.mjs";
 import { createRuntimeLogger } from "./runtime-log.mjs";
@@ -14,6 +15,7 @@ async function stop() { if (stopping) return; stopping = true; await Promise.all
 for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void stop(); });
 try {
   await assertRuntimeUpdateComplete(fileURLToPath(root));
+  await assertScriptMigrationComplete(fileURLToPath(root));
   const catalog = JSON.parse(await readFile(new URL("framecraft.connections.json", root), "utf8"));
   const plc = JSON.parse(await readFile(new URL("framecraft.plc.json", root), "utf8"));
   if (catalog.version !== 1 || !Array.isArray(catalog.connections) || !Array.isArray(plc.variables)) throw new Error("Cataloghi non validi.");
@@ -30,7 +32,7 @@ try {
   if (!connections.length) process.stdout.write((json ? JSON.stringify({ type: "mqtt", state: "disabled" }) : "Nessuna connessione MQTT abilitata; nessun dato PLC simulato.") + "\n");
   if (!stopping) await Promise.all(connections.map((connection) => connection.start()));
 } catch (error) {
-  if(error instanceof RuntimeUpdateError)process.stderr.write(JSON.stringify({type:"runtime-update",code:error.code,error:error.message,remedy:error.remedy})+"\n");
+  if(error instanceof RuntimeUpdateError || error instanceof ScriptMigrationError)process.stderr.write(JSON.stringify({type:"runtime-update",code:error.code,error:error.message,remedy:error.remedy})+"\n");
   else logger.write(error instanceof ConnectionOperationError ? error.diagnostic : connectionDiagnostic("CONFIGURATION", { protocol: "mqtt", technicalCode: error.code }));
   await stop(); process.exitCode = 1;
 } finally { if (!connections.length) await logger.close(); else await logger.flush(); }

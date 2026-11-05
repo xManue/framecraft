@@ -20,6 +20,9 @@ function requireDesktop() {
 }
 
 export const desktopBridge = {
+  async readScriptMigration(root:string,recoveryOnly=false):Promise<import('../core/scriptMigrationTransaction').ScriptMigrationSnapshot>{requireDesktop();return invoke('read_script_migration',{root,recoveryOnly});},
+  async applyScriptMigration(root:string,generation:number,token:string,changes:import('../core/scriptDocumentMigration').MigrationFileChange[]):Promise<string>{requireDesktop();return invoke('apply_script_migration',{root,generation,token,changes});},
+  async restoreScriptMigration(root:string,generation:number,backup:string):Promise<string[]>{requireDesktop();return invoke('restore_script_migration',{root,generation,backup});},
   async readRuntimeUpdate(root: string, paths: string[], catalogPresenceOnly = true): Promise<import("../core/runtimeUpdate").RuntimeUpdateSnapshot> {
     requireDesktop(); return invoke("read_runtime_update", { root, paths, catalogPresenceOnly });
   },

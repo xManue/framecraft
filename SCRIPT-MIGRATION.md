@@ -1,9 +1,9 @@
 # Analisi delle migrazioni delle librerie script
 
-Stato del punto 192: motore di confronto e worker verificati. **La migrazione guidata sui file
-reali non è ancora attiva nell’editor.** La finestra Librerie mantiene il blocco delle API
-incompatibili. Questo documento descrive il motore da collegare alla revisione e alla
-transazione con backup; non è una procedura alternativa per scrivere i file manualmente.
+Stato dei punti 192–193: motore di confronto, inventario e transazione nativa collegati;
+**recupero operativo da Pannello → Recupera migrazioni script**. La finestra Librerie mantiene
+il blocco delle API incompatibili: restano da collegare le scelte guidate di simboli, parametri
+e contesti e la revisione prima dell’applicazione. Il backend non esegue migrazioni automatiche.
 
 ## Contratto del confronto
 
@@ -15,9 +15,11 @@ non esegue il codice analizzato e non invia richieste PLC o richieste esterne.
 
 Il chiamante deve fornire tutti i file del progetto pertinenti. L’impronta include anche i file
 non modificati: un import cambiato, una nuova pagina o una rimozione devono invalidare il piano.
-Il motore puro non certifica che l’inventario ricevuto corrisponda al filesystem. Questo controllo
-spetterà alla transazione nativa, insieme all’identità del progetto, alle bozze non salvate,
-all’arresto dell’anteprima e del servizio e al recupero dopo un’interruzione.
+Il motore puro non certifica che l’inventario ricevuto corrisponda al filesystem. Il backend
+conserva il proprio inventario e un token legato a progetto/generazione: prima della scrittura
+confronta nuovamente tutti i file, compresi import e sorgenti non modificati, e la configurazione
+del servizio. Un secondo controllo dopo le scritture rileva cambiamenti concorrenti e avvia
+il rollback. Le bozze aperte e l’arresto dell’anteprima sono controllati dall’editor.
 
 `previewScriptProjectMigration` esegue il confronto in un worker eliminabile, con timeout di
 15 secondi e AbortSignal. Le operazioni non continuano in background dopo annullamento,
@@ -66,15 +68,50 @@ dipendenze non ricompila il programma. Se esistono definizioni locali delle dina
 serve lo scope della pagina, fornito esplicitamente oppure coincidente esattamente con il
 percorso del file: in assenza di certezza il confronto si ferma.
 
-## Da completare prima dell’applicazione
+## Transazione e recupero
 
-- Domande guidate per simboli e parametri, contesto locale, differenze e ricompilazione delle IR.
-- Inventario nativo completo e confinato, confronto prima della scrittura e invalidazione delle bozze.
-- Unica transazione con backup, rollback, recupero delle interruzioni e controllo delle modifiche esterne.
-- Collegamento alla finestra Librerie e verifica dell’intero flusso su progetti sintetici.
+La transazione usa il proprio journal in .framecraft/script-migrations/ID/, separato dagli
+aggiornamenti Runtime. Prima copia tutti i sorgenti prima/dopo e pubblica i metadati; soltanto
+poi scrive i file, singolarmente in modo atomico. Non crea o elimina file del progetto.
+Il ripristino confronta tutti i destinatari prima di modificarne uno e conserva le modifiche
+successive. Un conflitto richiede verifica; il backup rimane disponibile. Anche un’interruzione
+prima del messaggio finale lascia uno stato leggibile al successivo avvio.
+
+I comandi nativi sono riservati alla finestra principale e al progetto aperto. Modifiche di
+progetto, anteprima, editor e servizio sono escluse durante la scrittura. La porta loopback del
+gateway deve essere libera e viene riservata; l’operatore deve confermare di avere arrestato
+il servizio, incluso un eventuale servizio MQTT separato. Non vengono inviati comandi PLC.
+Il backend verifica in sola lettura anche eventuali aggiornamenti Runtime pendenti.
+
+L’inventario include sorgenti e dati locali, anche in cartelle utente nascoste, ed esclude
+cartelle di sistema, dipendenze, output e il codice server Runtime. Sono protetti i file Framecraft di connessione/autenticazione,
+il manifesto dei componenti, il pacchetto principale e gli helper generati. Collegamenti/junction/hard link, radici
+sorgenti esterne, UTF-8 non valido, inventari incompleti o oltre i limiti vengono rifiutati.
+La configurazione delle connessioni resta nel confronto nativo e non è restituita al worker.
+
+Per applicare serve prima il pacchetto Runtime 2026.11.05.2, installato con Aggiorna componenti
+del pannello. Il backend verifica guardia ed entry point conosciuti: installazioni precedenti
+o personalizzazioni di quei tre file richiedono confronto. Nuovi pannelli includono la guardia.
+Gateway, MQTT e anteprima rifiutano una migrazione incompleta; gli aggiornamenti del journal
+Runtime precedente mantengono il loro controllo separato.
+
+Da Pannello → Recupera migrazioni script si possono leggere i backup anche se pagine o catalogo
+non sono più leggibili. Salva le bozze, arresta il servizio e confermalo; l’app ferma l’anteprima,
+ripristina e rilegge pagine/catalogo. La finestra resta stabile durante l’operazione e non può
+essere chiusa a scrittura iniziata. Un errore nel rileggere l’editor dopo un ripristino riuscito
+viene descritto esplicitamente, senza fingere che i file siano rimasti invariati.
+
+## Da completare prima della migrazione guidata delle librerie
+
+- Scelte guidate di simboli, parametri e contesto locale, confronto di tutti i file e conferma della ricompilazione delle vecchie IR.
+- Collegamento del piano dalla finestra Librerie alla transazione, invalidazione delle proposte e prova dell’intero aggiornamento di una libreria.
 
 I test mirati sono `script-reference-migration`, `script-document-migration`,
 `script-project-migration` e `script-migration-worker`. `tests/browser/script-migration.mjs`
 compila il worker reale, prova pagine JSX e HTML in Edge, verifica dipendenze e vecchie IR,
 annullamento e blocchi, poi esegue il risultato negli helper Runtime browser e Node.
 Nessun servizio PLC o progetto macchina reale viene coinvolto.
+
+Il punto 193 verifica anche 25 casi nativi su file temporanei, 81 casi mirati JavaScript/UI
+e la finestra compilata in Edge. Le API native della prova browser sono simulate; le prove
+native esercitano la transazione reale. Il collaudo su macchine fisiche rimane distinto.

@@ -2,6 +2,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createPlcGateway } from "./gateway.mjs";
 import { assertRuntimeUpdateComplete, RuntimeUpdateError } from "./runtime-update-guard.mjs";
+import { assertScriptMigrationComplete, ScriptMigrationError } from "./script-migration-guard.mjs";
 import { ConnectionOperationError, connectionDiagnostic } from "./connection-diagnostics.mjs";
 import { createRuntimeLogger } from "./runtime-log.mjs";
 import { emptyRecipeCatalog, parseRecipeCatalog, RecipeStoreError } from "./recipe-catalog.mjs";
@@ -31,6 +32,7 @@ async function stop() { if (stopping) return; stopping = true; await gateway?.st
 for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void stop(); });
 try {
   await assertRuntimeUpdateComplete(fileURLToPath(root));
+  await assertScriptMigrationComplete(fileURLToPath(root));
   const catalog = JSON.parse(await readFile(new URL("framecraft.connections.json", root), "utf8"));
   const plc = JSON.parse(await readFile(new URL("framecraft.plc.json", root), "utf8"));
   let alarmCatalog;
@@ -110,7 +112,7 @@ try {
     }
   }
 } catch (error) {
-  if (error instanceof RuntimeUpdateError) process.stderr.write(JSON.stringify({type:"runtime-update",code:error.code,error:error.message,remedy:error.remedy})+"\n");
+  if (error instanceof RuntimeUpdateError || error instanceof ScriptMigrationError) process.stderr.write(JSON.stringify({type:"runtime-update",code:error.code,error:error.message,remedy:error.remedy})+"\n");
   else if (error instanceof RecipeStoreError) reportRecipe(error);
   else logger.write(error instanceof ConnectionOperationError ? error.diagnostic : connectionDiagnostic("CONFIGURATION", { protocol: "gateway", technicalCode: error.code }));
   await stop(); process.exitCode = 1;

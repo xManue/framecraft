@@ -7,7 +7,7 @@ import {
   Pencil, Play, Plus, Redo2, RefreshCw, Save, Keyboard, Settings, Copy,
   TerminalSquare, Trash2, Undo2, X, ZoomIn, ShieldCheck,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { alignLabels, type AlignMode } from "../canvas/alignment";
 import { panelFormats } from "../canvas/panels";
 import type { ViewMode, Viewport } from "../core/types";
@@ -52,6 +52,7 @@ const alignCommands: { mode: AlignMode; icon: typeof AlignStartVertical }[] = [
 
 type TopMenu = "file" | "edit" | "view" | "panel" | "help";
 
+const ScriptMigrationRecoveryDialog=lazy(()=>import('./ScriptMigrationRecoveryDialog').then(module=>({default:module.ScriptMigrationRecoveryDialog})));
 export function TopBar() {
   const project = useEditorStore((state) => state.project)!;
   const viewport = useEditorStore((state) => state.viewport);
@@ -110,6 +111,7 @@ export function TopBar() {
   const [alarmsOpen, setAlarmsOpen] = useState(false);
   const [recipesOpen, setRecipesOpen] = useState(false);
   const [runtimeUpdateOpen, setRuntimeUpdateOpen] = useState(false);
+  const [scriptRecoveryOpen,setScriptRecoveryOpen]=useState(false);
   const [activeMenu, setActiveMenu] = useState<TopMenu>();
   const menuRef = useRef<HTMLElement>(null);
 
@@ -205,6 +207,7 @@ export function TopBar() {
             {activeMenu === "panel" && <div className="topbar-dropdown" role="menu" aria-label="Pannello">
               <button role="menuitem" disabled={!previewUrl} onClick={() => runAndClose(() => void openPreview())}><Play size={15} /><span><strong>Prova pannello</strong><small>Apri il Runtime senza strumenti di modifica</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => useEditorAi.getState().show("edit"))}><HelpCircle size={15} /><span><strong>Chat AI · Codex</strong><small>Conversazione del progetto, allegati e proposte da approvare</small></span></button>
+              <button role="menuitem" onClick={() => runAndClose(() => setScriptRecoveryOpen(true))}><Undo2 size={15}/><span><strong>Recupera migrazioni script</strong><small>Backup delle pagine e dei moduli di libreria</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => setRuntimeUpdateOpen(true))}><RefreshCw size={15}/><span><strong>Aggiorna componenti del pannello</strong><small>Confronto, backup e ripristino di servizio PLC e Runtime</small></span></button>
               <button role="menuitem" onClick={() => runAndClose(() => void checkProject())}><FileCheck2 size={15} /><span><strong>Controlla pannello</strong><small>Trova errori, tag mancanti e parti incomplete</small></span></button>
               <div className="topbar-menu-separator" />
@@ -246,5 +249,6 @@ export function TopBar() {
     {alarmsOpen && <AlarmsDialog key={project.root} onClose={() => setAlarmsOpen(false)} />}
     {recipesOpen && <RecipesDialog key={project.root} onClose={() => setRecipesOpen(false)} />}
     {runtimeUpdateOpen && <RuntimeUpdateDialog key={project.root} onClose={() => setRuntimeUpdateOpen(false)} />}
+    {scriptRecoveryOpen&&<Suspense fallback={<span role="status">Apertura recupero migrazioni…</span>}><ScriptMigrationRecoveryDialog key={project.root} onClose={()=>setScriptRecoveryOpen(false)}/></Suspense>}
   </>;
 }

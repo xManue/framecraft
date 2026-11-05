@@ -2170,3 +2170,12 @@ Sono ancora da completare browsing, array/UDT, metodi/allarmi OPC UA, conferme P
 storage industriale, audit/RBAC e collaudo su macchina. Verificare lockfile, vulnerabilità,
 licenze/notice e diritti degli asset della distribuzione effettiva. Le basi presenti non sono
 un'approvazione al rilascio industriale.
+
+### Recupero delle migrazioni delle librerie script
+
+Dal pacchetto 2026.11.05.2 Gateway/MQTT verificano anche i backup in
+.framecraft/script-migrations prima di aprire connessioni. Se compare SCRIPT_MIGRATION_PENDING,
+apri Framecraft → Pannello → Recupera migrazioni script. Salva le bozze e arresta il servizio
+prima di ripristinare. Conserva il backup: i conflitti con modifiche successive richiedono
+verifica e non vengono sovrascritti. Il journal degli aggiornamenti Runtime resta separato.
+La sola aggiunta della guardia non applica migrazioni né invia comandi PLC.

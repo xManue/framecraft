@@ -16,7 +16,7 @@ it.each(['gateway', 'mqtt'])('gates the %s launcher before loading a missing ser
   const f = await fixture('applying');
   const directory = path.join(f.root, 'runtime');
   await mkdir(directory);
-  for (const file of ['runtime-update-guard.mjs', 'start-' + name + '.mjs']) {
+  for (const file of ['runtime-update-guard.mjs', 'script-migration-guard.mjs', 'start-' + name + '.mjs']) {
     await copyFile(path.resolve('runtime', file), path.join(directory, file));
   }
   const result = spawnSync(process.execPath, [path.join(directory, 'start-' + name + '.mjs'), '--json'], { cwd: f.root, encoding: 'utf8', windowsHide: true, timeout: 10000 });
@@ -29,7 +29,7 @@ it.each(['gateway', 'mqtt'])('reports an actionable %s module load failure after
   const f = await fixture('completed');
   const directory = path.join(f.root, 'runtime');
   await mkdir(directory);
-  for (const file of ['runtime-update-guard.mjs', 'start-' + name + '.mjs']) {
+  for (const file of ['runtime-update-guard.mjs', 'script-migration-guard.mjs', 'start-' + name + '.mjs']) {
     await copyFile(path.resolve('runtime', file), path.join(directory, file));
   }
   const result = spawnSync(process.execPath, [path.join(directory, 'start-' + name + '.mjs'), '--json'], { cwd: f.root, encoding: 'utf8', windowsHide: true, timeout: 10000 });

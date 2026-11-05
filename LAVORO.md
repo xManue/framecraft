@@ -6830,6 +6830,29 @@ Verifiche del 5 ottobre 2026:
   rimane aperta. Nessuna scrittura multi-file nuova è esposta all’utente. Dettagli in
   [SCRIPT-MIGRATION.md](SCRIPT-MIGRATION.md).
 
+## 193. Transazione nativa e recupero delle migrazioni script (5 novembre 2026)
+
+- **Collegamento autorizzato**: inventario completo del progetto, cache/token nativi legati
+  alla generazione, confronto dei sorgenti e delle dipendenze prima e dopo le scritture.
+  Codice riservato all’editor principale, root aperta, lock delle modifiche e anteprima ferma.
+- **Transazione separata**: backup prima/dopo e journal in .framecraft/script-migrations,
+  scritture atomiche per file, rollback controllato, recupero dopo interruzione. Modifiche
+  esterne conservate e stato needs-review quando il ripristino non può procedere.
+  Il journal e i comandi dell’aggiornamento Runtime precedente restano identici.
+- **Servizio**: porta del gateway riservata, conferma dell’arresto, aggiornamenti Runtime
+  pendenti verificati in sola lettura. Runtime 2026.11.05.2 con guardia dedicata in Gateway/MQTT
+  e launcher; blocco dell’anteprima in caso di migrazione incompleta. Progetti già creati da
+  aggiornare con Aggiorna componenti del pannello; nessuna distribuzione automatica.
+- **Recupero**: menu Pannello, finestra ampia e stabile caricata a richiesta, elenco dei backup,
+  stop anteprima e rilettura di tutti i file ripristinati. Bozze della pagina e moduli script
+  protette, chiusura bloccata durante la scrittura, errori e conflitti spiegati chiaramente.
+- **Verifiche**: 25 test nativi; 58 su guardie/aggiornamento e 23 su recupero/moduli; typecheck,
+  build editor e finestra compilata in Edge. Driver non raggiunti con backup pendente;
+  configurazioni sintetiche, nessuna migrazione di un progetto reale o contatto PLC fisico.
+- **Limite aperto**: la UI Librerie continua a bloccare le API incompatibili. La procedura
+  guidata di mappatura e applicazione del piano resta il prossimo collegamento; la voce della
+  roadmap non viene marcata completa. Nessuna nuova dipendenza o asset di terzi.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima
