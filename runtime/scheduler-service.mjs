@@ -8,7 +8,7 @@ export function createServerScheduler({ catalog, runtime, store, authorize, tran
   const tasks = catalog.scheduledTasks.filter(task => task.enabled === true);
   if (!catalog?.schedulerService?.enabled || !store || !runtime || !/^[a-f0-9-]{36}$/.test(catalog.schedulerService.accountId) || tasks.length > 256 || new Set(tasks.map(t => t.id)).size !== tasks.length) throw new SchedulerError("SCHEDULER_CONFIG");
   for (const task of tasks) {
-    if (!task.program || ![1,2,3,4,5,6,7,8].includes(task.program.version) || typeof task.id !== "string" || !/^[A-Za-z0-9_.-]{1,80}$/.test(task.id)) throw new SchedulerError("SCHEDULER_CONFIG");
+    if (!task.program || ![1,2,3,4,5,6,7,8,9].includes(task.program.version) || typeof task.id !== "string" || !/^[A-Za-z0-9_.-]{1,80}$/.test(task.id)) throw new SchedulerError("SCHEDULER_CONFIG");
     const t = task.trigger;
     if (!t || !["interval","once","calendar","tag","alarm"].includes(t.kind) || t.kind === "interval" && (!Number.isSafeInteger(t.intervalMs) || t.intervalMs < 100 || t.intervalMs > 2147483647 || t.startDelayMs !== undefined && (!Number.isSafeInteger(t.startDelayMs) || t.startDelayMs < 0)) || t.kind === "once" && !Number.isFinite(Date.parse(t.at)) || t.kind === "calendar" && runtime.nextHmiCalendarDue(t, now()) === undefined || t.kind === "tag" && (typeof t.tag !== "string" || !["changed","rising","falling","equals"].includes(t.condition))) throw new SchedulerError("SCHEDULER_CONFIG");
   }

@@ -107,13 +107,13 @@ function globalDefinitionOf(value: unknown, allowExports = false): HmiScriptGlob
   const inspection = inspectHmiScriptDefinition(source, allowExports);
   let error = inspection.error;
   if (inspection.program) {
-    const reserved = new Set(["Tags", "Tag", "HMIRuntime", "Modules", "Local", "UI", "Screen", "Faceplate", "item", "Math", "Number", "String", "Boolean", "undefined"]);
+    const reserved = new Set(["Tags", "Tag", "HMIRuntime", "Modules", "Local", "UI", "Screen", "Faceplate", "item", "Math", "Number", "String", "Boolean", "Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "EvalError", "URIError", "AggregateError", "undefined"]);
     const unsafe = (value: unknown): boolean => {
       if (!value || typeof value !== "object") return false;
       const item = value as Record<string, unknown>;
       if (item.kind === "function-value" || item.kind === "function-declare") return false;
       if (item.kind === "local" && ["Screen", "Faceplate", "item"].includes(String(item.name))) return true;
-      if (["pattern-assign", "invoke", "module-call", "timer-set", "popup-open", "popup-property", "screen-item", "property-flashing"].includes(String(item.kind))) return true;
+      if (["construct", "pattern-assign", "invoke", "module-call", "timer-set", "popup-open", "popup-property", "screen-item", "property-flashing"].includes(String(item.kind))) return true;
       if (item.kind === "array-method" && ["push", "pop", "shift", "unshift", "sort", "reverse", "splice", "map", "flatMap", "filter", "forEach", "find", "findIndex", "findLast", "findLastIndex", "some", "every", "reduce", "reduceRight"].includes(String(item.method))) return true;
       return Object.values(item).some(unsafe);
     };

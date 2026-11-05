@@ -87,6 +87,6 @@ describe('IR 7 binding patterns and parameter initialization',()=>{
  });
  it('exports self-contained parameter and pattern semantics for browser and Node',()=>{
   const exports:Record<string,any>={};Function('exports',transpileModule(hmiScriptRuntimeModuleSource(),{compilerOptions:{module:ModuleKind.CommonJS,target:ScriptTarget.ES2022}}).outputText)(exports);
-  const program=compile('function read({value=4}={},...rest){const [first=1]=rest;return value+first;}return read();');expect(program.version).toBe(8);expect(exports.executeHmiScript(program,{}).returned).toBe(5);expect(exports.inspectHmiScriptProgram(program).error).toBeUndefined();
+  const program=compile('function read({value=4}={},...rest){const [first=1]=rest;return value+first;}return read();');expect(program.version).toBe(9);expect(exports.executeHmiScript(program,{}).returned).toBe(5);expect(exports.inspectHmiScriptProgram(program).error).toBeUndefined();
  });
 });

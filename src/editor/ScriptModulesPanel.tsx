@@ -247,6 +247,10 @@ export function ScriptModulesPanel() {
           <p className="script-intro"><code>{"const { speed = 0, steps = [] } = cfg; const [first = 0, ...others] = steps;"}</code> estrae i dati e raccoglie quelli rimanenti. Gli oggetti annidati conservano il loro riferimento.</p>
           <p className="script-intro"><code>{"const speedOf = ({ speed = 0 } = {}) => speed;"}</code> imposta un valore quando il dato manca o vale <code>undefined</code>. <code>null</code> resta <code>null</code>. I default si valutano in ordine e possono usare i parametri già inizializzati.</p>
         </details>
+        <details className="script-errors-help"><summary>Errori JavaScript: messaggio, tipo e causa</summary>
+          <p className="script-intro"><code>{"try { throw new TypeError('Parametro non valido', { cause: 4 }); } catch (error) { HMIRuntime.Trace(error.message); }"}</code> conserva messaggio, tipo e causa anche fra funzioni e moduli. Usa <code>error instanceof Error</code> per riconoscere un errore JavaScript e <code>String(error)</code> per mostrarlo come testo.</p>
+          <p className="script-intro">I codici numerici delle API HMI restano numeri. Gli script già compilati mantengono il comportamento precedente: aggiorna il Runtime e ricompila esplicitamente per usare questi oggetti. Lo stack mostra solo il contesto script; i prototipi e i costruttori del sistema restano inaccessibili.</p>
+        </details>
         <details className="script-assignment-help"><summary>Assegnare dati e gestire errori</summary>
           <p className="script-intro"><code>{"let speed; ({ speed = 0 } = cfg);"}</code> aggiorna una variabile già dichiarata. Puoi usare anche proprietà di oggetti e i rest. Le costanti e i controlli di scrittura dei destinatari restano applicati.</p>
           <p className="script-intro"><code>{"try { throw { message: 'Parametro non valido' }; } catch ({ message }) { HMIRuntime.Trace(message); }"}</code> riceve il valore lanciato, anche da una funzione. Per gli errori delle API HMI restano validi i codici o messaggi indicati dalla loro guida.</p>

@@ -6763,6 +6763,27 @@ Verifiche del 5 ottobre 2026:
 - **Ancora aperto**: classi, async/generator come funzioni valore, coercizioni/operatori e
   API restanti, oggetti Error completi, librerie versionate e le altre voci della fase 3.
 
+## 190. Error JavaScript isolati e verifica del motore completo (5 novembre 2026)
+
+- **Fase 3 Unified**: Error, TypeError, RangeError, ReferenceError, SyntaxError, EvalError,
+  URIError e AggregateError con chiamata/new, alias e bind, cause per riferimento, instanceof,
+  conversioni toString/valueOf ed enumerabilità corretta di message/cause/stack/errors.
+- **Catch e compatibilità**: errori JavaScript nuovi come oggetti anche fra moduli; errori HMI
+  numerici invariati. I programmi IR 1–8 mantengono i catch precedenti anche chiamando moduli
+  IR 9, senza convertire i valori lanciati esplicitamente; i nuovi compilano in
+  IR 9. Stack sintetico e diagnostica limitata, nessuna serializzazione automatica della causa,
+  oggetti vietati come valori PLC, prototipi/constructor del sistema ancora bloccati.
+- **Pipeline**: lettori in eventi, dinamiche, faceplate e Scheduler, pacchetto Runtime
+  2026.11.05.1 e guida richiudibile negli Script. Aggiornamento assistito esplicito dei progetti
+  precedenti, poi ricompilazione; nessuna migrazione silenziosa dei cataloghi.
+- **Verifica del motore alternativo**: prova sintetica QuickJS Asyncify 0.32.0 separata dall'app.
+  Classi/generatori con lettura sospesa diretta passano; la stessa lettura in un job Promise
+  fallisce. Decisione e riproduttore in ADR-JS-001.md; nessuna nuova dipendenza dell'app o
+  binario di terze parti distribuito. La parità JavaScript complessiva resta aperta.
+- **Verifiche**: 98 nuovi casi Error e regressioni mirate della famiglia script/eventi/Scheduler, confrontati
+  con JavaScript nativo, dipendenze nelle conversioni, moduli, trasporto asincrono senza replay,
+  controlli dei destinatari, servizio centrale e Runtime autonomo. Nessun PLC fisico contattato.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

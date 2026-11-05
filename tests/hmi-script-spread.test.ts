@@ -105,7 +105,7 @@ describe('IR 6 spread and rest', () => {
     const source=hmiScriptRuntimeModuleSource();const exports: Record<string, any>={};
     Function('exports',transpileModule(source,{compilerOptions:{module:ModuleKind.CommonJS,target:ScriptTarget.ES2022}}).outputText)(exports);
     const program=compile('function read(...values){return [...values].join(",");}return read(...[1,2]);');
-    expect(program.version).toBe(8);expect(exports.executeHmiScript(program,{}).returned).toBe('1,2');
+    expect(program.version).toBe(9);expect(exports.executeHmiScript(program,{}).returned).toBe('1,2');
     for(const version of [1,2,3,4,5,6]) expect(exports.executeHmiScript({version,statements:[{kind:'return',value:{kind:'literal',value:7}}]},{}).returned).toBe(7);
     expect(exports.inspectHmiScriptProgram(program).error).toBeUndefined();
   });

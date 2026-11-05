@@ -1930,7 +1930,7 @@ e [Optix 1.8 Recipes editor](https://www.rockwellautomation.com/en-pr/docs/facto
 Entrambi distinguono gestione dei set, lettura dal controller e applicazione; Framecraft implementa
 qui soltanto la lettura scalare dalla cache e il salvataggio esplicito nell’archivio.
 
-## JavaScript: binding, assegnazioni e gestione degli errori (IR 8)
+## JavaScript: binding, assegnazioni e gestione degli errori (IR 9)
 
 Gli script possono copiare dati ed espandere argomenti con ...:
 
@@ -2006,7 +2006,35 @@ diagnostica. Anche 0, null, false, undefined e stringa vuota sono errori, se lan
 Le definizioni globali rimangono passive: le assegnazioni nei loro inizializzatori non
 permettono di aggirare i divieti su azioni, timer o accessi al sistema.
 
-I nuovi sorgenti compilano in IR 8. Editor e Runtime attuale leggono anche IR 1–7; il
+### Oggetti Error isolati
+
+Gli script nuovi possono creare Error, TypeError, RangeError, ReferenceError, SyntaxError,
+EvalError, URIError e AggregateError con o senza new. Sono disponibili message, name, cause,
+instanceof, toString, alias, call/apply/bind dei costruttori e un breve stack sintetico
+senza percorsi del computer. AggregateError.errors copia un array o una stringa; gli iteratori
+personalizzati restano parte del lavoro sul linguaggio. I campi standard propri sono non
+enumerabili: JSON.stringify, spread, Object.keys e rest non pubblicano cause o stack.
+Le proprietà aggiunte dall'autore restano enumerabili e cause conserva il riferimento originale.
+
+Gli errori espliciti passano per funzioni, moduli, timer, rethrow, catch con pattern e finally.
+Gli errori JavaScript interni catturati in IR 9 sono oggetti Error; una SyntaxError di JSON.parse
+rimane riconoscibile anche dopo una chiamata di modulo. Gli errori HMI continuano a seguire il
+contratto dell'API: i codici numerici non vengono convertiti in Error. Per un campo PLC/testo
+usa error.message o String(error): un oggetto non diventa automaticamente un comando scalare.
+Nelle definizioni globali passive anche new è una chiamata differita: crea gli Error nelle
+funzioni eseguite da eventi o operazioni pianificate.
+Le conversioni personalizzate toString/valueOf restano nella VM e nell'analisi conservativa dei
+tag; non ricevono oggetti host. Per un errore non gestito viene pubblicato soltanto un messaggio
+limitato, senza serializzare cause o stack.
+
+Prototipi, ereditarietà, costruttori di classi generiche, Symbol e modifiche dei descrittori non
+sono esposti da questa tranche. Non equivale alla parità ECMAScript completa: restano classi,
+async/generator come funzioni valore e le altre coercizioni/operatori. Vedi ADR-JS-001.md per
+la verifica del candidato WASM, separato dai progetti e dalle dipendenze dell'app.
+
+IR 1–8 già salvate conservano i catch stringa precedenti per gli errori host, anche chiamando
+moduli nuovi; i valori lanciati esplicitamente restano valori. I nuovi sorgenti compilano in IR 9.
+Editor e Runtime attuale leggono anche IR 1–8; il
 catalogo resta v1. Nei progetti precedenti aggiorna insieme servizio/browser con
 **Pannello → Aggiorna componenti del pannello**, quindi ricompila e salva esplicitamente
 lo script da cambiare. Il codice nuovo non rende compatibile un servizio vecchio.

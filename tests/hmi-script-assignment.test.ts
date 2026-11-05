@@ -69,7 +69,7 @@ describe('IR 8 assignment and caught values',()=>{
   const source="try{Modules.Faults.Fail();}catch({tag}){tag.Write(4);}";const inspected=inspectHmiScript(source,options.functions,undefined,[],options.variables);expect(inspected.error).toBeUndefined();expect(inspected.tagsWritten).toContain('Output');expect(executeHmiScript(inspected.program!,{Output:'0'},options).writes).toEqual({Output:'4'});manager.dispose();
  });
  it('checks legacy numeric/string HMI error contracts',async()=>{
-  const stringError=executeHmiScript(compile('try{return missing;}catch(error){return typeof error;}'),{});expect(stringError.returned).toBe('string');
+  const stringError=executeHmiScript({...compile('try{return missing;}catch(error){return typeof error;}'),version:8},{});expect(stringError.returned).toBe('string');
   const transport:HmiScriptTransport={read:vi.fn(async()=>({value:'0',status:{qualityCode:192}})),write:vi.fn<HmiScriptTransport['write']>(async request=>({tag:request.tag,outcome:'rejected',plcConfirmed:false,error:'Denied'}))};
   const numeric=await executeHmiScriptAsync(compile("const set=Tags.CreateTagSet(['Output']);set('Output').Value=4;try{await set.WriteAsync(0);}catch(error){return typeof error;}"),{Output:'0'},{transport});expect(numeric.error).toBeUndefined();expect(numeric.returned).toBe('number');expect(transport.write).toHaveBeenCalledOnce();
  });
@@ -92,6 +92,6 @@ describe('IR 8 assignment and caught values',()=>{
  });
  it.each(['throw 0;','throw null;','throw false;','throw undefined;',"throw '';","throw {secret:'PRIVATE_MARKER'};"])('reports uncaught values without exposing internal payloads: %s',source=>{const result=executeHmiScript(compile(source),{});expect(result.error).toBeTruthy();expect(result.error).not.toContain('PRIVATE_MARKER');expect(result).not.toHaveProperty('thrownReference');});
  it('exports assignment and catch semantics to the standalone VM',()=>{
-  const exports:Record<string,any>={};Function('exports',transpileModule(hmiScriptRuntimeModuleSource(),{compilerOptions:{module:ModuleKind.CommonJS,target:ScriptTarget.ES2022}}).outputText)(exports);const program=compile('let value;try{[value]=[4];throw {value};}catch({value:result}){return result;}');expect(program.version).toBe(8);expect(exports.executeHmiScript(program,{}).returned).toBe(4);expect(exports.inspectHmiScriptProgram(program).error).toBeUndefined();
+  const exports:Record<string,any>={};Function('exports',transpileModule(hmiScriptRuntimeModuleSource(),{compilerOptions:{module:ModuleKind.CommonJS,target:ScriptTarget.ES2022}}).outputText)(exports);const program=compile('let value;try{[value]=[4];throw {value};}catch({value:result}){return result;}');expect(program.version).toBe(9);expect(exports.executeHmiScript(program,{}).returned).toBe(4);expect(exports.inspectHmiScriptProgram(program).error).toBeUndefined();
  });
 });

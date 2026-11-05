@@ -35,10 +35,14 @@ describe('central Scheduler',()=>{
   },15000);
   it('runs compiled IR 8 assignment/catch in the central service with one authorized write',async()=>{
     const f=setup({kind:'interval',intervalMs:1000},'function total(){let first,rest;[first,...rest]=[3,4];try{throw {value:first+rest[0]};}catch({value}){return value;}}Tags("Out").Write(total());');
-    expect(f.catalog.scheduledTasks[0].program?.version).toBe(8);
+    expect(f.catalog.scheduledTasks[0].program?.version).toBe(9);
     await f.engine.start();await f.advance(1000);
     expect(f.writes).toHaveLength(1);expect(f.writes[0]).toMatchObject({tag:'Out',value:7});
     expect(f.store.history()[0].state).toBe('completed');expect(f.authorize).toHaveBeenCalled();
+  });
+  it('runs IR 9 Error causes in the central service with one authorized write',async()=>{
+    const f=setup({kind:'interval',intervalMs:1000},'try{throw new Error("Motor",{cause:{input:Tags("Input"),output:Tags("Out")}});}catch(error){if(error instanceof Error)error.cause.output.Write(error.cause.input.Read());}');
+    await f.engine.start();await f.advance(1000);expect(f.writes).toHaveLength(1);expect(f.writes[0]).toMatchObject({tag:'Out',value:3});expect(f.transport.read).toHaveBeenCalledTimes(1);expect(f.authorize).toHaveBeenCalled();expect(f.store.history()[0].state).toBe('completed');
   });
   it('runs intervals once after a delay, without catch-up bursts or browser ownership',async()=>{const f=setup();await f.engine.start();await f.advance(1000);expect(f.writes).toHaveLength(1);await f.advance(10000);expect(f.writes).toHaveLength(2);expect(f.engine.snapshot()).toMatchObject({owner:'server',state:'running'});expect(f.store.history()).toHaveLength(2);});
   it('uses monotonic interval time when wall-clock time moves backwards',async()=>{const f=setup();await f.engine.start();f.setWall(f.wall()-3600000);await f.advance(1000);expect(f.writes).toHaveLength(1);});

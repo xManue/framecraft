@@ -1058,3 +1058,17 @@ restano i limiti generali dell’analisi conservativa, senza sostituire l’auto
 Lettori IR 1–8 nel Runtime esportato e servizio centrale, catalogo JSON v1 e componenti
 2026.11.04.3 da migrare esplicitamente. Classi, async/generator, coercizioni e API restanti,
 librerie versionate e collaudo industriale mantengono aperta la fase 3 Unified.
+
+## Error isolati nella IR 9 (LAVORO 190)
+
+Error e sottotipi sono valori interni della VM, con dati null-prototype e metadato privato del
+tipo: non sono istanze dei costruttori host. I campi propri standard sono non enumerabili,
+mentre cause e gli errori aggregati mantengono l'identità dei dati. Le conversioni personalizzate
+vengono eseguite come funzioni IR e sono incluse nell'analisi conservativa dei tag. Gli errori
+JavaScript interni catturati in IR 9 ricevono soltanto nome/messaggio; nessuno stack host passa
+alla VM. I codici HMI restano numerici. Il trasporto sospende la stessa esecuzione e non ripete
+letture o comandi. Gli oggetti Error non diventano valori scalari del PLC.
+
+Il pacchetto Runtime 2026.11.05.1 legge IR 1–9; i programmi 1–8 non vengono ricompilati
+automaticamente e mantengono i contratti catch precedenti. Classi/prototipi e parità completa
+JavaScript restano aperti. La valutazione riproducibile del motore WASM è in ADR-JS-001.md.

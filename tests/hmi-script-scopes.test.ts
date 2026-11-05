@@ -49,7 +49,7 @@ describe("scope lessicali degli script Unified", () => {
   });
 
   it("isola il parametro catch e ripristina le variabili dopo eccezioni", () => {
-    const result = run("const error='outer'; try{return missing;} catch(error){let hidden=2; Tags('Fault').Write(error);} finally{Tags('Finally').Write(1);} return error;");
+    const result = run("const error='outer'; try{return missing;} catch(error){let hidden=2; Tags('Fault').Write(error.message);} finally{Tags('Finally').Write(1);} return error;");
     expect(result.error).toBeUndefined(); expect(result.returned).toBe("outer"); expect(result.writes.Finally).toBe("1"); expect(result.writes.Fault).toContain("missing non definita");
     expect(run("try{return missing;}catch(error){} return error;").error).toContain("error non definita");
   });
@@ -122,7 +122,7 @@ describe("scope lessicali degli script Unified", () => {
   });
 
   it("distingue la vecchia IR piatta e rifiuta versioni sconosciute prima dei comandi", () => {
-    const program=compile("let value=1; if(true){let value=2;} return value;"); expect(program.version).toBe(8);
+    const program=compile("let value=1; if(true){let value=2;} return value;"); expect(program.version).toBe(9);
     const legacy={...program,version:1 as const}; expect(executeHmiScript(legacy,{}).returned).toBe(2); expect(executeHmiScript(program,{}).returned).toBe(1);
     const catchProgram={...compile("const error='outer';try{return missing;}catch(error){}return error;"),version:1 as const}; expect(executeHmiScript(catchProgram,{}).returned).toBe("outer");
     const emptyCatch={...compile("let error;try{return missing;}catch(error){HMIRuntime.Trace(error);}return error;"),version:1 as const}, caught=executeHmiScript(emptyCatch,{}); expect(caught.traces[0]).toContain("missing non definita");expect(caught.error).toContain("non ha ancora un valore");
