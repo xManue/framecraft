@@ -6804,6 +6804,32 @@ Verifiche del 5 ottobre 2026:
   blocchi stale/tamper e helper Node autonomi. Fixture sintetiche, nessun contatto con PLC reali.
 - **Guida**: SCRIPT-LIBRARIES.md; progetto con Runtime precedente da aggiornare prima di usare IR 9.
 
+## 192. Motore di confronto per le migrazioni delle librerie (5 novembre 2026)
+
+- **Fase 3 Unified, checkpoint del motore**: mappature esplicite di funzioni/export e parametri,
+  riscrittura AST di chiamate e riferimenti, adattatori senza ripetere gli argomenti. Catalogo
+  globale/locale/Scheduler e binding di pagine JSX/TSX/HTML vengono analizzati insieme.
+- **Dati condivisi**: costanti, oggetti, import/re-export, JSON e raw; controllo degli altri
+  importatori e blocco dei produttori dinamici, delle mutazioni e dei dati che sfuggono
+  all’analisi. Nessun codice utente eseguito e zero differenze applicabili se c’è un problema.
+- **Dinamizzazioni**: dipendenze tag aggiornate anche tramite funzioni intermedie; programma
+  precedente conservato quando cambia solo l’elenco delle dipendenze. Scope locale esplicito
+  quando necessario. Solo gli handler modificati e i programmi mancanti vengono compilati.
+- **Correzione effettiva dell’editor**: il validatore delle definizioni globali ora conosce
+  le funzioni del catalogo, evitando falsi errori su riferimenti a funzione salvati nei globali.
+- **Worker**: analisi fuori dal thread dell’editor, annullamento e timeout di 15 secondi;
+  fingerprint dell’inventario e helper esclusi solo se l’impronta Runtime coincide.
+- **Dipendenze**: parse5 7.3.0 già installato promosso a dipendenza diretta; MIT e entities
+  BSD-2-Clause, nessuna versione nuova scaricata e nessuna nuova licenza npm da revisionare.
+- **Verifiche del checkpoint isolato**: 155 test mirati su sei file, typecheck e build editor;
+  worker compilato in Edge, parser HTML, Runtime browser e Node generati, dipendenze indirette,
+  programmi precedenti, annullamento e sorgenti opachi. Fixture sintetiche, zero richieste esterne
+  e zero scritture PLC. Nessuna compilazione Rust o suite generale, non necessarie a questa tranche.
+- **Limite aperto**: la UI Librerie mantiene il blocco delle API incompatibili. Restano da
+  collegare revisione guidata, inventario nativo, transazione e recupero; la voce della roadmap
+  rimane aperta. Nessuna scrittura multi-file nuova è esposta all’utente. Dettagli in
+  [SCRIPT-MIGRATION.md](SCRIPT-MIGRATION.md).
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima
@@ -6829,7 +6855,7 @@ Verifiche del 5 ottobre 2026:
 
 - **Roadmap WinCC, fase 3 da completare**: eventi specifici dei controlli, object model restante,
   JavaScript oltre il sottoinsieme IR, analisi di flusso intermodulo completa, closure/scoping
-  completi, moduli di libreria/versionati, conferme PLC e altri metodi/driver
+  completi, migrazione delle interfacce di libreria, conferme PLC e altri metodi/driver
   (`WCU-DYN-06`, `WCU-EVT-01/04/05/06/07/10`).
 - **Roadmap WinCC, fase 4 da completare**: altre proprietà colore specifiche oltre la prima API
   `PropertyFlashing` del punto 79, audit accessibilità generale e dimensioni minime dei target

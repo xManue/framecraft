@@ -5,6 +5,14 @@ chiudere, **non un'approvazione legale né un rilascio industriale approvato**.
 
 ## Inventario ripetibile
 
+Checkpoint 5 novembre, analisi delle migrazioni script: parse5 7.3.0 già presente nel lockfile
+è promosso a dipendenza diretta dell’editor; entities 6.0.1 diventa transitivo di produzione.
+Testi installati letti: parse5 MIT (Ivan Nikulin), entities BSD-2-Clause (Felix Böhm).
+Il confronto offline dei grafi npm non aggiunge versioni o licenze da revisionare; copyright,
+licenze e disclaimer vanno inclusi nei notice del pacchetto distribuito. Il parser è usato
+nel worker dell’editor, non aggiunto al Runtime HMI esportato. Il ricontrollo completo lascia
+aperte le revisioni Cargo già censite; questo checkpoint non le considera approvate.
+
 Checkpoint 12 ottobre, curve cross-origin: renderer tempo/XY e helper UI sono codice
 Framecraft trasferito meccanicamente dai moduli TypeScript, con facciate/declarazioni.
 Ponte, cache e CSV non aggiungono dipendenze, font, asset o codice Siemens; lockfile

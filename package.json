@@ -27,6 +27,7 @@
     "@tauri-apps/plugin-dialog": "^2.3.2",
     "lucide-react": "^0.540.0",
     "magic-string": "^0.30.17",
+    "parse5": "7.3.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "zustand": "^5.0.8"

@@ -75,3 +75,7 @@ bozze non più attuali, alias, stati globali e copie. `tests/browser/script-libr
 la finestra reale, usa worker in Edge, verifica importazione/aggiornamento/download e prova
 il catalogo importato con gli helper autonomi del Runtime Node. I dati sono sintetici;
 nessun PLC fisico o servizio di produzione è coinvolto.
+
+Il motore di confronto delle migrazioni è descritto in [SCRIPT-MIGRATION.md](SCRIPT-MIGRATION.md).
+È verificato separatamente; la UI mantiene il blocco delle API incompatibili finché revisione,
+inventario nativo e transazione con recupero non saranno collegati e collaudati.

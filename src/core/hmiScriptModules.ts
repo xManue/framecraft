@@ -275,7 +275,7 @@ export function hmiScriptCatalogIssues(catalog: HmiScriptCatalog): string[] {
     if (aliases.has(module.alias)) issues.push(`Alias globale duplicato: ${module.alias}.`);
     aliases.add(module.alias);
     if (module.globalDefinition?.program) {
-      const linked = inspectHmiScriptProgram(module.globalDefinition.program, undefined, undefined, [], variables);
+      const linked = inspectHmiScriptProgram(module.globalDefinition.program, hmiScriptFunctions(catalog), undefined, [], variables);
       if (linked.error) issues.push(`Modules.${module.alias}, definizione globale: ${linked.error}`);
     }
     const names = new Set(module.globalDefinition?.program?.exports?.map((entry) => entry.name));
@@ -296,7 +296,7 @@ export function hmiScriptCatalogIssues(catalog: HmiScriptCatalog): string[] {
   for (const definition of catalog.localDefinitions) {
     if (definition.globalDefinition?.error) issues.push(`${definition.scope}/${definition.context}, definizione globale: ${definition.globalDefinition.error}`);
     if (definition.globalDefinition?.program) {
-      const linked = inspectHmiScriptProgram(definition.globalDefinition.program, undefined, undefined, [], variables);
+      const linked = inspectHmiScriptProgram(definition.globalDefinition.program, hmiScriptFunctions(catalog, definition.scope, definition.context), undefined, [], variables);
       if (linked.error) issues.push(`${definition.scope}/${definition.context}, definizione globale: ${linked.error}`);
     }
     if (!definition.scope.trim()) issues.push("La pagina / route della definizione locale e' obbligatoria.");
@@ -321,7 +321,7 @@ export function hmiScriptCatalogIssues(catalog: HmiScriptCatalog): string[] {
   const taskNames = new Set<string>();
   if (catalog.schedulerDefinition?.error) issues.push(`Scheduler, definizione globale: ${catalog.schedulerDefinition.error}`);
   if (catalog.schedulerDefinition?.program) {
-    const linked = inspectHmiScriptProgram(catalog.schedulerDefinition.program, undefined, undefined, [], variables);
+    const linked = inspectHmiScriptProgram(catalog.schedulerDefinition.program, hmiScriptFunctions(catalog), undefined, [], variables);
     if (linked.error) issues.push(`Scheduler, definizione globale: ${linked.error}`);
   }
   const globalFunctions = hmiScriptFunctions(catalog);
