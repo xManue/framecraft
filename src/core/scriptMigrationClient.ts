@@ -1,11 +1,13 @@
 import type { HmiScriptCatalog } from './hmiScriptModules';
 import type { ScriptSymbolMigration } from './scriptReferenceMigration';
 import type { ScriptProjectMigration } from './scriptProjectMigration';
+import type {ScriptLibraryPlan,ScriptLibraryReview} from './scriptLibrary';
 export interface ScriptMigrationJob {
   files: Record<string, string>;
   catalog: HmiScriptCatalog;
   mappings: ScriptSymbolMigration[];
-  scopes?: Record<string, string>;
+  scopes?: Record<string, string | string[]>;
+  library?:{catalog:HmiScriptCatalog;plan:ScriptLibraryPlan;review:ScriptLibraryReview};
 }
 /** A disposable worker keeps parsing and compiler inspection away from the editor thread. */
 export function previewScriptProjectMigration(job: ScriptMigrationJob, signal?: AbortSignal): Promise<ScriptProjectMigration> {

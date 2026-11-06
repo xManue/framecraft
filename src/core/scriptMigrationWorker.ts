@@ -1,4 +1,5 @@
 import { planScriptProjectMigration } from './scriptProjectMigration';
+import {prepareScriptLibraryMigration} from './scriptLibrary';
 import type { ScriptMigrationJob } from './scriptMigrationClient';
 let busy = false;
 self.onmessage = async (event: MessageEvent<ScriptMigrationJob>) => {
@@ -17,8 +18,9 @@ self.onmessage = async (event: MessageEvent<ScriptMigrationJob>) => {
       scopes
     } = event.data;
     self.postMessage({
-      result: await planScriptProjectMigration(files, catalog, mappings, {
-        scopes
+      result: await planScriptProjectMigration(files, event.data.library?await prepareScriptLibraryMigration(files['framecraft.scripts.json']??'',event.data.library.catalog,event.data.library.plan,event.data.library.review):catalog, mappings, {
+        scopes,
+        updatedModules:event.data.library?.plan.changes.map(change=>change.alias)
       })
     });
   } catch (error) {

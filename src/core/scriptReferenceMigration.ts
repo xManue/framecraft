@@ -82,7 +82,7 @@ function exported(catalog: HmiScriptCatalog, module: string, name: string): bool
   return Boolean(catalog.globalModules.find(item => item.alias === module)?.globalDefinition?.program?.exports?.some(item => item.name === name));
 }
 export function validateScriptMigrations(before: HmiScriptCatalog, after: HmiScriptCatalog, choices: readonly ScriptSymbolMigration[]): void {
-  if (!choices.length || choices.length > 256) throw Error('Scegli da 1 a 256 riferimenti da migrare.');
+  if (choices.length > 256) throw Error('Scegli fino a 256 riferimenti da migrare.');
   const seen = new Set<string>();
   for (const choice of choices) {
     if (!['function', 'variable'].includes(choice.kind) || ![choice.fromAlias, choice.fromName, choice.toAlias, choice.toName].every(value => typeof value === 'string' && value.length <= 128 && identifier.test(value))) throw Error('Alias o nome del riferimento non validi.');
@@ -126,6 +126,7 @@ function adapter(reference: string, choice: ScriptSymbolMigration, count: number
 /** No code is executed. Rewrites only actual Modules members, preserving comments and caller argument order. */
 export function migrateScriptReferences(source: string, before: HmiScriptCatalog, after: HmiScriptCatalog, choices: readonly ScriptSymbolMigration[]): ScriptMigrationResult {
   validateScriptMigrations(before, after, choices);
+  if(!choices.length)return {source,references:[],changed:false,issues:[]};
   if (source.length > 20000) throw Error('Lo script supera il limite di 20.000 caratteri.');
   const rules = new Map(choices.map(choice => [key(choice.fromAlias, choice.fromName), choice])),
     aliases = new Set(choices.map(choice => choice.fromAlias)),
@@ -270,7 +271,7 @@ export function scriptMigrationProgramIssues(program: unknown, references: reado
   }));
 }
 /** Updates Script/source payloads and recompiles only changed handlers. Other data and legacy programs stay untouched. */
-export function migrateScriptPayload(value: unknown, before: HmiScriptCatalog, after: HmiScriptCatalog, choices: readonly ScriptSymbolMigration[], eventBindingsRoot = false, scope?: string): ScriptMigrationPayload {
+export function migrateScriptPayload(value: unknown, before: HmiScriptCatalog, after: HmiScriptCatalog, choices: readonly ScriptSymbolMigration[], eventBindingsRoot = false, scope?: string | readonly string[]): ScriptMigrationPayload {
   validateScriptMigrations(before, after, choices);
   const references: ScriptReference[] = [],
     issues: ScriptMigrationIssue[] = [],
@@ -294,7 +295,7 @@ export function migrateScriptPayload(value: unknown, before: HmiScriptCatalog, a
     issues.push(...scriptMigrationProgramIssues(record.program, result.references, choices));
     if (result.issues.length) return output;
     if (!result.changed && !dynamic) return output;
-    if (dynamic && scope === undefined && after.localDefinitions.some(definition => definition.context === 'dynamizations')) {
+    if (dynamic && (scope === undefined || Array.isArray(scope)&&!scope.length) && after.localDefinitions.some(definition => definition.context === 'dynamizations')) {
       issues.push({
         message: 'Serve il contesto della pagina per aggiornare le dipendenze della dinamizzazione: indica lo scope locale prima di migrare.',
         line: 1,
@@ -302,7 +303,10 @@ export function migrateScriptPayload(value: unknown, before: HmiScriptCatalog, a
       });
       return output;
     }
-    const inspection = dynamic ? inspectHmiScript(result.source, hmiScriptFunctions(after, scope, 'dynamizations'), hmiScriptGlobalDefinition(after, scope, 'dynamizations')?.program, [], hmiScriptVariables(after)) : inspectHmiScript(result.source);
+    const contexts:(string|undefined)[]=typeof scope==='string'?[scope]:scope?.length?[...new Set(scope)]:[undefined];
+    const analyses=dynamic?contexts.map(context=>{const inspection=inspectHmiScript(result.source,hmiScriptFunctions(after,context,'dynamizations'),hmiScriptGlobalDefinition(after,context,'dynamizations')?.program,[],hmiScriptVariables(after));return inspection.error?{...inspection,error:'Contesto '+(context||'globale')+': '+inspection.error}:inspection;}):[inspectHmiScript(result.source)];
+    const invalid=analyses.find(inspection=>inspection.error||!inspection.program);
+    const inspection=invalid??{...analyses[0],tagsRead:[...new Set(analyses.flatMap(item=>item.tagsRead))],tagsWritten:[...new Set(analyses.flatMap(item=>item.tagsWritten))]};
     if (inspection.error || !inspection.program) {
       issues.push({
         message: 'Lo script migrato non è compilabile: ' + (inspection.error ?? 'programma mancante'),

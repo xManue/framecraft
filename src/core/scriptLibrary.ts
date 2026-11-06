@@ -8,7 +8,9 @@ export interface ScriptLibraryVersion {version:string;notes:string;modules:Scrip
 export interface ScriptLibraryMetadata {id:string;name:string;license:string;notice:string}
 export interface ScriptLibrary extends ScriptLibraryMetadata {format:'framecraft-script-library';schema:1;versions:ScriptLibraryVersion[]}
 export interface ScriptLibraryChange {alias:string;kind:'add'|'adopt'|'same'|'update'|'customized';before:string;after:string;tagsRead:string[];tagsWritten:string[];fromVersion?:string;toVersion:string;downgrade:boolean}
-export interface ScriptLibraryPlan {base:string;next:HmiScriptCatalog;changes:ScriptLibraryChange[];mode:'type'|'copy';library:string;version:string}
+export interface ScriptLibraryInterfaceChange {kind:'function'|'variable';alias:string;name:string;parameters:string[]}
+export interface ScriptLibraryReview {code:boolean;customized:boolean;downgrade:boolean}
+export interface ScriptLibraryPlan {base:string;next:HmiScriptCatalog;changes:ScriptLibraryChange[];mode:'type'|'copy';library:string;version:string;interfaceChanges?:ScriptLibraryInterfaceChange[];projectUpdate?:boolean}
 const identifier=/^[A-Za-z_$][\w$]*$/;
 const versionPattern=/^(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})$/;
 function object(value:unknown,keys:readonly string[],label:string):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!keys.includes(key)))throw Error(label+': formato non valido o campi non previsti.');return value as Record<string,unknown>;}
@@ -83,7 +85,14 @@ function remap(module:ScriptLibraryModule,aliases:Record<string,string>):ScriptL
 function content(module:ScriptLibraryModule):Omit<ScriptLibraryModule,'attributions'>{const{attributions:_ignored,...result}=module;return result;}
 function moduleText(module:ScriptLibraryModule):string{return['// '+module.name+' · alias '+module.alias,module.globalSource??'',...module.functions.map(fn=>'function '+fn.name+'('+fn.parameters.join(', ')+') {\n'+fn.source.split('\n').map(line=>'  '+line).join('\n')+'\n}')].filter(Boolean).join('\n\n');}
 function api(module:HmiGlobalScriptModule):Map<string,string>{const result=new Map(module.functions.map(fn=>[fn.name,JSON.stringify(fn.parameters)]));for(const item of module.globalDefinition?.program?.exports??[])result.set(item.name,'export');return result;}
-export async function planScriptLibraryImport(catalog:HmiScriptCatalog,library:ScriptLibrary,releaseVersion:string,mode:'type'|'copy',aliases:Record<string,string>):Promise<ScriptLibraryPlan>{
+export function scriptLibraryInterfaceChanges(before:HmiScriptCatalog,after:HmiScriptCatalog):ScriptLibraryInterfaceChange[]{
+ const old=parseHmiScriptCatalog(before),next=parseHmiScriptCatalog(after),changes:ScriptLibraryInterfaceChange[]=[];
+ for(const module of old.globalModules){const current=next.globalModules.find(item=>item.alias===module.alias),available=current?api(current):new Map<string,string>();for(const[name,signature]of api(module)){if(available.get(name)===signature)continue;const fn=module.functions.find(item=>item.name===name);changes.push({kind:fn?'function':'variable',alias:module.alias,name,parameters:fn?.parameters??[]});}}
+ return changes;
+}
+function requireLibraryReview(plan:ScriptLibraryPlan,review:ScriptLibraryReview):void{if(!review.code||plan.changes.some(change=>change.kind==='customized')&&!review.customized||plan.changes.some(change=>change.downgrade)&&!review.downgrade)throw Error('Confronta il codice e conferma le personalizzazioni o il ripristino richiesti prima di applicare.');}
+export async function planScriptLibraryImport(catalog:HmiScriptCatalog,library:ScriptLibrary,releaseVersion:string,mode:'type'|'copy',aliases:Record<string,string>,options:{allowMigration?:boolean}={}):Promise<ScriptLibraryPlan>{
+ if(options.allowMigration){const currentIssues=hmiScriptCatalogIssues(parseHmiScriptCatalog(catalog));if(currentIssues.length)throw Error('Correggi prima il catalogo attuale: '+currentIssues[0]);}
  const checked=await readScriptLibrary(serializeScriptLibrary(library)),release=checked.versions.find(item=>item.version===releaseVersion);if(!release)throw Error('La versione scelta non è disponibile nella libreria.');if(!['type','copy'].includes(mode))throw Error('Scegli tipo collegato o copia indipendente.');
  const mapped=release.modules.map(module=>{const alias=aliases[module.alias];if(typeof alias!=='string'||alias.length>128||!identifier.test(alias))throw Error('Scegli un alias JavaScript valido per '+module.alias+'.');return remap(module,aliases);});
  if(new Set(mapped.map(module=>module.alias)).size!==mapped.length)throw Error('Assegna un alias diverso a ogni modulo della libreria.');
@@ -96,17 +105,29 @@ export async function planScriptLibraryImport(catalog:HmiScriptCatalog,library:S
   if(current&&!adopt&&(mode!=='type'||current.library?.mode!=='type'||current.library.id!==checked.id||current.library.alias!==original.alias))throw Error('L’alias '+incoming.alias+' è già usato da un modulo diverso. Scegli un nuovo alias: il modulo esistente non verrà sostituito.');
   if(current?.library&&(current.library.name!==checked.name||current.library.license!==checked.license||current.library.notice!==checked.notice))throw Error('I metadati della libreria sono cambiati: usa una nuova identità per cambiare nome, licenza o condizioni di una libreria rilasciata.');
   if(current?.library&&current.library.version===release.version&&current.library.release!==release.sha256)throw Error('La versione '+release.version+' ha un contenuto diverso da quella già collegata. Recupera l’originale o rilascia una nuova versione.');
-  if(current){const beforeApi=api(parseHmiScriptCatalog({globalModules:[current]}).globalModules[0]),afterApi=api(module),broken=[...beforeApi].filter(([name,signature])=>afterApi.get(name)!==signature).map(([name])=>name);if(broken.length)throw Error('Questa versione cambia o rimuove l’interfaccia '+broken.join(', ')+'. Importala come copia indipendente e migra le azioni prima di sostituire il tipo.');}
+  if(current){const beforeApi=api(parseHmiScriptCatalog({globalModules:[current]}).globalModules[0]),afterApi=api(module),broken=[...beforeApi].filter(([name,signature])=>afterApi.get(name)!==signature).map(([name])=>name);if(broken.length&&!options.allowMigration)throw Error('Questa versione cambia o rimuove l’interfaccia '+broken.join(', ')+'. Importala come copia indipendente e migra le azioni prima di sostituire il tipo.');}
   const entry:HmiGlobalScriptModule={...module,library:{mode,id:checked.id,name:checked.name,version:release.version,license:checked.license,notice:checked.notice,alias:original.alias,digest:moduleDigest,release:release.sha256,attributions:incoming.attributions}};
   if(current)next.globalModules[next.globalModules.findIndex(item=>item.alias===current.alias)]=entry;else next.globalModules.push(entry);
   const functions=hmiScriptFunctions(compiled),variables=hmiScriptVariables(compiled),inspections=module.functions.map(fn=>inspectHmiScript(fn.source,functions,module.globalDefinition?.program,fn.parameters,variables));
   if(module.globalDefinition?.program)inspections.push(inspectHmiScriptProgram(module.globalDefinition.program,functions,undefined,[],variables));
   changes.push({alias:incoming.alias,kind:!current?'add':adopt?'adopt':previousDigest===moduleDigest?'same':previousDigest!==current.library?.digest?'customized':'update',before:current?moduleText(projectSource(current)):'',after:moduleText(incoming),tagsRead:[...new Set(inspections.flatMap(item=>item.tagsRead))],tagsWritten:[...new Set(inspections.flatMap(item=>item.tagsWritten))],fromVersion:current?.library?.version,toVersion:release.version,downgrade:Boolean(current?.library&&compare(release.version,current.library.version)<0)});
  }
- const issues=hmiScriptCatalogIssues(parseHmiScriptCatalog(next));if(issues.length)throw Error('L’aggiornamento lascia riferimenti non validi nel progetto: '+issues[0]);return{base:await digest(catalog),next,changes,mode,library:checked.name,version:release.version};
+ const interfaceChanges=scriptLibraryInterfaceChanges(catalog,next),issues=hmiScriptCatalogIssues(parseHmiScriptCatalog(next));if(issues.length&&!interfaceChanges.length)throw Error('L’aggiornamento lascia riferimenti non validi nel progetto: '+issues[0]);return{base:await digest(catalog),next,changes,mode,library:checked.name,version:release.version,interfaceChanges,projectUpdate:mode==='type'&&changes.some(change=>change.kind==='update'||change.kind==='customized')};
 }
 export async function applyScriptLibraryPlan(catalog:HmiScriptCatalog,plan:ScriptLibraryPlan,review:{code:boolean;customized:boolean;downgrade:boolean}):Promise<HmiScriptCatalog>{
  if(await digest(catalog)!==plan.base)throw Error('Il catalogo è cambiato durante il confronto. Riapri la libreria e prepara una nuova proposta.');
- if(!review.code||plan.changes.some(change=>change.kind==='customized')&&!review.customized||plan.changes.some(change=>change.downgrade)&&!review.downgrade)throw Error('Confronta il codice e conferma le personalizzazioni o il ripristino richiesti prima di applicare.');
+ requireLibraryReview(plan,review);
+ if(scriptLibraryInterfaceChanges(catalog,plan.next).length)throw Error('Questa versione cambia le interfacce: usa la procedura guidata per aggiornare anche le pagine.');
  return structuredClone(plan.next);
+}
+
+/** Merge only the library's global modules into the authoritative disk catalog. */
+export async function prepareScriptLibraryMigration(source:string,catalog:HmiScriptCatalog,plan:ScriptLibraryPlan,review:ScriptLibraryReview):Promise<HmiScriptCatalog>{
+ if(await digest(catalog)!==plan.base)throw Error('La bozza del catalogo è cambiata: riapri la libreria e riprepara il confronto.');requireLibraryReview(plan,review);
+ let raw:Record<string,unknown>;try{raw=JSON.parse(source);}catch{throw Error('Il catalogo su disco non è leggibile.');}
+ if(!raw||raw.version!==1||!Array.isArray(raw.globalModules)||!Array.isArray(raw.localDefinitions)||!Array.isArray(raw.scheduledTasks))throw Error('Il catalogo su disco non ha un formato completo supportato.');
+ if(await digest(parseHmiScriptCatalog(raw))!==await digest(parseHmiScriptCatalog(catalog)))throw Error('Il catalogo su disco è diverso dalla bozza. Salva i moduli o ricarica il progetto prima di migrare.');
+ const next=structuredClone(raw),modules=next.globalModules as Record<string,unknown>[],known=['name','alias','functions','globalDefinition','library','libraryIssue'];const aliases=new Set<string>();
+ for(const change of plan.changes){if(aliases.has(change.alias))throw Error('Modulo duplicato nel confronto.');aliases.add(change.alias);const incoming=plan.next.globalModules.find(module=>module.alias===change.alias);if(!incoming)throw Error('Modulo mancante nel confronto: '+change.alias);const index=modules.findIndex(module=>module.alias===change.alias),previous=index>=0?modules[index]:undefined,extra=Object.fromEntries(Object.entries(previous??{}).filter(([name])=>!known.includes(name))),value={...extra,...structuredClone(incoming)};if(index>=0)modules[index]=value;else modules.push(value);}
+ return next as unknown as HmiScriptCatalog;
 }

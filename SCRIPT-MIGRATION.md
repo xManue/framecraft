@@ -1,9 +1,9 @@
 # Analisi delle migrazioni delle librerie script
 
-Stato dei punti 192–193: motore di confronto, inventario e transazione nativa collegati;
-**recupero operativo da Pannello → Recupera migrazioni script**. La finestra Librerie mantiene
-il blocco delle API incompatibili: restano da collegare le scelte guidate di simboli, parametri
-e contesti e la revisione prima dell’applicazione. Il backend non esegue migrazioni automatiche.
+Stato dei punti 192–194: confronto, inventario, transazione e recupero sono collegati
+alla procedura **Script → Librerie → Continua con il progetto**. Simboli, parametri e contesti
+hanno scelte esplicite; ogni salvataggio richiede confronto e conferme. Non ci sono
+aggiornamenti automatici delle librerie.
 
 ## Contratto del confronto
 
@@ -65,8 +65,15 @@ precedenti, per esempio la forma delle eccezioni, e richiede revisione esplicita
 Le dipendenze delle dinamizzazioni sono ricalcolate sul catalogo già migrato, anche attraverso
 funzioni intermedie quando il sorgente del binding resta uguale. Una sola modifica alle
 dipendenze non ricompila il programma. Se esistono definizioni locali delle dinamizzazioni,
-serve lo scope della pagina, fornito esplicitamente oppure coincidente esattamente con il
-percorso del file: in assenza di certezza il confronto si ferma.
+servono gli scope delle pagine: una stringa o una lista. La UI usa le route delle pagine note;
+per i componenti condivisi chiede tutti i contesti mancanti e la conferma della loro completezza.
+Un contesto selezionato non compilabile ferma tutto il piano. In assenza di certezza il confronto si ferma.
+
+La fusione della libreria parte dal catalogo sorgente su disco, confrontato con la bozza.
+Conserva campi estranei, definizioni locali, Scheduler e programmi non toccati. Le opzioni
+updatedModules identificano i moduli del rilascio, già compilati sulla nuova interfaccia:
+i riferimenti in questi moduli non vengono adattati una seconda volta. Le nuove dipendenze
+delle dinamizzazioni vengono ricalcolate anche quando non cambiano nomi o parametri.
 
 ## Transazione e recupero
 
@@ -101,17 +108,16 @@ ripristina e rilegge pagine/catalogo. La finestra resta stabile durante l’oper
 essere chiusa a scrittura iniziata. Un errore nel rileggere l’editor dopo un ripristino riuscito
 viene descritto esplicitamente, senza fingere che i file siano rimasti invariati.
 
-## Da completare prima della migrazione guidata delle librerie
+## Verifiche e confini
 
-- Scelte guidate di simboli, parametri e contesto locale, confronto di tutti i file e conferma della ricompilazione delle vecchie IR.
-- Collegamento del piano dalla finestra Librerie alla transazione, invalidazione delle proposte e prova dell’intero aggiornamento di una libreria.
+I test mirati comprendono script-library-migration, script-library-migration-dialog,
+script-reference-migration, script-document-migration, script-project-migration e
+script-migration-worker. Le prove browser script-library e script-library-migration
+compilano i worker reali e il flusso UI in Edge; il secondo parte dal pannello Script,
+collega una funzione rinominata e un parametro fisso, migra evento/dinamizzazione/Scheduler,
+verifica il risultato nel Runtime Node e controlla conferme e dimensione stabile della finestra.
+Il bridge nativo delle prove browser è simulato: non sono prove IPC desktop complete.
 
-I test mirati sono `script-reference-migration`, `script-document-migration`,
-`script-project-migration` e `script-migration-worker`. `tests/browser/script-migration.mjs`
-compila il worker reale, prova pagine JSX e HTML in Edge, verifica dipendenze e vecchie IR,
-annullamento e blocchi, poi esegue il risultato negli helper Runtime browser e Node.
-Nessun servizio PLC o progetto macchina reale viene coinvolto.
-
-Il punto 193 verifica anche 25 casi nativi su file temporanei, 81 casi mirati JavaScript/UI
-e la finestra compilata in Edge. Le API native della prova browser sono simulate; le prove
-native esercitano la transazione reale. Il collaudo su macchine fisiche rimane distinto.
+Il punto 193 ha verificato 25 casi nativi su file temporanei, guardie e recupero. I test nativi
+esercitano la transazione reale separatamente dal browser. Nessun progetto macchina o PLC
+fisico viene coinvolto; il collaudo industriale e delle combinazioni reali resta distinto.

@@ -70,7 +70,7 @@ const unwrap = (node: t.Node): t.Node => t.isTSAsExpression(node) || t.isTSSatis
 /** Pure project-source planning. Unsupported producers block the complete result; no source is executed. */
 export function migrateHmiDocuments(sources: Readonly<Record<string, string>>, before: HmiScriptCatalog, after: HmiScriptCatalog, choices: readonly ScriptSymbolMigration[], options: {
   ignoreFiles?: readonly string[];
-  scopes?: Readonly<Record<string, string>>;
+  scopes?: Readonly<Record<string, string | readonly string[]>>;
 } = {}): MigrationDocumentResult {
   validateScriptMigrations(before, after, choices);
   const issues: MigrationDocumentIssue[] = [],

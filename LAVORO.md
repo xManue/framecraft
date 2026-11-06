@@ -6853,6 +6853,26 @@ Verifiche del 5 ottobre 2026:
   guidata di mappatura e applicazione del piano resta il prossimo collegamento; la voce della
   roadmap non viene marcata completa. Nessuna nuova dipendenza o asset di terzi.
 
+## 194. Migrazione guidata delle librerie collegata all’editor (6 novembre 2026)
+
+- Librerie → Continua con il progetto: funzioni/export cambiati, parametri precedenti o
+  valori fissi tipizzati, nessuna scelta implicita per parametri nuovi. Conferme di codice,
+  personalizzazioni e downgrade conservate dal confronto iniziale.
+- Worker reale sull’inventario nativo; scelte di tutti i contesti locali per componenti
+  condivisi, unione delle dipendenze tag, confronto prima/dopo per file. Aggiornamenti
+  compatibili passano ugualmente dal progetto per aggiornare le dipendenze delle dinamizzazioni.
+- Nuovi sorgenti della libreria già sulla API destinazione non riscritti due volte;
+  adattati solo i chiamanti preesistenti. Conservati campi estranei e IR non toccate.
+- Collegamento alla transazione con backup e rilettura dei cataloghi, stop anteprima,
+  conferma servizio fermo, blocco bozze e confronti obsoleti, recupero e aggiornamento Runtime
+  raggiungibili quando servono. Errore di rilettura distinto dai file già salvati.
+- Verifiche: 185 test mirati in 8 file, TypeScript e build editor; due flussi compilati
+  con worker reali in Edge ed esecuzione del risultato Scheduler nel Runtime generato Node. Il bridge browser è simulato;
+  transazione nativa provata separatamente al punto 193. IPC desktop completo e macchina
+  fisica ancora da collaudare. Nessuna nuova dipendenza, asset o sorgente di terzi.
+- La fase 3 Unified resta aperta per object model, eventi/API mancanti, semantiche oltre
+  la IR e verifiche industriali. La migrazione guidata non è più una UI da completare.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

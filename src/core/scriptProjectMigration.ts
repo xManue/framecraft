@@ -80,7 +80,7 @@ function preservePrograms(previous: HmiScriptCatalog, proposed: HmiScriptCatalog
   return next;
 }
 /** Compile only migrated units. Unchanged legacy programs and origin/license metadata stay intact. */
-export function migrateHmiScriptCatalog(before: HmiScriptCatalog, proposed: HmiScriptCatalog, choices: readonly ScriptSymbolMigration[]): ScriptCatalogMigration {
+export function migrateHmiScriptCatalog(before: HmiScriptCatalog, proposed: HmiScriptCatalog, choices: readonly ScriptSymbolMigration[], options: {updatedModules?: readonly string[];previousCatalog?:HmiScriptCatalog} = {}): ScriptCatalogMigration {
   const inspectedProposal = parseHmiScriptCatalog(proposed);
   completeMappings(before, inspectedProposal, choices);
   const draft = structuredClone(proposed),
@@ -91,19 +91,27 @@ export function migrateHmiScriptCatalog(before: HmiScriptCatalog, proposed: HmiS
       label: string;
     }[] = [],
     versions = new Set<number>();
-  const unit = (path: (string | number)[], label: string, field = 'source') => {
+  let updatedPrograms=0;
+  for(const alias of options.updatedModules??[]){
+    const old=(options.previousCatalog??before).globalModules.find(module=>module.alias===alias),next=proposed.globalModules.find(module=>module.alias===alias);
+    const units=(module:typeof old)=>new Map([...(module?.globalDefinition?[['definition',module.globalDefinition] as const]:[]),...(module?.functions??[]).map(fn=>['function:'+fn.name,fn] as const)]);
+    const previous=units(old),incoming=units(next),same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+    for(const[name,value]of previous){if(value.program&&!same(value,incoming.get(name)))versions.add(value.program.version);}
+    for(const[name,value]of incoming){if(value.program&&!same(value,previous.get(name)))updatedPrograms++;}
+  }
+  const unit = (path: (string | number)[], label: string, field = 'source', alreadyUpdated = false) => {
     const value = get(draft, path);
     if (!value) return;
     const item = object(value);
     if (typeof item[field] !== 'string') throw Error(label + ': sorgente mancante.');
     try {
-      const result = migrateScriptReferences(item[field] as string, before, inspectedProposal, choices);
+      const result = alreadyUpdated ? {source:item[field] as string,changed:false,references:[],issues:[]} : migrateScriptReferences(item[field] as string, before, inspectedProposal, choices);
       references.push(...result.references.map(reference => ({
         ...reference,
         path: catalogPath,
         unit: label
       })));
-      const problems = [...result.issues, ...scriptMigrationProgramIssues(item.program, result.references, choices)];
+      const problems = [...result.issues, ...(alreadyUpdated ? [] : scriptMigrationProgramIssues(item.program, result.references, choices))];
       problems.forEach(problem => issues.push({
         path: catalogPath,
         line: problem.line,
@@ -126,8 +134,8 @@ export function migrateHmiScriptCatalog(before: HmiScriptCatalog, proposed: HmiS
     }
   };
   draft.globalModules.forEach((module, index) => {
-    unit(['globalModules', index, 'globalDefinition'], 'Modules.' + module.alias + ' · definizione');
-    module.functions.forEach((fn, fnIndex) => unit(['globalModules', index, 'functions', fnIndex], 'Modules.' + module.alias + '.' + fn.name));
+    unit(['globalModules', index, 'globalDefinition'], 'Modules.' + module.alias + ' · definizione', 'source', options.updatedModules?.includes(module.alias));
+    module.functions.forEach((fn, fnIndex) => unit(['globalModules', index, 'functions', fnIndex], 'Modules.' + module.alias + '.' + fn.name, 'source', options.updatedModules?.includes(module.alias)));
   });
   draft.localDefinitions.forEach((definition, index) => {
     const label = definition.scope + '/' + definition.context;
@@ -163,7 +171,7 @@ export function migrateHmiScriptCatalog(before: HmiScriptCatalog, proposed: HmiS
     catalog: draft,
     issues,
     references,
-    recompiled: changed.length,
+    recompiled: changed.length+updatedPrograms,
     previousVersions: [...versions].sort((a, b) => a - b)
   };
 }
@@ -200,7 +208,9 @@ function printJson(value: unknown, before: string): string {
 }
 /** Pure preview: no reads outside the supplied inventory, no code execution, no writes. */
 export async function planScriptProjectMigration(files: Readonly<Record<string, string>>, proposed: HmiScriptCatalog, choices: readonly ScriptSymbolMigration[], options: {
-  scopes?: Readonly<Record<string, string>>;
+  scopes?: Readonly<Record<string, string | readonly string[]>>;
+  /** These reviewed modules already use the target interface; do not rewrite their calls twice. */
+  updatedModules?: readonly string[];
 } = {}): Promise<ScriptProjectMigration> {
   const entries = Object.entries(files);
   if (entries.length > 1200 || entries.some(([path, source]) => !path || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..') || typeof source !== 'string' || new TextEncoder().encode(source).length > 1024 * 1024) || entries.reduce((size, [, source]) => size + new TextEncoder().encode(source).length, 0) > 24 * 1024 * 1024) throw Error('Il confronto supera i limiti del progetto: 1 MB per file, 24 MB complessivi e 1.200 file.');
@@ -211,7 +221,7 @@ export async function planScriptProjectMigration(files: Readonly<Record<string, 
     previousIssues = hmiScriptCatalogIssues(before);
   if (previousIssues.length) throw Error('Correggi il catalogo attuale prima di migrare: ' + previousIssues[0]);
   const ignoredGeneratedFiles = await generatedFiles(files),
-    catalog = migrateHmiScriptCatalog(before, preservePrograms(raw as unknown as HmiScriptCatalog, proposed), choices),
+    catalog = migrateHmiScriptCatalog(before, preservePrograms(raw as unknown as HmiScriptCatalog, proposed), choices, {...options,previousCatalog:raw as unknown as HmiScriptCatalog}),
     pages = migrateHmiDocuments(files, before, catalog.issues.length ? proposed : catalog.catalog, choices, {
       ignoreFiles: ignoredGeneratedFiles,
       scopes: options.scopes

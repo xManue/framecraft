@@ -13,17 +13,43 @@ misura nelle due schede e lascia il canvas libero quando viene chiusa.
    collegamento precedente può essere collegato senza duplicare o sostituire il codice.
 4. Premi **Confronta con la bozza**. Leggi codice attuale/proposto, tag e attribuzioni di tutti
    i moduli. Le personalizzazioni e il ritorno a una versione precedente hanno conferme separate.
-5. **Applica alla bozza**, poi **Salva moduli**. Prima del salvataggio nessun file del progetto
-   viene modificato. Configura e verifica i tag richiesti prima di usare le funzioni. Se il modulo
-   è usato dallo Scheduler centrale, riavvia il servizio gateway dopo il salvataggio.
+5. Per nuove importazioni e copie: **Applica alla bozza**, poi **Compila e salva**. Per un tipo
+   collegato con codice aggiornato: **Continua con il progetto**, come descritto qui sotto.
+   Configura e verifica i tag richiesti prima di usare le funzioni.
 
 Il numero della versione compare anche nell'elenco moduli. Dal modulo puoi scegliere
 **Rendi copia indipendente**: resta lo stesso codice, con le attribuzioni di origine.
 
-Le modifiche che rimuovono funzioni/export o cambiano l'elenco dei parametri non sostituiscono
-un tipo già collegato: importa la nuova versione come copia, migra le azioni e verifica il
-pannello. Le copie consentono di tenere la versione precedente durante il passaggio.
-Il rifacimento automatico delle azioni e dei riferimenti nelle pagine rimane aperto nella roadmap.
+## Aggiornare un tipo collegato
+
+Salva prima pagina e moduli modificati. Dopo il confronto della libreria premi
+**Continua con il progetto**. Se il pannello non ha ancora le protezioni di migrazione,
+la finestra indica **Aggiorna componenti del pannello**; dopo l’aggiornamento riapri la libreria.
+
+1. Per ogni funzione o export cambiato scegli il nuovo riferimento. Per i parametri nuovi
+   scegli un parametro precedente, un valore fisso tipizzato oppure undefined. Vengono
+   precompilati soltanto nomi corrispondenti; i valori mancanti richiedono una scelta.
+2. Premi **Confronta file del progetto**. Il controllo comprende moduli globali/locali,
+   Scheduler e binding di pagine/componenti staticamente analizzabili. I moduli del rilascio
+   usano già le interfacce nuove: vengono adattati i chiamanti preesistenti del progetto.
+3. Le pagine conosciute forniscono il loro contesto locale. Per un componente condiviso
+   con contesto non determinabile seleziona tutte le pagine in cui è usato e ripeti il confronto.
+   Le dipendenze dei tag comprendono tutti i contesti scelti. Produttori dinamici e riferimenti
+   non analizzabili fermano l’intera proposta con percorso e motivo.
+4. Confronta tutti i file prima/dopo. Conferma la verifica dei collegamenti e, quando richiesto,
+   l’aggiornamento del motore degli script modificati e tutti i contesti dei componenti condivisi.
+5. Arresta il servizio PLC del progetto, incluso MQTT separato se usato, e confermalo.
+   **Applica aggiornamento con backup** ferma l’anteprima, ricontrolla i sorgenti e salva
+   la transazione. Nessun comando viene inviato al PLC e i servizi restano fermi.
+6. Controlla le pagine e riavvia il pannello e il servizio dopo la verifica. Per tornare ai
+   sorgenti precedenti usa **Pannello → Recupera migrazioni script**.
+
+Anche un aggiornamento con gli stessi nomi e parametri passa dal confronto del progetto:
+una funzione può leggere tag diversi e richiedere il ricalcolo delle dinamizzazioni.
+Le IR non toccate e i dati estranei del catalogo rimangono conservati. Una modifica esterna,
+un cambio progetto o una bozza non salvata impediscono di applicare un confronto obsoleto.
+Un errore di rilettura dopo la scrittura viene distinto dal mancato salvataggio; il backup resta
+indicato e non viene eseguita una seconda scrittura automatica.
 
 ## Creare e distribuire una versione
 
@@ -77,5 +103,7 @@ il catalogo importato con gli helper autonomi del Runtime Node. I dati sono sint
 nessun PLC fisico o servizio di produzione è coinvolto.
 
 Il motore di confronto delle migrazioni è descritto in [SCRIPT-MIGRATION.md](SCRIPT-MIGRATION.md).
-È verificato separatamente; la UI mantiene il blocco delle API incompatibili finché revisione,
-inventario nativo e transazione con recupero non saranno collegati e collaudati.
+La procedura guidata è collegata al pannello Script. Il test browser script-library-migration
+prova worker reali, modifica di evento/dinamizzazione/Scheduler, confronto e chiamata della
+transazione; il bridge desktop è simulato e la transazione nativa è verificata separatamente.
+Il collaudo IPC desktop completo e quello su macchina restano da svolgere.

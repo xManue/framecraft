@@ -18,6 +18,10 @@ import { desktopBridge } from "../filesystem/desktopBridge";
 import { useEditorStore } from "../state/editorStore";
 
 import {setScriptDraftDirty} from '../state/scriptDraftState';
+import type {ScriptLibraryMigrationRequest} from './ScriptLibraryMigrationDialog';
+const ScriptLibraryMigrationDialog=lazy(()=>import('./ScriptLibraryMigrationDialog').then(module=>({default:module.ScriptLibraryMigrationDialog})));
+const ScriptMigrationRecoveryDialog=lazy(()=>import('./ScriptMigrationRecoveryDialog').then(module=>({default:module.ScriptMigrationRecoveryDialog})));
+const RuntimeUpdateDialog=lazy(()=>import('./RuntimeUpdateDialog').then(module=>({default:module.RuntimeUpdateDialog})));
 const ScriptLibraryDialog=lazy(()=>import("./ScriptLibraryDialog").then(module=>({default:module.ScriptLibraryDialog})));
 
 type Selection = { kind: "global" | "local" | "task"; owner: number; fn?: number };
@@ -67,8 +71,9 @@ export function ScriptModulesPanel() {
   const currentRoute = useEditorStore((state) => state.pages.find((page) => page.id === state.activePageId)?.route ?? state.previewPath ?? "/");
   const [catalog, setCatalog] = useState<HmiScriptCatalog>(() => emptyHmiScriptCatalog());
   const [selection, setSelection] = useState<Selection>();
-  const [libraryOpen,setLibraryOpen]=useState(false);
-  useEffect(()=>setLibraryOpen(false),[project?.root]);
+  const [libraryOpen,setLibraryOpen]=useState(false),[migration,setMigration]=useState<ScriptLibraryMigrationRequest>(),[recoveryOpen,setRecoveryOpen]=useState(false),[runtimeOpen,setRuntimeOpen]=useState(false);
+  const pageDirty=useEditorStore(state=>state.dirty);
+  useEffect(()=>{setLibraryOpen(false);setMigration(undefined);setRecoveryOpen(false);setRuntimeOpen(false);},[project?.root]);
   const [dirty, setDirty] = useState(false);
   const draftOwner=useRef(Symbol('script-draft'));
   useEffect(()=>{const owner=draftOwner.current;setScriptDraftDirty(owner,dirty);return()=>setScriptDraftDirty(owner,false);},[dirty]);
@@ -209,7 +214,10 @@ export function ScriptModulesPanel() {
   };
 
   return <div className="panel-content script-panel">
-    {libraryOpen&&<Suspense fallback={<p role="status">Apertura libreria…</p>}><ScriptLibraryDialog catalog={catalog} selectedAlias={selection?.kind==="global"?catalog.globalModules[selection.owner]?.alias:undefined} onApply={change} onClose={()=>setLibraryOpen(false)}/></Suspense>}
+    {migration&&<Suspense fallback={<p role="status">Apertura aggiornamento…</p>}><ScriptLibraryMigrationDialog {...migration} onClose={()=>setMigration(undefined)} onRecover={()=>{setMigration(undefined);setRecoveryOpen(true);}} onUpdateRuntime={()=>{setMigration(undefined);setRuntimeOpen(true);}}/></Suspense>}
+    {recoveryOpen&&<Suspense fallback={null}><ScriptMigrationRecoveryDialog onClose={()=>setRecoveryOpen(false)}/></Suspense>}
+    {runtimeOpen&&<Suspense fallback={null}><RuntimeUpdateDialog onClose={()=>setRuntimeOpen(false)}/></Suspense>}
+    {libraryOpen&&<Suspense fallback={<p role="status">Apertura libreria…</p>}><ScriptLibraryDialog catalog={catalog} selectedAlias={selection?.kind==="global"?catalog.globalModules[selection.owner]?.alias:undefined} onApply={change} onClose={()=>setLibraryOpen(false)} migrationBlocked={dirty||pageDirty?'Salva prima la pagina e i moduli modificati, poi riapri la libreria.':undefined} onMigrate={(plan,review)=>{setLibraryOpen(false);setMigration({catalog,plan,review});}}/></Suspense>}
     <div className="panel-title"><span>MODULI JAVASCRIPT</span><small>{catalog.globalModules.length + catalog.localDefinitions.length + catalog.scheduledTasks.length}</small></div>
     <button type="button" disabled={saving} onClick={()=>setLibraryOpen(true)}>Librerie · importa, esporta e aggiorna</button>
     <p className="script-intro">Funzioni compilate nella sandbox HMI. Usa <code>Modules.Alias.Funzione()</code> ovunque e <code>Local.Funzione()</code> nella pagina e nel contesto scelti.</p>
