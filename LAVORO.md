@@ -6912,6 +6912,25 @@ Verifiche del 5 ottobre 2026:
 - Riferimento Siemens e contratto Framecraft in SCREEN-ITEMS.md. Restano eventi/API specifiche,
   Margin/altre proprietà annidate, finestre/percorsi, linguaggio oltre la IR e collaudo industriale.
 
+## 197. Margin tipizzato e copia dei margini negli script (6 novembre 2026)
+
+- Verificati schema HmiMarginPart e lati Int32 nelle fonti Siemens V20/V21; ispezionata
+  localmente la struttura degli export reali senza pubblicare JSON o dati macchina.
+- Margin.Left/Top/Right/Bottom con segno, riferimento opaco separato da Font, copie tramite
+  record completo o altro Margin. Validazione completa prima di una sola pubblicazione;
+  rollback dello stato logico se il livello grafico fallisce. Nessun uso come valore PLC.
+- Margini CSS temporanei, priorità, ripristino e conservazione delle modifiche esterne.
+  Auto/frazioni non arrotondati; SVG e layout privi di un box supportato rifiutati chiaramente.
+- Pipeline standard e Runtime 2026.11.06.2; nessun nodo IR nuovo e lettori 1–9 conservati.
+- Prova compilata con movimento reale del rettangolo e dimensioni conservate, copia
+  indipendente, timer, ripristino, contesti faceplate/popup e helper autonomi Node.
+- Emerso e corretto nel collaudo il pulsante popup: il pointer capture del trascinamento
+  della barra intercettava il click di chiusura. Ora esclude pulsanti e altri controlli.
+- Passati 224 test mirati di tipi/copia/ripristino/lifecycle, font/oggetti/collezioni/this e aggiornamento;
+  TypeScript e pipeline compilata. Dati sintetici, nessuna nuova dipendenza e nessun PLC contattato.
+- Restano Padding, altre proprietà/parti/lifecycle dell’object model, API/eventi specifici,
+  linguaggio oltre la IR e verifiche industriali. Riferimenti e contratto in SCREEN-ITEMS.md.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

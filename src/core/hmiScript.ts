@@ -144,7 +144,7 @@ export interface HmiScriptPopupOpenOptions {
 
 export interface HmiScriptPopupReference { readonly popupId: string }
 
-export interface HmiScriptScreenItemReference { readonly screenItemId: string; readonly screenPropertyPath?: "Font" }
+export interface HmiScriptScreenItemReference { readonly screenItemId: string; readonly screenPropertyPath?: "Font" | "Margin" }
 export interface HmiScriptScreenItemManager {
   resolve(scope: "screen" | "faceplate" | "item", name?: string): HmiScriptScreenItemReference;
   /** Current members, excluding the root and interiors of nested faceplates. */
@@ -152,6 +152,7 @@ export interface HmiScriptScreenItemManager {
   get(reference: HmiScriptScreenItemReference, property: string): HmiScriptScalar | HmiScriptScreenItemReference;
   set(reference: HmiScriptScreenItemReference, property: string, value: HmiScriptScalar): void;
   propertyFlashing(reference: HmiScriptScreenItemReference, args: HmiScriptScalar[]): boolean;
+  setMargin?(reference:HmiScriptScreenItemReference,value:{Left:number;Top:number;Right:number;Bottom:number}):void;
 }
 
 export interface HmiScriptPopupManager {
@@ -2830,7 +2831,16 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         else if(isFunctionReference(object)&&object.scriptFunction.screenCollection)throw new Error("La collezione Items e' in sola lettura: modifica le proprieta' dei suoi elementi.");
         else if (object && typeof object === "object" && "screenItemId" in object) {
           if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
-          options.screenItems.set(object, key, scalar(value));
+          if(!object.screenPropertyPath&&key==="Margin"){
+            if(!options.screenItems.setMargin)throw new Error("La copia di Margin richiede i componenti Runtime aggiornati del pannello.");
+            const sides=["Left","Top","Right","Bottom"] as const;
+            if(isDataReference(value)){
+              if(Array.isArray(value.data)||Object.keys(value.data).length!==4||!sides.every(side=>Object.hasOwn(value.data,side)))throw new TypeError("Margin richiede un oggetto con tutti e soli i lati Left, Top, Right, Bottom.");
+            }else if(!value||typeof value!=="object"||!("screenItemId" in value)||value.screenPropertyPath!=="Margin")throw new TypeError("Margin richiede un riferimento Margin o un oggetto con Left, Top, Right, Bottom.");
+            const result={} as {Left:number;Top:number;Right:number;Bottom:number};
+            for(const side of sides){const part=scalar(readMember(value,side));if(typeof part!=="number"||!Number.isInteger(part)||part < -2147483648||part>2147483647)throw new TypeError("Margin."+side+" richiede un numero intero tra -2147483648 e 2147483647 (Int32).");result[side]=part;}
+            options.screenItems.setMargin(object,result);
+          }else options.screenItems.set(object, key, scalar(value));
         }
         else if (isPopupReference(object) && ["Left", "Top", "Width", "Height", "Visible", "WindowFlags"].includes(key)) {
           if (!options.popupManager) throw new Error("Il contesto corrente non dispone di un gestore popup faceplate.");

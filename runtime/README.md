@@ -2196,3 +2196,19 @@ un’indicazione di aggiornare i componenti. Non vengono aggiornati pannelli ins
 
 Esempi, limiti e prove: [SCREEN-ITEMS.md](../SCREEN-ITEMS.md). Restano altre proprietà/API
 dell’object model e il collaudo industriale; le prove usano dati sintetici e nessuna connessione PLC.
+
+## Margini grafici dal pacchetto 2026.11.06.2
+
+Gli script espongono Margin.Left/Top/Right/Bottom come Int32 con segno, una parte opaca
+separata da Font. Supportati setter dei lati, assegnazione completa e copia indipendente
+del Margin di un altro elemento. Tutti i lati vengono validati prima della pubblicazione
+di una copia; i riferimenti funzionano nei moduli/timer senza esporre DOM o valori PLC.
+
+La superficie DOM applica un livello temporaneo CSS e lo ripristina conservando modifiche
+esterne. Non inventa interi da auto o frazioni e rifiuta SVG/layout privi di un box supportato.
+Gli adattatori custom devono esporre Margin.* e setMargin per la copia completa.
+I popup non iniziano più un trascinamento quando il puntatore preme il pulsante di chiusura.
+
+La pipeline genera il nuovo pacchetto; quelli installati richiedono l’aggiornamento assistito.
+Nessun nuovo nodo IR, dipendenza o collegamento PLC. Esempi e confini in
+[SCREEN-ITEMS.md](../SCREEN-ITEMS.md); Padding, altre parti annidate e collaudo industriale restano aperti.

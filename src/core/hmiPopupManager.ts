@@ -55,6 +55,7 @@ export function createHmiFaceplatePopupDomSurface(onUserClose: (reference: HmiSc
       let drag: { x: number; y: number; left: number; top: number } | undefined;
       header.addEventListener("pointerdown", (event) => {
         if (!(Number(root!.dataset.windowFlags) & 16) || event.button !== 0) return;
+        if ((event.target as Element | null)?.closest?.("button, input, select, textarea, a[href]")) return;
         drag = { x: event.clientX, y: event.clientY, left: Number.parseFloat(root!.style.left) || 0, top: Number.parseFloat(root!.style.top) || 0 };
         header.setPointerCapture?.(event.pointerId);
       });

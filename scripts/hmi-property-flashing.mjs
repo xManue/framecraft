@@ -6,12 +6,18 @@ export function createHmiPropertyFlashing(surface) {
   const reported = new Set();
   const properties = ["BackColor", "ForeColor", "BorderColor"];
   const fontProperties = ["Name", "Size", "Weight", "Italic", "Underline", "StrikeOut"];
+  const marginSides=["Left","Top","Right","Bottom"];
+  const validateMargin=(property,value)=>{if(typeof value!=="number"||!Number.isInteger(value)||value < -2147483648||value>2147483647)throw new Error(property+" richiede un numero intero tra -2147483648 e 2147483647 (Int32).");};
   const propertyKey = (reference, property) => {
     if (reference.screenPropertyPath === "Font") {
       if (!fontProperties.includes(property)) throw new Error("Font non espone la proprieta' " + property + ".");
       return "Font." + property;
     }
-    if (property.includes(".")) throw new Error("Accedi alle proprieta' annidate tramite il riferimento Font.");
+    if(reference.screenPropertyPath==="Margin"){
+      if(!marginSides.includes(property))throw new Error("Margin non espone la proprieta' "+property+".");
+      return "Margin."+property;
+    }
+    if (property.includes(".")) throw new Error("Accedi alle proprieta' annidate tramite il riferimento Font o Margin.");
     return property;
   };
   const color = (value) => {
@@ -40,7 +46,7 @@ export function createHmiPropertyFlashing(surface) {
       const assertActive = () => { if (contextRevision !== revision) throw new Error("Il contesto oggetti HMI non e' piu' attivo."); };
       const itemFor = (reference) => {
         assertActive();
-        if (!reference || typeof reference.screenItemId !== "string" || (reference.screenPropertyPath !== undefined && reference.screenPropertyPath !== "Font")) throw new Error("Riferimento grafico HMI non valido.");
+        if (!reference || typeof reference.screenItemId !== "string" || (reference.screenPropertyPath !== undefined && !["Font","Margin"].includes(reference.screenPropertyPath))) throw new Error("Riferimento grafico HMI non valido.");
         const items = surface.items();
         if (ownerId && !items.some((item) => item.itemId === ownerId)) throw new Error("L'oggetto HMI del contesto non e' piu' disponibile.");
         const item = items.find((candidate) => candidate.itemId === reference.screenItemId);
@@ -87,12 +93,17 @@ export function createHmiPropertyFlashing(surface) {
             if (!fontProperties.some((name) => Object.hasOwn(item.properties ?? {}, "Font." + name))) throw new Error("L'oggetto HMI non espone Font: serve un testo univoco o un campo input.");
             return { screenItemId: item.itemId, screenPropertyPath: "Font" };
           }
+          if(!reference.screenPropertyPath&&property==="Margin"){
+            if(!marginSides.every(side=>Object.hasOwn(item.properties??{},"Margin."+side)))throw new Error("L'oggetto HMI non espone Margin nel layout corrente.");
+            return {screenItemId:item.itemId,screenPropertyPath:"Margin"};
+          }
           const key = propertyKey(reference, property);
           if (key === "Name") return item.name;
           if (!Object.prototype.hasOwnProperty.call(item.properties ?? {}, key)) throw new Error("L'oggetto HMI non espone la proprieta' " + key + ".");
           const overrides = propertyState.get(item.itemId);
           const value = overrides?.has(key) ? overrides.get(key) : item.properties[key];
           if (value === null && properties.includes(key)) throw new Error("Il colore base " + key + " non e' risolvibile come RGB nel contesto corrente.");
+          if(value===null&&reference.screenPropertyPath==="Margin")throw new Error("La proprieta' base "+key+" non e' risolvibile come Int32: imposta un margine intero in pixel; auto e frazioni non possono essere letti come interi.");
           if (value === null && reference.screenPropertyPath) throw new Error("La proprieta' base " + key + " non e' risolvibile nel contesto corrente.");
           return value;
         },
@@ -102,7 +113,8 @@ export function createHmiPropertyFlashing(surface) {
           const key = propertyKey(reference, property);
           if (key === "Name") throw new Error("Name e' in sola lettura nel Runtime: modifica il nome nell'Inspector.");
           if (!Object.prototype.hasOwnProperty.call(item.properties ?? {}, key)) throw new Error("L'oggetto HMI non espone la proprieta' " + key + ".");
-          if (["Visible", "Enabled", "Font.Italic", "Font.Underline"].includes(key)) {
+          if(key.startsWith("Margin."))validateMargin(key,value);
+          else if (["Visible", "Enabled", "Font.Italic", "Font.Underline"].includes(key)) {
             if (typeof value !== "boolean") throw new Error(key + " richiede un Boolean.");
           } else if (key === "Font.Name") {
             if (typeof value !== "string" || value.length > 20000 || /[\u0000-\u001f\u007f]/.test(value)) throw new Error("Font.Name richiede una stringa fino a 20000 caratteri senza caratteri di controllo.");
@@ -124,9 +136,21 @@ export function createHmiPropertyFlashing(surface) {
           propertyState.get(item.itemId).set(key, value);
           surface.applyProperties(propertyCommands());
         },
+        setMargin(reference,value){
+          const item=itemFor(reference);
+          if(reference.screenPropertyPath)throw new Error("Assegna Margin all'oggetto grafico, non a una sua parte.");
+          if(!value||typeof value!=="object"||Object.keys(value).length!==4||!marginSides.every(side=>Object.hasOwn(value,side)))throw new Error("Margin richiede Left, Top, Right, Bottom.");
+          for(const side of marginSides){if(!Object.hasOwn(item.properties??{},"Margin."+side))throw new Error("L'oggetto HMI non espone Margin nel layout corrente.");validateMargin("Margin."+side,value[side]);}
+          if(!surface.applyProperties)throw new Error("Il contesto corrente non permette modifiche grafiche.");
+          const previous=propertyState.get(item.itemId),next=new Map(previous);
+          for(const side of marginSides)next.set("Margin."+side,value[side]);
+          if(previous&&marginSides.every(side=>previous.get("Margin."+side)===value[side]))return;
+          propertyState.set(item.itemId,next);
+          try{surface.applyProperties(propertyCommands());}catch(error){if(previous)propertyState.set(item.itemId,previous);else propertyState.delete(item.itemId);try{surface.applyProperties(propertyCommands());}catch{report("Il layout non e' stato ripristinato completamente: ricarica la pagina.");}throw error;}
+        },
         propertyFlashing(reference, args) {
           const item = itemFor(reference);
-          if (reference.screenPropertyPath) throw new Error("PropertyFlashing richiede un oggetto Screen/Faceplate, non Font.");
+          if (reference.screenPropertyPath) throw new Error("PropertyFlashing richiede un oggetto Screen/Faceplate, non Font o Margin.");
           const [property, enabled, value, alternateValue, rate] = args;
           if (!properties.includes(property)) throw new Error("PropertyFlashing: proprieta' non supportata: " + property);
           if (typeof enabled !== "boolean") throw new Error("PropertyFlashing: enable deve essere Boolean.");
@@ -171,6 +195,8 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
   let suspendDepth = 0;
   const stems = { BackColor: "background", ForeColor: "foreground", BorderColor: "border" };
   const cssProperties = { Left: "left", Top: "top", Width: "width", Height: "height", Visible: "visibility", BackColor: "background-color", ForeColor: "color", BorderColor: "border-color" };
+  const marginCssProperties={"Margin.Left":"margin-left","Margin.Top":"margin-top","Margin.Right":"margin-right","Margin.Bottom":"margin-bottom"};
+  const supportsMargin=(element,computed=root.defaultView?.getComputedStyle(element)??element.style)=>element.namespaceURI==="http://www.w3.org/1999/xhtml"&&!/^(contents|table-row|table-row-group|table-header-group|table-footer-group|table-column|table-column-group|table-cell)$/.test(computed.display);
   const fontCssProperties = { "Font.Name": "font-family", "Font.Size": "font-size", "Font.Weight": "font-weight", "Font.Italic": "font-style" };
   const fontProperties = [...Object.keys(fontCssProperties), "Font.Underline", "Font.StrikeOut"];
   const cssColor = (value) => {
@@ -237,6 +263,10 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     const values = { Left: px("left", element.offsetLeft), Top: px("top", element.offsetTop), Width: Math.round(element.offsetWidth || px("width", 0)), Height: Math.round(element.offsetHeight || px("height", 0)),
       Visible: !element.hidden && computed.visibility !== "hidden" && computed.visibility !== "collapse" && computed.display !== "none",
       Enabled: !element.hasAttribute("disabled") && !element.hasAttribute("inert") && element.getAttribute("aria-disabled") !== "true" && computed.pointerEvents !== "none" };
+    if(supportsMargin(element,computed))for(const[property,css]of Object.entries(marginCssProperties)){
+      const raw=computed.getPropertyValue(css).trim(),number=raw===""||raw==="0"?0:/^-?(?:\d+(?:\.\d+)?|\.\d+)px$/i.test(raw)?Number.parseFloat(raw):NaN;
+      values[property]=Number.isInteger(number)&&number>=-2147483648&&number<=2147483647?number:null;
+    }
     const text = textNodes(element);
     if (text) values.Text = text.nodes.map((node) => node.data).join("");
     const font = fontHost(element);
@@ -292,7 +322,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     const style = (name, value, target = element) => {
       const entry = { kind: "style", target, name, value: target.style.getPropertyValue(name), priority: target.style.getPropertyPriority(name) };
       if (entry.value === value) return;
-      const priority = entry.priority || target.style.getPropertyPriority(name.startsWith("font-") ? "font" : name === "text-decoration-line" ? "text-decoration" : name) || (name.startsWith("font-") || name === "text-decoration-line" ? "important" : "");
+      const priority = entry.priority || target.style.getPropertyPriority(name.startsWith("font-") ? "font" : name.startsWith("margin-") ? "margin" : name === "text-decoration-line" ? "text-decoration" : name) || (name.startsWith("font-") || name.startsWith("margin-") || name === "text-decoration-line" ? "important" : "");
       target.style.setProperty(name, value, priority);
       entries.push({ ...entry, applied: target.style.getPropertyValue(name), appliedPriority: target.style.getPropertyPriority(name) });
     };
@@ -333,6 +363,8 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         });
       } else if (Object.hasOwn(fontCssProperties, property)) {
         if (font) style(fontCssProperties[property], property === "Font.Name" ? fontFamilyCss(value) : property === "Font.Size" ? pixelLength(value) : property === "Font.Weight" ? (value === 0 ? "normal" : String(value)) : value ? "italic" : "normal", font);
+      } else if(Object.hasOwn(marginCssProperties,property)){
+        style(marginCssProperties[property],value+"px");
       } else if (property === "Enabled") {
         attribute("inert", value ? null : "");
         attribute("aria-disabled", value ? "false" : "true");
@@ -449,14 +481,16 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       for (const command of commands) {
         if (!command || typeof command.itemId !== "string" || !targets.has(command.itemId)) continue;
         const { property, value } = command;
-        if (!Object.hasOwn(cssProperties, property) && !["Text", "Enabled", ...fontProperties].includes(property)) continue;
+        if (!Object.hasOwn(cssProperties, property) && !["Text", "Enabled", ...fontProperties,...Object.keys(marginCssProperties)].includes(property)) continue;
         if (["Enabled", "Visible", "Font.Italic", "Font.Underline"].includes(property) ? typeof value !== "boolean"
           : property === "Text" || property === "Font.Name" ? typeof value !== "string" || value.length > 20000 || (property === "Font.Name" && /[\u0000-\u001f\u007f]/.test(value))
+          : Object.hasOwn(marginCssProperties,property) ? typeof value!=="number"||!Number.isInteger(value)||value < -2147483648||value>2147483647
           : property === "Font.Size" ? typeof value !== "number" || !Number.isFinite(value) || value < 0 || !Number.isFinite(Math.fround(value))
           : property === "Font.Weight" ? ![0, 300, 400, 600, 700].includes(value)
           : property === "Font.StrikeOut" ? ![0, 1].includes(value)
           : typeof value !== "number" || !Number.isInteger(value) || value < (["Left", "Top"].includes(property) ? -2147483648 : 0) || value > (["Left", "Top"].includes(property) ? 2147483647 : 0xffffffff)) continue;
         if (property === "Text" && !textNodes(targets.get(command.itemId))) continue;
+        if(Object.hasOwn(marginCssProperties,property)&&!supportsMargin(targets.get(command.itemId)))continue;
         if (fontProperties.includes(property) && !fontHost(targets.get(command.itemId))) continue;
         if (!next.has(command.itemId)) next.set(command.itemId, new Map());
         next.get(command.itemId).set(property, value);

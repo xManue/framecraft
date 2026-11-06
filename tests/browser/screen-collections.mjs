@@ -204,6 +204,37 @@ try {
   await popup.locator('[data-hmi-faceplate-object="Read"]').first().evaluate((button, binding) => button.setAttribute('data-hmi-events', binding), events('HMIRuntime.Trace("POPUP="+Screen.Items.Count+":"+Faceplate.Items.Count+":"+Faceplate.Items("Title").Text);'));
   await popup.locator('[data-hmi-faceplate-object="Read"]').first().click();
   await page.waitForFunction(() => window.qa.traces.some(t => t.includes('POPUP=1:3:Popup')));
+  await popup.getByRole('button', {
+    name: 'Chiudi popup'
+  }).click();
+  await popup.waitFor({
+    state: 'hidden'
+  });
+  const target = page.locator('[data-hmi-name="Target"]');
+  await target.evaluate(element => Object.assign(element.style, {
+    display: 'block',
+    position: 'absolute',
+    left: '420px',
+    top: '220px',
+    width: '100px',
+    height: '40px',
+    margin: '2px'
+  }));
+  const boxBefore = await target.boundingBox();
+  const marginSource = 'const m=Screen.Items("Target").Margin;m.Left=-10;m.Top=8;m.Right=6;m.Bottom=4;Screen.Items("Hidden").Margin=m;HMIRuntime.Trace("MARGIN="+m.Left+":"+m.Top);HMIRuntime.Timers.SetTimeout(()=>{m.Left=-14;HMIRuntime.Trace("MARGIN_TIMER="+m.Left);},20);';
+  await page.locator('[data-hmi-name="Run"]').evaluate((button, binding) => button.setAttribute('data-hmi-events', binding), events(marginSource));
+  await page.getByRole('button', {
+    name: 'Run collection script'
+  }).click();
+  await page.waitForFunction(() => window.qa.traces.some(t => t.includes('MARGIN_TIMER=-14')));
+  const boxAfter = await target.boundingBox();
+  assert.ok(boxBefore && boxAfter);
+  assert.ok(Math.abs(boxAfter.x - boxBefore.x + 16) < 0.1);
+  assert.ok(Math.abs(boxAfter.y - boxBefore.y - 6) < 0.1);
+  assert.equal(boxAfter.width, boxBefore.width);
+  assert.equal(boxAfter.height, boxBefore.height);
+  assert.equal(await page.locator('[data-hmi-name="Hidden"]').evaluate(element => element.style.marginLeft), '-10px');
+  assert.equal(await target.evaluate(element => element.style.marginLeft), '-14px');
   await copyFile(path.join(generated, 'src/framecraftHmiFlashing.ts'), path.join(generated, 'flashing.mjs'));
   await writeFile(path.join(generated, 'runtime.mjs'), scripts.hmiScriptRuntimeModuleSource());
   const runtime = await import(pathToFileURL(path.join(generated, 'runtime.mjs')).href),
@@ -218,17 +249,30 @@ try {
         itemId: 'a',
         name: 'A',
         screenId: 'screen',
-        flashing: []
+        flashing: [],
+        properties: {
+          'Margin.Left': 0,
+          'Margin.Top': 0,
+          'Margin.Right': 0,
+          'Margin.Bottom': 0
+        }
       }],
-      apply: () => {}
+      apply: () => {},
+      applyProperties: () => {}
     });
   const node = runtime.executeHmiScript(program('return Object.values(Screen.Items).map(entry=>entry.Name).join(",");'), {}, {
     screenItems: controller.context('a')
   });
   assert.equal(node.error, undefined);
   assert.equal(node.returned, 'A');
+  const marginNode = runtime.executeHmiScript(program('item.Margin={Left:-4,Top:2,Right:3,Bottom:5};return item.Margin.Left;'), {}, {
+    screenItems: controller.context('a')
+  });
+  assert.equal(marginNode.error, undefined);
+  assert.equal(marginNode.returned, -4);
   controller.reset();
   await page.evaluate(() => window.qa.dispose());
+  assert.equal(await target.evaluate(element => element.style.margin), '2px');
   assert.deepEqual(await page.evaluate(() => window.qa.errors), []);
   assert.equal(external, 0);
   assert.equal(plcWrites, 0);
@@ -241,6 +285,10 @@ try {
     numericAndAliasLookup: true,
     scopedNestedFaceplates: true,
     popupScope: true,
+    marginBoxMeasured: true,
+    marginCopied: true,
+    marginTimer: true,
+    generatedNodeMargin: true,
     collectionTimer: true,
     legacyReaders: '1-9',
     generatedNodeRuntime: true,

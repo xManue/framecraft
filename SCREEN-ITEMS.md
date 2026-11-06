@@ -79,3 +79,56 @@ nel Runtime Node. I dati sono sintetici e non viene contattato un PLC.
 Riferimento primario: [Siemens, Tips and Tricks for Scripting, sezione 5.4.6](https://support.industry.siemens.com/cs/attachments/109758536/109758536_Unified_TipsScripting_V31_en.pdf),
 per conteggio, oggetti invisibili e accesso numerico. Ordine DOM e API di iterazione qui
 sono il contratto Framecraft; non si dichiara parità completa del linguaggio Siemens.
+
+## Margin dal pacchetto 2026.11.06.2
+
+Margin è una parte opaca dell’oggetto con Left, Top, Right e Bottom. Ogni lato accetta
+un numero intero con segno da -2147483648 a 2147483647 (Int32). I valori negativi sono
+ammessi e vengono applicati come margini esterni CSS del contenitore grafico.
+
+```javascript
+const motor = Screen.Items("M2400");
+const spacing = motor.Margin;
+spacing.Left = -8;
+spacing.Top = 12;
+```
+
+È possibile assegnare tutti e quattro i lati con un oggetto di valori, oppure copiare il
+Margin di un altro elemento. La copia produce valori indipendenti, non un collegamento.
+La validazione di tutti i lati precede l’unica pubblicazione al livello grafico: un valore
+errato o mancante non lascia una copia parziale. Il record deve contenere tutti e soli i
+quattro lati; metadati vendor come _type non fanno parte di questo contratto Framecraft.
+
+```javascript
+motor.Margin = { Left: 8, Top: 4, Right: 8, Bottom: 4 };
+Screen.Items("SecondMotor").Margin = motor.Margin;
+```
+
+I riferimenti si possono usare in funzioni, moduli e timer; i contesti disattivati vengono
+rifiutati. Non espongono DOM o prototipi e non sono valori PLC. La parte Margin è distinta
+da Font e non accetta PropertyFlashing.
+
+La superficie standard legge i pixel calcolati quando sono rappresentabili come Int32.
+Valori automatici, frazioni o unità non risolte non vengono arrotondati o inventati: la
+lettura spiega di impostare un margine intero in pixel. Impostare esplicitamente i quattro
+lati resta possibile. SVG, display:contents e celle/righe/colonne di tabella senza un box
+CSS supportato non espongono questa parte; per essi usare il contenitore grafico esterno.
+La resa segue il layout CSS del pannello, incluse le regole dei margini nel flusso inline.
+
+Il livello temporaneo usa priorità coerenti, conserva nodi/listener e ripristina i margini
+precedenti alla disattivazione, mantenendo le modifiche esterne successive. Una pubblicazione
+fallita richiede il ripristino del livello precedente e segnala un eventuale errore del layout.
+
+Per pannelli esistenti usare Aggiorna componenti del pannello. Un adattatore host deve
+esporre le quattro proprietà Margin.* negli snapshot e setMargin(reference, value) per
+l’assegnazione completa, oltre ai getter/setter scalari. La IR resta 9 con lettori 1–9.
+
+La prova compilata verifica anche lo spostamento effettivo del rettangolo, dimensioni
+invariate, copia indipendente, timer, ripristino e helper Node. Padding e le altre parti
+annidate dell’object model restano separate e da completare.
+
+Fonti primarie: [Margin e HmiMarginPart](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.margin-rt-unified/description-button.margin-rt-unified?contentId=LlDyCqW1HPNXQUZ3TuiTZQ),
+[Left Int32](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.margin-rt-unified/margin.left-rt-unified?contentId=TTCbZhZaqPHlqofA476lDQ) e
+[Top Int32](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/clock-rt-unified/clock.margin-rt-unified/margin.top-rt-unified?contentId=wTgR7O4yam6yhT3bCsi~MQ).
+L’assegnazione di record e la mappatura CSS sono il contratto Framecraft, non una dichiarazione
+di equivalenza completa a tutti i widget e contenitori Siemens.
