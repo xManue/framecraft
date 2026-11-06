@@ -402,3 +402,48 @@ it('drops late results after changing project', async () => {
     await f.unmount();
   }
 });
+it.each(['completed', 'restored', 'rolled-back'])('allows a new comparison after a terminal native migration: %s', async state => {
+  mocks.read.mockResolvedValue({
+    ...snap(),
+    backups: [{
+      version: 1,
+      id: '123-456',
+      root: project.root,
+      state,
+      createdAt: 1,
+      fileCount: 2,
+      failure: null
+    }]
+  });
+  const f = await mount();
+  try {
+    expect(f.button('Confronta file').disabled).toBe(false);
+    await f.compare();
+    expect(mocks.preview).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).not.toContain('Una migrazione precedente deve essere recuperata');
+  } finally {
+    await f.unmount();
+  }
+});
+it.each(['prepared', 'applying', 'needs-review', 'unknown', 'applied'])('blocks incomplete or unrecognized native journal state: %s', async state => {
+  mocks.read.mockResolvedValue({
+    ...snap(),
+    backups: [{
+      version: 1,
+      id: '123-456',
+      root: project.root,
+      state,
+      createdAt: 1,
+      fileCount: 2,
+      failure: null
+    }]
+  });
+  const f = await mount();
+  try {
+    expect(f.button('Confronta file')).toBeUndefined();
+    expect(document.body.textContent).toContain('Una migrazione precedente deve essere recuperata');
+    expect(mocks.preview).not.toHaveBeenCalled();
+  } finally {
+    await f.unmount();
+  }
+});

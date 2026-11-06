@@ -6873,6 +6873,26 @@ Verifiche del 5 ottobre 2026:
 - La fase 3 Unified resta aperta per object model, eventi/API mancanti, semantiche oltre
   la IR e verifiche industriali. La migrazione guidata non è più una UI da completare.
 
+## 195. Migrazione script verificata sul desktop reale (6 novembre 2026)
+
+- Prova riproducibile Windows/WebView2 con i componenti UI, worker, bridge e handler Tauri
+  reali. Progetto sintetico con percorso Unicode/spazi, profilo dedicato, finestra nascosta,
+  servizi PLC fermi; nessuna dipendenza aggiunta all’app.
+- Verificati inventario obsoleto senza scritture, applicazione reale del piano, backup
+  completed, apertura del successivo aggiornamento compatibile, nuove dipendenze delle
+  dinamizzazioni, ripristino byte per byte di pagina/catalogo e rilettura nell’editor.
+- Corretti due difetti emersi nel flusso completo: la UI cercava applied invece dello stato
+  nativo completed; le stringhe JSON dentro espressioni JSX potevano ricevere parentesi
+  aggiuntive. Nuovo controllo della sintassi risultante prima di rendere applicabile il piano.
+- Aggiunte regressioni per tutti gli stati terminali, stati incompleti/sconosciuti, binding
+  di evento/dinamizzazione sulla stessa JSX e aggiornamenti successivi. La fixture usa
+  l’evento HMI Tapped e controlla il parsing del file finale.
+- Il recupero rimane occupato fino alla rilettura dei cataloghi, evitando di riaprire
+  modifiche sullo stato precedente mentre la lettura è ancora in corso.
+- Verifiche: 90 test mirati in 4 file, TypeScript, worker compilati e prova desktop
+  completa; nessun contatto PLC. I comandi sono in TEST-DESKTOP-MIGRAZIONI.md.
+- Rimangono collaudo industriale e gli altri punti aperti della fase 3 Unified.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

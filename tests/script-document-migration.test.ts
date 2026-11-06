@@ -396,3 +396,55 @@ it('does not swallow an unsafe export behind a second re-export candidate', () =
   expect(result.issues.length).toBeGreaterThan(0);
   expect(result.changes).toEqual([]);
 });
+it('rewrites JSON strings inside JSX expression containers without adding a second pair of braces', () => {
+  const source = 'export const page=<button data-hmi-events={' + JSON.stringify(json()) + '}/>;',
+    result = plan({
+      'src/Page.tsx': source
+    });
+  expect(result.issues).toEqual([]);
+  const output = result.changes[0].after;
+  const ast = parse(output, {
+    sourceType: 'module',
+    plugins: ['jsx', 'typescript']
+  });
+  const element = (ast.program.body[0] as any).declaration.declarations[0].init;
+  const payload = JSON.parse(element.openingElement.attributes[0].value.expression.value);
+  run(payload);
+  expect(output).not.toContain('data-hmi-events={{');
+});
+it('migrates events and dynamizations on the same JSX element and remains parseable on the next migration', () => {
+  const dynamic = [{
+      kind: 'Script',
+      property: 'Text',
+      source: 'return Modules.M.Old(4,2);',
+      program: inspectHmiScript('return Modules.M.Old(4,2);').program,
+      scriptTags: {
+        read: [],
+        written: []
+      }
+    }],
+    source = 'export const page=<button data-hmi-events={' + JSON.stringify(json()) + '} data-hmi-dynamizations={' + JSON.stringify(JSON.stringify(dynamic)) + '}/>;',
+    result = plan({
+      'src/Page.tsx': source
+    });
+  expect(result.issues).toEqual([]);
+  expect(result.recompiled).toBe(2);
+  const output = result.changes[0].after,
+    ast = parse(output, {
+      sourceType: 'module',
+      plugins: ['jsx', 'typescript']
+    }),
+    element = (ast.program.body[0] as any).declaration.declarations[0].init,
+    attrs = element.openingElement.attributes;
+  run(JSON.parse(attrs[0].value.expression.value));
+  const value = JSON.parse(attrs[1].value.expression.value),
+    manager = createHmiScriptContextManager();
+  try {
+    expect(executeHmiScript(value[0].program, {}, manager.options(after, undefined, 'dynamizations')).returned).toBe(7);
+  } finally {
+    manager.dispose();
+  }
+  expect(migrateHmiDocuments({
+    'src/Page.tsx': output
+  }, after, after, []).issues).toEqual([]);
+});

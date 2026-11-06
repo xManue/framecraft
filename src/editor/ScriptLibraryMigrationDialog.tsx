@@ -136,7 +136,7 @@ export function ScriptLibraryMigrationDialog({
       previous?.focus();
     };
   }, []);
-  const pending = snapshot?.backups.some(b => !['applied', 'restored', 'rolled-back'].includes(b.state)),
+  const pending = snapshot?.backups.some(b => !['completed', 'restored', 'rolled-back'].includes(b.state)),
     ready = !!snapshot?.token && snapshot.runtimeReady && !pending && !stale;
   const compare = async () => {
     if (!snapshot || !ready || busy) return;

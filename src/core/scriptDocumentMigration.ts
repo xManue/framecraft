@@ -572,7 +572,7 @@ export function migrateHmiDocuments(sources: Readonly<Record<string, string>>, b
     const handle = (node: t.Node, value: t.Node) => {
       try {
         const descriptor = resolve(doc, value);
-        if (t.isJSXAttribute(node) && t.isStringLiteral(value)) {
+        if (t.isJSXAttribute(node) && t.isStringLiteral(node.value) && node.value === value) {
           const old = descriptor.patch;
           descriptor.patch = next => {
             const replacement = '{' + JSON.stringify(next) + '}';
@@ -644,12 +644,17 @@ export function migrateHmiDocuments(sources: Readonly<Record<string, string>>, b
       code = new MagicString(source);
     for (const row of rows.sort((a, b) => b.start - a.start)) row.start === row.end ? code.appendLeft(row.start, row.value) : code.overwrite(row.start, row.end, row.value);
     const next = code.toString();
+    if (next !== source && /\.[cm]?[jt]sx?$/.test(file)) {
+      try { parse(next, {sourceType:'unambiguous',allowReturnOutsideFunction:true,plugins:['jsx','typescript','decorators-legacy']}); }
+      catch (error) { issue(file,1,'Il risultato non ha una sintassi valida: '+(error instanceof Error?error.message:String(error))); }
+    }
     if (next !== source) changes.push({
       path: file,
       before: source,
       after: next
     });
   }
+  if (issues.length) return {changes:[],issues,references,recompiled:0,previousVersions:[]};
   return {
     changes: changes.sort((a, b) => a.path.localeCompare(b.path)),
     issues,

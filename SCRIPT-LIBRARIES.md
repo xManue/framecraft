@@ -106,4 +106,7 @@ Il motore di confronto delle migrazioni è descritto in [SCRIPT-MIGRATION.md](SC
 La procedura guidata è collegata al pannello Script. Il test browser script-library-migration
 prova worker reali, modifica di evento/dinamizzazione/Scheduler, confronto e chiamata della
 transazione; il bridge desktop è simulato e la transazione nativa è verificata separatamente.
-Il collaudo IPC desktop completo e quello su macchina restano da svolgere.
+Il flusso IPC reale su Windows è verificato anche da tests/desktop/script-library-migration.mjs:
+confronto obsoleto, scrittura reale, aggiornamento successivo e recupero con byte originali.
+I comandi sono in [TEST-DESKTOP-MIGRAZIONI.md](TEST-DESKTOP-MIGRAZIONI.md).
+Il collaudo su macchina reale resta da svolgere.

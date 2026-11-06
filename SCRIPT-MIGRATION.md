@@ -1,6 +1,6 @@
 # Analisi delle migrazioni delle librerie script
 
-Stato dei punti 192–194: confronto, inventario, transazione e recupero sono collegati
+Stato dei punti 192–195: confronto, inventario, transazione e recupero sono collegati
 alla procedura **Script → Librerie → Continua con il progetto**. Simboli, parametri e contesti
 hanno scelte esplicite; ogni salvataggio richiede confronto e conferme. Non ci sono
 aggiornamenti automatici delle librerie.
@@ -121,3 +121,25 @@ Il bridge nativo delle prove browser è simulato: non sono prove IPC desktop com
 Il punto 193 ha verificato 25 casi nativi su file temporanei, guardie e recupero. I test nativi
 esercitano la transazione reale separatamente dal browser. Nessun progetto macchina o PLC
 fisico viene coinvolto; il collaudo industriale e delle combinazioni reali resta distinto.
+
+## Collegamento desktop verificato (punto 195)
+
+La prova Windows tests/desktop/script-library-migration.mjs usa WebView2, il bridge
+Tauri e i comandi nativi reali. Verifica il blocco senza scritture di un inventario obsoleto,
+un aggiornamento con cambio di funzione/parametri, l’apertura del successivo aggiornamento
+compatibile dopo un backup completed, le nuove dipendenze dei tag e il recupero esatto
+dei sorgenti/catalogo. Progetto e profilo sono isolati; non avvia gateway o driver PLC.
+Le prove browser restano simulate soltanto per il bridge, non per worker e compilatore.
+
+La verifica ha corretto il riconoscimento dello stato completed e la riscrittura di stringhe
+JSON nelle espressioni JSX, che poteva aggiungere parentesi in più. Il motore analizza
+nuovamente la sintassi di ogni file JS/TS/JSX/TSX modificato: un risultato non valido annulla
+l’intera proposta prima del salvataggio. Eventi e dinamizzazioni sullo stesso elemento
+sono verificati anche tramite i programmi risultanti e una migrazione successiva.
+
+Comandi e requisiti: [TEST-DESKTOP-MIGRAZIONI.md](TEST-DESKTOP-MIGRAZIONI.md).
+Resta il collaudo industriale su pannelli e PLC reali; la prova desktop non lo sostituisce.
+
+Durante il recupero la finestra rimane occupata anche dopo il ripristino su disco, fino
+alla rilettura dei cataloghi nell’editor. Un errore di rilettura resta distinto dai file
+già ripristinati e richiede di riaprire il progetto prima di modificarlo.
