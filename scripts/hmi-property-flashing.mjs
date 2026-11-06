@@ -47,7 +47,20 @@ export function createHmiPropertyFlashing(surface) {
         if (!item) throw new Error("L'oggetto HMI non e' piu' disponibile.");
         return item;
       };
+      const rootFor=(scope)=>{
+        assertActive();const items=surface.items(),owner=ownerId?items.find(item=>item.itemId===ownerId):undefined;
+        if(ownerId&&!owner)throw new Error("L'oggetto HMI del contesto non e' piu' disponibile.");
+        const screens=items.filter(item=>item.itemId===item.screenId),rootId=scope==="faceplate"?owner?.faceplateId:owner?.screenId??(screens.length===1?screens[0].itemId:undefined);
+        if(!rootId)throw new Error(scope==="faceplate"?"Faceplate richiede il contesto di un'istanza faceplate.":"Screen non identifica una schermata univoca.");
+        return {items,rootId};
+      };
+      const members=(items,rootId,scope)=>items.filter(item=>{
+        if(item.itemId===rootId)return false;
+        const container=item.itemId===item.faceplateId?item.parentFaceplateId:item.faceplateId;
+        return scope==="faceplate"?container===rootId:item.screenId===rootId&&!container;
+      });
       return {
+        items(scope){const {items,rootId}=rootFor(scope);return members(items,rootId,scope).map(item=>({screenItemId:item.itemId}));},
         resolve(scope, name) {
           assertActive();
           const items = surface.items();
@@ -62,7 +75,9 @@ export function createHmiPropertyFlashing(surface) {
           }
           const rootId = scope === "faceplate" ? faceplateId : screenId;
           if (!rootId) throw new Error(scope === "faceplate" ? "Faceplate richiede il contesto di un'istanza faceplate." : "Screen non identifica una schermata univoca.");
-          const matches = name === undefined ? items.filter((item) => item.itemId === rootId) : items.filter((item) => item.name === name && (scope === "faceplate" ? item.faceplateId === rootId : item.screenId === rootId && (!item.faceplateId || item.itemId === item.faceplateId)));
+          let matches=name===undefined?items.filter(item=>item.itemId===rootId):members(items,rootId,scope).filter(item=>item.name===name);
+          // Preserve the historical explicit lookup of the root by its own name.
+          if(!matches.length&&name!==undefined)matches=items.filter(item=>item.itemId===rootId&&item.name===name);
           if (matches.length !== 1) throw new Error(matches.length ? "Nome oggetto HMI duplicato: " + name : "Oggetto HMI non trovato: " + (name ?? scope));
           return { screenItemId: matches[0].itemId };
         },
@@ -396,19 +411,22 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       for (const element of [...propertyBefore.keys()]) if (!element.isConnected) { propertyOverrides.delete(identifyItem(element)); restoreProperties(element); }
       for (const element of declarative.keys()) if (!element.isConnected) declarative.delete(element);
       targets.clear();
-      const defaultScreen = root.querySelector("[data-hmi-screen], [data-hmi-type='HmiScreen']") ?? root.body ?? root.documentElement;
+      const defaultScreen = root.querySelector("[data-hmi-screen], [data-hmi-type='HmiScreen'], [data-framecraft-runtime-popup-id]") ?? root.body ?? root.documentElement;
       if (!defaultScreen) return [];
-      const elements = new Set([defaultScreen, ...root.querySelectorAll("[data-hmi-name], [data-hmi-type], [data-hmi-screen], [data-hmi-faceplate], [data-hmi-events], [data-hmi-dynamizations], [id]")]);
+      const elements = new Set([defaultScreen, ...root.querySelectorAll("[data-hmi-name], [data-hmi-type], [data-hmi-screen], [data-hmi-faceplate], [data-hmi-events], [data-hmi-dynamizations], [data-framecraft-runtime-popup-id], [id]")]);
       const items = [];
       for (const element of elements) {
         if (!element.style) continue;
         const itemId = identifyItem(element);
-        targets.set(itemId, element);
         let flashing = [];
         try { const bindings = JSON.parse(element.getAttribute("data-hmi-dynamizations") ?? "[]"); if (Array.isArray(bindings)) flashing = bindings.filter((binding) => binding?.kind === "Flashing"); } catch { /* Invalid configuration is reported by the HMI validator. */ }
-        const screen = element.closest("[data-hmi-screen], [data-hmi-type='HmiScreen']") ?? defaultScreen;
-        const faceplate = element.closest("[data-hmi-faceplate]");
-        items.push({ itemId, name: element.getAttribute("data-hmi-name") || element.id || element.getAttribute("data-hmi-screen") || "", screenId: identifyItem(screen), faceplateId: faceplate ? identifyItem(faceplate) : undefined, flashing, properties: snapshotProperties(element) });
+        const screen = element.closest("[data-hmi-screen], [data-hmi-type='HmiScreen'], [data-framecraft-runtime-popup-id]") ?? defaultScreen;
+        if(!screen.contains(element))continue;
+        targets.set(itemId,element);
+        const nearestFaceplate=element.closest("[data-hmi-faceplate]"),faceplate=nearestFaceplate&&screen.contains(nearestFaceplate)?nearestFaceplate:undefined;
+        const parent=faceplate===element?element.parentElement?.closest("[data-hmi-faceplate]"):undefined;
+        let properties;
+        items.push({itemId,name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,get properties(){return properties??=snapshotProperties(element);}});
       }
       for (const itemId of scripted.keys()) if (!targets.has(itemId)) scripted.delete(itemId);
       for (const itemId of propertyOverrides.keys()) if (!targets.has(itemId)) propertyOverrides.delete(itemId);

@@ -6893,6 +6893,25 @@ Verifiche del 5 ottobre 2026:
   completa; nessun contatto PLC. I comandi sono in TEST-DESKTOP-MIGRAZIONI.md.
 - Rimangono collaudo industriale e gli altri punti aperti della fase 3 Unified.
 
+## 196. Collezioni grafiche Unified nel Runtime e nell’anteprima (6 novembre 2026)
+
+- Screen.Items/Faceplate.Items: Count inclusi gli invisibili, nomi esatti e indici numerici,
+  alias callable, call/apply/bind con contesto controllato, Object.keys/values/entries e
+  riferimenti opachi. Nessun accesso DOM/prototipi o uso di riferimenti come valori PLC.
+- Isolati i contenuti delle istanze faceplate anche annidate: l’istanza compare una volta
+  nel padre, la radice non è un membro e gli oggetti fuori schermata restano esclusi.
+  Metadati parentFaceplateId trasportati anche dal ponte. Collezioni readonly e riferimenti
+  invalidati con il contesto, anche se il proprietario passa a un’altra schermata; popup
+  del Runtime come radici separate. Enumerazione limitata a 1024 elementi e al budget della VM.
+- Snapshot delle proprietà DOM a richiesta: conteggio e nomi non calcolano geometrie/colori/font.
+- Pacchetto Runtime 2026.11.06.1 per nuovi pannelli e aggiornamento assistito degli esistenti.
+  Nessun nuovo nodo IR: programmi 9 e lettori 1–9 conservati.
+- Prove: 199 test mirati in 8 file; TypeScript; pannello generato e compilato in Edge
+  con eventi/timer, faceplate reali annidati e popup; helper autonomi Node.
+  Dati sintetici, nessuna dipendenza nuova e nessun PLC contattato.
+- Riferimento Siemens e contratto Framecraft in SCREEN-ITEMS.md. Restano eventi/API specifiche,
+  Margin/altre proprietà annidate, finestre/percorsi, linguaggio oltre la IR e collaudo industriale.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima
@@ -6918,7 +6937,7 @@ Verifiche del 5 ottobre 2026:
 
 - **Roadmap WinCC, fase 3 da completare**: eventi specifici dei controlli, object model restante,
   JavaScript oltre il sottoinsieme IR, analisi di flusso intermodulo completa, closure/scoping
-  completi, migrazione delle interfacce di libreria, conferme PLC e altri metodi/driver
+  completi, conferme PLC e altri metodi/driver
   (`WCU-DYN-06`, `WCU-EVT-01/04/05/06/07/10`).
 - **Roadmap WinCC, fase 4 da completare**: altre proprietà colore specifiche oltre la prima API
   `PropertyFlashing` del punto 79, audit accessibilità generale e dimensioni minime dei target

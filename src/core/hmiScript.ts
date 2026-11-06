@@ -147,6 +147,8 @@ export interface HmiScriptPopupReference { readonly popupId: string }
 export interface HmiScriptScreenItemReference { readonly screenItemId: string; readonly screenPropertyPath?: "Font" }
 export interface HmiScriptScreenItemManager {
   resolve(scope: "screen" | "faceplate" | "item", name?: string): HmiScriptScreenItemReference;
+  /** Current members, excluding the root and interiors of nested faceplates. */
+  items?(scope: "screen" | "faceplate"): HmiScriptScreenItemReference[];
   get(reference: HmiScriptScreenItemReference, property: string): HmiScriptScalar | HmiScriptScreenItemReference;
   set(reference: HmiScriptScreenItemReference, property: string, value: HmiScriptScalar): void;
   propertyFlashing(reference: HmiScriptScreenItemReference, args: HmiScriptScalar[]): boolean;
@@ -177,7 +179,7 @@ type DataReference = { readonly data: RuntimeValue[] | Record<string, RuntimeVal
 type FunctionIntrinsic = "call" | "apply" | "bind" | "screen-items" | "error-constructor" | "error-to-string";
 interface HmiScriptThisBinding { value?: RuntimeValue; screenItems?: HmiScriptScreenItemManager }
 
-type FunctionReference = { readonly scriptFunction: { parameters: readonly string[]; rest?: string; parameterPatterns?: HmiScriptPattern[]; functionLength?: number; program: HmiScriptProgram; scope?: HmiScriptScope; functions?: HmiScriptExecutionOptions["functions"]; variables?: HmiScriptExecutionOptions["variables"]; globalScope?: HmiScriptScope; name?: string; arrow?: boolean; lexicalThis?: HmiScriptThisBinding; intrinsic?: FunctionIntrinsic; errorType?: string; bound?: { target: FunctionReference; thisArg: RuntimeValue; args: RuntimeValue[]; depth: number; count: number } } };
+type FunctionReference = { readonly scriptFunction: { parameters: readonly string[]; rest?: string; parameterPatterns?: HmiScriptPattern[]; functionLength?: number; program: HmiScriptProgram; scope?: HmiScriptScope; functions?: HmiScriptExecutionOptions["functions"]; variables?: HmiScriptExecutionOptions["variables"]; globalScope?: HmiScriptScope; name?: string; arrow?: boolean; lexicalThis?: HmiScriptThisBinding; intrinsic?: FunctionIntrinsic; errorType?: string; screenCollection?: {scope:"screen"|"faceplate";manager:HmiScriptScreenItemManager;root:HmiScriptScreenItemReference}; bound?: { target: FunctionReference; thisArg: RuntimeValue; args: RuntimeValue[]; depth: number; count: number } } };
 
 type UndefinedReference = { readonly undefinedValue: true; readonly reason?: string };
 
@@ -2304,6 +2306,28 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     if (!fn) { fn = { scriptFunction: { intrinsic, name: intrinsic === "screen-items" ? "Items" : intrinsic === "error-to-string" ? "toString" : intrinsic, parameters: intrinsic === "apply" ? ["thisArg", "arguments"] : intrinsic === "error-to-string" ? [] : ["thisArg"], program: { version: 9, statements: [] } } }; intrinsics.set(intrinsic, fn); }
     return fn;
   };
+  type ScreenCollection=NonNullable<FunctionReference["scriptFunction"]["screenCollection"]>;
+  const collections=new Map<string,FunctionReference>();
+  const assertCollectionRoot=(collection:ScreenCollection)=>{
+    if(collection.manager.resolve(collection.scope).screenItemId!==collection.root.screenItemId)throw new Error("La collezione Items non appartiene più al contesto originale: acquisisci un nuovo riferimento.");
+  };
+  const collectionMembers=(collection:ScreenCollection)=>{
+    assertCollectionRoot(collection);
+    const list=collection.manager.items?.(collection.scope);
+    if(!list)throw new Error("La collezione Items richiede i componenti Runtime aggiornati del pannello.");
+    return list;
+  };
+  const collectionItem=(collection:ScreenCollection,name:RuntimeValue):HmiScriptScreenItemReference=>{
+    assertCollectionRoot(collection);
+    const value=scalar(name);
+    if(typeof value==="string"&&value.trim()&&value.length<=128)return collection.manager.resolve(collection.scope,value);
+    if(typeof value!=="number"||!Number.isSafeInteger(value)||value<0)throw new Error("Items richiede un nome fino a 128 caratteri o un indice intero non negativo.");
+    const item=collectionMembers(collection)[value];if(!item)throw new Error("Indice Items fuori intervallo: "+value+".");return item;
+  };
+  const collectionFunction=(scope:"screen"|"faceplate"):FunctionReference=>{
+    if(!options.screenItems)throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
+    let fn=collections.get(scope);if(!fn){fn={scriptFunction:{intrinsic:"screen-items",name:"Items",parameters:[],program:{version:9,statements:[]},screenCollection:{scope,manager:options.screenItems,root:options.screenItems.resolve(scope)}}};collections.set(scope,fn);}return fn;
+  };
   const errorConstructors = new Map<string,FunctionReference>();
   const errorConstructor = (name:string): FunctionReference => { let value=errorConstructors.get(name);if(!value){value={scriptFunction:{intrinsic:"error-constructor",errorType:name,name,parameters:name==="AggregateError"?["errors","message"]:["message"],program:{version:9,statements:[]}}};errorConstructors.set(name,value);}return value; };
   const readMember = (object: RuntimeValue, key: string): RuntimeValue => {
@@ -2313,7 +2337,17 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       if (key === "name") return object.scriptFunction.name ?? "";
       if (["call", "apply", "bind"].includes(key)) return intrinsicFunction(key as FunctionIntrinsic);
     }
-    if (program.version >= 5 && key === "Items" && object && typeof object === "object" && "screenItemId" in object && !object.screenPropertyPath && options.screenItems && object.screenItemId === options.screenItems.resolve("screen").screenItemId) return intrinsicFunction("screen-items");
+    if (isFunctionReference(object) && object.scriptFunction.screenCollection) {
+      const collection=object.scriptFunction.screenCollection,items=collectionMembers(collection);
+      if (key === "Count") return items.length;
+      if (/^(?:0|[1-9][0-9]*)$/.test(key)) return collectionItem(collection,Number(key));
+      throw new Error("La collezione Items non espone la proprieta' "+key+".");
+    }
+    if (program.version >= 5 && key === "Items" && object && typeof object === "object" && "screenItemId" in object && !object.screenPropertyPath && options.screenItems) {
+      if(object.screenItemId===options.screenItems.resolve("screen").screenItemId)return collectionFunction("screen");
+      let faceplate:HmiScriptScreenItemReference|undefined;try{faceplate=options.screenItems.resolve("faceplate");}catch{ /* No faceplate in this graphical context. */ }
+      if(faceplate?.screenItemId===object.screenItemId)return collectionFunction("faceplate");
+    }
 
       if (isDataReference(object)) return dataGet(object, key, modern);
       if (object && typeof object === "object" && "screenItemId" in object) {
@@ -2448,9 +2482,8 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     }
     if (expression.kind === "screen-item") {
       if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
-      const name = scalar((yield* evaluate(expression.name)));
-      if (typeof name !== "string" || !name.trim() || name.length > 128) throw new Error("Items richiede un nome oggetto HMI non vuoto, fino a 128 caratteri.");
-      return options.screenItems.resolve(expression.scope, name);
+      const name=yield* evaluate(expression.name);
+      return collectionItem({scope:expression.scope,manager:options.screenItems,root:options.screenItems.resolve(expression.scope)},name);
     }
     if (expression.kind === "property-flashing") {
       if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
@@ -2468,8 +2501,15 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         return dataFromJson(JSON.parse(text), tick);
       }
       if (expression.name === "JSON.stringify") return dataJson(argument, tick);
-      if (!isDataReference(argument)) throw new Error(expression.name + " richiede un oggetto o un array di dati.");
-      const entries = Object.entries(argument.data);
+      let entries:[string,RuntimeValue][];
+      if(isFunctionReference(argument)&&argument.scriptFunction.screenCollection){
+        const items=collectionMembers(argument.scriptFunction.screenCollection);
+        if(items.length>1024)throw new Error("L'enumerazione Items supera il limite di 1024 elementi.");
+        entries=items.map((item,index)=>{tick();return[String(index),item];});
+      }else{
+        if (!isDataReference(argument)) throw new Error(expression.name + " richiede un oggetto o un array di dati.");
+        entries=Object.entries(argument.data);
+      }
       return { data: expression.name === "Object.keys" ? entries.map(([key]) => key)
         : expression.name === "Object.values" ? entries.map(([, value]) => value)
           : entries.map(([key, value]) => ({ data: [key, value] })) };
@@ -2787,6 +2827,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
   };
   const writeMember = function* (object: RuntimeValue, key: string, value: RuntimeValue): ScriptCoroutine<void> {
         if (isDataReference(object)) dataSet(object, key, value, tick, modern);
+        else if(isFunctionReference(object)&&object.scriptFunction.screenCollection)throw new Error("La collezione Items e' in sola lettura: modifica le proprieta' dei suoi elementi.");
         else if (object && typeof object === "object" && "screenItemId" in object) {
           if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
           options.screenItems.set(object, key, scalar(value));
@@ -2944,9 +2985,11 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       if(fn.intrinsic==="error-constructor"){if(program.version<9||!fn.errorType)throw new Error("Il costruttore richiede IR 9.");return yield* createError(fn.errorType,args);}
       if(fn.intrinsic==="error-to-string"){if(!isDataReference(receiver))throw new TypeError("Error.toString richiede un oggetto.");return scriptErrorString(receiver,tick);}
       if (fn.intrinsic === "screen-items") {
-        if (!options.screenItems || !receiver || typeof receiver !== "object" || !("screenItemId" in receiver) || receiver.screenPropertyPath || receiver.screenItemId !== options.screenItems.resolve("screen").screenItemId) throw new Error("Items richiede la schermata come contesto this.");
-        if (args.length !== 1 || typeof args[0] !== "string" || !args[0].trim() || args[0].length > 128) throw new Error("Items richiede un nome oggetto HMI, fino a 128 caratteri.");
-        return options.screenItems.resolve("screen", args[0]);
+        const collection=fn.screenCollection;
+        if(!collection)throw new Error("Collezione Items non disponibile nel contesto corrente.");
+        if(receiver!==null&&!isUndefinedReference(receiver)&&(!receiver||typeof receiver!=="object"||!("screenItemId" in receiver)||receiver.screenPropertyPath||receiver.screenItemId!==collection.root.screenItemId))throw new Error(collection.scope==="screen"?"Items richiede la schermata come contesto this.":"Items richiede il faceplate del contesto.");
+        if(args.length!==1)throw new Error("Items richiede un nome o un indice.");
+        return collectionItem(collection,args[0]);
       }
       if (!isFunctionReference(receiver)) throw new Error(fn.intrinsic + " richiede una funzione HMI come contesto.");
       const context = args[0] === undefined ? undefinedValue() : args[0];

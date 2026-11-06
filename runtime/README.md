@@ -2179,3 +2179,20 @@ apri Framecraft → Pannello → Recupera migrazioni script. Salva le bozze e ar
 prima di ripristinare. Conserva il backup: i conflitti con modifiche successive richiedono
 verifica e non vengono sovrascritti. Il journal degli aggiornamenti Runtime resta separato.
 La sola aggiunta della guardia non applica migrazioni né invia comandi PLC.
+
+## Collezioni grafiche dal pacchetto 2026.11.06.1
+
+Screen.Items e Faceplate.Items espongono Count, ricerca per nome o indice e iterazione
+Object.keys/values/entries, anche con alias e timer. Le collezioni sono in sola lettura,
+includono gli invisibili ed escludono radice e interni delle istanze annidate. I nomi interni
+di istanze distinte restano isolati. I popup del Runtime hanno una radice separata;
+le collezioni conservate non seguono un proprietario spostato in un’altra schermata.
+Il calcolo di geometrie/font avviene a richiesta.
+
+Gli script mantengono IR 9 e lettori 1–9. Gli adattatori host devono esporre items(scope);
+i loro snapshot devono includere parentFaceplateId per le istanze annidate. L’adattatore
+DOM standard e il ponte dell’editor lo fanno già. Un host privo del nuovo metodo riceve
+un’indicazione di aggiornare i componenti. Non vengono aggiornati pannelli installati automaticamente.
+
+Esempi, limiti e prove: [SCREEN-ITEMS.md](../SCREEN-ITEMS.md). Restano altre proprietà/API
+dell’object model e il collaudo industriale; le prove usano dati sintetici e nessuna connessione PLC.
