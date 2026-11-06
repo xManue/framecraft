@@ -2212,3 +2212,20 @@ I popup non iniziano più un trascinamento quando il puntatore preme il pulsante
 La pipeline genera il nuovo pacchetto; quelli installati richiedono l’aggiornamento assistito.
 Nessun nuovo nodo IR, dipendenza o collegamento PLC. Esempi e confini in
 [SCREEN-ITEMS.md](../SCREEN-ITEMS.md); Padding, altre parti annidate e collaudo industriale restano aperti.
+
+## Ingombri grafici dal pacchetto 2026.11.06.3
+
+Gli oggetti Screen/Faceplate/item espongono GetBoundingBoxInScreenCoordinates(), con
+Left/Top/Width/Height finiti e frazionari nel viewport HMI. Rotazione, scala e gruppi
+concorrono alla misura; il risultato e' una fotografia di dati, senza accesso DOM.
+Gli oggetti senza box CSS restituiscono null, quelli rimossi o scaduti danno un errore.
+
+Il Runtime misura direttamente; l'anteprima eventi/timer legge dal frame attivo dopo
+le modifiche gia' inviate, con controllo di origine/finestra/pagina, cancellazione e timeout.
+Le dinamizzazioni sincrone nell'editor usano l'ultima fotografia ricevuta. Nessuna misura
+passa per il PLC. Moduli, call/apply/bind e helper autonomi conservano il contratto della VM.
+
+La pipeline standard genera il pacchetto nuovo; sugli HMI esistenti usare l'aggiornamento
+assistito. Nessuna nuova dipendenza e nessun nuovo nodo IR. Contratto, coordinate, limiti e
+comando di verifica in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md). Altre API e collaudo industriale
+restano aperti.

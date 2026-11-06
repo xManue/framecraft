@@ -6931,6 +6931,30 @@ Verifiche del 5 ottobre 2026:
 - Restano Padding, altre proprietà/parti/lifecycle dell’object model, API/eventi specifici,
   linguaggio oltre la IR e verifiche industriali. Riferimenti e contratto in SCREEN-ITEMS.md.
 
+## 198. Ingombro grafico reale e lettura aggiornata nell'anteprima (6 novembre 2026)
+
+- Verificato GetBoundingBoxInScreenCoordinates e il risultato HMIBox nelle fonti Siemens.
+  Implementati i quattro campi numerici, conservando le frazioni e la geometria risultante
+  da rotazione, scala e gruppi. Coordinate viewport CSS documentate, non coordinate monitor.
+- Fotografia indipendente senza DOM; null per elementi privi di box, errori per oggetti
+  rimossi/contesti scaduti e dati non finiti. Supportati Screen/Faceplate/item e receiver
+  espliciti, moduli e timer. Misura lazy: enumerare Items non forza le letture geometriche.
+- Ponte anteprima con finestra/origine/pagina/richiesta verificate. Eventi e timer leggono
+  il layout dopo i setter nello stesso script; pagina cambiata, abort e timeout interrompono
+  l'attesa. Dinamizzazioni sincrone nell'editor sull'ultima fotografia ricevuta, limite esplicito.
+- Integrati Canvas React, ponte Vite e pipeline standard; pacchetto 2026.11.06.3, IR 9 senza
+  nuovi nodi. Nessun accesso al trasporto PLC per ottenere la geometria.
+- Prova compilata Edge/Node: rettangolo confrontato con quello realmente visualizzato,
+  setter immediati, rotazioni/gruppi, scorrimento, hidden, timer, lettori 1-9 e parent/ponte
+  Vite reale. Provato anche Canvas reale con origini distinte e posizione aggiornata.
+- Passati 184 test mirati e TypeScript. Risorsa inclusa nel manifest Tauri; ponte Vite
+  caricato anche da una copia delle risorse del pacchetto. Non e' stata compilata una nuova
+  versione dell'installer Windows in questo collaudo.
+- Dati sintetici; nessuna nuova dipendenza, rete esterna o connessione PLC. Conservati i
+  lavori locali estranei. Contratto, esempio e comando di verifica in SCREEN-ITEMS.md.
+- Fase 3 ancora aperta: Padding e altre parti/proprieta', trasformazioni da script, finestre,
+  lifecycle, ProcessValue tipizzato, linguaggio e gate industriali. Optix/AI non anticipati.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

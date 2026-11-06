@@ -132,3 +132,58 @@ Fonti primarie: [Margin e HmiMarginPart](https://docs.tia.siemens.cloud/r/en-us/
 [Top Int32](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/clock-rt-unified/clock.margin-rt-unified/margin.top-rt-unified?contentId=wTgR7O4yam6yhT3bCsi~MQ).
 L’assegnazione di record e la mappatura CSS sono il contratto Framecraft, non una dichiarazione
 di equivalenza completa a tutti i widget e contenitori Siemens.
+
+## Ingombro reale dal pacchetto 2026.11.06.3
+
+GetBoundingBoxInScreenCoordinates() restituisce una fotografia dei quattro valori
+Left, Top, Width e Height. La misura comprende trasformazioni CSS dell'oggetto e dei
+suoi gruppi, rotazione, scala, bordi e margini. I numeri conservano le frazioni: non
+vengono convertiti negli interi delle proprietà di configurazione Left/Width.
+
+```javascript
+const motor = Screen.Items("M2400");
+const box = motor.GetBoundingBoxInScreenCoordinates();
+if (box) {
+  HMIRuntime.Trace("Ingombro: " + box.Left + ", " + box.Top);
+}
+```
+
+Il sistema di coordinate Framecraft è il viewport HMI, in pixel CSS: origine nell'angolo
+in alto a sinistra della pagina visualizzata. Lo scorrimento cambia Left e Top; lo zoom
+esterno dell'editor e la posizione della finestra sul monitor non entrano nella misura.
+L'ingombro è il rettangolo allineato agli assi che racchiude il box trasformato, non un
+poligono ruotato e non la sola parte rimasta visibile dopo un ritaglio/overflow. Il criterio
+segue getBoundingClientRect del browser. Non si presume identità tra queste coordinate e
+quelle fisiche di ogni dispositivo Siemens.
+
+La chiamata non richiede argomenti. Restituisce null quando l'elemento non genera un box
+CSS, per esempio display:none; visibility:hidden mantiene invece la geometria del box.
+Una riga/cella/SVG misurabile segue la geometria del browser. Un oggetto rimosso, un contesto
+scaduto o una misura non finita producono un errore, senza inventare coordinate.
+
+Il risultato è un oggetto di dati indipendente: cambiarlo non sposta l'elemento. Non contiene
+DOM o prototipi host. Si possono copiare le proprietà, usare il metodo nei moduli e nei timer,
+o conservarlo con call/apply/bind specificando un oggetto grafico come this. Font e Margin
+non sono oggetti grafici misurabili tramite questo metodo.
+
+Nel Runtime esportato la misura è diretta. Gli eventi e i timer dell'anteprima interrogano
+il frame attivo anche dopo setter nello stesso script: la risposta arriva dopo le modifiche
+inviate al frame, senza attendere il polling delle proprietà. L'attesa è interna all'esecutore;
+lo script conserva la firma sincrona mostrata sopra. Origine, finestra, pagina e richiesta
+sono verificate; cambio pagina, interruzione e timeout annullano l'attesa. Non viene usato il
+trasporto OPC UA/MQTT. I calcoli sincroni delle dinamizzazioni nell'editor usano invece
+l'ultima fotografia disponibile del frame; un adattatore custom può usare la stessa distinzione.
+
+Gli host custom espongono boundingBox negli snapshot, getBoundingBox nel manager e,
+per misure tra frame, measureBoundingBox nella superficie/getBoundingBoxAsync nel manager.
+I campi vengono ricopiati e validati all'ingresso della VM. La IR resta 9, senza nuovi nodi;
+i vecchi programmi 1-9 restano leggibili. Per gli HMI esistenti aggiornare i componenti Runtime.
+
+Verifica ripetibile: node tests/browser/hmi-geometry.mjs genera il pannello standard, lo
+compila e misura in Edge gli oggetti ruotati/raggruppati, i setter nello stesso script,
+lo scorrimento, gli elementi senza box e i timer. Verifica inoltre helper Node e ponte Vite
+reale con un parent. Il test Canvas usa anche il componente React reale con origini distinte.
+Si usano solo dati sintetici, senza rete esterna o contatti PLC.
+
+Fonte primaria: [Siemens, Button.GetBoundingBoxInScreenCoordinates](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.getboundingboxinscreencoordinates-rt-unified?contentId=elJtj8ZB7Ad~IMO6F7nY1w).
+Restano altre parti dell'object model, incluse Padding e le API di trasformazione.

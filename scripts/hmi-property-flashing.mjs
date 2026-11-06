@@ -136,6 +136,16 @@ export function createHmiPropertyFlashing(surface) {
           propertyState.get(item.itemId).set(key, value);
           surface.applyProperties(propertyCommands());
         },
+        getBoundingBox(reference){
+          const item=itemFor(reference);
+          if(reference.screenPropertyPath)throw new Error("La misura richiede un oggetto grafico, non Font o Margin.");
+          if(!Object.hasOwn(item,"boundingBox"))throw new Error("La misura richiede i componenti Runtime aggiornati del pannello.");
+          return item.boundingBox;
+        },
+        ...(surface.measureBoundingBox?{async getBoundingBoxAsync(reference,signal){
+          const item=itemFor(reference);if(reference.screenPropertyPath)throw new Error("La misura richiede un oggetto grafico, non Font o Margin.");
+          const box=await surface.measureBoundingBox(item.itemId,signal);itemFor(reference);return box;
+        }}:{}),
         setMargin(reference,value){
           const item=itemFor(reference);
           if(reference.screenPropertyPath)throw new Error("Assegna Margin all'oggetto grafico, non a una sua parte.");
@@ -184,6 +194,12 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
   let sequence = 0;
   const ids = new WeakMap();
   const identifyItem = identify ?? ((element) => { if (!ids.has(element)) ids.set(element, "hmi-item-" + ++sequence); return ids.get(element); });
+  const boundingBox=(element)=>{
+    if(!element.isConnected||!element.getClientRects().length)return null;
+    const box=element.getBoundingClientRect();
+    if(![box.left,box.top,box.width,box.height].every(Number.isFinite)||box.width<0||box.height<0)throw new Error("La misura dell'oggetto HMI non e' valida.");
+    return {Left:box.left,Top:box.top,Width:box.width,Height:box.height};
+  };
   const targets = new Map();
   const scripted = new Map();
   const declarative = new Map();
@@ -457,8 +473,8 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         targets.set(itemId,element);
         const nearestFaceplate=element.closest("[data-hmi-faceplate]"),faceplate=nearestFaceplate&&screen.contains(nearestFaceplate)?nearestFaceplate:undefined;
         const parent=faceplate===element?element.parentElement?.closest("[data-hmi-faceplate]"):undefined;
-        let properties;
-        items.push({itemId,name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,get properties(){return properties??=snapshotProperties(element);}});
+        let properties, measuredBox, boxMeasured=false;
+        items.push({itemId,name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,get boundingBox(){if(!boxMeasured){measuredBox=boundingBox(element);boxMeasured=true;}return measuredBox;},get properties(){return properties??=snapshotProperties(element);}});
       }
       for (const itemId of scripted.keys()) if (!targets.has(itemId)) scripted.delete(itemId);
       for (const itemId of propertyOverrides.keys()) if (!targets.has(itemId)) propertyOverrides.delete(itemId);

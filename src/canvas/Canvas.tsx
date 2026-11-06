@@ -19,6 +19,7 @@ import { createHmiTimerManager } from "../core/hmiTimers";
 import { createHmiFaceplatePopupManager } from "../core/hmiPopupManager";
 import { createHmiDataLogRuntime } from "../core/hmiDataLogs";
 import { createHmiTrendPreviewModel, downloadHmiTrendPreviewCsv } from "../core/hmiTrendPreview";
+import { createHmiGeometryPreviewClient } from "../../scripts/hmi-geometry-preview.mjs";
 import { useVisualEditGuide } from "./visualEditGuide";
 import { hmiAlarmPreviewSession } from "../core/hmiAlarmPreview";
 import { useEditorShortcuts } from "../state/editorShortcuts";
@@ -109,7 +110,7 @@ export function Canvas() {
   const [availableWidth, setAvailableWidth] = useState(1000);
   const [componentDropPoint, setComponentDropPoint] = useState<{ x: number; y: number }>();
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const alarmPageRef = useRef<{ pageId: string; window: Window; origin: string; faceplate?: boolean; shortcuts?: boolean; trend?: boolean } | undefined>(undefined);
+  const alarmPageRef = useRef<{ pageId: string; window: Window; origin: string; faceplate?: boolean; shortcuts?: boolean; trend?: boolean; geometry?: boolean } | undefined>(undefined);
   const alarmPreviewRef = useRef<ReturnType<typeof hmiAlarmPreviewSession>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<TransformSession | undefined>(undefined);
@@ -125,9 +126,16 @@ export function Canvas() {
   const selectionProtocolRef = useRef(0);
   const hmiScriptQueueRef = useRef(Promise.resolve());
   const hmiScreenItemsRef = useRef<HmiScreenItemSnapshot[]>([]);
+  const geometryClientRef = useRef<ReturnType<typeof createHmiGeometryPreviewClient> | undefined>(undefined);
+  if(!geometryClientRef.current)geometryClientRef.current=createHmiGeometryPreviewClient(window,()=>{
+    const page=alarmPageRef.current;
+    return page?.geometry&&page.window===frameRef.current?.contentWindow&&page.origin===alarmOrigin()?page:undefined;
+  });
+  useEffect(()=>()=>geometryClientRef.current?.cancel(),[previewUrl,previewPath,projectRoot]);
   const hmiPropertyFlashingRef = useRef<ReturnType<typeof createHmiPropertyFlashing> | undefined>(undefined);
   if (!hmiPropertyFlashingRef.current) hmiPropertyFlashingRef.current = createHmiPropertyFlashing({
     items: () => hmiScreenItemsRef.current,
+    measureBoundingBox: (itemId,signal) => geometryClientRef.current!.measure(itemId,signal),
     apply: (commands) => frameRef.current?.contentWindow?.postMessage({ type: "framecraft:property-flashing", commands }, "*"),
     applyProperties: (commands) => frameRef.current?.contentWindow?.postMessage({ type: "framecraft:screen-properties", commands }, "*"),
     report: (message) => useEditorStore.getState().addPreviewOutput("stderr", `[HMI lampeggio] ${message}`),
@@ -792,9 +800,10 @@ export function Canvas() {
       } else if (event.data.type === "framecraft:ready") {
         if (event.data.alarmPreviewProtocol === 1 && typeof event.data.alarmPreviewPageId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(event.data.alarmPreviewPageId) && event.origin === alarmOrigin()) {
           const changed = alarmPageRef.current && alarmPageRef.current.pageId !== event.data.alarmPreviewPageId;
-          alarmPageRef.current = { pageId: event.data.alarmPreviewPageId, window: event.source as Window, origin: event.origin, faceplate: event.data.faceplatePreviewProtocol === 1, shortcuts: event.data.editorShortcutsProtocol === 1, trend: event.data.trendPreviewProtocol === 1 };
+          alarmPageRef.current = { pageId: event.data.alarmPreviewPageId, window: event.source as Window, origin: event.origin, faceplate: event.data.faceplatePreviewProtocol === 1, shortcuts: event.data.editorShortcutsProtocol === 1, trend: event.data.trendPreviewProtocol === 1, geometry: event.data.geometryPreviewProtocol === 1 };
           if (changed) { faceplateLocalStateRef.current.clear(); hmiPopupManager.closeParentBound("screen"); }
         }
+        geometryClientRef.current?.cancel();
         transformRef.current?.cancel?.();
         hmiPropertyFlashing.reset();
         hmiScreenItemsRef.current = event.data.screenItems ?? [];

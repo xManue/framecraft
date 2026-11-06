@@ -32,6 +32,7 @@
       "../scripts/framecraft-snap.mjs": "scripts/framecraft-snap.mjs",
       "../scripts/framecraft-picking.mjs": "scripts/framecraft-picking.mjs",
       "../scripts/hmi-property-flashing.mjs": "scripts/hmi-property-flashing.mjs",
+      "../scripts/hmi-geometry-preview.mjs": "scripts/hmi-geometry-preview.mjs",
       "../scripts/hmi-alarm-control.mjs": "scripts/hmi-alarm-control.mjs",
       "../scripts/hmi-alarm-views.mjs": "scripts/hmi-alarm-views.mjs",
       "../scripts/hmi-alarm-summary.mjs": "scripts/hmi-alarm-summary.mjs",

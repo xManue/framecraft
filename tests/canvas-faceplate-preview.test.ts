@@ -141,3 +141,21 @@ describe("faceplate con Canvas e ponte reali su origini diverse", () => {
     expect(frame.document.querySelector('[data-framecraft-popup-id]')).toBeNull();
   });
 });
+
+it("misura la posizione aggiornata dopo un setter attraverso Canvas e il ponte su origini differenti", async () => {
+  const element = owner();
+  element.style.position = "absolute";
+  element.style.left = "20px";
+  vi.spyOn(element, "getClientRects").mockReturnValue([new frame.DOMRect()] as unknown as DOMRectList);
+  vi.spyOn(element, "getBoundingClientRect").mockImplementation(() => new frame.DOMRect(Number.parseFloat(element.style.left), 12, 120, 60));
+  element.setAttribute("data-hmi-events", JSON.stringify([{ event: "Tapped", script: 'item.Left=150;const box=item.GetBoundingBoxInScreenCoordinates();HMIRuntime.Trace("GEOMETRY_PARENT="+JSON.stringify(box));' }]));
+  await usePanel();
+  await act(async () => element.click());
+  await flush(64);
+  const entries = useEditorStore.getState().consoleEntries.map(entry => entry.message).join("\n");
+  expect(entries).toContain('GEOMETRY_PARENT={"Left":150,"Top":12,"Width":120,"Height":60}');
+  expect(sent.filter(message => message.data.type === "framecraft:geometry-query")).toHaveLength(1);
+  expect(sent.find(message => message.data.type === "framecraft:geometry-query")!.origin).toBe(panelOrigin);
+  expect(received.filter(message => message.type === "framecraft:geometry-result")).toHaveLength(1);
+  expect(network).not.toHaveBeenCalled();
+});

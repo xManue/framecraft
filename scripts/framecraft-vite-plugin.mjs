@@ -3,6 +3,7 @@ import * as t from "@babel/types";
 import { equalGapOffset, gridOffset, snapOffset } from "./framecraft-snap.mjs";
 import { overlayCandidate } from "./framecraft-picking.mjs";
 import { createHmiPropertyFlashingDomSurface } from "./hmi-property-flashing.mjs";
+import { installHmiGeometryPreviewEndpoint } from "./hmi-geometry-preview.mjs";
 import { alarmStateLabel } from "../runtime/alarm-labels.mjs";
 import { hmiAlarmElementBlocked, createHmiAlarmControlWith } from "./hmi-alarm-control.mjs";
 import { alarmViewsRuntimeModuleSource } from "./hmi-alarm-views.mjs";
@@ -173,7 +174,7 @@ export function installStandalonePreviewControls(view) {
 // The bridge is shipped to the previewed project as source text, so the maths it needs is not
 // imported by it but written into it. Stringifying the real functions keeps one copy: what the
 // tests check is exactly what runs inside the page.
-const sharedHelpers = `const hmiAlarmSummaryAttribute = ${JSON.stringify(hmiAlarmSummaryAttribute)};\nconst hmiAlarmSummaryCss = ${JSON.stringify(hmiAlarmSummaryCss)};\n` + [snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installPanelLayoutPreference, alarmStateLabel, hmiAlarmElementBlocked, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView].map((helper) => String(helper)).join("\n") + `
+const sharedHelpers = `const hmiAlarmSummaryAttribute = ${JSON.stringify(hmiAlarmSummaryAttribute)};\nconst hmiAlarmSummaryCss = ${JSON.stringify(hmiAlarmSummaryCss)};\n` + [snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installHmiGeometryPreviewEndpoint, installPanelLayoutPreference, alarmStateLabel, hmiAlarmElementBlocked, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView].map((helper) => String(helper)).join("\n") + `
 ${alarmViewsRuntimeModuleSource()}
 const createHmiAlarmControl = (host, action, rowFilter) => (${String(createHmiAlarmControlWith)})(host, action, rowFilter, { alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile });
 const createHmiAlarmSummary = (host, options) => (${String(createHmiAlarmSummaryWith)})(host, options, { alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked });
@@ -251,6 +252,8 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
   let simulationOn = false;
   const alarmPreview = createHmiAlarmPreviewBridge(window, { active: () => mode === "navigate" && simulationOn, navigate: (route) => navigateHmiTarget(route) });
   let editorShortcutBindings = defaultEditorShortcuts(), editorShortcutOrigin;
+  const stopGeometryPreview = installHmiGeometryPreviewEndpoint(window, propertyFlashingSurface, () => ({pageId:alarmPreview.pageId,origin:editorShortcutOrigin}));
+  window.addEventListener("pagehide", event => { if(!event.persisted) stopGeometryPreview(); });
   const stopThumbnailCapture = installPreviewThumbnailCapture(window, { pageId: () => alarmPreview.pageId, allowedOrigin: () => editorShortcutOrigin, enabled: () => mode === "edit" });
   window.addEventListener("pagehide", event => { if (!event.persisted) stopThumbnailCapture(); });
   const faceplatePreview = createHmiFaceplatePreview(window, { active: () => mode === "navigate", pageId: () => alarmPreview.pageId, instanceId: (host) => instanceId(host) }, faceplateRenderers);
@@ -589,7 +592,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
     const key = JSON.stringify([window.location.pathname, window.__framecraftCurrentPage]);
     if (alarmScreenKey !== undefined && key !== alarmScreenKey) { alarmPreview.newPage(); faceplatePreview.reset(); trendPreview.reset(); }
     alarmScreenKey = key;
-    window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items(), alarmPreviewProtocol: 1, alarmPreviewPageId: alarmPreview.pageId, faceplatePreviewProtocol: 1, editorShortcutsProtocol: 1, trendPreviewProtocol: 1 }, "*");
+    window.parent.postMessage({ type: "framecraft:ready", path: window.location.pathname, selectionProtocol: 2, selectionVersion, screenItems: propertyFlashingSurface.items(), alarmPreviewProtocol: 1, alarmPreviewPageId: alarmPreview.pageId, faceplatePreviewProtocol: 1, editorShortcutsProtocol: 1, trendPreviewProtocol: 1, geometryPreviewProtocol: 1 }, "*");
   };
   window.addEventListener("pageshow", (event) => { if (event.persisted) { alarmPreview.newPage(); sendReady(); } });
   // Where a point of the page falls inside the drawing the outline is written in: the corners the

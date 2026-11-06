@@ -144,6 +144,7 @@ export interface HmiScriptPopupOpenOptions {
 
 export interface HmiScriptPopupReference { readonly popupId: string }
 
+export interface HmiScriptBox { Left:number; Top:number; Width:number; Height:number }
 export interface HmiScriptScreenItemReference { readonly screenItemId: string; readonly screenPropertyPath?: "Font" | "Margin" }
 export interface HmiScriptScreenItemManager {
   resolve(scope: "screen" | "faceplate" | "item", name?: string): HmiScriptScreenItemReference;
@@ -152,6 +153,8 @@ export interface HmiScriptScreenItemManager {
   get(reference: HmiScriptScreenItemReference, property: string): HmiScriptScalar | HmiScriptScreenItemReference;
   set(reference: HmiScriptScreenItemReference, property: string, value: HmiScriptScalar): void;
   propertyFlashing(reference: HmiScriptScreenItemReference, args: HmiScriptScalar[]): boolean;
+  getBoundingBox?(reference:HmiScriptScreenItemReference):HmiScriptBox|null;
+  getBoundingBoxAsync?(reference:HmiScriptScreenItemReference,signal:AbortSignal):Promise<HmiScriptBox|null>;
   setMargin?(reference:HmiScriptScreenItemReference,value:{Left:number;Top:number;Right:number;Bottom:number}):void;
 }
 
@@ -177,10 +180,10 @@ interface RuntimeTagStatus { qualityCode: number; timeStamp: string | number; la
 type TagSetState = { names: string[]; pending: Record<string, HmiScriptScalar>; status: Record<string, RuntimeTagStatus>; lastError: number; errorDescription: string };
 type TagSetReference = { readonly tagSet: TagSetState };
 type DataReference = { readonly data: RuntimeValue[] | Record<string, RuntimeValue>; readonly errorType?: string };
-type FunctionIntrinsic = "call" | "apply" | "bind" | "screen-items" | "error-constructor" | "error-to-string";
+type FunctionIntrinsic = "call" | "apply" | "bind" | "screen-items" | "screen-box" | "error-constructor" | "error-to-string";
 interface HmiScriptThisBinding { value?: RuntimeValue; screenItems?: HmiScriptScreenItemManager }
 
-type FunctionReference = { readonly scriptFunction: { parameters: readonly string[]; rest?: string; parameterPatterns?: HmiScriptPattern[]; functionLength?: number; program: HmiScriptProgram; scope?: HmiScriptScope; functions?: HmiScriptExecutionOptions["functions"]; variables?: HmiScriptExecutionOptions["variables"]; globalScope?: HmiScriptScope; name?: string; arrow?: boolean; lexicalThis?: HmiScriptThisBinding; intrinsic?: FunctionIntrinsic; errorType?: string; screenCollection?: {scope:"screen"|"faceplate";manager:HmiScriptScreenItemManager;root:HmiScriptScreenItemReference}; bound?: { target: FunctionReference; thisArg: RuntimeValue; args: RuntimeValue[]; depth: number; count: number } } };
+type FunctionReference = { readonly scriptFunction: { parameters: readonly string[]; rest?: string; parameterPatterns?: HmiScriptPattern[]; functionLength?: number; program: HmiScriptProgram; scope?: HmiScriptScope; functions?: HmiScriptExecutionOptions["functions"]; variables?: HmiScriptExecutionOptions["variables"]; globalScope?: HmiScriptScope; name?: string; arrow?: boolean; lexicalThis?: HmiScriptThisBinding; intrinsic?: FunctionIntrinsic; errorType?: string; screenBox?: {manager:HmiScriptScreenItemManager}; screenCollection?: {scope:"screen"|"faceplate";manager:HmiScriptScreenItemManager;root:HmiScriptScreenItemReference}; bound?: { target: FunctionReference; thisArg: RuntimeValue; args: RuntimeValue[]; depth: number; count: number } } };
 
 type UndefinedReference = { readonly undefinedValue: true; readonly reason?: string };
 
@@ -229,7 +232,8 @@ export interface HmiScriptTransport {
   read(request: Extract<HmiScriptTransportRequest, { kind: "read" }>, signal: AbortSignal): Promise<{ value: string; status: HmiScriptTagStatus }>;
   write(request: Extract<HmiScriptTransportRequest, { kind: "write" }>, signal: AbortSignal): Promise<HmiScriptCommandResult>;
 }
-type ScriptCoroutine<T> = Generator<HmiScriptTransportRequest, T, unknown>;
+type HmiScriptHostRequest = HmiScriptTransportRequest | {kind:"screen-box";manager:HmiScriptScreenItemManager;reference:HmiScriptScreenItemReference};
+type ScriptCoroutine<T> = Generator<HmiScriptHostRequest, T, unknown>;
 
 function* mapScriptValues<T, U>(items: readonly T[], mapper: (item: T) => ScriptCoroutine<U>): ScriptCoroutine<U[]> {
   const result: U[] = [];
@@ -638,6 +642,9 @@ function compileExpression(node: t.Expression | t.JSXNamespacedName | t.Argument
     if (t.isIdentifier(node.callee) && forbiddenCalls.has(node.callee.name)) fail(`Chiamata ${node.callee.name} non ammessa nella sandbox`, node);
     if (t.isMemberExpression(node.callee) && memberName(node.callee) === "Read" && t.isExpression(node.callee.object)) {
       return { kind: "tag-read", tag: compileExpression(node.callee.object) };
+    }
+    if(t.isMemberExpression(node.callee)&&memberName(node.callee)==="GetBoundingBoxInScreenCoordinates"&&t.isExpression(node.callee.object)){
+      return {kind:"invoke",callee:compileExpression(node.callee),arguments:callArguments(node,0,"GetBoundingBoxInScreenCoordinates")};
     }
     if (!name || !safeCalls.has(name)) {
       if (name && /^(?:Object|JSON|Math|HMIRuntime|UI|Faceplate|Screen|Tags)\./.test(name)) fail("Chiamata " + name + " non ammessa nella sandbox.", node);
@@ -2329,6 +2336,7 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     if(!options.screenItems)throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
     let fn=collections.get(scope);if(!fn){fn={scriptFunction:{intrinsic:"screen-items",name:"Items",parameters:[],program:{version:9,statements:[]},screenCollection:{scope,manager:options.screenItems,root:options.screenItems.resolve(scope)}}};collections.set(scope,fn);}return fn;
   };
+  let boxMethod:FunctionReference|undefined;
   const errorConstructors = new Map<string,FunctionReference>();
   const errorConstructor = (name:string): FunctionReference => { let value=errorConstructors.get(name);if(!value){value={scriptFunction:{intrinsic:"error-constructor",errorType:name,name,parameters:name==="AggregateError"?["errors","message"]:["message"],program:{version:9,statements:[]}}};errorConstructors.set(name,value);}return value; };
   const readMember = (object: RuntimeValue, key: string): RuntimeValue => {
@@ -2353,6 +2361,9 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
       if (isDataReference(object)) return dataGet(object, key, modern);
       if (object && typeof object === "object" && "screenItemId" in object) {
         if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
+        if(program.version>=5&&!object.screenPropertyPath&&key==="GetBoundingBoxInScreenCoordinates"){
+          return boxMethod??={scriptFunction:{intrinsic:"screen-box",name:key,parameters:[],program:{version:9,statements:[]},screenBox:{manager:options.screenItems}}};
+        }
         return options.screenItems.get(object, key);
       }
       if (typeof object === "string") {
@@ -2994,6 +3005,16 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
     if (fn.intrinsic) {
       if(fn.intrinsic==="error-constructor"){if(program.version<9||!fn.errorType)throw new Error("Il costruttore richiede IR 9.");return yield* createError(fn.errorType,args);}
       if(fn.intrinsic==="error-to-string"){if(!isDataReference(receiver))throw new TypeError("Error.toString richiede un oggetto.");return scriptErrorString(receiver,tick);}
+      if(fn.intrinsic==="screen-box"){
+        if(args.length)throw new TypeError("GetBoundingBoxInScreenCoordinates non richiede argomenti.");
+        if(!receiver||typeof receiver!=="object"||!("screenItemId" in receiver)||receiver.screenPropertyPath)throw new TypeError("GetBoundingBoxInScreenCoordinates richiede un oggetto grafico come contesto this.");
+        const manager=fn.screenBox?.manager;
+        if(!manager?.getBoundingBox)throw new Error("La misura degli oggetti richiede i componenti Runtime aggiornati del pannello.");
+        const box=(options.allowAsync&&manager.getBoundingBoxAsync?yield {kind:"screen-box",manager,reference:receiver}:manager.getBoundingBox(receiver)) as HmiScriptBox|null;
+        if(box===null)return null;
+        if(!box||["Left","Top","Width","Height"].some(key=>typeof box[key as keyof HmiScriptBox]!=="number"||!Number.isFinite(box[key as keyof HmiScriptBox]))||box.Width<0||box.Height<0)throw new Error("La misura dell'oggetto HMI non e' valida.");
+        return {data:{Left:box.Left,Top:box.Top,Width:box.Width,Height:box.Height}};
+      }
       if (fn.intrinsic === "screen-items") {
         const collection=fn.screenCollection;
         if(!collection)throw new Error("Collezione Items non disponibile nel contesto corrente.");
@@ -3357,8 +3378,36 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
 export function executeHmiScript(program: HmiScriptProgram, input: Readonly<Record<string, string>>, options: HmiScriptExecutionOptions = {}): HmiScriptExecution {
   const iterator = executeHmiScriptCoroutine(program, input, options);
   let current = iterator.next();
-  while (!current.done) current = iterator.throw(Object.assign(new Error("Il trasporto PLC richiede executeHmiScriptAsync(); nessun comando inviato."), { outcome: "rejected" }));
+  while (!current.done) current = iterator.throw(Object.assign(new Error(current.value.kind === "screen-box" ? "La misura aggiornata nell’anteprima richiede executeHmiScriptAsync()." : "Il trasporto PLC richiede executeHmiScriptAsync(); nessun comando inviato."), { outcome: "rejected" }));
   return current.value;
+}
+
+async function performScriptGeometry(request: Extract<HmiScriptHostRequest, {
+  kind: "screen-box";
+}>, options: HmiScriptExecutionOptions): Promise<unknown> {
+  const active = () => !options.signal?.aborted && (!options.isActive || options.isActive());
+  if (!active()) throw new Error("La pagina non e' piu' attiva: misura annullata.");
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel!: () => void;
+  const interrupted = new Promise<never>((_, reject) => {
+    cancel = () => {
+      reject(new Error("Misura dell'oggetto interrotta: la pagina potrebbe essere cambiata. Riprova sulla pagina attiva."));
+      controller.abort();
+    };
+    options.signal?.addEventListener("abort", cancel, {
+      once: true
+    });
+    timer = setTimeout(cancel, 3000);
+  });
+  try {
+    const box = await Promise.race([request.manager.getBoundingBoxAsync!(request.reference, controller.signal), interrupted]);
+    if (!active()) throw new Error("La pagina non e' piu' attiva: misura annullata.");
+    return box;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", cancel);
+  }
 }
 
 async function performScriptTransport(request: HmiScriptTransportRequest, options: HmiScriptExecutionOptions): Promise<unknown> {
@@ -3388,7 +3437,7 @@ export async function executeHmiScriptAsync(program: HmiScriptProgram, input: Re
   while (!current.done) {
     const started = Date.now();
     let response: unknown, failure: unknown, failed = false;
-    try { response = await performScriptTransport(current.value, options); }
+    try { response = await (current.value.kind==="screen-box"?performScriptGeometry(current.value,options):performScriptTransport(current.value, options)); }
     catch (caught) { failed = true; failure = caught; }
     finally { clock.elapsed += Date.now() - started; }
     current = failed ? iterator.throw(failure) : iterator.next(response);
@@ -3399,5 +3448,5 @@ export async function executeHmiScriptAsync(program: HmiScriptProgram, input: Re
 /** Il progetto generato non porta con se' Babel: riceve il programma gia' compilato nell'attributo
  * e solo questo piccolo esecutore. Le funzioni sono le stesse usate dai test dell'editor. */
 export function hmiScriptRuntimeModuleSource(): string {
-  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(isScriptErrorName)}\n${String(staticErrorValue)}\n${String(scriptErrorValue)}\n${String(scriptErrorString)}\n${String(patternNames)}\n${String(staticSpreadArray)}\n${String(staticCallArguments)}\n${String(staticSpreadObject)}\n${String(inspectPatternBindings)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\nlet hmiInspectionBudget;\n${String(recordStaticThrow)}\n${String(inspectAssignmentTarget)}\n${String(inspectStaticAssignment)}\n${String(inspectionStep)}\n${String(inspectCallable)}\n${String(inspectInvocation)}\n${String(inspectArrayCallback)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(isScriptThrown)}\n${String(scriptThrownMessage)}\n${String(undefinedValue)}\n${String(isUndefinedReference)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(isFunctionReference)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(dataArrayCallbackMethod)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
+  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(isScriptErrorName)}\n${String(staticErrorValue)}\n${String(scriptErrorValue)}\n${String(scriptErrorString)}\n${String(patternNames)}\n${String(staticSpreadArray)}\n${String(staticCallArguments)}\n${String(staticSpreadObject)}\n${String(inspectPatternBindings)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\nlet hmiInspectionBudget;\n${String(recordStaticThrow)}\n${String(inspectAssignmentTarget)}\n${String(inspectStaticAssignment)}\n${String(inspectionStep)}\n${String(inspectCallable)}\n${String(inspectInvocation)}\n${String(inspectArrayCallback)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(isScriptThrown)}\n${String(scriptThrownMessage)}\n${String(undefinedValue)}\n${String(isUndefinedReference)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(isFunctionReference)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(dataArrayCallbackMethod)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptGeometry)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
 }
