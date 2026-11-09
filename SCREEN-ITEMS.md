@@ -187,3 +187,51 @@ Si usano solo dati sintetici, senza rete esterna o contatti PLC.
 
 Fonte primaria: [Siemens, Button.GetBoundingBoxInScreenCoordinates](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.getboundingboxinscreencoordinates-rt-unified?contentId=elJtj8ZB7Ad~IMO6F7nY1w).
 Restano altre parti dell'object model, incluse Padding e le API di trasformazione.
+
+## RotationAngle dal pacchetto 2026.11.09.1
+
+Gli script leggono e impostano RotationAngle sugli oggetti grafici con trasformazione
+CSS piana risolvibile. Il valore e' un Int16 in gradi, tra -32768 e 32767: niente conversioni
+implicite da stringhe o arrotondamento degli input. I giri completi restano nel valore
+impostato dallo script, anche se la matrice visualizzata descrive un angolo equivalente.
+
+```javascript
+const motor = Screen.Items("M2400");
+motor.RotationAngle = 90;
+const box = motor.GetBoundingBoxInScreenCoordinates();
+```
+
+Il layer combina la matrice CSS dell'elemento con rotate e scale individuali e sostituisce
+l'orientamento locale. Conserva traslazione affine, allungamenti, inclinazione, riflessione,
+translate indipendente, transform-origin e trasformazioni dei gruppi esterni. La misura
+GetBoundingBoxInScreenCoordinates riflette il risultato reale anche nello stesso evento.
+
+Una rotazione individuale senza orientamento aggiuntivo della matrice conserva il suo
+valore dichiarato (inclusi i giri). Le altre matrici vengono lette con orientamento canonico,
+normalmente tra -180 e 180 gradi; una tolleranza di 0.0001 gradi corregge la serializzazione
+numerica del browser vicino a un intero. Una frazione non rappresentabile come Int16 si
+segnala in lettura e puo' essere sostituita esplicitamente con un angolo intero.
+
+RotationAngle descrive la trasformazione locale dell'oggetto, non l'angolo dopo i gruppi
+padre o un percorso di movimento CSS. Le matrici 3D non piane, assi di rotazione X/Y e
+trasformazioni non risolte non vengono appiattiti o cancellati. In questi casi la proprieta'
+non e' esposta; usare un contenitore grafico con una trasformazione 2D risolvibile.
+
+Gli stili temporanei prevalgono anche su classi important. Reset, sospensione e chiusura
+della simulazione ripristinano i valori e le priorita' precedenti, conservando successive
+modifiche esterne. I setter scalari ora ripristinano anche lo stato logico se una pubblicazione
+grafica fallisce, come gia' previsto per la copia completa di Margin.
+
+Riferimenti nei moduli e timer restano soggetti al contesto attivo. Anteprima, ponte Vite,
+Runtime esportato e helper Node condividono il setter tipizzato. Gli host custom devono
+esporre RotationAngle negli snapshot e gestire il relativo comando grafico.
+La IR resta 9 e i lettori 1-9 sono conservati. Sugli HMI esistenti aggiornare i componenti.
+
+La prova tests/browser/hmi-geometry.mjs confronta ingombro e matrice realmente applicati,
+controlla traslazione, prodotti scalari e determinante, timer e ripristino. Ripete il setter
+sul ponte Vite caricato dalle risorse del pacchetto. Il Canvas React e' verificato su origini
+distinte. Dati sintetici e nessuna connessione PLC.
+
+Fonte primaria: [Siemens, Button.RotationAngle Int16](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.rotationangle-rt-unified?contentId=yuN2OD27G0qFgjBXtDdYgw).
+RotationCenterPlacement/X/Y restano da implementare nelle API script; questo setter conserva
+il pivot CSS gia' presente. Restano anche Padding e le altre voci aperte dell'object model.

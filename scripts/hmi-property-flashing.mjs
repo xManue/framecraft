@@ -99,10 +99,11 @@ export function createHmiPropertyFlashing(surface) {
           }
           const key = propertyKey(reference, property);
           if (key === "Name") return item.name;
-          if (!Object.prototype.hasOwnProperty.call(item.properties ?? {}, key)) throw new Error("L'oggetto HMI non espone la proprieta' " + key + ".");
+          if (!Object.prototype.hasOwnProperty.call(item.properties ?? {}, key)) throw new Error(key === "RotationAngle" ? "L'oggetto HMI non espone RotationAngle: usa un contenitore con una trasformazione CSS 2D piana risolvibile." : "L'oggetto HMI non espone la proprieta' " + key + ".");
           const overrides = propertyState.get(item.itemId);
           const value = overrides?.has(key) ? overrides.get(key) : item.properties[key];
           if (value === null && properties.includes(key)) throw new Error("Il colore base " + key + " non e' risolvibile come RGB nel contesto corrente.");
+          if(value===null&&key==="RotationAngle")throw new Error("RotationAngle richiede un angolo intero Int16 in gradi: imposta un valore tra -32768 e 32767.");
           if(value===null&&reference.screenPropertyPath==="Margin")throw new Error("La proprieta' base "+key+" non e' risolvibile come Int32: imposta un margine intero in pixel; auto e frazioni non possono essere letti come interi.");
           if (value === null && reference.screenPropertyPath) throw new Error("La proprieta' base " + key + " non e' risolvibile nel contesto corrente.");
           return value;
@@ -112,8 +113,9 @@ export function createHmiPropertyFlashing(surface) {
           if (!reference.screenPropertyPath && property === "Font") throw new Error("Font e' un riferimento grafico non sostituibile: modifica le sue proprieta'.");
           const key = propertyKey(reference, property);
           if (key === "Name") throw new Error("Name e' in sola lettura nel Runtime: modifica il nome nell'Inspector.");
-          if (!Object.prototype.hasOwnProperty.call(item.properties ?? {}, key)) throw new Error("L'oggetto HMI non espone la proprieta' " + key + ".");
-          if(key.startsWith("Margin."))validateMargin(key,value);
+          if (!Object.prototype.hasOwnProperty.call(item.properties ?? {}, key)) throw new Error(key === "RotationAngle" ? "L'oggetto HMI non espone RotationAngle: usa un contenitore con una trasformazione CSS 2D piana risolvibile." : "L'oggetto HMI non espone la proprieta' " + key + ".");
+          if(key==="RotationAngle"){if(typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767)throw new Error("RotationAngle richiede un numero intero tra -32768 e 32767 (Int16).");}
+          else if(key.startsWith("Margin."))validateMargin(key,value);
           else if (["Visible", "Enabled", "Font.Italic", "Font.Underline"].includes(key)) {
             if (typeof value !== "boolean") throw new Error(key + " richiede un Boolean.");
           } else if (key === "Font.Name") {
@@ -132,9 +134,8 @@ export function createHmiPropertyFlashing(surface) {
           } else throw new Error("Proprieta' grafica non supportata: " + key);
           if (!surface.applyProperties) throw new Error("Il contesto corrente non permette modifiche grafiche.");
           if (propertyState.get(item.itemId)?.get(key) === value) return;
-          if (!propertyState.has(item.itemId)) propertyState.set(item.itemId, new Map());
-          propertyState.get(item.itemId).set(key, value);
-          surface.applyProperties(propertyCommands());
+          const previous=propertyState.get(item.itemId),next=new Map(previous);next.set(key,value);propertyState.set(item.itemId,next);
+          try{surface.applyProperties(propertyCommands());}catch(error){if(previous)propertyState.set(item.itemId,previous);else propertyState.delete(item.itemId);try{surface.applyProperties(propertyCommands());}catch{report("Il layout non e' stato ripristinato completamente: ricarica la pagina.");}throw error;}
         },
         getBoundingBox(reference){
           const item=itemFor(reference);
@@ -215,6 +216,74 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
   const supportsMargin=(element,computed=root.defaultView?.getComputedStyle(element)??element.style)=>element.namespaceURI==="http://www.w3.org/1999/xhtml"&&!/^(contents|table-row|table-row-group|table-header-group|table-footer-group|table-column|table-column-group|table-cell)$/.test(computed.display);
   const fontCssProperties = { "Font.Name": "font-family", "Font.Size": "font-size", "Font.Weight": "font-weight", "Font.Italic": "font-style" };
   const fontProperties = [...Object.keys(fontCssProperties), "Font.Underline", "Font.StrikeOut"];
+  // Compose the element's own planar CSS transforms; ancestors belong to its group context.
+  // Keep the affine translation fixed when replacing the orientation.
+  const planarRotation = (element, computed = root.defaultView?.getComputedStyle(element) ?? element.style) => {
+    const raw = (computed.transform || "none").trim();
+    let matrix = [1, 0, 0, 1, 0, 0];
+    if (raw !== "none" && raw !== "") {
+      const match = /^matrix(3d)?\(([^)]+)\)$/.exec(raw);
+      if (!match) return;
+      const entries = match[2].split(/\s*,\s*/).map(Number);
+      if (!entries.every(Number.isFinite)) return;
+      if (match[1]) {
+        if (entries.length !== 16 || [2, 3, 6, 7, 8, 9, 11, 14].some(i => entries[i] !== 0) || entries[10] !== 1 || entries[15] !== 1) return;
+        matrix = [entries[0], entries[1], entries[4], entries[5], entries[12], entries[13]];
+      } else {
+        if (entries.length !== 6) return;
+        matrix = entries;
+      }
+    }
+    const angleValue = raw => {
+      if (!raw || raw === "none") return 0;
+      const parts = raw.trim().split(/\s+/);
+      let sign = 1;
+      if (parts.length === 2) {
+        if (parts[0] !== "z") return;
+      } else if (parts.length === 4) {
+        const axis = parts.slice(0, 3).map(Number);
+        if (!axis.every(Number.isFinite) || axis[0] !== 0 || axis[1] !== 0 || axis[2] === 0) return;
+        sign = Math.sign(axis[2]);
+      } else if (parts.length !== 1) return;
+      const match = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)(deg|rad|grad|turn)$/.exec(parts.at(-1));
+      if (!match) return;
+      const value = Number(match[1]) * {
+        deg: 1,
+        rad: 180 / Math.PI,
+        grad: .9,
+        turn: 360
+      }[match[2]] * sign;
+      return Number.isFinite(value) ? value : undefined;
+    };
+    const angle = angleValue(computed.rotate || "none");
+    if (angle === undefined) return;
+    const scaleRaw = (computed.scale || "none").trim();
+    let scales = [1, 1];
+    if (scaleRaw !== "none" && scaleRaw !== "") {
+      const fields = scaleRaw.split(/\s+/);
+      if (fields.length > 3) return;
+      const values = fields.map(v => /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?%?$/.test(v) ? Number.parseFloat(v) / (v.endsWith("%") ? 100 : 1) : NaN);
+      if (!values.every(Number.isFinite) || values.length === 3 && values[2] !== 1) return;
+      scales = [values[0], values[1] ?? values[0]];
+    }
+    const [a, b, c, d, e, f] = matrix,
+      [sx, sy] = scales,
+      radians = angle * Math.PI / 180,
+      cos = Math.cos(radians),
+      sin = Math.sin(radians);
+    const composed = [cos * sx * a - sin * sy * b, sin * sx * a + cos * sy * b, cos * sx * c - sin * sy * d, sin * sx * c + cos * sy * d, cos * sx * e - sin * sy * f, sin * sx * e + cos * sy * f];
+    if (!composed.every(Number.isFinite)) return;
+    const heading = (Math.hypot(composed[0], composed[1]) > 1e-12 ? Math.atan2(composed[1], composed[0]) : Math.atan2(-composed[2], composed[3])) * 180 / Math.PI;
+    // A plain individual rotate retains full turns. Computed matrices have browser rounding.
+    const plain = a === 1 && b === 0 && c === 0 && d === 1 && sx >= 0;
+    const nearest = Math.round(heading),
+      degrees = plain ? angle : Math.abs(heading - nearest) < .0001 ? nearest : heading;
+    return {
+      matrix: composed,
+      heading: plain ? angle : heading,
+      degrees
+    };
+  };
   const cssColor = (value) => {
     if (value.length !== 9) return value;
     const alpha = parseInt(value.slice(1, 3), 16) / 255;
@@ -283,6 +352,8 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       const raw=computed.getPropertyValue(css).trim(),number=raw===""||raw==="0"?0:/^-?(?:\d+(?:\.\d+)?|\.\d+)px$/i.test(raw)?Number.parseFloat(raw):NaN;
       values[property]=Number.isInteger(number)&&number>=-2147483648&&number<=2147483647?number:null;
     }
+    const rotation=planarRotation(element,computed);
+    if(rotation)values.RotationAngle=Number.isInteger(rotation.degrees)&&rotation.degrees>=-32768&&rotation.degrees<=32767?rotation.degrees:null;
     const text = textNodes(element);
     if (text) values.Text = text.nodes.map((node) => node.data).join("");
     const font = fontHost(element);
@@ -337,8 +408,8 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     const entries = [];
     const style = (name, value, target = element) => {
       const entry = { kind: "style", target, name, value: target.style.getPropertyValue(name), priority: target.style.getPropertyPriority(name) };
-      if (entry.value === value) return;
-      const priority = entry.priority || target.style.getPropertyPriority(name.startsWith("font-") ? "font" : name.startsWith("margin-") ? "margin" : name === "text-decoration-line" ? "text-decoration" : name) || (name.startsWith("font-") || name.startsWith("margin-") || name === "text-decoration-line" ? "important" : "");
+      if (entry.value === value && !["transform","rotate","scale"].includes(name)) return;
+      const priority = entry.priority || target.style.getPropertyPriority(name.startsWith("font-") ? "font" : name.startsWith("margin-") ? "margin" : name === "text-decoration-line" ? "text-decoration" : name) || (name.startsWith("font-") || name.startsWith("margin-") || name === "text-decoration-line" || ["transform","rotate","scale"].includes(name) ? "important" : "");
       target.style.setProperty(name, value, priority);
       entries.push({ ...entry, applied: target.style.getPropertyValue(name), appliedPriority: target.style.getPropertyPriority(name) });
     };
@@ -390,6 +461,13 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         if (property === "Visible" && value) { attribute("hidden", null); if (computed?.display === "none") style("display", "revert"); }
         style(cssProperties[property], property === "Visible" ? (value ? "visible" : "hidden") : stems[property] ? cssColor("#" + value.toString(16).padStart(8, "0")) : value + "px");
       }
+    }
+    if(overrides.has("RotationAngle")){
+      const rotation=planarRotation(element);if(!rotation)throw new Error("RotationAngle richiede una trasformazione CSS piana risolvibile.");
+      const radians=(overrides.get("RotationAngle")-rotation.heading)*Math.PI/180,cos=Math.cos(radians),sin=Math.sin(radians),[a,b,c,d,e,f]=rotation.matrix;
+      const matrix=[cos*a-sin*b,sin*a+cos*b,cos*c-sin*d,sin*c+cos*d,e,f];
+      if(!matrix.every(Number.isFinite))throw new Error("La matrice di rotazione non e' finita.");
+      style("rotate","none");style("scale","none");style("transform","matrix("+matrix.join(",")+")");
     }
     if (entries.length) propertyBefore.set(element, entries);
   };
@@ -497,14 +575,16 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       for (const command of commands) {
         if (!command || typeof command.itemId !== "string" || !targets.has(command.itemId)) continue;
         const { property, value } = command;
-        if (!Object.hasOwn(cssProperties, property) && !["Text", "Enabled", ...fontProperties,...Object.keys(marginCssProperties)].includes(property)) continue;
+        if (!Object.hasOwn(cssProperties, property) && !["Text", "Enabled", "RotationAngle", ...fontProperties,...Object.keys(marginCssProperties)].includes(property)) continue;
         if (["Enabled", "Visible", "Font.Italic", "Font.Underline"].includes(property) ? typeof value !== "boolean"
           : property === "Text" || property === "Font.Name" ? typeof value !== "string" || value.length > 20000 || (property === "Font.Name" && /[\u0000-\u001f\u007f]/.test(value))
+          : property === "RotationAngle" ? typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767
           : Object.hasOwn(marginCssProperties,property) ? typeof value!=="number"||!Number.isInteger(value)||value < -2147483648||value>2147483647
           : property === "Font.Size" ? typeof value !== "number" || !Number.isFinite(value) || value < 0 || !Number.isFinite(Math.fround(value))
           : property === "Font.Weight" ? ![0, 300, 400, 600, 700].includes(value)
           : property === "Font.StrikeOut" ? ![0, 1].includes(value)
           : typeof value !== "number" || !Number.isInteger(value) || value < (["Left", "Top"].includes(property) ? -2147483648 : 0) || value > (["Left", "Top"].includes(property) ? 2147483647 : 0xffffffff)) continue;
+        if(property==="RotationAngle"&&!planarRotation(targets.get(command.itemId)))continue;
         if (property === "Text" && !textNodes(targets.get(command.itemId))) continue;
         if(Object.hasOwn(marginCssProperties,property)&&!supportsMargin(targets.get(command.itemId)))continue;
         if (fontProperties.includes(property) && !fontHost(targets.get(command.itemId))) continue;

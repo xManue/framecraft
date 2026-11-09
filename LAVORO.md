@@ -6955,6 +6955,25 @@ Verifiche del 5 ottobre 2026:
 - Fase 3 ancora aperta: Padding e altre parti/proprieta', trasformazioni da script, finestre,
   lifecycle, ProcessValue tipizzato, linguaggio e gate industriali. Optix/AI non anticipati.
 
+## 199. RotationAngle da script e conservazione della trasformazione 2D (9 novembre 2026)
+
+- Verificata RotationAngle Int16 nelle fonti Siemens V21; letti localmente gli schemi di
+  180 export reali, senza esportare dati macchina. RotationCenterPlacement/X/Y restano aperti.
+- Getter/setter numerico locale con segno e giri completi nello stato script. Ricomposizione
+  della matrice CSS e rotate/scale individuali, preservando traslazione, allungamenti,
+  inclinazione, riflessione, pivot e gruppi esterni. Matrici non piane non appiattite.
+- Stili temporanei con priorita', sospensione e ripristino; le modifiche CSS esterne successive
+  vengono conservate. Setter scalari con rollback dello stato logico e ripubblicazione del
+  livello precedente se l'host fallisce, provato anche dopo una pubblicazione gia' applicata.
+- Pipeline standard e pacchetto 2026.11.09.1. Nessun nodo IR o dipendenza nuovi; stessi
+  riferimenti nei moduli/timer e invalidazione dei contesti. Lettori 1-9 preservati.
+- Prova Edge compilata: matrice e ingombro veri, prodotti scalari e determinante conservati,
+  traslazione invariata, timer e ripristino; helper Node, Canvas reale su origini distinte
+  e ponte Vite caricato dalle risorse del pacchetto. Nessuna rete esterna o connessione PLC.
+- Passati 168 test mirati (rotazione, oggetti, font, margini, Canvas e aggiornamento Runtime), TypeScript e prova del pannello compilato.
+- Contratto, tolleranza delle matrici CSS, limiti e API restanti in SCREEN-ITEMS.md.
+  L'object model e la fase 3 restano parziali; nessun anticipo delle fasi Optix/AI.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

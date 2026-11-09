@@ -2229,3 +2229,16 @@ La pipeline standard genera il pacchetto nuovo; sugli HMI esistenti usare l'aggi
 assistito. Nessuna nuova dipendenza e nessun nuovo nodo IR. Contratto, coordinate, limiti e
 comando di verifica in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md). Altre API e collaudo industriale
 restano aperti.
+
+## Rotazione da script dal pacchetto 2026.11.09.1
+
+RotationAngle e' un Int16 locale in gradi. Il setter per oggetti 2D conserva la parte affine
+esistente (traslazione, allungamenti, inclinazione e riflessione), il pivot CSS e i gruppi.
+Non appiattisce trasformazioni 3D. Reset e sospensione ripristinano stili/priorita', tenendo
+conto delle successive modifiche esterne. Un errore di pubblicazione ripristina anche gli
+override logici dei setter scalari, senza lasciare valori letti ma non applicati.
+
+Pipeline standard, anteprima eventi/timer, helper Node e Runtime usano la stessa superficie.
+Nessuna dipendenza o istruzione IR nuova; per pannelli esistenti usare l'aggiornamento
+assistito. Contratto e verifiche in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).
+RotationCenterPlacement/X/Y e le altre parti dell'object model restano aperti.

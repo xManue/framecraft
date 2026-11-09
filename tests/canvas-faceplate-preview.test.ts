@@ -148,7 +148,7 @@ it("misura la posizione aggiornata dopo un setter attraverso Canvas e il ponte s
   element.style.left = "20px";
   vi.spyOn(element, "getClientRects").mockReturnValue([new frame.DOMRect()] as unknown as DOMRectList);
   vi.spyOn(element, "getBoundingClientRect").mockImplementation(() => new frame.DOMRect(Number.parseFloat(element.style.left), 12, 120, 60));
-  element.setAttribute("data-hmi-events", JSON.stringify([{ event: "Tapped", script: 'item.Left=150;const box=item.GetBoundingBoxInScreenCoordinates();HMIRuntime.Trace("GEOMETRY_PARENT="+JSON.stringify(box));' }]));
+  element.setAttribute("data-hmi-events", JSON.stringify([{ event: "Tapped", script: 'item.Left=150;item.RotationAngle=90;const box=item.GetBoundingBoxInScreenCoordinates();HMIRuntime.Trace("GEOMETRY_PARENT="+JSON.stringify(box));' }]));
   await usePanel();
   await act(async () => element.click());
   await flush(64);
@@ -157,5 +157,7 @@ it("misura la posizione aggiornata dopo un setter attraverso Canvas e il ponte s
   expect(sent.filter(message => message.data.type === "framecraft:geometry-query")).toHaveLength(1);
   expect(sent.find(message => message.data.type === "framecraft:geometry-query")!.origin).toBe(panelOrigin);
   expect(received.filter(message => message.type === "framecraft:geometry-result")).toHaveLength(1);
+  const rotation=element.style.transform.slice(7,-1).split(",").map(Number);
+  expect(Math.atan2(rotation[1],rotation[0])*180/Math.PI).toBeCloseTo(90,6);
   expect(network).not.toHaveBeenCalled();
 });

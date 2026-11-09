@@ -123,6 +123,17 @@ try {
   compare(await run(read('SCROLLED'), 'SCROLLED'), await page.locator('#target').boundingBox());
   assert.equal(await run('HMIRuntime.Trace("HIDDEN="+JSON.stringify(Screen.Items("Hidden").GetBoundingBoxInScreenCoordinates()));', 'HIDDEN'), null);
   await run('const target=Screen.Items("Target"),get=target.GetBoundingBoxInScreenCoordinates.bind(target);HMIRuntime.Timers.SetTimeout(()=>HMIRuntime.Trace("TIMED="+JSON.stringify(get())),10);', 'TIMED');
+  const target=page.locator('#target');
+  await target.evaluate(element=>Object.assign(element.style,{rotate:'10deg',scale:'1.5 2',transform:'translate(11px,17px) rotate(33deg) skewX(12deg) scale(1.2,.8)',transformOrigin:'25px 12px'}));
+  const originalRotation=await target.evaluate(element=>({rotate:element.style.rotate,scale:element.style.scale,transform:element.style.transform,pivot:element.style.transformOrigin}));
+  const baseMatrix=await target.evaluate(element=>{const css=getComputedStyle(element),[sx,sy]=css.scale.split(' ').map(Number),m=new DOMMatrix().rotate(parseFloat(css.rotate)).scale(sx,sy).multiply(new DOMMatrix(css.transform));return[m.a,m.b,m.c,m.d,m.e,m.f];});
+  compare(await run('const target=Screen.Items("Target");target.RotationAngle=-25;HMIRuntime.Trace("ANGLE="+JSON.stringify(target.GetBoundingBoxInScreenCoordinates()));','ANGLE'),await target.boundingBox());
+  const rotatedMatrix=await target.evaluate(element=>{const m=new DOMMatrix(getComputedStyle(element).transform);return[m.a,m.b,m.c,m.d,m.e,m.f];});
+  const [a,b,c,d,e,f]=baseMatrix,[ra,rb,rc,rd,re,rf]=rotatedMatrix;
+  assert.ok(Math.abs(Math.atan2(rb,ra)*180/Math.PI+25)<.001);
+  for(const [actual,expected]of [[ra*ra+rb*rb,a*a+b*b],[rc*rc+rd*rd,c*c+d*d],[ra*rc+rb*rd,a*c+b*d],[ra*rd-rb*rc,a*d-b*c],[re,e],[rf,f]])assert.ok(Math.abs(actual-expected)<.001);
+  await run('const target=Screen.Items("Target");HMIRuntime.Timers.SetTimeout(()=>{target.RotationAngle=80;HMIRuntime.Trace("ANGLE_TIMER="+JSON.stringify(target.RotationAngle));},10);','ANGLE_TIMER');
+  assert.ok(Math.abs(await target.evaluate(element=>{const m=new DOMMatrix(getComputedStyle(element).transform);return Math.atan2(m.b,m.a)*180/Math.PI;})-80)<.001);
   for (let version = 1; version <= 9; version++) {
     const source = 'HMIRuntime.Trace("LEGACY' + version + '="+JSON.stringify(Screen.Items("Target").Name));';
     const compiled = program(source);
@@ -154,6 +165,7 @@ try {
       screenId: 's',
       name: 'A',
       flashing: [],
+      properties: {RotationAngle:0},
       boundingBox: {
         Left: -5.5,
         Top: 4,
@@ -161,13 +173,16 @@ try {
         Height: 20
       }
     }],
-    apply: () => {}
+    apply: () => {},applyProperties:()=>{}
   });
   const node = runtime.executeHmiScript(program('return JSON.stringify(item.GetBoundingBoxInScreenCoordinates());'), {}, {
     screenItems: controller.context('a')
   });
   assert.equal(node.error, undefined);
   assert.equal(JSON.parse(node.returned).Width, 10.25);
+  const nodeAngle=runtime.executeHmiScript(program('item.RotationAngle=-32768;return item.RotationAngle;'),{},{screenItems:controller.context('a')});assert.equal(nodeAngle.error,undefined);assert.equal(nodeAngle.returned,-32768);
+  await page.evaluate(()=>window.qa.dispose());
+  assert.deepEqual(await target.evaluate(element=>({rotate:element.style.rotate,scale:element.style.scale,transform:element.style.transform,pivot:element.style.transformOrigin})),originalRotation);
   // Exercise the actual Vite preview endpoint plus the parent-side client and VM.
   const previewRoot = path.join(generated, 'editor-preview');
   await mkdir(previewRoot);
@@ -203,7 +218,7 @@ try {
   host.on('pageerror', e => errors.push(e.message));
   await host.goto(previewOrigin + '/host.html');
   await host.waitForFunction(() => window.previewQA?.ready);
-  const result = await host.evaluate(program => window.previewQA.run(program), program('item.Left=190;return JSON.stringify(item.GetBoundingBoxInScreenCoordinates());'));
+  const result = await host.evaluate(program => window.previewQA.run(program), program('item.Left=190;item.RotationAngle=65;return JSON.stringify(item.GetBoundingBoxInScreenCoordinates());'));
   assert.equal(result.error, undefined);
   const expected = await host.frameLocator('iframe').locator('[data-hmi-name="A"]').evaluate(element => {
     const b = element.getBoundingClientRect();
@@ -227,6 +242,7 @@ try {
     standardPipeline: true,
     compiledPanel: true,
     rotationAndGroups: true,
+    rotationScript:true,rotationTimer:true,rotationAffinePreserved:true,rotationRestored:true,
     currentGeometryAfterWrite: true,
     viewportScroll: true,
     hiddenReturnsNull: true,
