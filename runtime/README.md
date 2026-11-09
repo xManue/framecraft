@@ -2211,7 +2211,8 @@ I popup non iniziano più un trascinamento quando il puntatore preme il pulsante
 
 La pipeline genera il nuovo pacchetto; quelli installati richiedono l’aggiornamento assistito.
 Nessun nuovo nodo IR, dipendenza o collegamento PLC. Esempi e confini in
-[SCREEN-ITEMS.md](../SCREEN-ITEMS.md); Padding, altre parti annidate e collaudo industriale restano aperti.
+[SCREEN-ITEMS.md](../SCREEN-ITEMS.md); Padding HTML aggiunto nel pacchetto 2026.11.09.3.
+Altre parti annidate e collaudo industriale restano aperti.
 
 ## Ingombri grafici dal pacchetto 2026.11.06.3
 
@@ -2252,3 +2253,21 @@ con recupero degli errori e ripristino degli stili. Non aggiunge dipendenze o no
 Integrati i messaggi di errore e la generazione standard. Verificati il pannello compilato,
 helper Node, ponte Vite dalle risorse del pacchetto e Canvas React. Per gli HMI installati
 usare l'aggiornamento assistito esplicito. Contratto e fonti in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).
+
+## Spazi interni da script dal pacchetto 2026.11.09.3
+
+Padding.Left/Top/Right/Bottom, copia completa indipendente e parti opache disponibili
+nello stesso motore di Margin. Convalida prima della pubblicazione, ripristino dopo errori,
+moduli e timer con invalidazione del contesto. Il livello CSS conserva nodi, priorita' e
+modifiche esterne; risolve anche lo stylesheet important con un valore inline uguale.
+
+Il contratto e' Int32; gli host HTML ammettono valori non negativi e lo dichiarano negli
+snapshot, rifiutando il negativo prima di cambiare il layout. Box non compatibili, valori
+frazionari o percentuali non risolte sono segnalati, senza inventare un numero. Gli host
+con resa signed possono usare l'intero intervallo Int32. La resa negativa nativa Siemens
+e le parti particolari dei controlli restano da verificare.
+
+Incluso nella pipeline standard e nell'aggiornamento assistito dei componenti; nessuna
+modifica alle pagine/cataloghi esistenti, nessuna dipendenza e IR 9 invariata. Verificati
+layout reale, copia, timer, ripristino, Node, ponte Vite impacchettato e Canvas. Contratto,
+limiti e fonti in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).

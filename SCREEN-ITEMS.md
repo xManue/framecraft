@@ -124,8 +124,8 @@ esporre le quattro proprietà Margin.* negli snapshot e setMargin(reference, val
 l’assegnazione completa, oltre ai getter/setter scalari. La IR resta 9 con lettori 1–9.
 
 La prova compilata verifica anche lo spostamento effettivo del rettangolo, dimensioni
-invariate, copia indipendente, timer, ripristino e helper Node. Padding e le altre parti
-annidate dell’object model restano separate e da completare.
+invariate, copia indipendente, timer, ripristino e helper Node. Per Padding vedere la sezione del pacchetto 2026.11.09.3;
+le altre parti annidate dell’object model restano da completare.
 
 Fonti primarie: [Margin e HmiMarginPart](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.margin-rt-unified/description-button.margin-rt-unified?contentId=LlDyCqW1HPNXQUZ3TuiTZQ),
 [Left Int32](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.margin-rt-unified/margin.left-rt-unified?contentId=TTCbZhZaqPHlqofA476lDQ) e
@@ -291,3 +291,56 @@ Fonti primarie: [RotationCenterPlacement](https://docs.tia.siemens.cloud/r/en-us
 [RotationCenterY Float](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/graphicview-rt-unified/graphicview.rotationcentery-rt-unified?contentId=xDAUz0zbTTkXgXe_fymD4w).
 Le coordinate CSS, la rappresentazione iniziale e l'aggiornamento reattivo sono il contratto
 Framecraft; non si dichiara equivalenza completa di ogni oggetto e dispositivo Siemens.
+
+## Padding dal pacchetto 2026.11.09.3
+
+Padding rappresenta lo spazio interno tra bordo e contenuto. I quattro lati Left, Top,
+Right e Bottom sono Int32, accessibili come parte opaca distinta da Font e Margin.
+Si possono conservare in una variabile, usare in moduli/timer o copiare tra oggetti.
+
+```javascript
+const motor = Screen.Items("M2400");
+motor.Padding = { Left: 12, Top: 6, Right: 12, Bottom: 6 };
+const inset = motor.Padding;
+inset.Left = 16;
+Screen.Items("M2401").Padding = motor.Padding;
+```
+
+L'assegnazione completa accetta tutti e soli i quattro lati, oppure un altro Padding.
+Valida tutta la sorgente prima di una sola pubblicazione; non crea un collegamento tra
+oggetti. Un errore del trasporto ripristina il livello logico/grafico precedente. La parte
+non espone DOM o prototipi e non puo' essere scritta come valore di un tag PLC.
+
+La superficie HTML standard applica padding CSS non negativo. Valori negativi vengono
+rifiutati con un messaggio prima di modificare i lati, anche al confine del frame. Il tipo
+Int32 Siemens non documenta qui la resa dei valori negativi: questo limite CSS e' esplicito,
+non viene dichiarata equivalenza nativa per quel caso. Un host che rende spazi interni con
+segno puo' usare l'intero contratto Int32; gli snapshot HTML indicano paddingAllowsNegative=false.
+
+Le letture usano pixel calcolati solo se interi e rappresentabili. Frazioni e percentuali
+non risolte producono un errore di lettura, senza arrotondamenti; possono essere sostituite
+con valori espliciti. La resa segue box-sizing e il layout CSS: con border-box e dimensioni
+sufficienti lo spazio si prende all'interno del riquadro; content-box puo' farlo crescere.
+Padding eccessivo puo' imporre la dimensione minima CSS anche su border-box.
+
+Supportati box HTML, anche celle di tabella. SVG diretto, display:contents, righe/colonne/
+gruppi di tabella e padding della tabella con bordi collassati non espongono questa parte:
+usare il contenitore HTML quando serve. I nodi figli, le immagini e i listener restano
+intatti. Priorita' CSS, shorthand e modifiche esterne successive sono conservati durante
+sospensione/reset; il livello script prevale anche su uno stylesheet important.
+
+Anteprima, Canvas, Runtime compilato e helper Node condividono lo stesso codice. Gli host
+custom espongono Padding.* negli snapshot e setPadding(reference, value) per le copie;
+l'assenza del setter genera un invito ad aggiornare i componenti. Nessun nodo IR nuovo,
+lettori 1-9 conservati e nessuna dipendenza aggiuntiva. I progetti esistenti ricevono il
+codice tramite Aggiorna componenti del pannello, senza riscrivere pagine o cataloghi macchina.
+
+Verifiche: tests/hmi-padding.test.ts, test Canvas/aggiornamento e prova compilata
+`tests/browser/hmi-geometry.mjs` per spostamento reale del contenuto, copia, timer,
+conflitti CSS, ripristino, helper Node e ponte Vite dalle risorse impacchettate. Solo dati
+sintetici; nessun PLC o installer collaudato in questa fase.
+
+Fonti primarie: [Button.Padding, HmiPaddingPart read-write](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.padding-rt-unified/description-button.padding-rt-unified),
+[Padding.Left Int32](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/combobox-rt-unified/combobox.padding-rt-unified/padding.left-rt-unified?contentId=r~ydl314b8FTA7njy3P6UQ).
+Le parti specifiche dei controlli (CellPadding/Caption/Title/assi), la resa negativa nativa
+e il resto dell'object model richiedono ancora verifica; WCU-EVT-10 rimane parziale.

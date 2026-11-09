@@ -6993,6 +6993,30 @@ Verifiche del 5 ottobre 2026:
 - Pacchetto 2026.11.09.2, IR 9 e lettori 1-9. Restano Padding, proprieta'/API specifiche,
   lifecycle/finestre, linguaggio e gate industriali: l'object model e la fase 3 restano aperti.
 
+## 201. Padding degli oggetti, copie e integrazione standard (9 novembre 2026)
+
+- Verificati HmiPaddingPart read-write e lati Int32 nelle fonti Siemens; lettura aggregata
+  dei JSON locali: 10519 parti su 180 file, tutti i valori interi tra 0 e 50. Nessun export
+  macchina pubblicato o modificato.
+- Padding.Left/Top/Right/Bottom separato da Margin e Font, assegnazione completa/copia
+  indipendente con una pubblicazione, validazione dei quattro lati e rollback del livello.
+  Riferimenti conservati da moduli e timer, invalidati al termine del contesto, senza DOM/PLC.
+- HTML con padding CSS non negativo, segnalato prima della scrittura; contratto Int32 pieno
+  per host capaci di rendering signed. Frazioni/unita' non risolte e box non compatibili
+  segnalati. Corretto il conflitto stylesheet important quando il valore inline e' uguale.
+- Ripristino di shorthand/priorita' e conservazione delle successive modifiche esterne.
+  Verificati contenuto realmente spostato nel riquadro, copia, timer e ripristino in Edge,
+  pannello compilato dalla pipeline, helper Node e ponte Vite dalle risorse del pacchetto.
+- Passati 244 test mirati distinti per le parti grafiche condivise, Canvas e aggiornamento,
+  con riesecuzione isolata dei file in timeout sotto carico. Limiti Runtime invariati;
+  timeout dedicato al test di importazione a freddo del generatore completo. TypeScript e
+  prova compilata passati. Nessuna rete esterna, PLC o installer collaudato.
+- Pacchetto 2026.11.09.3, IR 9 e lettori 1-9 invariati, nessuna dipendenza nuova. Inclusi
+  i componenti nuovi nel piano di aggiornamento senza sostituire pagine/cataloghi macchina.
+- Restano resa negativa nativa di Padding, parti/API specifiche dei controlli, finestre/
+  lifecycle e gate industriali; WCU-EVT-10 e la fase 3 restano aperti. Gli altri 23 lavori
+  locali sono conservati tramite impronte e non sono inclusi nel commit.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

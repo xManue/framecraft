@@ -54,7 +54,7 @@ try {
     await writeFile(target, file.content);
   }
   await symlink(process.env.FRAMECRAFT_RUNTIME_UPDATE_NODE_MODULES || path.join(root, 'node_modules'), path.join(generated, 'node_modules'), 'junction');
-  await writeFile(path.join(generated, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><style>body{margin:0;min-height:2400px}button{padding:6px}main{position:relative}#group{position:absolute;left:260px;top:210px;transform:translate(20px,10px) rotate(17deg) scale(1.15);transform-origin:0 0}#target{position:absolute;left:35px;top:45px;width:120px;height:45px;transform:rotate(33deg);transform-origin:center;border:2px solid black;box-sizing:border-box}#Run{position:fixed;left:10px;top:10px;z-index:10000}</style></head><body><main data-hmi-screen="Main"><button id="Run" data-hmi-name="Run" data-hmi-events="' + attr('HMIRuntime.Trace("READY");') + '">Run</button><section id="group" data-hmi-name="Group"><button id="target" data-hmi-name="Target">Target</button></section><span data-hmi-name="Hidden" hidden>Hidden</span></main><script type="module">import{installFramecraftHmiRuntime}from"/src/framecraftHmiRuntime.ts";window.qa={traces:[],errors:[]};window.qa.dispose=installFramecraftHmiRuntime({navigate:()=>{},routes:[],trace:m=>window.qa.traces.push(m),error:m=>window.qa.errors.push(m)});</script></body></html>');
+  await writeFile(path.join(generated, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><style>body{margin:0;min-height:2400px}button{padding:6px}main{position:relative}#group{position:absolute;left:260px;top:210px;transform:translate(20px,10px) rotate(17deg) scale(1.15);transform-origin:0 0}#target{position:absolute;left:35px;top:45px;width:120px;height:45px;transform:rotate(33deg);transform-origin:center;border:2px solid black;box-sizing:border-box}#Run{position:fixed;left:10px;top:10px;z-index:10000}</style></head><body><main data-hmi-screen="Main"><button id="Run" data-hmi-name="Run" data-hmi-events="' + attr('HMIRuntime.Trace("READY");') + '">Run</button><section id="group" data-hmi-name="Group"><button id="target" data-hmi-name="Target">Target</button></section><span data-hmi-name="Hidden" hidden>Hidden</span><section id="pad" data-hmi-name="Pad" style="position:absolute;left:650px;top:210px;width:180px;height:90px;border:3px solid black;box-sizing:border-box;padding:2px 4px 6px 8px"><span id="pad-content" style="display:block;line-height:20px">Motor</span><svg width="10" height="10"></svg></section><section id="pad-copy" data-hmi-name="PadCopy" style="position:absolute;left:650px;top:320px;padding:0">Copy</section></main><script type="module">import{installFramecraftHmiRuntime}from"/src/framecraftHmiRuntime.ts";window.qa={traces:[],errors:[]};window.qa.dispose=installFramecraftHmiRuntime({navigate:()=>{},routes:[],trace:m=>window.qa.traces.push(m),error:m=>window.qa.errors.push(m)});</script></body></html>');
   await build({
     root: generated,
     configLoader: 'runner',
@@ -116,6 +116,24 @@ try {
       Height: expected.height
     })) assert.ok(Math.abs(actual[key] - value) < 0.05, key + ': ' + actual[key] + ' vs ' + value);
   };
+  const pad=page.locator('#pad');
+  const originalPadding=await pad.evaluate(element=>({padding:element.style.padding,priority:element.style.getPropertyPriority('padding-left'),width:element.getBoundingClientRect().width,height:element.getBoundingClientRect().height}));
+  assert.deepEqual(await run('const p=Screen.Items("Pad").Padding;HMIRuntime.Trace("PADDING_BASE="+JSON.stringify([p.Left,p.Top,p.Right,p.Bottom]));','PADDING_BASE'),[8,2,4,6]);
+  await page.addStyleTag({content:'#pad{padding-left:99px!important}'});
+  assert.equal(await pad.evaluate(element=>getComputedStyle(element).paddingLeft),'99px');
+  await run('Screen.Items("Pad").Padding.Left=8;HMIRuntime.Trace("PADDING_IMPORTANT="+JSON.stringify(Screen.Items("Pad").Padding.Left));','PADDING_IMPORTANT');
+  assert.equal(await pad.evaluate(element=>getComputedStyle(element).paddingLeft),'8px');
+  assert.deepEqual(await run('const t=Screen.Items("Pad");t.Padding={Left:24,Top:12,Right:16,Bottom:8};HMIRuntime.Trace("PADDING_SET="+JSON.stringify([t.Padding.Left,t.Padding.Top,t.Padding.Right,t.Padding.Bottom]));','PADDING_SET'),[24,12,16,8]);
+  const verifyPadding=async(left,top)=>{const box=await pad.boundingBox(),content=await page.locator('#pad-content').boundingBox();assert.ok(Math.abs(content.x-box.x-3-left)<.01);assert.ok(Math.abs(content.y-box.y-3-top)<.01);assert.equal(box.width,originalPadding.width);assert.equal(box.height,originalPadding.height);};
+  await verifyPadding(24,12);
+  assert.equal(await run('Screen.Items("PadCopy").Padding=Screen.Items("Pad").Padding;Screen.Items("Pad").Padding.Left=31;HMIRuntime.Trace("PADDING_COPY="+JSON.stringify(Screen.Items("PadCopy").Padding.Left));','PADDING_COPY'),24);
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#pad-copy')).paddingLeft==='24px');
+  await run('const p=Screen.Items("Pad").Padding;HMIRuntime.Timers.SetTimeout(()=>{p.Top=17;HMIRuntime.Trace("PADDING_TIMER="+JSON.stringify(p.Top));},10);','PADDING_TIMER');
+  await verifyPadding(31,17);
+  assert.ok((await run('try{Screen.Items("Pad").Padding.Bottom=-2;}catch(error){HMIRuntime.Trace("PADDING_NEGATIVE="+JSON.stringify(error.message));}','PADDING_NEGATIVE')).includes('non negativo'));
+  assert.equal(await pad.evaluate(element=>getComputedStyle(element).paddingBottom),'8px');
+  // Later author changes survive disposal of the transient script layer.
+  await pad.evaluate(element=>element.style.setProperty('padding-top','44px','important'));
   compare(await run(read('ROTATED'), 'ROTATED'), await page.locator('#target').boundingBox());
   const live = await run('const target=Screen.Items("Target");target.Left=80;target.Margin.Top=12;const get=target.GetBoundingBoxInScreenCoordinates.bind(target);HMIRuntime.Trace("LIVE="+JSON.stringify(get()));', 'LIVE');
   compare(live, await page.locator('#target').boundingBox());
@@ -193,7 +211,7 @@ try {
       screenId: 's',
       name: 'A',
       flashing: [],
-      properties: {RotationAngle:0,RotationCenterPlacement:0,RotationCenterX:0,RotationCenterY:0},
+      properties: {RotationAngle:0,RotationCenterPlacement:0,RotationCenterX:0,RotationCenterY:0,"Padding.Left":0,"Padding.Top":0,"Padding.Right":0,"Padding.Bottom":0},
       boundingBox: {
         Left: -5.5,
         Top: 4,
@@ -210,14 +228,16 @@ try {
   assert.equal(JSON.parse(node.returned).Width, 10.25);
   const nodeAngle=runtime.executeHmiScript(program('item.RotationAngle=-32768;return item.RotationAngle;'),{},{screenItems:controller.context('a')});assert.equal(nodeAngle.error,undefined);assert.equal(nodeAngle.returned,-32768);
   const nodePivot=runtime.executeHmiScript(program('item.RotationCenterPlacement=1;item.RotationCenterX=2.5;return item.RotationCenterX;'),{},{screenItems:controller.context('a')});assert.equal(nodePivot.error,undefined);assert.equal(nodePivot.returned,2.5);
+  const nodePadding=runtime.executeHmiScript(program('item.Padding={Left:-2147483648,Top:2147483647,Right:3,Bottom:4};return JSON.stringify([item.Padding.Left,item.Padding.Top]);'),{},{screenItems:controller.context('a')});assert.equal(nodePadding.error,undefined);assert.deepEqual(JSON.parse(nodePadding.returned),[-2147483648,2147483647]);
   await page.evaluate(()=>window.qa.dispose());
+  assert.equal(await pad.evaluate(element=>element.style.paddingLeft),'8px');assert.equal(await pad.evaluate(element=>element.style.paddingRight),'4px');assert.equal(await pad.evaluate(element=>element.style.paddingTop),'44px');assert.equal(await pad.evaluate(element=>element.style.getPropertyPriority('padding-top')),'important');
   assert.deepEqual(await target.evaluate(element=>({rotate:element.style.rotate,scale:element.style.scale,transform:element.style.transform,pivot:element.style.transformOrigin})),originalRotation);
   // Exercise the actual Vite preview endpoint plus the parent-side client and VM.
   const previewRoot = path.join(generated, 'editor-preview');
   await mkdir(previewRoot);
   for (const file of ['runtime.mjs', 'flashing.mjs']) await copyFile(path.join(generated, file), path.join(previewRoot, file));
   await copyFile(path.join(root, 'scripts/hmi-geometry-preview.mjs'), path.join(previewRoot, 'geometry-preview.mjs'));
-  await writeFile(path.join(previewRoot, 'panel.html'), '<!doctype html><html><head><link rel="icon" href="data:,"></head><body style="margin:0"><main data-hmi-screen="Main"><button data-hmi-name="A" style="position:absolute;left:20px;top:40px;width:100px;height:35px;transform:rotate(25deg)">A</button></main></body></html>');
+  await writeFile(path.join(previewRoot, 'panel.html'), '<!doctype html><html><head><link rel="icon" href="data:,"></head><body style="margin:0"><main data-hmi-screen="Main"><button data-hmi-name="A" style="position:absolute;left:20px;top:40px;width:100px;height:35px;box-sizing:border-box;padding:1px;transform:rotate(25deg)">A</button></main></body></html>');
   await writeFile(path.join(previewRoot, 'host.html'), '<!doctype html><html><head><link rel="icon" href="data:,"></head><body><iframe style="width:900px;height:600px"></iframe><script type="module">import{createHmiGeometryPreviewClient}from"/geometry-preview.mjs";import{createHmiPropertyFlashing}from"/flashing.mjs";import{executeHmiScriptAsync}from"/runtime.mjs";const frame=document.querySelector("iframe");let endpoint,snapshot,manager;const client=createHmiGeometryPreviewClient(window,()=>endpoint);const controller=createHmiPropertyFlashing({items:()=>snapshot||[],apply:()=>{},applyProperties:commands=>frame.contentWindow.postMessage({type:"framecraft:screen-properties",commands},location.origin),measureBoundingBox:(id,signal)=>client.measure(id,signal)});window.previewQA={run:program=>executeHmiScriptAsync(program,{},{screenItems:manager})};window.addEventListener("message",event=>{if(event.source!==frame.contentWindow||event.origin!==location.origin||event.data?.type!=="framecraft:ready")return;client.cancel();controller.reset();endpoint={window:frame.contentWindow,origin:event.origin,pageId:event.data.alarmPreviewPageId};snapshot=event.data.screenItems;manager=controller.context(snapshot.find(item=>item.name==="A").itemId);frame.contentWindow.postMessage({type:"framecraft:set-shortcuts",pageId:endpoint.pageId,bindings:{}},endpoint.origin);frame.contentWindow.postMessage({type:"framecraft:set-mode",mode:"navigate"},endpoint.origin);window.previewQA.ready=event.data.geometryPreviewProtocol===1;});frame.src="/panel.html";</script></body></html>');
   const resourcesRoot=path.join(generated,'packaged-preview-resources');
   const resources=JSON.parse(await readFile(path.join(root,'src-tauri/tauri.conf.json'),'utf8')).bundle.resources;
@@ -247,7 +267,7 @@ try {
   host.on('pageerror', e => errors.push(e.message));
   await host.goto(previewOrigin + '/host.html');
   await host.waitForFunction(() => window.previewQA?.ready);
-  const result = await host.evaluate(program => window.previewQA.run(program), program('item.Left=190;item.RotationAngle=65;item.RotationCenterPlacement=2;item.RotationCenterX=50;item.RotationCenterY=30;return JSON.stringify(item.GetBoundingBoxInScreenCoordinates());'));
+  const result = await host.evaluate(program => window.previewQA.run(program), program('item.Padding={Left:11,Top:7,Right:5,Bottom:3};item.Left=190;item.RotationAngle=65;item.RotationCenterPlacement=2;item.RotationCenterX=50;item.RotationCenterY=30;return JSON.stringify(item.GetBoundingBoxInScreenCoordinates());'));
   assert.equal(result.error, undefined);
   const expected = await host.frameLocator('iframe').locator('[data-hmi-name="A"]').evaluate(element => {
     const b = element.getBoundingClientRect();
@@ -259,6 +279,8 @@ try {
     };
   });
   compare(JSON.parse(result.returned), expected);
+  const previewPad=host.frameLocator('iframe').locator('[data-hmi-name="A"]');assert.equal(await previewPad.evaluate(element=>getComputedStyle(element).padding),'7px 5px 3px 11px');
+  const negative=await host.evaluate(program=>window.previewQA.run(program),program('item.Padding.Left=-1;'));assert.ok(negative.error.includes('non negativo'));assert.equal(await previewPad.evaluate(element=>getComputedStyle(element).paddingLeft),'11px');
   await host.screenshot({
     path: path.join(generated, 'geometry-preview.png')
   });
@@ -269,6 +291,7 @@ try {
     passed: true,
     generated,
     standardPipeline: true,
+    paddingLayout:true,paddingCopy:true,paddingTimer:true,paddingRestoration:true,paddingPreview:true,paddingNegativeRejected:true,paddingNodeSigned:true,
     compiledPanel: true,
     rotationAndGroups: true,
     pivotModes:true,pivotResize:true,pivotScaledRotatedGroups:true,pivotScroll:true,pivotZoom:true,pivotFaultRecovery:true,

@@ -184,3 +184,13 @@ it("riporta un errore del centro assoluto dal vero ponte e scarta notifiche con 
   expect(useEditorStore.getState().consoleEntries).toHaveLength(count);
   expect(network).not.toHaveBeenCalled();
 });
+
+it("modifica Padding nel Canvas reale, segnala i limiti HTML e ripristina uscendo da Usa il pannello",async()=>{
+  const element=owner();element.style.padding="2px 4px 6px 8px";
+  element.setAttribute("data-hmi-events",JSON.stringify([{event:"Tapped",script:'item.Padding={Left:11,Top:7,Right:5,Bottom:3};const p=item.Padding;HMIRuntime.Timers.SetTimeout(()=>{p.Left=17;HMIRuntime.Trace("PADDING_CANVAS="+p.Left);},20);try{p.Bottom=-1;}catch(error){HMIRuntime.Trace("PADDING_LIMIT="+error.message);}'}]));
+  await usePanel();await act(async()=>element.click());await flush(96);
+  expect(element.style.padding).toBe("7px 5px 3px 17px");
+  const traces=useEditorStore.getState().consoleEntries.map(entry=>entry.message).join("\n");expect(traces).toContain("PADDING_CANVAS=17");expect(traces).toContain("non negativo");
+  expect(sent.filter(message=>message.data.type==="framecraft:screen-properties").some(message=>(message.data.commands as {property:string;value:unknown}[]).some(command=>command.property==="Padding.Left"&&command.value===17))).toBe(true);
+  expect(network).not.toHaveBeenCalled();await act(async()=>useEditorStore.getState().setInteractionMode("edit"));await flush();expect(element.style.padding).toBe("2px 4px 6px 8px");
+});
