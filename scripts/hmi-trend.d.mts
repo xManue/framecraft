@@ -76,10 +76,12 @@ export interface HmiTrendRenderOptions {
     sample?: boolean;
     status?: Readonly<Record<string, {
         qualityCode?: number;
+        qualityKnown?: boolean; localValue?: boolean; lastError?: number;
     }>>;
     sources?: HmiTrendSourceCatalog;
     exportCsv?: (fileName: string, content: string) => void;
     history?: (trend: HmiTrendSeries, from: number, to: number) => readonly HmiTrendSample[];
+    historyState?: (source: {logId?: string; loggedTagId?: string}, from: number, to: number) => "ready" | "loading" | "error" | "unavailable";
 }
 export declare function defaultHmiTrendConfig(): HmiTrendConfig;
 export declare function parseHmiTrendConfig(value: unknown): HmiTrendConfig | undefined;

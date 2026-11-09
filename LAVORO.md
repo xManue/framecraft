@@ -7062,6 +7062,22 @@ Verifiche del 5 ottobre 2026:
   namespace vendor, Variant non scalari, formati, finestre/lifecycle e gate industriali.
   WCU-EVT-10 e la fase 3 rimangono aperti.
 
+## 204. CurrentQuality della vista Trend e Function Trend X/Y (9 novembre 2026)
+
+- Adattatori della qualita' dei campioni effettivamente presentati, prima della riduzione
+  per pixel: qualita' e bit dei limiti, curve nascoste, intervallo e predecessore a gradini.
+- Array X/Y gia' supportati dal renderer senza conversione scalare; array incompatibili
+  o dati malformati Bad, coppie mancanti None. Non esteso il trasporto di array dei driver.
+- Storico vuoto/caricamento distinto da errore, stato della cache per intervallo esatto e
+  politica del predecessore, nessuna nuova query dal getter o aggiramento dei permessi.
+- Pausa e storico descrivono i dati mostrati; durante l'acquisizione online si aggiunge
+  la salute dei tag visibili. Reset, cambio sorgente/configurazione e Modifica invalidano
+  il registro; allo script non passano DOM o intere serie. Nessun nuovo nodo IR.
+- Pacchetto 2026.11.09.6: pipeline, aggiornamento coerente, test mirati e prova del pannello
+  compilato con dati sintetici. Nessun PLC/broker, installer o equivalenza vendor completa.
+- Restano CurrentQuality degli altri widget di servizio, VisualizeQuality, Variant,
+  formati, finestre/lifecycle e le altre voci aperte della fase 3. WCU-EVT-10 resta parziale.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

@@ -55,7 +55,8 @@ describe("curve nel canvas cross-origin con ponte reale", () => {
     await act(async () => { zone.click(); zone.value = "Europe/Rome"; zone.dispatchEvent(new frame.Event("change", { bubbles: true })); aggregation.click(); aggregation.value = "min-max"; aggregation.dispatchEvent(new frame.Event("change", { bubbles: true })); });
     await flush(); expect(received.some(message => message.type === "framecraft:hmi-event")).toBe(false);
     await act(async () => useEditorStore.getState().setInteractionMode("edit")); await flush();
-    expect(owner().textContent).toBe("Bozza tempo"); await usePanel();
+    expect(owner().textContent).toBe("Bozza tempo");
+    expect((frame as any)[Symbol.for("framecraft.control-quality.v1")]?.get(owner())).toBeUndefined(); await usePanel();
     expect(owner().querySelector<HTMLSelectElement>("[data-hmi-trend-time-zone]")!.value).toBe("Europe/Rome");
     expect(owner().querySelector<HTMLSelectElement>("[data-hmi-trend-aggregation]")!.value).toBe("min-max");
     expect(owner().getAttribute("data-hmi-trend")).toBe(designed); expect(network).not.toHaveBeenCalled();
@@ -80,7 +81,8 @@ describe("curve nel canvas cross-origin con ponte reale", () => {
     expect(network).not.toHaveBeenCalled();
   });
   it("disegna tempo e XY con valori manuali senza accedere al DOM dal parent", async () => {
-    expect(owner().textContent).toBe("Bozza tempo"); await usePanel();
+    expect(owner().textContent).toBe("Bozza tempo");
+    expect((frame as any)[Symbol.for("framecraft.control-quality.v1")]?.get(owner())).toBeUndefined(); await usePanel();
     expect(owner().querySelector('[data-hmi-trend-root]')).not.toBeNull();
     expect(owner("xy").querySelector('[data-hmi-function-trend-root]')).not.toBeNull();
     expect(owner("xy").querySelector('[data-hmi-fx-visibility]')?.nextElementSibling?.textContent).toContain("1 punti");
@@ -179,6 +181,7 @@ describe("curve nel canvas cross-origin con ponte reale", () => {
     vi.mocked(window.postMessage).mockImplementation((data: Record<string, any>) => { received.push(data); if (data.type !== "framecraft:trend-history") queueMicrotask(() => deliver(data)); });
     await usePanel(); await flush(3200);
     expect(owner().textContent).toContain("Lo storico locale non risponde");
+    expect((frame as any)[Symbol.for("framecraft.control-quality.v1")].get(owner()).quality).toBe(1);
     const requests = received.filter(message => message.type === "framecraft:trend-history").length; await flush(1200);
     expect(received.filter(message => message.type === "framecraft:trend-history")).toHaveLength(requests);
     await act(async () => owner().querySelector<HTMLButtonElement>('[data-hmi-trend-action="original"]')!.click()); await flush();

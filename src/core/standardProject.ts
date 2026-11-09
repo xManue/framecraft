@@ -567,15 +567,21 @@ function renderFaceplateVisuals() {
   renderHmiFaceplates(document, faceplateCatalog as never, values, { localValues: (host: Element) => faceplateLocalState(host)?.values });
 }
 
+function runtimeHistoryState(source: {logId?: string; loggedTagId?: string}, from: number, to: number, previous = false): "ready" | "loading" | "error" | "unavailable" {
+  if (!source.logId || !source.loggedTagId) return "error";
+  const log=dataLogCatalogJson.logs.find(log => log.id === source.logId);
+  if (!log || !log.tags.some(tag => tag.id === source.loggedTagId)) return "error";
+  return log.storage === "runtime" ? serviceDataLogs?.queryState(source.logId,source.loggedTagId,from,to,previous) ?? "unavailable" : "ready";
+}
 function renderTrendControls() {
   const sources = { tags: plcCatalogJson.variables.map((variable: { name: string }) => variable.name), logs: dataLogCatalogJson.logs };
-  renderHmiTrendControls(document, values, { status: tagStatus, sources, history: (trend: { logId?: string; loggedTagId?: string }, from: number, to: number) => trend.logId && trend.loggedTagId
+  renderHmiTrendControls(document, values, { status: tagStatus, sources, historyState: (source,from,to) => runtimeHistoryState(source,from,to,true), history: (trend: { logId?: string; loggedTagId?: string }, from: number, to: number) => trend.logId && trend.loggedTagId
     ? queryRuntimeDataLogs(trend.logId, trend.loggedTagId, from, to, true).flatMap((sample: { time: number; value: string; qualityCode?: number }) => {
-      const value = Number(sample.value);
-      return sample.value.trim() && Number.isFinite(value) ? [{ time: sample.time, value, qualityCode: sample.qualityCode }] : [];
+      const value = sample.value.trim() ? Number(sample.value) : NaN;
+      return [{ time: sample.time, value, qualityCode: sample.qualityCode }];
     })
     : [] });
-  renderHmiFunctionTrendControls(document, values, { status: tagStatus, sources, history: (source: { logId?: string; loggedTagId?: string }, from: number, to: number) => source.logId && source.loggedTagId
+  renderHmiFunctionTrendControls(document, values, { status: tagStatus, sources, historyState: runtimeHistoryState, history: (source: { logId?: string; loggedTagId?: string }, from: number, to: number) => source.logId && source.loggedTagId
     ? queryRuntimeDataLogs(source.logId, source.loggedTagId, from, to) : [] });
   serviceDataLogs?.renderStatus();
 }

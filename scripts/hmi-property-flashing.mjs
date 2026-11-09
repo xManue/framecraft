@@ -514,7 +514,11 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     const process=processValueSource(element);if(process?.error)source.invalid=true;else if(process?.binding)source.bindings.push({...process.binding,value:process.value});else if(process)source.locals.push({value:process.value,dataType:process.dataType??'WString'});
     const raw=element.getAttribute('data-hmi-dynamizations');if(raw){try{if(raw.length>2097152)throw Error();const items=JSON.parse(raw);if(!Array.isArray(items))throw Error();for(const binding of items){if(!binding||typeof binding.property!=='string'){source.invalid=true;continue;}if(['Tag','ResourceList'].includes(binding.kind??'Tag')&&binding.tag)source.bindings.push(binding);else if(binding.kind==='Flashing'&&binding.flashingCondition==='RangeViolation'&&binding.tag)source.bindings.push(binding);else if(binding.kind==='Script'){if(binding.program&&Array.isArray(binding.program.statements))source.programs.push(binding.program);else source.invalid=true;for(const tag of binding.triggers??[])if(typeof tag==='string')source.bindings.push({property:binding.property,tag});}else if(binding.kind==='Expression')source.unknown=true;}}catch{source.invalid=true;}}
     const faceplate=element.getAttribute('data-hmi-faceplate');if(faceplate){try{const instance=JSON.parse(faceplate);for(const tag of Object.values(instance.tagBindings??{})){if(typeof tag==='string'&&tag)source.bindings.push({property:'Interface',tag});else source.invalid=true;}}catch{source.invalid=true;}}
-    for(const attribute of ['data-hmi-trend','data-hmi-function-trend'])if(element.hasAttribute(attribute)){try{const config=JSON.parse(element.getAttribute(attribute));for(const curve of config.trends??[])for(const channel of [curve,curve.x,curve.y])if(channel){if(channel.source==='log')source.unknown=true;else if(typeof channel.tag==='string'&&channel.tag)source.bindings.push({property:'Trend',tag:channel.tag});}}catch{source.invalid=true;}}
+    for(const attribute of ['data-hmi-trend','data-hmi-function-trend'])if(element.hasAttribute(attribute)){
+      const record=element.ownerDocument.defaultView?.[Symbol.for('framecraft.control-quality.v1')]?.get(element);
+      if(record&&record.signature===element.getAttribute(attribute)&&record.root?.parentElement===element){source.qualities=[record.quality];source.statusTags=record.liveTags;}
+      else source.unknown=true;
+    }
     if(/^Hmi(?:Alarm|Recipe|Audit)/.test(element.getAttribute('data-hmi-type')??''))source.unknown=true;
     return source;
   };

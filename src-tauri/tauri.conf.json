@@ -43,6 +43,7 @@
       "../scripts/hmi-trend.mjs": "scripts/hmi-trend.mjs",
       "../scripts/hmi-function-trend.mjs": "scripts/hmi-function-trend.mjs",
       "../scripts/hmi-trend-runtime-ui.mjs": "scripts/hmi-trend-runtime-ui.mjs",
+      "../scripts/hmi-control-quality.mjs": "scripts/hmi-control-quality.mjs",
       "../scripts/hmi-trend-preview.mjs": "scripts/hmi-trend-preview.mjs",
       "../runtime/alarm-labels.mjs": "runtime/alarm-labels.mjs"
     }

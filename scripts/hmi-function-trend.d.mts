@@ -70,8 +70,10 @@ export interface HmiFunctionTrendRenderOptions {
     sample?: boolean;
     sources?: HmiTrendSourceCatalog;
     history?: (source: HmiFunctionTrendSource, from: number, to: number) => readonly HmiFunctionTrendValue[];
+    historyState?: (source: {logId?: string; loggedTagId?: string}, from: number, to: number) => "ready" | "loading" | "error" | "unavailable";
     status?: Readonly<Record<string, {
         qualityCode?: number;
+        qualityKnown?: boolean; localValue?: boolean; lastError?: number;
     }>>;
     exportCsv?: (fileName: string, content: string) => void;
 }
@@ -80,7 +82,7 @@ export declare function parseHmiFunctionTrendConfig(value: unknown): HmiFunction
 export declare function serializeHmiFunctionTrendConfig(config: HmiFunctionTrendConfig): string;
 export declare function hmiFunctionTrendIssues(config: HmiFunctionTrendConfig, variables?: readonly PlcVariableDefinition[], dataLogs?: HmiDataLogCatalog): HmiTrendIssue[];
 export declare function functionTrendNumericValues(raw: string | undefined): number[] | undefined;
-export declare function pairFunctionTrendSamples(xValues: readonly HmiFunctionTrendValue[], yValues: readonly HmiFunctionTrendValue[], toleranceMs: number): {
+export declare function pairFunctionTrendSamples(xValues: readonly HmiFunctionTrendValue[], yValues: readonly HmiFunctionTrendValue[], toleranceMs: number, invalidPair?: () => void): {
     points: HmiFunctionTrendPoint[];
     unmatched: number;
 };

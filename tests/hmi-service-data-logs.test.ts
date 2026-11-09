@@ -48,3 +48,13 @@ describe("storico del servizio nei trend", () => {
     const f = fixture(); f.client.observe({ state: "recording", written: 1, instanceId: archive }); f.query(); await vi.waitFor(() => expect(f.query()).toHaveLength(1)); f.client.observe({ state: "recording", written: 0, instanceId: namespace }); expect(f.query()).toEqual([]); await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(2));
   });
 });
+
+it('exposes loading, empty-ready and errors for the exact range and predecessor policy without new reads', async()=>{
+ const f=fixture(vi.fn<typeof fetch>(async()=>response([])));
+ expect(f.client.queryState('process','temperature',150,250,true)).toBe('loading');expect(f.request).not.toHaveBeenCalled();f.query(true);
+ await vi.waitFor(()=>expect(f.client.queryState('process','temperature',150,250,true)).toBe('ready'));expect(f.query(true)).toEqual([]);expect(f.client.queryState('process','temperature',150,250,false)).toBe('loading');
+ user.capabilities=[];expect(f.client.queryState('process','temperature',150,250,true)).toBe('error');expect(f.request).toHaveBeenCalledOnce();
+});
+it('retains query errors in quality until an explicit retry and makes disposed history unavailable',async()=>{
+ const f=fixture(vi.fn<typeof fetch>(async()=>new Response('synthetic',{status:503})));f.query();await vi.waitFor(()=>expect(f.client.queryState('process','temperature',150,250)).toBe('error'));expect(f.request).toHaveBeenCalledOnce();f.client.dispose();expect(f.client.queryState('process','temperature',150,250)).toBe('unavailable');
+});

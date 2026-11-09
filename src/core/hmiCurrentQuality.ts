@@ -8,6 +8,8 @@ export interface HmiQualityBinding extends HmiTagBinding {
 }
 export interface HmiQualitySource {
   bindings?: HmiQualityBinding[];
+  /** Renderer-validated sample quality and live acquisition health (also array tags). */
+  qualities?: number[]; statusTags?: string[];
   locals?: { value?: unknown; dataType: string }[];
   programs?: Parameters<typeof inspectHmiScriptProgram>[0][];
   invalid?: boolean; unknown?: boolean;
@@ -27,9 +29,9 @@ export function resolveHmiCurrentQuality(
   const definitions=new Map<string,HmiTagDefinition|undefined>();
   for(const item of catalog)if(item&&typeof item.name==='string'&&!item.detected)definitions.set(item.name,definitions.has(item.name)?undefined:item);
   const defined = (tag: string) => definitions.get(tag);
-  const cache=new Map<string,number>();
+  const cache=new Map<string,number>(),statusCache=new Map<string,number>();
   const valid = (value: unknown, type: string) => { try { normalizeMqttTagValue(value,type);return true; } catch { return false; } };
-  const codeFor = (tag: string): number => {
+  const codeFor = (tag: string, statusOnly = false): number => {
     const definition=defined(tag),status=own(context.tagStatus,tag),value=own(context.values,tag);
     if(!definition||!['read','read-write'].includes(definition.access)||typeof definition.dataType!=='string'||!definition.dataType.trim())return 1;
     if(context.requireQuality&&available?.(tag)===false)return 1;
@@ -40,7 +42,7 @@ export function resolveHmiCurrentQuality(
     if(raw!==undefined&&(!Number.isInteger(raw)||raw<0||raw>65535))return 1;
     if(raw!==undefined&&(raw&0xc0)===0)return 1;
     if(value===undefined)return 0;
-    if(!valid(value,definition.dataType))return 1;
+    if(!statusOnly&&!valid(value,definition.dataType))return 1;
     if(raw===undefined)return context.requireQuality?0:4;
     const base=(raw&0xc0)===64?2:4;
     const limits=raw&3;
@@ -51,8 +53,10 @@ export function resolveHmiCurrentQuality(
   let inspected=0;
   for(const source of sources){
     if(++inspected>4096)throw new Error('CurrentQuality supera 4096 sorgenti: riduci i collegamenti del gruppo o leggi i singoli controlli.');
-    const count=(source.locals?.length??0)+(source.bindings?.length??0)+(source.programs?.length??0);
+    const count=(source.locals?.length??0)+(source.bindings?.length??0)+(source.programs?.length??0)+(source.qualities?.length??0)+(source.statusTags?.length??0);
     if(inspected+count>4096)throw new Error('CurrentQuality supera 4096 collegamenti/sorgenti: leggi i singoli controlli.');
+    for(const quality of source.qualities??[]){inspected++;codes.push(Number.isInteger(quality)&&quality>=0&&(quality&~199)===0&&[0,1,2,4].includes(quality&7)?quality:1);}
+    for(const tag of source.statusTags??[]){inspected++;let code=statusCache.get(tag);if(code===undefined){code=typeof tag==='string'?codeFor(tag,true):1;statusCache.set(tag,code);}codes.push(code);}
     if(source.invalid)codes.push(1);
     if(source.unknown)codes.push(0);
     for(const local of source.locals??[]){inspected++;addLocal(local.value,local.dataType);}

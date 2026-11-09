@@ -74,6 +74,12 @@ export function createHmiDataLogClient(options: { enabled?: boolean; catalog: un
       let previous: DataLogSample | undefined; const rows = item.rows.filter(row => { if (row.time < from) previous = row; return row.time >= from && row.time <= to; });
       return includePrevious && previous ? [previous, ...rows] : rows;
     },
+    queryState(logId: string, loggedTagId: string, from: number, to: number, includePrevious = false): "ready" | "loading" | "error" | "unavailable" {
+      if (!active || options.enabled === false) return "unavailable";
+      if (configurationError || !entries.has(logId + ":" + loggedTagId) || accessFault || !can("dataLogs.read")) return "error";
+      const lower = Math.max(-8640000000000000, Math.floor(from / 10000) * 10000), upper = Math.min(8640000000000000, Math.ceil(to / 10000) * 10000);
+      return cache.get(JSON.stringify([logId, loggedTagId, lower, upper, includePrevious]))?.state ?? "loading";
+    },
     renderStatus() {
       for (const root of doc.querySelectorAll<HTMLElement>("[data-hmi-trend-root],[data-hmi-function-trend-root]")) {
         let box = root.querySelector<HTMLElement>("[data-hmi-data-log-status]"); if (!box) { box = doc.createElement("div"); box.dataset.hmiDataLogStatus = ""; box.setAttribute("role", "status"); Object.assign(box.style, { font: "14px/1.5 system-ui", padding: "8px", overflowWrap: "anywhere" }); root.append(box); }

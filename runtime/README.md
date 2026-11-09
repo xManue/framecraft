@@ -2301,5 +2301,19 @@ vecchio campione dopo la disconnessione. Nessun comando o lettura CPU impliciti.
 Integrati Canvas, pipeline, modulo aggiornabile e VM autonoma. Verificati gli stati nel
 pannello compilato con gateway HTTP sintetico, recupero, limiti, gruppi, timer e Node.
 Limiti di elaborazione espliciti, tipi/configurazioni invalidi e fonti non conosciute
-non vengono trasformati in Good. Storico/array/widget di servizio e VisualizeQuality
+non vengono trasformati in Good. Altri widget di servizio e VisualizeQuality
 richiedono ancora adattatori specifici. Contratto e fonti in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).
+
+## Qualita' delle viste Trend/X-Y dal pacchetto 2026.11.09.6
+
+CurrentQuality considera i campioni originali della vista, anche da storico e array X/Y
+gia' supportati dal renderer. Esclude curve nascoste; conserva la vista in pausa.
+Storico vuoto o in caricamento: None; errore noto o dati non validi: Bad; negli altri
+casi qualita' e limiti dei campioni. Lo stato live contribuisce durante l'acquisizione
+online; una vista congelata o storica non certifica la connessione attuale.
+
+La cache espone lo stato della query esatta, incluso il predecessore, senza nuove letture
+dal getter. Permessi, timeout, recupero esplicito e invalidazione al cambio operatore
+restano applicati. Pipeline e Aggiorna componenti del pannello consegnano renderer,
+cache storico, resolver e collegamenti insieme; cataloghi e pagine restano fuori dal bundle.
+Nessun nuovo trasporto di array o comando PLC. Verifica con dati sintetici, non hardware.

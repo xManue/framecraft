@@ -13,6 +13,7 @@ export function createHmiTrendPreview(view, options, renderers) {
   const capture = host => ({ nodes: [...host.childNodes], title: host.getAttribute("title"), description: host.getAttribute("aria-description"), owned: undefined, renderedTitle: undefined, renderedDescription: undefined });
   const restoreHost = (host, before, clearState) => {
     const replaced = before.owned && !host.contains(before.owned);
+    view[Symbol.for('framecraft.control-quality.v1')]?.delete(host);
     const replacement = replaced ? [...host.childNodes] : undefined;
     if (clearState) { renderers.time.clear(host); renderers.xy.clear(host); }
     if (replacement) host.replaceChildren(...replacement);
@@ -69,6 +70,12 @@ export function createHmiTrendPreview(view, options, renderers) {
     queued.set(key, query); schedule(); status(host, "Caricamento dello storico locale… nessun PLC collegato.");
     return found ? windowSamples(found.samples, from, to, includePrevious) : [];
   };
+  const historyState=(source,from,to)=>{
+    if(!active())return 'unavailable';
+    if(!source.logId||!source.loggedTagId)return 'error';
+    const key=JSON.stringify([source.logId,source.loggedTagId]),found=cache.get(key);
+    return failed.has(key)?'error':found&&found.from<=from&&found.to>=to?'ready':'loading';
+  };
   const exportCsv = (host, fileName, content) => {
     if (!active()) return; const requestId = `c${++sequence}`;
     status(host, "Preparazione del CSV dei dati di prova…");
@@ -84,9 +91,9 @@ export function createHmiTrendPreview(view, options, renderers) {
       if (!hosts.has(host)) hosts.set(host, capture(host));
       const before = hosts.get(host), signature = host.getAttribute("data-hmi-trend") ?? host.getAttribute("data-hmi-function-trend");
       if (onlyChanged && before.owned && host.contains(before.owned) && before.signature === signature) continue;
-      const common = { now: packet.now, sample, status: packet.status, sources: packet.sources, exportCsv: (name, content) => exportCsv(host, name, content) };
+      const common = { now: packet.now, sample, status: packet.status, sources: packet.sources, historyState, exportCsv: (name, content) => exportCsv(host, name, content) };
       if (host.hasAttribute("data-hmi-trend")) renderers.time.render(host, packet.values, { ...common, history: (source, from, to) => history(source, from, to, host, true).flatMap(sample => {
-        const value = Number(sample.value); return sample.value.trim() && Number.isFinite(value) ? [{ time: sample.time, value, qualityCode: sample.qualityCode }] : [];
+        const value = sample.value.trim() ? Number(sample.value) : NaN; return [{ time: sample.time, value, qualityCode: sample.qualityCode }];
       }) });
       else renderers.xy.render(host, packet.values, { ...common, history: (source, from, to) => history(source, from, to, host) });
       const root = host.querySelector(':scope > [data-hmi-trend-root], :scope > [data-hmi-function-trend-root]');

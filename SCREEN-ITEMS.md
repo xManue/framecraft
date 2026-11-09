@@ -461,9 +461,9 @@ CurrentQuality, come Font/Margin/Padding, non espone DOM o stato interno dell'ap
 Setter e comandi grafici grezzi sono rifiutati senza eliminare gli altri livelli grafici.
 
 La raccolta copre le sorgenti dichiarate nei metadati Framecraft, non dipendenze arbitrarie
-di codice React esterno. Expression non modellate, curve storiche e controlli di servizio
+di codice React esterno. Expression non modellate e controlli di servizio
 (allarmi/ricette/audit) contribuiscono come sorgenti non conosciute, finche' manca l'adattatore
-specifico. I tipi non scalari/64 bit, la raccolta specifica per array/storico, VisualizeQuality
+specifico. I Variant non scalari/64 bit delle altre famiglie e VisualizeQuality
 e il namespace delle enumerazioni vendor restano da completare nelle rispettive famiglie.
 Nessuna equivalenza generale delle soglie e degli oggetti Siemens viene dichiarata.
 
@@ -477,3 +477,30 @@ contattano PLC/broker esterni e non sono un collaudo industriale o di un install
 Fonti primarie: [IOField.CurrentQuality, HmiQuality Int32 read-only](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/iofield-rt-unified/iofield.currentquality-rt-unified?contentId=ikz1cf909pFcnnDU4oJXRw),
 [Group.CurrentQuality](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/group-rt-unified/group.currentquality-rt-unified?contentId=WeCwIOFM0Gn9hixX3WZEgw),
 [Tag.QualityCode, QQ/LL e limiti](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/tags-rt-unified/tag-rt-unified/tag.qualitycode-rt-unified?contentId=fzp7F8zj8NbtJaJmnoqxdA).
+
+## CurrentQuality dei trend: campioni della vista
+
+Dal pacchetto 2026.11.09.6, Trend e Function Trend X/Y pubblicano la qualita' dei campioni
+effettivi della vista. Curve nascoste e campioni fuori intervallo sono esclusi; il
+predecessore conta nella media temporale a gradini quando sostiene il tratto mostrato.
+Il riepilogo usa i campioni originali prima della riduzione per pixel. Una curva vuota,
+un caricamento o una coppia X/Y mancante contribuiscono None; errori noti dello storico,
+valori numerici malformati e array X/Y incompatibili contribuiscono Bad. Un intervallo
+storico completato ma vuoto resta None. Le qualita' e i limiti X e Y sono aggregati.
+
+La pausa conserva i campioni e il loro stato di acquisizione: la qualita' di una vista
+congelata o storica non descrive il collegamento live corrente. Durante l'acquisizione
+online si aggiunge lo stato corrente dei soli tag delle curve visibili, controllando
+dichiarazione, accessi, qualita' e connessione; gli array gia' validati dal renderer
+non passano dal convertitore scalare di ProcessValue. Non si abilita per questo il
+trasporto OPC UA/MQTT di array o una scrittura di Variant non scalari.
+
+Cambio sorgente, configurazione, pulizia, sostituzione del contenuto e ritorno a Modifica
+invalidano i riepiloghi. I renderer condividono un registro WeakMap del documento:
+allo script arrivano soltanto qualita' numeriche e nomi dei tag, mai radici DOM o campioni
+storici completi. Il getter non avvia query: usa i risultati del renderer e lo stato
+della cache storico, con permessi e timeout esistenti.
+
+Questo e' il contratto di aggregazione Framecraft per le sue viste; la presenza della
+proprieta' nei controlli vendor non prova equivalenza di tutti i criteri interni Siemens.
+Restano VisualizeQuality, altri widget di servizio, Variant e le API specifiche residue.

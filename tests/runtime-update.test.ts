@@ -57,3 +57,10 @@ it('adds the CurrentQuality resolver and VM/UI as one update without replacing m
   saved['src/framecraftHmiCurrentQuality.ts']=null;saved['src/framecraftScriptRuntime.ts']='export const legacy=true;';saved['src/framecraftHmiRuntime.ts']='export const legacy=true;';saved['framecraft.plc.json']='{"variables":[{"name":"Preserved"}]}';
   const plan=await planRuntimeUpdate(files,{generation:1,files:{...saved,[runtimeManifestPath]:null},backups:[]});expect(plan.changes.find(file=>file.path==='src/framecraftHmiCurrentQuality.ts')).toMatchObject({kind:'create'});expect(plan.changes.find(file=>file.path==='src/framecraftScriptRuntime.ts')?.after).toContain('currentQuality');expect(plan.changes.find(file=>file.path==='src/framecraftHmiRuntime.ts')?.after).toContain('resolveHmiCurrentQuality');expect(plan.changes.some(file=>file.path==='framecraft.plc.json')).toBe(false);expect(plan.dependenciesChanged).toBe(false);
 },20000);
+
+it('updates rendered trend quality and cached history status as one coherent bundle',async()=>{
+ const {standardProjectFiles}=await import('../src/core/standardProject');const files=runtimeUpdateBundle(standardProjectFiles({machineName:'Trend quality synthetic',layout:'desktop',sections:['main']})),saved=Object.fromEntries(files.map(file=>[file.path,file.content]));
+ const checks=[['src/framecraftHmiTrend.ts','timePublishQuality'],['src/framecraftHmiFunctionTrend.ts','fxPublishQuality'],['src/framecraftHmiDataLogClient.ts','queryState'],['src/framecraftHmiRuntime.ts','runtimeHistoryState'],['src/framecraftHmiCurrentQuality.ts','statusTags']];
+ for(const [path]of checks)saved[path]='export const legacy=true;';saved['framecraft.logs.json']='preserved';saved['src/pages/Custom.tsx']='preserved';
+ const plan=await planRuntimeUpdate(files,{generation:1,files:{...saved,[runtimeManifestPath]:null},backups:[]});for(const [path,code]of checks)expect(plan.changes.find(file=>file.path===path)?.after).toContain(code);expect(plan.changes.some(file=>['framecraft.logs.json','src/pages/Custom.tsx'].includes(file.path))).toBe(false);expect(plan.dependenciesChanged).toBe(false);
+});

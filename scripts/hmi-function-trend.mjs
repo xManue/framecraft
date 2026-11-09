@@ -1,3 +1,5 @@
+import { hmiControlQualityModuleSource, controlWireQuality, controlSampleCode, controlQuality, publishControlQuality, clearControlQuality } from './hmi-control-quality.mjs';
+const fxWireQuality=controlWireQuality, fxSampleCode=controlSampleCode, fxControlQuality=controlQuality, fxPublishQuality=publishControlQuality, fxClearQuality=clearControlQuality;
 import { appendTrendText, trendArgb, trendAxisLabel, trendAxisRange, trendAxisValue, trendPath, trendCsvCell } from "./hmi-trend.mjs";
 import { hmiTrendRuntimeUiModuleSource, installTrendAreaZoom, renderTrendSourcePicker, trendAreaZoomDragging, trendQualityClass, trendRuntimeZoomRange } from "./hmi-trend-runtime-ui.mjs";
 export const hmiFunctionTrendAttribute = "data-hmi-function-trend";
@@ -144,7 +146,7 @@ export function functionTrendNumericValues(raw) {
         return undefined;
     return values.map(Number);
 }
-export function pairFunctionTrendSamples(xValues, yValues, toleranceMs) {
+export function pairFunctionTrendSamples(xValues, yValues, toleranceMs, invalidPair) {
     const xs = xValues.filter((sample) => Number.isFinite(sample.time)).slice().sort((a, b) => a.time - b.time);
     const ys = yValues.filter((sample) => Number.isFinite(sample.time)).slice().sort((a, b) => a.time - b.time);
     const points = [];
@@ -157,6 +159,7 @@ export function pairFunctionTrendSamples(xValues, yValues, toleranceMs) {
         const x = functionTrendNumericValues(xSample?.value);
         const y = functionTrendNumericValues(ySample.value);
         if (!xSample || Math.abs(xSample.time - ySample.time) > toleranceMs || !x || !y || x.length !== y.length || xSample.value.trim().startsWith("[") !== ySample.value.trim().startsWith("[")) {
+            if(xSample && Math.abs(xSample.time-ySample.time)<=toleranceMs) invalidPair?.();
             unmatched++;
             continue;
         }
@@ -397,7 +400,7 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
                 continue;
             }
             const list = raw.trim().startsWith("[") ? [] : state.onlineValues.get(tag) ?? [];
-            list.push({ time: now, value: raw, qualityCode: options.status?.[tag]?.qualityCode });
+            list.push({ time: now, value: raw, qualityCode: fxSampleCode(options.status?.[tag]) });
             if (list.length > maximum)
                 list.splice(0, list.length - maximum);
             state.onlineValues.set(tag, list);
@@ -411,12 +414,26 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
         return true;
     if (!state.paused) {
         const displayed = new Map();
+        state.qualityStates = new Map();
         for (const trend of config.trends.slice(0, 9)) {
             const range = state.rangeOverride ?? trend.range;
             const [from, to] = fxBounds(range, now);
             const tolerance = Math.max(0, trend.pairToleranceMs);
             const sourceValues = (source, padding = 0) => (source.source === "log" ? options.history?.(source, from - padding, to + padding) ?? [] : state.onlineValues.get(source.tag) ?? []).filter((sample) => sample.time >= from - padding && sample.time <= to + padding);
-            const paired = pairFunctionTrendSamples(sourceValues(trend.x, tolerance), sourceValues(trend.y), tolerance);
+            const xValues=sourceValues(trend.x,tolerance),yValues=sourceValues(trend.y);
+            const codes=[];
+            const paired = pairFunctionTrendSamples(xValues,yValues,tolerance,()=>codes.push(1));
+            for (const [source,samples,padding] of [[trend.x,xValues,tolerance],[trend.y,yValues,0]]) {
+                const status=source.source === 'log' ? options.historyState?.(source,from-padding,to+padding) : undefined;
+                if (source.source === 'log' && (status === 'error' || !source.logId || !source.loggedTagId)) codes.push(1);
+                else if (source.source === 'log' && (!options.history || status === 'loading' || status === 'unavailable')) codes.push(0);
+                if (samples.some(sample => !functionTrendNumericValues(sample.value))) codes.push(1);
+                if (source.source === 'online') {
+                    const raw=values[source.tag];codes.push(!source.tag ? 1 : raw === undefined || !raw.trim() ? 0 : functionTrendNumericValues(raw) ? 4 : 1);
+                }
+            }
+            if (paired.unmatched) codes.push(0);
+            state.qualityStates.set(trend.id,fxControlQuality(codes.length?codes:[4]));
             if (paired.unmatched)
                 messages.push(`${trend.name}: ${paired.unmatched} campioni senza coppia X/Y valida (tolleranza ${trend.pairToleranceMs} ms; array della stessa lunghezza).`);
             const points = range.kind === "points" ? paired.points.slice(0, Math.max(1, Math.min(maximum, range.measuringPoints))) : paired.points.slice(-maximum);
@@ -613,6 +630,14 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
             checkbox.nextElementSibling.textContent = `${trend.name} · ${state.displayed.get(trend.id)?.length ?? 0} punti`;
         }
     }
+    const codes=[],liveTags=[];
+    for (const trend of shown) {
+        const points=state.displayed.get(trend.id) ?? [];
+        codes.push(state.qualityStates?.get(trend.id) ?? 0);
+        codes.push(points.length ? fxControlQuality(points.flatMap(point => [fxWireQuality(point.xQualityCode),fxWireQuality(point.yQualityCode)])) : 0);
+        if (!state.paused && config.online) for (const source of [trend.x,trend.y]) if (source.source === 'online' && source.tag) liveTags.push(source.tag);
+    }
+    fxPublishQuality(host,root,host.dataset.hmiFunctionTrend,codes,liveTags);
     const status = root.querySelector("[data-hmi-fx-status]");
     status.textContent = messages.join(" ");
     status.hidden = !messages.length;
@@ -631,11 +656,12 @@ export function hmiFunctionTrendJsx() {
 }
 export function hmiFunctionTrendRuntimeModuleSource() {
     const helpers = [normalizeFxSource, normalizeFxAxis, normalizeFxRange, defaultHmiFunctionTrendConfig, parseHmiFunctionTrendConfig, functionTrendNumericValues, pairFunctionTrendSamples, fxSourceKey, fxBounds, fxVisibleRange, fxDownload, hostUrlApi, fxInstallListeners, fxToolbar, fxLocalDate, trendArgb, trendAxisValue, trendAxisLabel, trendAxisRange, trendPath, appendTrendText];
-    const source = `// @ts-nocheck\nconst hmiFunctionTrendAttribute = ${JSON.stringify(hmiFunctionTrendAttribute)};\nconst functionTrendStates = new WeakMap();\nconst fxString = ${String(fxString)};\nconst fxNumber = ${String(fxNumber)};\nconst fxOptional = ${String(fxOptional)};\nconst fxBool = ${String(fxBool)};\nconst fxObject = ${String(fxObject)};\n${hmiTrendRuntimeUiModuleSource()}\n${helpers.map(String).join("\n")}\nconst fxText = appendTrendText;\nconst fxArgb = trendArgb;\nconst fxAxisLabel = trendAxisLabel;\nconst fxAxisRange = trendAxisRange;\nconst fxAxisValue = trendAxisValue;\nconst fxPath = trendPath;\nconst fxSourcePicker = renderTrendSourcePicker;\nconst fxAreaZoom = installTrendAreaZoom;\nconst fxZoomDragging = trendAreaZoomDragging;\nconst fxZoomRange = trendRuntimeZoomRange;\nconst fxQualityClass = trendQualityClass;\nexport ${String(renderHmiFunctionTrendControl)}\nexport ${String(renderHmiFunctionTrendControls)}\n`;
+    const source = `// @ts-nocheck\nconst hmiFunctionTrendAttribute = ${JSON.stringify(hmiFunctionTrendAttribute)};\nconst functionTrendStates = new WeakMap();\nconst fxString = ${String(fxString)};\nconst fxNumber = ${String(fxNumber)};\nconst fxOptional = ${String(fxOptional)};\nconst fxBool = ${String(fxBool)};\nconst fxObject = ${String(fxObject)};\n${hmiTrendRuntimeUiModuleSource()}\n${hmiControlQualityModuleSource()}\nconst fxWireQuality=controlWireQuality, fxSampleCode=controlSampleCode, fxControlQuality=controlQuality, fxPublishQuality=publishControlQuality, fxClearQuality=clearControlQuality;\n${helpers.map(String).join("\n")}\nconst fxText = appendTrendText;\nconst fxArgb = trendArgb;\nconst fxAxisLabel = trendAxisLabel;\nconst fxAxisRange = trendAxisRange;\nconst fxAxisValue = trendAxisValue;\nconst fxPath = trendPath;\nconst fxSourcePicker = renderTrendSourcePicker;\nconst fxAreaZoom = installTrendAreaZoom;\nconst fxZoomDragging = trendAreaZoomDragging;\nconst fxZoomRange = trendRuntimeZoomRange;\nconst fxQualityClass = trendQualityClass;\nexport ${String(renderHmiFunctionTrendControl)}\nexport ${String(renderHmiFunctionTrendControls)}\n`;
     return source.replace("const functionTrendStates = new WeakMap();", "const functionTrendStates = new WeakMap();\nconst fxListenerHosts = new WeakSet();") + `\n${String(trendCsvCell)}\nconst fxCsvCell = trendCsvCell;\nexport ${String(clearHmiFunctionTrendHistory)}\n`;
 }
 
 export function clearHmiFunctionTrendHistory(host) {
+    fxClearQuality(host);
     host.removeAttribute("data-hmi-active-data-logs");
     functionTrendStates.delete(host);
     host.querySelector(":scope > [data-hmi-function-trend-root]")?.remove();
