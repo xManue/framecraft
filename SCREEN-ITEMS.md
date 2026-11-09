@@ -235,3 +235,59 @@ distinte. Dati sintetici e nessuna connessione PLC.
 Fonte primaria: [Siemens, Button.RotationAngle Int16](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.rotationangle-rt-unified?contentId=yuN2OD27G0qFgjBXtDdYgw).
 RotationCenterPlacement/X/Y restano da implementare nelle API script; questo setter conserva
 il pivot CSS gia' presente. Restano anche Padding e le altre voci aperte dell'object model.
+
+## Centro di rotazione dal pacchetto 2026.11.09.2
+
+RotationCenterPlacement usa i valori Unified AbsoluteFromCenter (0), NormedFromCenter (1)
+e AbsoluteToContainer (2). RotationCenterX e RotationCenterY accettano Float finiti, anche
+frazionari, negativi o esterni al riquadro; il limite numerico e' quello del Float32.
+
+```javascript
+const motor = Screen.Items("M2400");
+motor.RotationCenterPlacement = 1;
+motor.RotationCenterX = 1;
+motor.RotationCenterY = -1;
+motor.RotationAngle = 90;
+```
+
+AbsoluteFromCenter somma X/Y al centro del border-box in pixel CSS. NormedFromCenter usa
+0 per il centro e -1/+1 per i bordi opposti; valori oltre questo intervallo portano il
+punto fuori dall'oggetto. Queste due modalita' seguono le dimensioni del riquadro tramite
+percentuali CSS, anche dopo un ridimensionamento senza un nuovo comando script.
+
+AbsoluteToContainer usa le coordinate del border-box della schermata HMI attiva. Nei popup
+il riferimento e' il riquadro della finestra Runtime; sullo stesso oggetto schermata X/Y
+sono coordinate locali. La conversione comprende gruppi 2D, traslazioni, scale, zoom CSS e
+scorrimento. GetBoundingBoxInScreenCoordinates restituisce invece coordinate del viewport
+HMI: il modello mantiene distinta la misura visiva dal riferimento scelto per il pivot.
+
+Per i centri assoluti il livello grafico aggiorna il punto quando cambia il layout, anche
+senza un evento script. La lettura degli oggetti forza l'aggiornamento prima della misura.
+La verifica nel browser confronta marcatori DOM del pivot e del riferimento nella schermata.
+L'aggiornamento si ferma se l'oggetto viene rimosso, si esce dalla simulazione o viene chiusa
+la pagina. Non parte un ciclo di misurazione finche' non esiste un centro assoluto attivo.
+
+La prima lettura di un pivot CSS esistente lo rappresenta con la modalita' 0 e con gli
+scostamenti dal centro del border-box. Cambiare Placement mantiene i numeri X/Y e ne cambia
+il riferimento. Ogni setter valida e pubblica la terna completa per mantenere coerenti le
+letture tra editor e frame. Il pivot CSS precedente, il riferimento del box, le priorita' e
+le modifiche esterne successive vengono conservati per sospensione e ripristino.
+
+Gli oggetti devono avere un riquadro HTML trasformabile. Per nodi SVG diretti e layout senza
+un box adatto usare il contenitore grafico HTML. La modalita' assoluta richiede una geometria
+misurabile e contenitori 2D invertibili; scale nulle, trasformazioni 3D, percorsi di movimento
+o assenza del riquadro producono un errore con il nome dell'oggetto. Gli errori del layout
+vengono segnalati una volta finche' la causa resta la stessa; la misura non restituisce un
+rettangolo inventato e riprende dopo la correzione della causa. Il centro relativo resta
+utilizzabile senza convertire coordinate della schermata.
+
+Il pacchetto comprende il passaggio degli errori a diagnostica Runtime/Canvas con pagina,
+origine e finestra verificate. Non usa trasporti PLC, non introduce dipendenze e conserva
+la IR 9 con lettori 1-9. Moduli e timer possono usare i riferimenti finche' il contesto e'
+attivo. Per gli HMI installati rimane previsto l'aggiornamento assistito esplicito.
+
+Fonti primarie: [RotationCenterPlacement](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.rotationcenterplacement-rt-unified?contentId=2mrqlucIOekFnifVAWnE0Q),
+[RotationCenterX Float](https://docs.tia.siemens.cloud/r/zh-cn/v21/wincc-unified-javascript-%E5%AF%B9%E8%B1%A1%E6%A8%A1%E5%9E%8B-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/button-rt-unified/button.rotationcenterx-rt-unified?contentId=TzIaNL8eVjjsn4MS0hHpjQ) e
+[RotationCenterY Float](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/graphicview-rt-unified/graphicview.rotationcentery-rt-unified?contentId=xDAUz0zbTTkXgXe_fymD4w).
+Le coordinate CSS, la rappresentazione iniziale e l'aggiornamento reattivo sono il contratto
+Framecraft; non si dichiara equivalenza completa di ogni oggetto e dispositivo Siemens.

@@ -245,7 +245,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
   let nextInstanceId = 0;
   const elementInstances = new WeakMap();
   const instanceElements = new Map();
-  const propertyFlashingSurface = createHmiPropertyFlashingDomSurface(document, (element) => instanceId(element), () => mode === "navigate");
+  const propertyFlashingSurface = createHmiPropertyFlashingDomSurface(document, (element) => instanceId(element), () => mode === "navigate", message => window.parent.postMessage({type:"framecraft:screen-property-error",pageId:alarmPreview.pageId,message:message.slice(0,1000)},editorShortcutOrigin||"*"));
   // La simulazione degli stati PLC: per ogni elemento toccato si tiene com'era prima, cosi' quando
   // si spegne la pagina torna quella che il progetto disegna davvero.
   const simulated = new Map();

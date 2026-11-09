@@ -2242,3 +2242,13 @@ Pipeline standard, anteprima eventi/timer, helper Node e Runtime usano la stessa
 Nessuna dipendenza o istruzione IR nuova; per pannelli esistenti usare l'aggiornamento
 assistito. Contratto e verifiche in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).
 RotationCenterPlacement/X/Y e le altre parti dell'object model restano aperti.
+
+## Centro di rotazione dal pacchetto 2026.11.09.2
+
+Disponibili RotationCenterPlacement/X/Y, terne coerenti, Float finiti e tre modalita' di
+riferimento. La conversione del centro assoluto segue gruppi 2D, zoom, scorrimento e layout,
+con recupero degli errori e ripristino degli stili. Non aggiunge dipendenze o nodi IR.
+
+Integrati i messaggi di errore e la generazione standard. Verificati il pannello compilato,
+helper Node, ponte Vite dalle risorse del pacchetto e Canvas React. Per gli HMI installati
+usare l'aggiornamento assistito esplicito. Contratto e fonti in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).

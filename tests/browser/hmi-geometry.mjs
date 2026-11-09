@@ -134,6 +134,34 @@ try {
   for(const [actual,expected]of [[ra*ra+rb*rb,a*a+b*b],[rc*rc+rd*rd,c*c+d*d],[ra*rc+rb*rd,a*c+b*d],[ra*rd-rb*rc,a*d-b*c],[re,e],[rf,f]])assert.ok(Math.abs(actual-expected)<.001);
   await run('const target=Screen.Items("Target");HMIRuntime.Timers.SetTimeout(()=>{target.RotationAngle=80;HMIRuntime.Trace("ANGLE_TIMER="+JSON.stringify(target.RotationAngle));},10);','ANGLE_TIMER');
   assert.ok(Math.abs(await target.evaluate(element=>{const m=new DOMMatrix(getComputedStyle(element).transform);return Math.atan2(m.b,m.a)*180/Math.PI;})-80)<.001);
+  const readOrigin=()=>target.evaluate(element=>getComputedStyle(element).transformOrigin.split(' ').map(Number.parseFloat));
+  assert.deepEqual(await run('const t=Screen.Items("Target");t.RotationCenterPlacement=0;t.RotationCenterX=12.5;t.RotationCenterY=-8;HMIRuntime.Trace("PIVOT_OFFSET="+JSON.stringify([t.RotationCenterPlacement,t.RotationCenterX,t.RotationCenterY]));','PIVOT_OFFSET'),[0,12.5,-8]);
+  let originPoint=await readOrigin();assert.ok(Math.abs(originPoint[0]-72.5)<.01);assert.ok(Math.abs(originPoint[1]-14.5)<.01);
+  await run('const t=Screen.Items("Target");t.Width=200;t.Height=80;HMIRuntime.Trace("PIVOT_RESIZE="+JSON.stringify(t.Width));','PIVOT_RESIZE');
+  originPoint=await readOrigin();assert.ok(Math.abs(originPoint[0]-112.5)<.01);assert.ok(Math.abs(originPoint[1]-32)<.01);
+  await run('const t=Screen.Items("Target");t.RotationCenterPlacement=1;t.RotationCenterX=1;t.RotationCenterY=-1;HMIRuntime.Trace("PIVOT_NORM="+JSON.stringify(t.RotationCenterPlacement));','PIVOT_NORM');
+  originPoint=await readOrigin();assert.ok(Math.abs(originPoint[0]-200)<.01);assert.ok(Math.abs(originPoint[1])<.01);
+  await run('const t=Screen.Items("Target");t.Width=180;t.Height=60;HMIRuntime.Trace("PIVOT_NORM_RESIZE="+JSON.stringify(t.Width));','PIVOT_NORM_RESIZE');
+  originPoint=await readOrigin();assert.ok(Math.abs(originPoint[0]-180)<.01);assert.ok(Math.abs(originPoint[1])<.01);
+  await run('const t=Screen.Items("Target");HMIRuntime.Timers.SetTimeout(()=>{t.RotationCenterPlacement=2;t.RotationCenterX=120;t.RotationCenterY=100;HMIRuntime.Trace("PIVOT_SCREEN="+JSON.stringify(t.GetBoundingBoxInScreenCoordinates()));},10);','PIVOT_SCREEN');
+  const verifyPivot=async()=>{
+    const points=await target.evaluate(element=>{
+      const css=getComputedStyle(element),origin=css.transformOrigin.split(' ').map(parseFloat),screen=element.closest('[data-hmi-screen]');
+      let marker=element.querySelector('[data-qa-pivot]');if(!marker){marker=document.createElement('span');marker.dataset.qaPivot='';element.append(marker);}
+      Object.assign(marker.style,{display:'block',position:'absolute',left:(origin[0]-parseFloat(css.borderLeftWidth))+'px',top:(origin[1]-parseFloat(css.borderTopWidth))+'px',width:'0px',height:'0px',margin:'0',padding:'0',border:'0',pointerEvents:'none'});
+      let reference=screen.querySelector('[data-qa-screen-point]');if(!reference){reference=document.createElement('span');reference.dataset.qaScreenPoint='';screen.append(reference);}
+      const rootCss=getComputedStyle(screen);Object.assign(reference.style,{display:'block',position:'absolute',left:(120-parseFloat(rootCss.borderLeftWidth||'0'))+'px',top:(100-parseFloat(rootCss.borderTopWidth||'0'))+'px',width:'0px',height:'0px',margin:'0',padding:'0',border:'0',pointerEvents:'none'});
+      const a=marker.getBoundingClientRect(),b=reference.getBoundingClientRect();return[a.left,a.top,b.left,b.top];
+    });assert.ok(Math.abs(points[0]-points[2])<.05,'absolute pivot X: '+points);assert.ok(Math.abs(points[1]-points[3])<.05,'absolute pivot Y: '+points);
+  };
+  await verifyPivot();
+  await run('const t=Screen.Items("Target");t.RotationAngle=35;Screen.Items("Group").RotationAngle=-50;Screen.Items("Group").Left=320;HMIRuntime.Trace("PIVOT_GROUP="+JSON.stringify(t.GetBoundingBoxInScreenCoordinates()));','PIVOT_GROUP');await verifyPivot();
+  await page.locator('#group').evaluate(element=>{element.style.zoom='1.2';element.style.left='450px';});await page.waitForTimeout(60);await verifyPivot();
+  await page.evaluate(()=>window.scrollTo(0,240));await page.waitForTimeout(40);await verifyPivot();
+  await run('const t=Screen.Items("Target");t.Width=160;HMIRuntime.Trace("PIVOT_RESIZE_ABS="+JSON.stringify(t.GetBoundingBoxInScreenCoordinates()));','PIVOT_RESIZE_ABS');await verifyPivot();
+  await page.locator('#group').evaluate(element=>element.style.scale='0');await page.waitForFunction(()=>window.qa.errors.some(error=>error.includes('non invertibile')));
+  const pivotFaults=await page.evaluate(()=>window.qa.errors);assert.equal(pivotFaults.length,1);assert.ok(pivotFaults[0].includes('Centro di rotazione'));
+  await page.locator('#group').evaluate(element=>element.style.scale='1');await page.waitForTimeout(60);await verifyPivot();await page.evaluate(()=>window.qa.errors=[]);
   for (let version = 1; version <= 9; version++) {
     const source = 'HMIRuntime.Trace("LEGACY' + version + '="+JSON.stringify(Screen.Items("Target").Name));';
     const compiled = program(source);
@@ -165,7 +193,7 @@ try {
       screenId: 's',
       name: 'A',
       flashing: [],
-      properties: {RotationAngle:0},
+      properties: {RotationAngle:0,RotationCenterPlacement:0,RotationCenterX:0,RotationCenterY:0},
       boundingBox: {
         Left: -5.5,
         Top: 4,
@@ -181,6 +209,7 @@ try {
   assert.equal(node.error, undefined);
   assert.equal(JSON.parse(node.returned).Width, 10.25);
   const nodeAngle=runtime.executeHmiScript(program('item.RotationAngle=-32768;return item.RotationAngle;'),{},{screenItems:controller.context('a')});assert.equal(nodeAngle.error,undefined);assert.equal(nodeAngle.returned,-32768);
+  const nodePivot=runtime.executeHmiScript(program('item.RotationCenterPlacement=1;item.RotationCenterX=2.5;return item.RotationCenterX;'),{},{screenItems:controller.context('a')});assert.equal(nodePivot.error,undefined);assert.equal(nodePivot.returned,2.5);
   await page.evaluate(()=>window.qa.dispose());
   assert.deepEqual(await target.evaluate(element=>({rotate:element.style.rotate,scale:element.style.scale,transform:element.style.transform,pivot:element.style.transformOrigin})),originalRotation);
   // Exercise the actual Vite preview endpoint plus the parent-side client and VM.
@@ -218,7 +247,7 @@ try {
   host.on('pageerror', e => errors.push(e.message));
   await host.goto(previewOrigin + '/host.html');
   await host.waitForFunction(() => window.previewQA?.ready);
-  const result = await host.evaluate(program => window.previewQA.run(program), program('item.Left=190;item.RotationAngle=65;return JSON.stringify(item.GetBoundingBoxInScreenCoordinates());'));
+  const result = await host.evaluate(program => window.previewQA.run(program), program('item.Left=190;item.RotationAngle=65;item.RotationCenterPlacement=2;item.RotationCenterX=50;item.RotationCenterY=30;return JSON.stringify(item.GetBoundingBoxInScreenCoordinates());'));
   assert.equal(result.error, undefined);
   const expected = await host.frameLocator('iframe').locator('[data-hmi-name="A"]').evaluate(element => {
     const b = element.getBoundingClientRect();
@@ -242,6 +271,7 @@ try {
     standardPipeline: true,
     compiledPanel: true,
     rotationAndGroups: true,
+    pivotModes:true,pivotResize:true,pivotScaledRotatedGroups:true,pivotScroll:true,pivotZoom:true,pivotFaultRecovery:true,
     rotationScript:true,rotationTimer:true,rotationAffinePreserved:true,rotationRestored:true,
     currentGeometryAfterWrite: true,
     viewportScroll: true,

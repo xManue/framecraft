@@ -719,7 +719,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   const screenItemIds = new WeakMap<Element, string>();
   let nextScreenItemId = 0;
   const screenItemId = (element: Element) => { if (!screenItemIds.has(element)) screenItemIds.set(element, "runtime-item-" + ++nextScreenItemId); return screenItemIds.get(element)!; };
-  const propertyFlashingSurface = createHmiPropertyFlashingDomSurface(document, screenItemId);
+  const propertyFlashingSurface = createHmiPropertyFlashingDomSurface(document, screenItemId, undefined, (message: string) => (options.error ?? console.error)("[HMI oggetti] " + message));
   const propertyFlashing = createHmiPropertyFlashing({ items: () => propertyFlashingSurface.items(), apply: (commands: Parameters<typeof propertyFlashingSurface.apply>[0]) => propertyFlashingSurface.apply(commands), applyProperties: (commands: Parameters<typeof propertyFlashingSurface.applyProperties>[0]) => propertyFlashingSurface.applyProperties(commands), report: (message: string) => (options.error ?? console.error)("[HMI oggetti] " + message) });
   const renderRuntimeFaceplates = () => { propertyFlashingSurface.suspend(); try { renderFaceplateVisuals(); } finally { propertyFlashingSurface.resume(); } };
   const flashingStyle = document.createElement("style");

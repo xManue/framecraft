@@ -161,3 +161,26 @@ it("misura la posizione aggiornata dopo un setter attraverso Canvas e il ponte s
   expect(Math.atan2(rotation[1],rotation[0])*180/Math.PI).toBeCloseTo(90,6);
   expect(network).not.toHaveBeenCalled();
 });
+
+it("riporta un errore del centro assoluto dal vero ponte e scarta notifiche con pagina o origine errata", async () => {
+  const element=owner(),body=frame.document.body;
+  Object.assign(body.style,{width:"800px",height:"600px",border:"0",padding:"0",boxSizing:"border-box"});
+  vi.spyOn(body,"getClientRects").mockReturnValue([new frame.DOMRect()] as unknown as DOMRectList);
+  vi.spyOn(body,"getBoundingClientRect").mockReturnValue(new frame.DOMRect(0,0,800,600));
+  Object.assign(element.style,{width:"240px",height:"120px",border:"0",padding:"0",boxSizing:"border-box",transformOrigin:"50% 50%"});
+  vi.spyOn(element,"getClientRects").mockReturnValue([new frame.DOMRect()] as unknown as DOMRectList);
+  vi.spyOn(element,"getBoundingClientRect").mockReturnValue(new frame.DOMRect(100,50,240,120));
+  const group=frame.document.createElement("div");element.before(group);group.append(element);
+  element.setAttribute("data-hmi-events",JSON.stringify([{event:"Tapped",script:'item.RotationCenterPlacement=2;'}]));
+  await usePanel();await act(async()=>element.click());await flush(64);
+  expect(useEditorStore.getState().consoleEntries.some(entry=>entry.level==="error")).toBe(false);
+  group.style.scale="0";await flush(64);
+  expect(useEditorStore.getState().consoleEntries.filter(entry=>entry.message.includes("non invertibile"))).toHaveLength(1);
+  const count=useEditorStore.getState().consoleEntries.length;
+  await act(async()=>{
+    deliver({type:"framecraft:screen-property-error",pageId:"old",message:"forged old page"});
+    deliver({type:"framecraft:screen-property-error",pageId:latest().pageId,message:"forged origin"},"http://untrusted.example");
+  });await flush(16);
+  expect(useEditorStore.getState().consoleEntries).toHaveLength(count);
+  expect(network).not.toHaveBeenCalled();
+});

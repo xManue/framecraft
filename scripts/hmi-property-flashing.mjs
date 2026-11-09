@@ -6,6 +6,7 @@ export function createHmiPropertyFlashing(surface) {
   const reported = new Set();
   const properties = ["BackColor", "ForeColor", "BorderColor"];
   const fontProperties = ["Name", "Size", "Weight", "Italic", "Underline", "StrikeOut"];
+  const pivotProperties=["RotationCenterPlacement","RotationCenterX","RotationCenterY"];
   const marginSides=["Left","Top","Right","Bottom"];
   const validateMargin=(property,value)=>{if(typeof value!=="number"||!Number.isInteger(value)||value < -2147483648||value>2147483647)throw new Error(property+" richiede un numero intero tra -2147483648 e 2147483647 (Int32).");};
   const propertyKey = (reference, property) => {
@@ -114,7 +115,9 @@ export function createHmiPropertyFlashing(surface) {
           const key = propertyKey(reference, property);
           if (key === "Name") throw new Error("Name e' in sola lettura nel Runtime: modifica il nome nell'Inspector.");
           if (!Object.prototype.hasOwnProperty.call(item.properties ?? {}, key)) throw new Error(key === "RotationAngle" ? "L'oggetto HMI non espone RotationAngle: usa un contenitore con una trasformazione CSS 2D piana risolvibile." : "L'oggetto HMI non espone la proprieta' " + key + ".");
-          if(key==="RotationAngle"){if(typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767)throw new Error("RotationAngle richiede un numero intero tra -32768 e 32767 (Int16).");}
+          if(key==="RotationCenterPlacement"){if(![0,1,2].includes(value))throw new Error("RotationCenterPlacement richiede AbsoluteFromCenter (0), NormedFromCenter (1) o AbsoluteToContainer (2).");}
+          else if(["RotationCenterX","RotationCenterY"].includes(key)){if(typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value)))throw new Error(key+" richiede un Float finito, anche negativo.");}
+          else if(key==="RotationAngle"){if(typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767)throw new Error("RotationAngle richiede un numero intero tra -32768 e 32767 (Int16).");}
           else if(key.startsWith("Margin."))validateMargin(key,value);
           else if (["Visible", "Enabled", "Font.Italic", "Font.Underline"].includes(key)) {
             if (typeof value !== "boolean") throw new Error(key + " richiede un Boolean.");
@@ -134,13 +137,17 @@ export function createHmiPropertyFlashing(surface) {
           } else throw new Error("Proprieta' grafica non supportata: " + key);
           if (!surface.applyProperties) throw new Error("Il contesto corrente non permette modifiche grafiche.");
           if (propertyState.get(item.itemId)?.get(key) === value) return;
-          const previous=propertyState.get(item.itemId),next=new Map(previous);next.set(key,value);propertyState.set(item.itemId,next);
+          const previous=propertyState.get(item.itemId),next=new Map(previous);
+          if(pivotProperties.includes(key))for(const name of pivotProperties){const part=name===key?value:previous?.has(name)?previous.get(name):item.properties[name];if(name==="RotationCenterPlacement"?![0,1,2].includes(part):typeof part!=="number"||!Number.isFinite(part)||!Number.isFinite(Math.fround(part)))throw new Error("Il centro di rotazione non e' risolvibile: usa un contenitore grafico 2D con dimensioni e origine esplicite.");next.set(name,part);}
+          else next.set(key,value);
+          propertyState.set(item.itemId,next);
           try{surface.applyProperties(propertyCommands());}catch(error){if(previous)propertyState.set(item.itemId,previous);else propertyState.delete(item.itemId);try{surface.applyProperties(propertyCommands());}catch{report("Il layout non e' stato ripristinato completamente: ricarica la pagina.");}throw error;}
         },
         getBoundingBox(reference){
           const item=itemFor(reference);
           if(reference.screenPropertyPath)throw new Error("La misura richiede un oggetto grafico, non Font o Margin.");
           if(!Object.hasOwn(item,"boundingBox"))throw new Error("La misura richiede i componenti Runtime aggiornati del pannello.");
+          if(item.geometryError)throw new Error(item.geometryError);
           return item.boundingBox;
         },
         ...(surface.measureBoundingBox?{async getBoundingBoxAsync(reference,signal){
@@ -191,7 +198,7 @@ export function createHmiPropertyFlashing(surface) {
   };
 }
 
-export function createHmiPropertyFlashingDomSurface(root, identify, interactionEnabled = () => true) {
+export function createHmiPropertyFlashingDomSurface(root, identify, interactionEnabled = () => true, onError = message => root.defaultView?.console.warn("[HMI oggetti] "+message)) {
   let sequence = 0;
   const ids = new WeakMap();
   const identifyItem = identify ?? ((element) => { if (!ids.has(element)) ids.set(element, "hmi-item-" + ++sequence); return ids.get(element); });
@@ -207,6 +214,9 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
   const before = new Map();
   const propertyOverrides = new Map();
   const propertyBefore = new Map();
+  const pivotProperties=["RotationCenterPlacement","RotationCenterX","RotationCenterY"];
+  let pivotFrame, refreshingPivots=false;
+  const pivotErrors=new Map(),absolutePivotIds=new Set();
   const createdText = new WeakSet();
   const baseColors = new WeakMap();
   let suspendDepth = 0;
@@ -284,6 +294,95 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       degrees
     };
   };
+  const lengthPixels=value=>/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?px$/i.test(value||"")?Number.parseFloat(value):value==="0"?0:undefined;
+  const boxGeometry=(element,computed=root.defaultView?.getComputedStyle(element)??element.style)=>{
+    if(!element||element.namespaceURI!=="http://www.w3.org/1999/xhtml"||!planarRotation(element,computed))return;
+    if(["contents","table-column","table-column-group"].includes(computed.display)||computed.display==="inline"&&!/^(img|canvas|video|audio|iframe|input|textarea|select|button|object|embed)$/.test(element.localName))return;
+    const px=name=>lengthPixels(computed.getPropertyValue(name))??0;
+    const horizontal=px("padding-left")+px("padding-right")+px("border-left-width")+px("border-right-width"),vertical=px("padding-top")+px("padding-bottom")+px("border-top-width")+px("border-bottom-width");
+    const width=(lengthPixels(computed.width)??(Number.isFinite(element.offsetWidth)?element.offsetWidth:0))+(computed.boxSizing==="border-box"||lengthPixels(computed.width)===undefined?0:horizontal);
+    const height=(lengthPixels(computed.height)??(Number.isFinite(element.offsetHeight)?element.offsetHeight:0))+(computed.boxSizing==="border-box"||lengthPixels(computed.height)===undefined?0:vertical);
+    if(![width,height].every(value=>Number.isFinite(value)&&value>=0))return;
+    const contentBox=computed.transformBox==="content-box",referenceWidth=contentBox?Math.max(0,width-horizontal):width,referenceHeight=contentBox?Math.max(0,height-vertical):height;
+    const left=contentBox?px("padding-left")+px("border-left-width"):0,top=contentBox?px("padding-top")+px("border-top-width"):0;
+    const coordinate=(text,size)=>{
+      if(text==="center")return size/2;if(text==="left"||text==="top")return 0;if(text==="right"||text==="bottom")return size;
+      if(/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?%$/i.test(text))return Number.parseFloat(text)*size/100;
+      const calc=/^calc\(\s*([-+]?\d+(?:\.\d+)?)%\s*([+-])\s*([-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?)px\s*\)$/i.exec(text);
+      if(calc)return Number(calc[1])*size/100+(calc[2]==="-"?-1:1)*Number(calc[3]);
+      return lengthPixels(text);
+    };
+    const parts=(computed.transformOrigin||"50% 50%").match(/calc\([^)]*\)|\S+/g)||[];
+    const x=coordinate(parts[0]??"50%",referenceWidth),y=coordinate(parts[1]??"50%",referenceHeight),z=lengthPixels(parts[2]??"0px");
+    if(![x,y,z].every(Number.isFinite))return;
+    return {width,height,origin:{x:x+left,y:y+top,z}};
+  };
+  const pivotBase=(element,computed)=>{
+    const box=boxGeometry(element,computed);if(!box)return;
+    const x=box.origin.x-box.width/2,y=box.origin.y-box.height/2;
+    if(![x,y].every(value=>Number.isFinite(value)&&Number.isFinite(Math.fround(value))))return;
+    return {RotationCenterPlacement:0,RotationCenterX:x,RotationCenterY:y};
+  };
+  const multiplyLinear=(a,b)=>[a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3]];
+  const inverseVector=(matrix,x,y)=>{
+    const [a,b,c,d]=matrix,det=a*d-b*c;
+    if(!Number.isFinite(det)||det===0)throw new Error("Il centro assoluto non e' convertibile: un contenitore ha scala nulla o una trasformazione non invertibile.");
+    const result={x:(d*x-c*y)/det,y:(a*y-b*x)/det};
+    if(![result.x,result.y].every(Number.isFinite))throw new Error("Le coordinate del centro assoluto non sono finite.");return result;
+  };
+  const zoomValue=computed=>{
+    const raw=(computed.zoom||"1").trim(),value=raw==="normal"?1:raw.endsWith("%")?Number.parseFloat(raw)/100:Number(raw);
+    if(!Number.isFinite(value)||value<=0)throw new Error("Lo zoom CSS non permette di convertire il centro assoluto.");return value;
+  };
+  const parentLinear=element=>{
+    const own=root.defaultView.getComputedStyle(element),ownZoom=zoomValue(own);let matrix=[ownZoom,0,0,ownZoom];
+    for(let parent=element.parentElement;parent;parent=parent.parentElement){
+      const computed=root.defaultView.getComputedStyle(parent),rotation=planarRotation(parent,computed);
+      if(parent.namespaceURI!=="http://www.w3.org/1999/xhtml"||!rotation||(computed.offsetPath&&computed.offsetPath!=="none"))throw new Error("Il centro assoluto richiede contenitori HTML con trasformazioni 2D, senza percorsi di movimento.");
+      const zoom=zoomValue(computed),linear=rotation.matrix.slice(0,4).map(v=>v*zoom);matrix=multiplyLinear(linear,matrix);
+    }
+    if(!matrix.every(Number.isFinite))throw new Error("La trasformazione dei contenitori non e' finita.");return matrix;
+  };
+  const worldFrame=element=>{
+    const computed=root.defaultView.getComputedStyle(element),box=boxGeometry(element,computed),rotation=planarRotation(element,computed);
+    if(!box||!rotation||!element.isConnected||!element.getClientRects().length||(computed.offsetPath&&computed.offsetPath!=="none"))throw new Error("Il centro assoluto richiede un riquadro visibile nel layout della schermata.");
+    const parent=parentLinear(element),linear=multiplyLinear(parent,rotation.matrix),[a,b,c,d]=linear,rect=element.getBoundingClientRect();
+    const tx=rect.left-Math.min(0,a*box.width,c*box.height,a*box.width+c*box.height),ty=rect.top-Math.min(0,b*box.width,d*box.height,b*box.width+d*box.height);
+    if(![tx,ty].every(Number.isFinite))throw new Error("La posizione del centro assoluto non e' risolvibile.");
+    return {box,rotation,parent,linear,tx,ty};
+  };
+  const absolutePivot=(element,x,y)=>{
+    const screen=element.closest("[data-hmi-screen], [data-hmi-type='HmiScreen'], [data-framecraft-runtime-popup-id]")??root.body??root.documentElement;
+    if(screen===element)return {x,y};
+    const frame=worldFrame(element),origin=worldFrame(screen),[a,b,c,d]=origin.linear;
+    const point=inverseVector(frame.parent,a*x+c*y+origin.tx-frame.tx,b*x+d*y+origin.ty-frame.ty),o=frame.box.origin,m=frame.rotation.matrix;
+    const result={x:point.x+o.x-m[0]*o.x-m[2]*o.y,y:point.y+o.y-m[1]*o.x-m[3]*o.y};
+    if(![result.x,result.y].every(Number.isFinite))throw new Error("Il centro di rotazione assoluto non e' finito.");return result;
+  };
+  const cancelPivotFrame=()=>{if(pivotFrame!==undefined){root.defaultView?.cancelAnimationFrame(pivotFrame);pivotFrame=undefined;}};
+  const refreshPivots=()=>{
+    if(refreshingPivots||suspendDepth)return;refreshingPivots=true;
+    try{for(const id of absolutePivotIds){
+      const values=propertyOverrides.get(id);if(!values||values.get("RotationCenterPlacement")!==2)continue;
+      const element=targets.get(id);if(!element?.isConnected){absolutePivotIds.delete(id);pivotErrors.delete(id);if(element)restoreProperties(element);continue;}
+      try{
+        const boxEntry=propertyBefore.get(element)?.find(entry=>entry.kind==="style"&&entry.name==="transform-box");
+        if(boxEntry){const value=element.style.getPropertyValue("transform-box"),priority=element.style.getPropertyPriority("transform-box");if(value!==boxEntry.applied||priority!==boxEntry.appliedPriority){boxEntry.value=value;boxEntry.priority=priority;element.style.setProperty("transform-box","border-box","important");boxEntry.applied=element.style.getPropertyValue("transform-box");boxEntry.appliedPriority=element.style.getPropertyPriority("transform-box");}}
+        const point=absolutePivot(element,values.get("RotationCenterX"),values.get("RotationCenterY")),entry=propertyBefore.get(element)?.find(entry=>entry.kind==="style"&&entry.name==="transform-origin");
+        if(!entry)continue;
+        const current=element.style.getPropertyValue("transform-origin"),priority=element.style.getPropertyPriority("transform-origin"),origin=boxGeometry(element).origin,z=origin.z;
+        const desired=point.x+"px "+point.y+"px "+z+"px";
+        if(current!==entry.applied||priority!==entry.appliedPriority){entry.value=current;entry.priority=priority;}
+        if(Math.abs(origin.x-point.x)>1e-4||Math.abs(origin.y-point.y)>1e-4||priority!=="important")element.style.setProperty("transform-origin",desired,"important");
+        entry.applied=element.style.getPropertyValue("transform-origin");entry.appliedPriority=element.style.getPropertyPriority("transform-origin");pivotErrors.delete(id);
+      }catch(caught){const message="Centro di rotazione di "+(element.getAttribute("data-hmi-name")||element.id||"elemento")+": "+(caught instanceof Error?caught.message:String(caught));if(pivotErrors.get(id)!==message){pivotErrors.set(id,message);try{onError(message);}catch{root.defaultView?.console.warn(message);}}}
+    }}finally{refreshingPivots=false;}
+  };
+  const schedulePivotFrame=()=>{
+    if(suspendDepth||!absolutePivotIds.size){cancelPivotFrame();return;}
+    if(pivotFrame===undefined&&root.defaultView?.requestAnimationFrame)pivotFrame=root.defaultView.requestAnimationFrame(()=>{pivotFrame=undefined;refreshPivots();schedulePivotFrame();});
+  };
+
   const cssColor = (value) => {
     if (value.length !== 9) return value;
     const alpha = parseInt(value.slice(1, 3), 16) / 255;
@@ -352,6 +451,8 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       const raw=computed.getPropertyValue(css).trim(),number=raw===""||raw==="0"?0:/^-?(?:\d+(?:\.\d+)?|\.\d+)px$/i.test(raw)?Number.parseFloat(raw):NaN;
       values[property]=Number.isInteger(number)&&number>=-2147483648&&number<=2147483647?number:null;
     }
+    const pivot=pivotBase(element,computed);
+    if(pivot){const current=propertyOverrides.get(identifyItem(element));for(const name of pivotProperties)values[name]=current?.has(name)?current.get(name):pivot[name];}
     const rotation=planarRotation(element,computed);
     if(rotation)values.RotationAngle=Number.isInteger(rotation.degrees)&&rotation.degrees>=-32768&&rotation.degrees<=32767?rotation.degrees:null;
     const text = textNodes(element);
@@ -406,10 +507,11 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     const overrides = propertyOverrides.get(identifyItem(element));
     if (!overrides?.size) return;
     const entries = [];
+    propertyBefore.set(element,entries); // Keep partial publications recoverable as well.
     const style = (name, value, target = element) => {
       const entry = { kind: "style", target, name, value: target.style.getPropertyValue(name), priority: target.style.getPropertyPriority(name) };
-      if (entry.value === value && !["transform","rotate","scale"].includes(name)) return;
-      const priority = entry.priority || target.style.getPropertyPriority(name.startsWith("font-") ? "font" : name.startsWith("margin-") ? "margin" : name === "text-decoration-line" ? "text-decoration" : name) || (name.startsWith("font-") || name.startsWith("margin-") || name === "text-decoration-line" || ["transform","rotate","scale"].includes(name) ? "important" : "");
+      if (entry.value === value && !["transform","rotate","scale","transform-origin","transform-box"].includes(name)) return;
+      const priority = entry.priority || target.style.getPropertyPriority(name.startsWith("font-") ? "font" : name.startsWith("margin-") ? "margin" : name === "text-decoration-line" ? "text-decoration" : name) || (name.startsWith("font-") || name.startsWith("margin-") || name === "text-decoration-line" || ["transform","rotate","scale","transform-origin","transform-box"].includes(name) ? "important" : "");
       target.style.setProperty(name, value, priority);
       entries.push({ ...entry, applied: target.style.getPropertyValue(name), appliedPriority: target.style.getPropertyPriority(name) });
     };
@@ -469,7 +571,16 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       if(!matrix.every(Number.isFinite))throw new Error("La matrice di rotazione non e' finita.");
       style("rotate","none");style("scale","none");style("transform","matrix("+matrix.join(",")+")");
     }
-    if (entries.length) propertyBefore.set(element, entries);
+    if(pivotProperties.every(name=>overrides.has(name))){
+      const geometry=boxGeometry(element);if(!geometry)throw new Error("Il centro di rotazione richiede un contenitore grafico HTML 2D con un box risolvibile.");
+      const z=geometry.origin.z;style("transform-box","border-box");
+      const centerOffset=value=>"calc(50% "+(value<0?"- ":"+ ")+Math.abs(value)+"px)";
+      const mode=overrides.get("RotationCenterPlacement"),x=overrides.get("RotationCenterX"),y=overrides.get("RotationCenterY");
+      if(mode===0)style("transform-origin",centerOffset(x)+" "+centerOffset(y)+" "+z+"px");
+      else if(mode===1)style("transform-origin",((x+1)*50)+"% "+((y+1)*50)+"% "+z+"px");
+      else{const point=absolutePivot(element,x,y);style("transform-origin",point.x+"px "+point.y+"px "+z+"px");}
+    }
+    if (!entries.length) propertyBefore.delete(element);
   };
   const allowsReactions = (element) => {
     for (let current = element; current?.nodeType === 1; current = current.parentElement) {
@@ -533,6 +644,8 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
   };
   return {
     items() {
+      refreshPivots();
+      for(const id of absolutePivotIds)if(!targets.get(id)?.isConnected){absolutePivotIds.delete(id);pivotErrors.delete(id);}
       for (const element of [...before.keys()]) if (!element.isConnected) restore(element);
       for (const element of [...propertyBefore.keys()]) if (!element.isConnected) { propertyOverrides.delete(identifyItem(element)); restoreProperties(element); }
       for (const element of declarative.keys()) if (!element.isConnected) declarative.delete(element);
@@ -552,7 +665,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         const nearestFaceplate=element.closest("[data-hmi-faceplate]"),faceplate=nearestFaceplate&&screen.contains(nearestFaceplate)?nearestFaceplate:undefined;
         const parent=faceplate===element?element.parentElement?.closest("[data-hmi-faceplate]"):undefined;
         let properties, measuredBox, boxMeasured=false;
-        items.push({itemId,name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,get boundingBox(){if(!boxMeasured){measuredBox=boundingBox(element);boxMeasured=true;}return measuredBox;},get properties(){return properties??=snapshotProperties(element);}});
+        items.push({itemId,name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,geometryError:pivotErrors.get(itemId),get boundingBox(){if(pivotErrors.has(itemId))return null;if(!boxMeasured){measuredBox=boundingBox(element);boxMeasured=true;}return measuredBox;},get properties(){return properties??=snapshotProperties(element);}});
       }
       for (const itemId of scripted.keys()) if (!targets.has(itemId)) scripted.delete(itemId);
       for (const itemId of propertyOverrides.keys()) if (!targets.has(itemId)) propertyOverrides.delete(itemId);
@@ -575,9 +688,11 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       for (const command of commands) {
         if (!command || typeof command.itemId !== "string" || !targets.has(command.itemId)) continue;
         const { property, value } = command;
-        if (!Object.hasOwn(cssProperties, property) && !["Text", "Enabled", "RotationAngle", ...fontProperties,...Object.keys(marginCssProperties)].includes(property)) continue;
+        if (!Object.hasOwn(cssProperties, property) && !["Text", "Enabled", "RotationAngle", ...pivotProperties, ...fontProperties,...Object.keys(marginCssProperties)].includes(property)) continue;
         if (["Enabled", "Visible", "Font.Italic", "Font.Underline"].includes(property) ? typeof value !== "boolean"
           : property === "Text" || property === "Font.Name" ? typeof value !== "string" || value.length > 20000 || (property === "Font.Name" && /[\u0000-\u001f\u007f]/.test(value))
+          : property === "RotationCenterPlacement" ? ![0,1,2].includes(value)
+          : ["RotationCenterX","RotationCenterY"].includes(property) ? typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value))
           : property === "RotationAngle" ? typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767
           : Object.hasOwn(marginCssProperties,property) ? typeof value!=="number"||!Number.isInteger(value)||value < -2147483648||value>2147483647
           : property === "Font.Size" ? typeof value !== "number" || !Number.isFinite(value) || value < 0 || !Number.isFinite(Math.fround(value))
@@ -591,17 +706,21 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         if (!next.has(command.itemId)) next.set(command.itemId, new Map());
         next.get(command.itemId).set(property, value);
       }
+      for(const[id,values]of next)if(pivotProperties.some(name=>values.has(name))&&(!pivotProperties.every(name=>values.has(name))||!pivotBase(targets.get(id))))for(const name of pivotProperties)values.delete(name);
       const affected = new Set([...propertyOverrides.keys(), ...next.keys()]);
       const changed = [...affected].filter((id) => JSON.stringify([...(propertyOverrides.get(id) ?? [])]) !== JSON.stringify([...(next.get(id) ?? [])]));
       propertyOverrides.clear();
       for (const [id, properties] of next) propertyOverrides.set(id, properties);
+      absolutePivotIds.clear();for(const[id,values]of next)if(values.get("RotationCenterPlacement")===2)absolutePivotIds.add(id);
+      for(const id of pivotErrors.keys())if(!absolutePivotIds.has(id))pivotErrors.delete(id);
       for (const id of changed) { const element = targets.get(id); if (element) render(element); }
+      refreshPivots();schedulePivotFrame();
     },
     allowsInteraction,
     allowsReactions,
     setDeclarative(element, visuals) { declarative.set(element, visuals); targets.set(identifyItem(element), element); render(element); },
-    suspend() { if (++suspendDepth !== 1) return; for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); },
-    resume() { suspendDepth = Math.max(0, suspendDepth - 1); if (suspendDepth) return; for (const element of new Set([...declarative.keys(), ...[...scripted.keys(), ...propertyOverrides.keys()].map((id) => targets.get(id)).filter(Boolean)])) render(element); },
-    dispose() { scripted.clear(); propertyOverrides.clear(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); declarative.clear(); targets.clear(); for (const type of interactionEvents) root.removeEventListener(type, guardInteraction, true); },
+    suspend() { if (++suspendDepth !== 1) return; cancelPivotFrame(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); },
+    resume() { suspendDepth = Math.max(0, suspendDepth - 1); if (suspendDepth) return; for (const element of new Set([...declarative.keys(), ...[...scripted.keys(), ...propertyOverrides.keys()].map((id) => targets.get(id)).filter(Boolean)])) render(element); refreshPivots();schedulePivotFrame(); },
+    dispose() { cancelPivotFrame();pivotErrors.clear();absolutePivotIds.clear();scripted.clear(); propertyOverrides.clear(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); declarative.clear(); targets.clear(); for (const type of interactionEvents) root.removeEventListener(type, guardInteraction, true); },
   };
 }

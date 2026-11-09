@@ -6974,6 +6974,25 @@ Verifiche del 5 ottobre 2026:
 - Contratto, tolleranza delle matrici CSS, limiti e API restanti in SCREEN-ITEMS.md.
   L'object model e la fase 3 restano parziali; nessun anticipo delle fasi Optix/AI.
 
+## 200. Centro di rotazione e conversione delle coordinate della schermata (9 novembre 2026)
+
+- Fonte Siemens: Placement Int32 con valori 0/1/2 e coordinate X/Y Float. Implementata la
+  terna coerente, con scostamenti frazionari e centri normalizzati esterni al riquadro.
+- Centro assoluto riferito alla schermata/popup con inversione delle trasformazioni 2D;
+  segue spostamenti, gruppi ruotati/scalati, zoom, scorrimento e dimensioni. Nessuna misura
+  inventata per scale nulle, layout senza box o trasformazioni non risolvibili.
+- Sospensione, reset, CSS esterno e priorita' conservati. Cancellato il ciclo di misure
+  quando l'ultimo oggetto assoluto viene rimosso. Moduli e timer verificati.
+- Errori con nome dell'oggetto, deduplica e recupero; collegati Runtime,
+  ponte Vite e Canvas con verifica di origine/finestra/pagina. Validata la misura fallita.
+- Passati 214 test mirati, TypeScript e prova compilata Edge/Node: confronto di marcatori
+  reali, tre modalita', ridimensionamenti, zoom, scorrimento, timer e recupero del layout.
+  Usate risorse del pacchetto, dati sintetici, nessuna rete esterna e nessun PLC.
+- Integrazione limitata ai collegamenti verificati nei cinque file coinvolti; preservati i
+  lavori locali preesistenti tramite controllo delle impronte e selezione dei soli hunk propri.
+- Pacchetto 2026.11.09.2, IR 9 e lettori 1-9. Restano Padding, proprieta'/API specifiche,
+  lifecycle/finestre, linguaggio e gate industriali: l'object model e la fase 3 restano aperti.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

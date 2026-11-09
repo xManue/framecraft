@@ -67,6 +67,7 @@ export function installHmiGeometryPreviewEndpoint(view, surface, context) {
     try {
       const item = surface.items().find(item => item.itemId === data.itemId);
       if (!item) throw new Error("L'oggetto da misurare non e' piu' presente nella pagina.");
+      if(item.geometryError)throw new Error(item.geometryError);
       if (!Object.hasOwn(item, "boundingBox")) throw new Error("Aggiorna i componenti dell'anteprima per misurare gli oggetti.");
       box = item.boundingBox;
     } catch (caught) {

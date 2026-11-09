@@ -956,6 +956,10 @@ export function Canvas() {
           if (result.navigation.length) hmiPopupManager.closeParentBound("screen");
           sendAlarmMessage({ type: "framecraft:hmi-event-result", instanceId: message.instanceId, navigation: result.navigation, faceplateEvents: result.faceplateEvents, faceplateFromParent: true });
         }).catch((error) => useEditorStore.getState().addPreviewOutput("stderr", `[HMI FACEPLATE ${message.eventName}] ${error instanceof Error ? error.message : String(error)}`));
+      } else if (event.data.type === "framecraft:screen-property-error") {
+        const page=alarmPageRef.current,message=event.data;
+        if(!page||event.origin!==page.origin||event.origin!==alarmOrigin()||message.pageId!==page.pageId||typeof message.message!=="string"||message.message.length>1000)return;
+        useEditorStore.getState().addPreviewOutput("stderr","[HMI oggetti] "+message.message);
       } else if (event.data.type === "framecraft:popup-user-close") {
         try { hmiPopupManager.close({ popupId: event.data.popupId }); }
         catch (error) { useEditorStore.getState().addPreviewOutput("stderr", `[HMI POPUP] ${error instanceof Error ? error.message : String(error)}`); }
