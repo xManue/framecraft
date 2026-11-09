@@ -106,6 +106,15 @@ export function createHmiPropertyFlashing(surface) {
           if (matches.length !== 1) throw new Error(matches.length ? "Nome oggetto HMI duplicato: " + name : "Oggetto HMI non trovato: " + (name ?? scope));
           return { screenItemId: matches[0].itemId };
         },
+        currentQuality(reference,context){
+          const rootItem=itemFor(reference);if(reference.screenPropertyPath)throw new Error('CurrentQuality richiede un oggetto grafico, non una sua parte.');
+          if(!rootItem.quality||!surface.resolveCurrentQuality)throw new Error('CurrentQuality richiede i componenti Runtime aggiornati del pannello.');
+          const items=surface.items(),children=new Map(),owner=items.find(item=>item.itemId===ownerId),ownerFaceplate=owner?.faceplateId;
+          for(const item of items)if(item.parentItemId&&item.screenId===rootItem.screenId){if(!children.has(item.parentItemId))children.set(item.parentItemId,[]);children.get(item.parentItemId).push(item);}
+          const queue=[rootItem],seen=new Set(),sources=[];
+          while(queue.length){const item=queue.pop();if(seen.has(item.itemId))continue;if(seen.size>=4096)throw new Error('CurrentQuality supera 4096 oggetti: leggi i singoli controlli.');seen.add(item.itemId);const source=item.quality;if(source)sources.push({...source,bindings:source.bindings?.map(binding=>({...binding,currentContext:Boolean(ownerFaceplate&&item.faceplateId===ownerFaceplate)}))});else sources.push({unknown:true});for(const child of children.get(item.itemId)??[])queue.push(child);}
+          return surface.resolveCurrentQuality(sources,context);
+        },
         processValue(reference,context,writing=false){
           const item=itemFor(reference);if(reference.screenPropertyPath)throw new Error('ProcessValue richiede un oggetto grafico, non una sua parte.');
           syncProcessValue(item);const source=item.processValue;if(!source)throw new Error("L'oggetto non espone ProcessValue: scegli un campo valore o configura il collegamento della proprietà.");
@@ -140,6 +149,7 @@ export function createHmiPropertyFlashing(surface) {
           if (!reference.screenPropertyPath && property === "Font") throw new Error("Font e' un riferimento grafico non sostituibile: modifica le sue proprieta'.");
           const key = propertyKey(reference, property);
           if (key === "Name") throw new Error("Name e' in sola lettura nel Runtime: modifica il nome nell'Inspector.");
+          if(key==='CurrentQuality')throw new Error("CurrentQuality è in sola lettura: dipende dai campioni e dai collegamenti dell’oggetto.");
           if (!Object.prototype.hasOwnProperty.call(item.properties ?? {}, key)) throw new Error(key === "RotationAngle" ? "L'oggetto HMI non espone RotationAngle: usa un contenitore con una trasformazione CSS 2D piana risolvibile." : "L'oggetto HMI non espone la proprieta' " + key + ".");
           if(key==="RotationCenterPlacement"){if(![0,1,2].includes(value))throw new Error("RotationCenterPlacement richiede AbsoluteFromCenter (0), NormedFromCenter (1) o AbsoluteToContainer (2).");}
           else if(["RotationCenterX","RotationCenterY"].includes(key)){if(typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value)))throw new Error(key+" richiede un Float finito, anche negativo.");}
@@ -499,6 +509,15 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     const overrides=propertyOverrides.get(identifyItem(element));if(!overrides?.has('ProcessValue')||!propertyBefore.has(element))return;
     const source=processValueSource(element);if(source?.binding||source?.value===undefined||source?.value===null)overrides.delete('ProcessValue');else if(String(source.value)!==String(overrides.get('ProcessValue')))overrides.set('ProcessValue',source.value);
   };
+  const qualitySource=element=>{
+    const source={bindings:[],locals:[],programs:[]};
+    const process=processValueSource(element);if(process?.error)source.invalid=true;else if(process?.binding)source.bindings.push({...process.binding,value:process.value});else if(process)source.locals.push({value:process.value,dataType:process.dataType??'WString'});
+    const raw=element.getAttribute('data-hmi-dynamizations');if(raw){try{if(raw.length>2097152)throw Error();const items=JSON.parse(raw);if(!Array.isArray(items))throw Error();for(const binding of items){if(!binding||typeof binding.property!=='string'){source.invalid=true;continue;}if(['Tag','ResourceList'].includes(binding.kind??'Tag')&&binding.tag)source.bindings.push(binding);else if(binding.kind==='Flashing'&&binding.flashingCondition==='RangeViolation'&&binding.tag)source.bindings.push(binding);else if(binding.kind==='Script'){if(binding.program&&Array.isArray(binding.program.statements))source.programs.push(binding.program);else source.invalid=true;for(const tag of binding.triggers??[])if(typeof tag==='string')source.bindings.push({property:binding.property,tag});}else if(binding.kind==='Expression')source.unknown=true;}}catch{source.invalid=true;}}
+    const faceplate=element.getAttribute('data-hmi-faceplate');if(faceplate){try{const instance=JSON.parse(faceplate);for(const tag of Object.values(instance.tagBindings??{})){if(typeof tag==='string'&&tag)source.bindings.push({property:'Interface',tag});else source.invalid=true;}}catch{source.invalid=true;}}
+    for(const attribute of ['data-hmi-trend','data-hmi-function-trend'])if(element.hasAttribute(attribute)){try{const config=JSON.parse(element.getAttribute(attribute));for(const curve of config.trends??[])for(const channel of [curve,curve.x,curve.y])if(channel){if(channel.source==='log')source.unknown=true;else if(typeof channel.tag==='string'&&channel.tag)source.bindings.push({property:'Trend',tag:channel.tag});}}catch{source.invalid=true;}}
+    if(/^Hmi(?:Alarm|Recipe|Audit)/.test(element.getAttribute('data-hmi-type')??''))source.unknown=true;
+    return source;
+  };
   const snapshotProperties = (element) => {
     const computed = root.defaultView?.getComputedStyle(element) ?? element.style;
     const px = (name, fallback) => /^-?[\d.]+px$/.test(computed[name]) ? Math.round(parseFloat(computed[name])) : Math.round(fallback || 0);
@@ -738,7 +757,9 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         const nearestFaceplate=element.closest("[data-hmi-faceplate]"),faceplate=nearestFaceplate&&screen.contains(nearestFaceplate)?nearestFaceplate:undefined;
         const parent=faceplate===element?element.parentElement?.closest("[data-hmi-faceplate]"):undefined;
         let properties, measuredBox, boxMeasured=false;
-        items.push({itemId,name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,paddingAllowsNegative:false,get processValue(){return processValueSource(element);},geometryError:pivotErrors.get(itemId),get boundingBox(){if(pivotErrors.has(itemId))return null;if(!boxMeasured){measuredBox=boundingBox(element);boxMeasured=true;}return measuredBox;},get properties(){return properties??=snapshotProperties(element);}});
+        let container=element.parentElement;while(container&&container!==screen&&!elements.has(container))container=container.parentElement;
+        const parentItemId=element!==screen&&container&&screen.contains(container)?identifyItem(container):undefined;
+        items.push({itemId,parentItemId,get quality(){return qualitySource(element);},name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,paddingAllowsNegative:false,get processValue(){return processValueSource(element);},geometryError:pivotErrors.get(itemId),get boundingBox(){if(pivotErrors.has(itemId))return null;if(!boxMeasured){measuredBox=boundingBox(element);boxMeasured=true;}return measuredBox;},get properties(){return properties??=snapshotProperties(element);}});
       }
       for (const itemId of scripted.keys()) if (!targets.has(itemId)) scripted.delete(itemId);
       for (const itemId of propertyOverrides.keys()) if (!targets.has(itemId)) propertyOverrides.delete(itemId);
@@ -761,6 +782,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       for (const command of commands) {
         if (!command || typeof command.itemId !== "string" || !targets.has(command.itemId)) continue;
         const { property } = command;let value=command.value;
+        if(property==='CurrentQuality')throw new Error("CurrentQuality è in sola lettura e non può essere impostato dal ponte grafico.");
         if(property==='ProcessValue'){
           const source=processValueSource(targets.get(command.itemId));
           if(!source||source.error||source.binding)throw new Error('ProcessValue non è un campo locale modificabile: usa il collegamento tag dal motore script.');

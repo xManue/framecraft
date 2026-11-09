@@ -412,5 +412,68 @@ Il test non contatta PLC, broker o servizi esterni e non collauda un installer i
 Fonti primarie: [IOField.ProcessValue Variant read-write, V21](https://docs.tia.siemens.cloud/r/fr-fr/v21/modele-d-objet-javascript-wincc-unified-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/iofield-rt-unified/iofield.processvalue-rt-unified?contentId=lj1EC2l2K2FArm1EF0JxMg),
 [stessa firma in V20](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/iofield-rt-unified/iofield.processvalue-rt-unified).
 Le scelte di trasporto, conferma e sincronizzazione sono il contratto Framecraft, non una
-promessa di equivalenza di ogni widget e dispositivo Unified. CurrentQuality, formati,
+promessa di equivalenza di ogni widget e dispositivo Unified. CurrentQuality e' aggiunto nel pacchetto 2026.11.09.5; formati,
 ShiftDecimalPlaces e altre proprieta'/eventi specifici restano nell'object model aperto.
+
+## CurrentQuality dal pacchetto 2026.11.09.5
+
+Gli oggetti espongono CurrentQuality in sola lettura. Restituisce un Int32 che descrive
+la qualita' dei dati che influenzano il controllo; non e' il QualityCode grezzo di un tag.
+I codici base HmiQuality sono None=0, Bad=1, Uncertain=2 e Good=4. I bit 64 e 128 indicano
+rispettivamente limite superiore e inferiore. Usare la maschera base quando sono presenti
+anche i bit dei limiti.
+
+```javascript
+const control = Screen.Items("SpeedInput");
+const quality = control.CurrentQuality;
+if ((quality & 7) !== 4) {
+  HMIRuntime.Trace("Controlla qualita' e collegamento: " + quality);
+}
+```
+
+Il getter aggrega i tag delle proprieta' (Tag/ResourceList/Flashing condizionale), i trigger
+e le letture effettivamente dichiarate nella IR delle dinamizzazioni Script, anche tramite
+funzioni di libreria. Non esegue gli script per conoscere le dipendenze e non conta i tag
+soltanto scritti dagli eventi. Gruppi, schermata e contenitori faceplate comprendono i
+propri discendenti, mantenendo separate le radici delle altre schermate e dei popup.
+I riferimenti conservati da moduli/timer seguono l'invalidazione del contesto gia' prevista.
+
+La conversione legge la qualita' QQ del codice sul filo: 00=Bad, 01=Uncertain, 10/11=Good.
+La qualita' assente/non conosciuta resta None; un errore o un collegamento indisponibile
+produce Bad anche se sopravvive il vecchio campione buono. Tipi, accessi e unicita' dei tag
+sono verificati. Valori locali inizializzati e validi per il tipo sono Good; quelli non
+inizializzati sono None. I tag locali dei faceplate usano la propria istanza, senza prendere
+la qualita' di un tag globale omonimo. Un tag non dichiarato o non consumabile e' Bad.
+
+Contratto Framecraft di aggregazione: Bad prevale, poi None, poi Uncertain e infine Good;
+i bit dei limiti noti vengono uniti. LL=01 sul filo aggiunge 128, LL=10 aggiunge 64. LL=11
+indica un valore costante e resta consultabile nel QualityCode originale: non si inventa
+una violazione di una soglia da un valore costante o da limiti macchina non configurati.
+Un tag ripetuto viene valutato una volta nella stessa lettura. Il calcolo e' limitato a
+4096 oggetti e 4096 sorgenti/collegamenti/dipendenze; oltre il limite viene spiegato di
+leggere i singoli controlli, senza restituire un Good inventato o bloccare la pagina.
+
+La lettura non apre connessioni, non forza acquisizioni e non invia comandi. Usa i campioni
+e la disponibilita' corrente del gateway. Good non e' una conferma PLC e non autorizza una
+scrittura; l'esito di un comando rifiutato e' separato dalla qualita' dell'acquisizione.
+Le politiche esistenti di accettazione dei campioni e dei selettori non vengono cambiate.
+CurrentQuality, come Font/Margin/Padding, non espone DOM o stato interno dell'applicazione.
+Setter e comandi grafici grezzi sono rifiutati senza eliminare gli altri livelli grafici.
+
+La raccolta copre le sorgenti dichiarate nei metadati Framecraft, non dipendenze arbitrarie
+di codice React esterno. Expression non modellate, curve storiche e controlli di servizio
+(allarmi/ricette/audit) contribuiscono come sorgenti non conosciute, finche' manca l'adattatore
+specifico. I tipi non scalari/64 bit, la raccolta specifica per array/storico, VisualizeQuality
+e il namespace delle enumerazioni vendor restano da completare nelle rispettive famiglie.
+Nessuna equivalenza generale delle soglie e degli oggetti Siemens viene dichiarata.
+
+La pipeline genera src/framecraftHmiCurrentQuality.ts insieme alla VM/UI, usando lo stesso
+resolver dell'editor. Aggiorna componenti del pannello aggiunge il modulo ai progetti
+esistenti senza riscrivere cataloghi o pagine. Nessuna dipendenza o nodo IR nuovo.
+Il getter e' verificato nel vero Canvas e nel pannello compilato con gateway HTTP sintetico:
+Good/Uncertain/None/Bad, limiti, gruppi, disconnessione/recupero, timer e VM Node. I test non
+contattano PLC/broker esterni e non sono un collaudo industriale o di un installer.
+
+Fonti primarie: [IOField.CurrentQuality, HmiQuality Int32 read-only](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/iofield-rt-unified/iofield.currentquality-rt-unified?contentId=ikz1cf909pFcnnDU4oJXRw),
+[Group.CurrentQuality](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/group-rt-unified/group.currentquality-rt-unified?contentId=WeCwIOFM0Gn9hixX3WZEgw),
+[Tag.QualityCode, QQ/LL e limiti](https://docs.tia.siemens.cloud/r/en-us/v21/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/tags-rt-unified/tag-rt-unified/tag.qualitycode-rt-unified?contentId=fzp7F8zj8NbtJaJmnoqxdA).

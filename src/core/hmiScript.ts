@@ -2,6 +2,7 @@ import { parse } from "@babel/parser";
 import * as t from "@babel/types";
 import { normalizeMqttTagValue } from "../../runtime/connection-config.mjs";
 import type { HmiScriptProcessValue, HmiScriptProcessValueContext } from "./hmiProcessValue";
+import type { HmiScriptQualityContext } from "./hmiCurrentQuality";
 export type { HmiScriptProcessValue, HmiScriptProcessValueContext } from "./hmiProcessValue";
 
 const normalizeProcessTag = normalizeMqttTagValue;
@@ -157,6 +158,7 @@ export interface HmiScriptScreenItemManager {
   items?(scope: "screen" | "faceplate"): HmiScriptScreenItemReference[];
   get(reference: HmiScriptScreenItemReference, property: string): HmiScriptScalar | HmiScriptScreenItemReference;
   processValue?(reference:HmiScriptScreenItemReference,context:HmiScriptProcessValueContext,writing?:boolean):HmiScriptProcessValue;
+  currentQuality?(reference:HmiScriptScreenItemReference,context:HmiScriptQualityContext):number;
   set(reference: HmiScriptScreenItemReference, property: string, value: HmiScriptScalar): void;
   propertyFlashing(reference: HmiScriptScreenItemReference, args: HmiScriptScalar[]): boolean;
   getBoundingBox?(reference:HmiScriptScreenItemReference):HmiScriptBox|null;
@@ -2388,6 +2390,12 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
         if(program.version>=5&&!object.screenPropertyPath&&key==="GetBoundingBoxInScreenCoordinates"){
           return boxMethod??={scriptFunction:{intrinsic:"screen-box",name:key,parameters:[],program:{version:9,statements:[]},screenBox:{manager:options.screenItems}}};
+        }
+        if(!object.screenPropertyPath&&key==='CurrentQuality'){
+          if(!options.screenItems.currentQuality)throw new Error('CurrentQuality richiede i componenti Runtime aggiornati del pannello.');
+          const quality=options.screenItems.currentQuality(object,{values,tagStatus:options.tagStatus,requireQuality:Boolean(options.transport),localTags:options.localTags,functions:options.functions,variables:options.variables});
+          if(!Number.isInteger(quality)||quality<0||quality>199||(quality&~199)!==0||![0,1,2,4].includes(quality&7))throw new Error('Il contesto CurrentQuality ha restituito un codice non valido.');
+          return quality;
         }
         if(!object.screenPropertyPath&&key==='ProcessValue'){
           const definition=processValueDefinition(object),tag=definition.tag;

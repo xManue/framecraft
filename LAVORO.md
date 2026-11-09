@@ -7040,6 +7040,28 @@ Verifiche del 5 ottobre 2026:
 - Restano Variant non scalari/64 bit, CurrentQuality/formati/altre proprieta' ed eventi dei
   controlli, finestre/lifecycle e gate industriali. WCU-EVT-10 e la fase 3 restano aperti.
 
+## 203. CurrentQuality degli oggetti e aggregazione delle sorgenti (9 novembre 2026)
+
+- Verificati CurrentQuality read-only/HmiQuality, qualita' peggiore e struttura QQ/LL del
+  QualityCode nelle fonti Siemens. Distinti i codici dei controlli da quelli dei tag sul filo.
+- Resolver comune per None/Bad/Uncertain/Good, limiti, disponibilita' delle connessioni,
+  campioni locali e tag indiretti. Metadati gerarchici per gruppi/schermate/faceplate,
+  dipendenze dei programmi Script e funzioni di libreria ispezionate senza esecuzione.
+- Una connessione indisponibile non conserva Good dal vecchio campione. Comandi rifiutati
+  separati dall'acquisizione; getter e ponte grafico readonly senza comandi/letture impliciti.
+- Contesti locali delle istanze isolati, riferimenti validati e timer invalidati al cambio
+  pagina; sorgenti non modellate come None e tipi/configurazioni non validi come Bad.
+  Limiti di elaborazione espliciti, lookup catalogo indicizzato e tag ripetuti valutati una volta.
+- Passati 155 test mirati distinti, TypeScript e pannello compilato HTTP/Node con stati,
+  limiti, aggregazione, disconnessione/recupero e timer; nessun PLC/broker o installer reale.
+- Pacchetto 2026.11.09.5, pipeline e aggiornamento assistito del resolver/VM/UI, senza
+  nuove dipendenze, nodi IR o sostituzioni dei cataloghi/pagine personalizzate. Collegamenti
+  ai due file condivisi integrati dopo la verifica isolata; ripetuti 61 test API/Canvas
+  nel checkout reale, con impronte dei 23 lavori locali originali conservate.
+- Restano qualita' specifica per array/storico/widget di servizio, VisualizeQuality,
+  namespace vendor, Variant non scalari, formati, finestre/lifecycle e gate industriali.
+  WCU-EVT-10 e la fase 3 rimangono aperti.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

@@ -2289,3 +2289,17 @@ Verificati pannello standard compilato con gateway HTTP sintetico, diniego serve
 Canvas reale e aggiornamento. Non eseguite connessioni PLC/broker o prove installer.
 Contratto, esempi e limiti (Variant restante, formati e proprieta' specifiche) in
 [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).
+
+## Qualita' degli oggetti da script dal pacchetto 2026.11.09.5
+
+CurrentQuality Int32 in sola lettura distingue None/Bad/Uncertain/Good e i bit dei limiti,
+separati dal QualityCode originale. Aggrega le sorgenti dichiarate del controllo e dei
+suoi discendenti, con contesti faceplate separati e dipendenze Script/moduli ispezionate
+senza eseguirle. La disponibilita' delle connessioni impedisce di classificare buono un
+vecchio campione dopo la disconnessione. Nessun comando o lettura CPU impliciti.
+
+Integrati Canvas, pipeline, modulo aggiornabile e VM autonoma. Verificati gli stati nel
+pannello compilato con gateway HTTP sintetico, recupero, limiti, gruppi, timer e Node.
+Limiti di elaborazione espliciti, tipi/configurazioni invalidi e fonti non conosciute
+non vengono trasformati in Good. Storico/array/widget di servizio e VisualizeQuality
+richiedono ancora adattatori specifici. Contratto e fonti in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).

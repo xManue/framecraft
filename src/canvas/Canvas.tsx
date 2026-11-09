@@ -27,6 +27,7 @@ import { editorCommandForShortcut, type EditorCommandId } from "../../scripts/ed
 import { editorModalOpen, runEditorCommand } from "../core/editorCommands";
 import { createHmiPropertyFlashing, type HmiScreenItemSnapshot } from "../../scripts/hmi-property-flashing.mjs";
 import { resolveHmiProcessValue } from "../core/hmiProcessValue";
+import { resolveHmiCurrentQuality } from "../core/hmiCurrentQuality";
 
 const resizeHandles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 type Selection = { source: SourceRef; instanceId: string; rect: SelectionRect; geometry: ElementGeometry };
@@ -137,6 +138,7 @@ export function Canvas() {
   if (!hmiPropertyFlashingRef.current) hmiPropertyFlashingRef.current = createHmiPropertyFlashing({
     items: () => hmiScreenItemsRef.current,
     resolveProcessValue:(source,context,writing)=>resolveHmiProcessValue(source,context,useEditorStore.getState().plcVariables,writing),
+    resolveCurrentQuality:(sources,context)=>resolveHmiCurrentQuality(sources,context,useEditorStore.getState().plcVariables),
     measureBoundingBox: (itemId,signal) => geometryClientRef.current!.measure(itemId,signal),
     apply: (commands) => frameRef.current?.contentWindow?.postMessage({ type: "framecraft:property-flashing", commands }, "*"),
     applyProperties: (commands) => frameRef.current?.contentWindow?.postMessage({ type: "framecraft:screen-properties", commands }, "*"),

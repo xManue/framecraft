@@ -1,7 +1,7 @@
 import type { GeneratedProjectFile } from './standardProject';
 
 export const runtimeManifestPath = 'framecraft.runtime-components.json';
-export const runtimeBundleVersion = '2026.11.09.4';
+export const runtimeBundleVersion = '2026.11.09.5';
 export interface RuntimeUpdateChange { path:string; before:string|null; after:string }
 export interface RuntimeBackup { id:string; state:string; createdAt:number; fileCount:number; failure?:string }
 export interface RuntimeUpdateSnapshot { generation:number; files:Record<string,string|null>; backups:RuntimeBackup[] }

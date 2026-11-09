@@ -212,3 +212,9 @@ it("legge subito il nuovo campo locale e conserva la digitazione successiva attr
   field.value="9";owner().setAttribute("data-hmi-events",JSON.stringify([{event:"Tapped",script:'const field=Screen.Items("LocalField");HMIRuntime.Trace("PV_LOCAL_EDIT="+field.ProcessValue);field.BackColor=4294901760;'}]));
   await flush(32);await act(async()=>owner().click());await flush(80);expect(field.value).toBe("9");expect(useEditorStore.getState().consoleEntries.map(entry=>entry.message).join("\n")).toContain("PV_LOCAL_EDIT=9");expect(network).not.toHaveBeenCalled();
 });
+
+it("legge CurrentQuality dai campioni nel vero Canvas, aggrega il faceplate e isola la qualità locale",async()=>{
+  useEditorStore.setState({plcVariables:[{name:"Signal",dataType:"Real",access:"read-write",address:"",description:""}],simulation:{...useEditorStore.getState().simulation,status:{Signal:{qualityCode:64},Counter:{qualityCode:0}}}});
+  owner().setAttribute("data-hmi-events",JSON.stringify([{event:"Tapped",script:'HMIRuntime.Trace("QUALITY_CANVAS="+JSON.stringify([Faceplate.Items("Value").CurrentQuality,Faceplate.Items("Counter").CurrentQuality,Faceplate.CurrentQuality]));'}]));
+  await usePanel();await act(async()=>owner().click());await flush(80);expect(useEditorStore.getState().consoleEntries.map(entry=>entry.message).join("\n")).toContain("QUALITY_CANVAS=[2,4,2]");expect(network).not.toHaveBeenCalled();
+});

@@ -138,7 +138,7 @@ export function renderHmiFaceplateInstance(host, catalog, instance, values, opti
         const process=object.bindings.filter(binding=>binding.property==='ProcessValue');
         if(process.length===1){
             const binding=process[0],local=type.localTags.find(tag=>tag.name===binding.name),property=type.interfaceProperties.find(property=>property.name===binding.name),projectTag=instance.tagBindings[binding.name];
-            const source=binding.source==='local'?{binding:{property:'ProcessValue',tag:binding.name,local:true,dataType:local?.dataType},minimum:local?.minimum,maximum:local?.maximum}:binding.source==='tag'&&projectTag?{binding:{property:'ProcessValue',tag:projectTag}}:{dataType:property?.dataType==='Bool'?'Bool':property?.dataType==='LReal'?'LReal':'WString'};
+            const source=binding.source==='local'?{binding:{property:'ProcessValue',tag:binding.name,local:true,dataType:local?.dataType},value:visualBindingValue(binding,type,instance,values,locals),minimum:local?.minimum,maximum:local?.maximum}:binding.source==='tag'&&projectTag?{binding:{property:'ProcessValue',tag:projectTag}}:{dataType:property?.dataType==='Bool'?'Bool':property?.dataType==='LReal'?'LReal':'WString'};
             element.dataset.hmiProcessValue=JSON.stringify(source);
         }
         if(object.type==='bar')element.setAttribute('aria-valuenow',String(object.bindings.map(binding=>binding.property==='ProcessValue'?visualBindingValue(binding,type,instance,values,locals):undefined).find(value=>value!==undefined)??0));
