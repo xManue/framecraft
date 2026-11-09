@@ -7017,6 +7017,29 @@ Verifiche del 5 ottobre 2026:
   lifecycle e gate industriali; WCU-EVT-10 e la fase 3 restano aperti. Gli altri 23 lavori
   locali sono conservati tramite impronte e non sono inclusi nel commit.
 
+## 202. ProcessValue typed con trasporto e sincronizzazione dei controlli (9 novembre 2026)
+
+- Verificata la firma Variant read-write di IOField.ProcessValue in Unified. Implementati
+  gli scalari del driver Framecraft: tipi dichiarati, unicita'/accessi, binding diretti e
+  indiretti, campi locali e tag locali di faceplate isolati. Niente tipi indovinati dal testo.
+- Letture attraverso il client/trasporto attivo, senza mascherare una disconnessione con
+  un campione vecchio. Scritture tramite la stessa VM/gateway dei tag, ricevute e permessi
+  server; campione acquisito separato dal comando, nessun ottimismo o replay/conferma implicita.
+- Campi locali con limiti/scelte, nodi/listener conservati e ripristino. Revisioni del valore
+  tra parent e frame: lettura immediata del comando, digitazione successiva preservata e
+  comandi obsoleti scartati; corretti sospensione/ripresa e ridisegno dei faceplate.
+- Test reali del Canvas su due istanze e del ponte asincrono, unit mirati su tipi/trasporto/
+  controlli e aggiornamento. Prova compilata standard con HTTP sintetico e VM Node; corretta
+  una dipendenza SSR/Vite finita nella serializzazione prima dell'integrazione.
+- Pacchetto 2026.11.09.4, IR 9 invariata, nessuna dipendenza nuova. Resolver incluso nella
+  pipeline e nel piano di aggiornamento senza sostituire cataloghi o pagine personalizzate.
+- Passati 197 test mirati distinti tra VM/trasporto/controlli/Canvas e aggiornamento,
+  TypeScript e prova compilata HTTP/Node; corretti anche i casi di race emersi nel Canvas.
+  Nessun PLC/broker o installer. Integrati solo i sei collegamenti verificati nei due file
+  condivisi; ripetuti 58 test VM/Canvas nel checkout reale. Preservati i 23 lavori locali.
+- Restano Variant non scalari/64 bit, CurrentQuality/formati/altre proprieta' ed eventi dei
+  controlli, finestre/lifecycle e gate industriali. WCU-EVT-10 e la fase 3 restano aperti.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

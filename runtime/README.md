@@ -2271,3 +2271,21 @@ Incluso nella pipeline standard e nell'aggiornamento assistito dei componenti; n
 modifica alle pagine/cataloghi esistenti, nessuna dipendenza e IR 9 invariata. Verificati
 layout reale, copia, timer, ripristino, Node, ponte Vite impacchettato e Canvas. Contratto,
 limiti e fonti in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).
+
+## Valori dei controlli da script dal pacchetto 2026.11.09.4
+
+ProcessValue espone il valore typed del controllo o del suo tag. Conversioni condivise
+con il driver scalare: Bool, interi fino a 32 bit, Real/LReal, String/WString. Letture tramite
+client gateway attivo con controllo di disponibilita'/qualita'; scritture con accessi e
+ricevute esistenti. Nessun campione ottimistico, replay o conferma PLC implicita.
+
+Campi senza tag locali e tag dei faceplate isolati per contesto. Le revisioni del valore
+conservano le digitazioni successive attraverso sospensione/ripresa e ponte asincrono.
+Il modulo resolver viene generato e aggiornato insieme alla VM/UI, senza toccare pagine o
+cataloghi esistenti e senza dipendenze nuove. La superficie grafica non accetta comandi
+che aggirino il trasporto per un campo collegato.
+
+Verificati pannello standard compilato con gateway HTTP sintetico, diniego server, Node,
+Canvas reale e aggiornamento. Non eseguite connessioni PLC/broker o prove installer.
+Contratto, esempi e limiti (Variant restante, formati e proprieta' specifiche) in
+[SCREEN-ITEMS.md](../SCREEN-ITEMS.md).

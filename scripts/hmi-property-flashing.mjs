@@ -1,7 +1,8 @@
 // Shared by the editor bridge and the generated runtime. References contain IDs, never DOM objects.
 export function createHmiPropertyFlashing(surface) {
   const state = new Map();
-  const propertyState = new Map();
+  const propertyState = new Map(),processValueVersions=new Map();
+  const syncProcessValue=item=>{const values=propertyState.get(item.itemId);if(!values?.has("ProcessValue"))return;const source=item.processValue,version=processValueVersions.get(item.itemId);if(source?.binding||version!==undefined&&Number.isSafeInteger(source?.revision)&&source.revision>version){if(source&&!source.binding&&source.value!==undefined&&source.value!==null)values.set("ProcessValue",source.value);else values.delete("ProcessValue");processValueVersions.set(item.itemId,source?.revision);}};
   let revision = 0;
   const reported = new Set();
   const properties = ["BackColor", "ForeColor", "BorderColor"];
@@ -34,14 +35,15 @@ export function createHmiPropertyFlashing(surface) {
   const report = (message) => { if (!reported.has(message)) { if (reported.size >= 256) reported.delete(reported.values().next().value); reported.add(message); surface.report?.(message); } };
   const publish = () => surface.apply(commands());
   const propertyCommands = () => {
-    const live = new Set(surface.items().map((item) => item.itemId));
-    for (const itemId of propertyState.keys()) if (!live.has(itemId)) propertyState.delete(itemId);
-    return [...propertyState].flatMap(([itemId, values]) => [...values].map(([property, value]) => ({ itemId, property, value })));
+    const items=surface.items(),live = new Set(items.map((item) => item.itemId));
+    for(const item of items)syncProcessValue(item);
+    for (const itemId of propertyState.keys()) if (!live.has(itemId)){propertyState.delete(itemId);processValueVersions.delete(itemId);}
+    return [...propertyState].flatMap(([itemId, values]) => [...values].map(([property, value]) => ({ itemId, property, value,...(property==="ProcessValue"&&Number.isSafeInteger(processValueVersions.get(itemId))?{valueRevision:processValueVersions.get(itemId)}:{}) })));
   };
   return {
     commands,
     propertyCommands,
-    reset() { revision++; reported.clear(); state.clear(); propertyState.clear(); surface.applyProperties?.([]); publish(); },
+    reset() { revision++; reported.clear(); state.clear(); propertyState.clear();processValueVersions.clear(); surface.applyProperties?.([]); publish(); },
     context(ownerId) {
       const contextRevision = revision;
       const assertActive = () => { if (contextRevision !== revision) throw new Error("Il contesto oggetti HMI non e' piu' attivo."); };
@@ -104,6 +106,13 @@ export function createHmiPropertyFlashing(surface) {
           if (matches.length !== 1) throw new Error(matches.length ? "Nome oggetto HMI duplicato: " + name : "Oggetto HMI non trovato: " + (name ?? scope));
           return { screenItemId: matches[0].itemId };
         },
+        processValue(reference,context,writing=false){
+          const item=itemFor(reference);if(reference.screenPropertyPath)throw new Error('ProcessValue richiede un oggetto grafico, non una sua parte.');
+          syncProcessValue(item);const source=item.processValue;if(!source)throw new Error("L'oggetto non espone ProcessValue: scegli un campo valore o configura il collegamento della proprietà.");
+          if(source.error)throw new Error(source.error);
+          const definition=surface.resolveProcessValue?surface.resolveProcessValue(source,context,writing):source.binding?(()=>{throw new Error('Il collegamento ProcessValue richiede i componenti Runtime aggiornati.');})():{...source,dataType:source.dataType??'WString',access:'read-write'};
+          const values=propertyState.get(item.itemId);return !definition.tag&&values?.has('ProcessValue')?{...definition,value:values.get('ProcessValue')}:definition;
+        },
         get(reference, property) {
           const item = itemFor(reference);
           if (!reference.screenPropertyPath && property === "Font") {
@@ -135,6 +144,10 @@ export function createHmiPropertyFlashing(surface) {
           if(key==="RotationCenterPlacement"){if(![0,1,2].includes(value))throw new Error("RotationCenterPlacement richiede AbsoluteFromCenter (0), NormedFromCenter (1) o AbsoluteToContainer (2).");}
           else if(["RotationCenterX","RotationCenterY"].includes(key)){if(typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value)))throw new Error(key+" richiede un Float finito, anche negativo.");}
           else if(key==="RotationAngle"){if(typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767)throw new Error("RotationAngle richiede un numero intero tra -32768 e 32767 (Int16).");}
+          else if(key==='ProcessValue'){
+            if(item.processValue?.binding)throw new Error('ProcessValue collegato deve passare dal motore script e dal trasporto tag.');
+            if(value===null||!['string','number','boolean'].includes(typeof value)||typeof value==='number'&&!Number.isFinite(value)||typeof value==='string'&&value.length>20000)throw new Error('ProcessValue richiede un valore scalare valido.');
+          }
           else if(key.startsWith("Margin.")||key.startsWith("Padding."))validateInset(item,reference.screenPropertyPath,property,value);
           else if (["Visible", "Enabled", "Font.Italic", "Font.Underline"].includes(key)) {
             if (typeof value !== "boolean") throw new Error(key + " richiede un Boolean.");
@@ -158,7 +171,8 @@ export function createHmiPropertyFlashing(surface) {
           if(pivotProperties.includes(key))for(const name of pivotProperties){const part=name===key?value:previous?.has(name)?previous.get(name):item.properties[name];if(name==="RotationCenterPlacement"?![0,1,2].includes(part):typeof part!=="number"||!Number.isFinite(part)||!Number.isFinite(Math.fround(part)))throw new Error("Il centro di rotazione non e' risolvibile: usa un contenitore grafico 2D con dimensioni e origine esplicite.");next.set(name,part);}
           else next.set(key,value);
           propertyState.set(item.itemId,next);
-          try{surface.applyProperties(propertyCommands());}catch(error){if(previous)propertyState.set(item.itemId,previous);else propertyState.delete(item.itemId);try{surface.applyProperties(propertyCommands());}catch{report("Il layout non e' stato ripristinato completamente: ricarica la pagina.");}throw error;}
+          if(key==='ProcessValue')processValueVersions.set(item.itemId,item.processValue?.revision);
+          try{surface.applyProperties(propertyCommands());}catch(error){if(key==='ProcessValue')processValueVersions.set(item.itemId,surface.items().find(item=>item.itemId===reference.screenItemId)?.processValue?.revision);if(previous)propertyState.set(item.itemId,previous);else propertyState.delete(item.itemId);try{surface.applyProperties(propertyCommands());}catch{report("Il layout non e' stato ripristinato completamente: ricarica la pagina.");}throw error;}
         },
         getBoundingBox(reference){
           const item=itemFor(reference);
@@ -450,6 +464,41 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     if (channels.some((channel) => !Number.isFinite(channel) || channel < 0 || channel > 255) || !Number.isFinite(alpha) || alpha < 0 || alpha > 1) return undefined;
     return (Math.round(alpha * 255) * 0x1000000 + Math.round(channels[0]) * 0x10000 + Math.round(channels[1]) * 0x100 + Math.round(channels[2])) >>> 0;
   };
+  const processValueRevisions=new WeakMap();
+  const processValueSource=(element)=>{
+    let source;const raw=element.getAttribute('data-hmi-process-value');
+    if(raw){try{if(raw.length>20000)throw Error();source=JSON.parse(raw);if(!source||typeof source!=='object'||Array.isArray(source))throw Error();}catch{return {error:'ProcessValue: configurazione del controllo non valida.'};}}
+    const dynamics=element.getAttribute('data-hmi-dynamizations');
+    if(!source&&dynamics){try{const parsed=JSON.parse(dynamics);if(Array.isArray(parsed)){const bindings=parsed.filter(binding=>binding?.property==='ProcessValue'&&binding.kind==='Tag');if(bindings.length>1)return {error:'ProcessValue ha più collegamenti: scegli una sola variabile.'};if(bindings[0])source={binding:bindings[0]};}}catch{return {error:'ProcessValue: collegamenti del controllo non leggibili.'};}}
+    const tag=element.tagName,type=element.getAttribute('type')?.toLowerCase()||'text';
+    const input=tag==='INPUT'&&['text','number','range','checkbox','search','tel','url','email'].includes(type),field=input||['TEXTAREA','SELECT','OUTPUT','PROGRESS','METER'].includes(tag),hmi=/^Hmi(?:IOField|SymbolicIOField|Slider|Bar|Gauge)$/.test(element.getAttribute('data-hmi-type')||'');
+    if(!source&&!field&&!hmi)return;
+    if(!source){const linked=element.getAttribute('data-plc-variable')||element.getAttribute('data-plc-tag');if(linked)source={binding:{property:'ProcessValue',tag:linked}};}
+    source={...source};
+    if(!source.dataType)source.dataType=element.getAttribute('data-hmi-value-type')||(tag==='INPUT'&&['checkbox'].includes(type)?'Bool':tag==='INPUT'&&['number','range'].includes(type)||['PROGRESS','METER'].includes(tag)||/^Hmi(?:Bar|Gauge|Slider)$/.test(element.getAttribute('data-hmi-type')||'')?'LReal':'WString');
+    if(!source.binding){
+      if(input&&['checkbox'].includes(type))source.value=element.checked;
+      else if(field&&tag!=='OUTPUT')source.value=element.value;
+      else if(element.hasAttribute('aria-valuenow'))source.value=element.getAttribute('aria-valuenow');
+      else{const text=textNodes(element);if(text)source.value=text.nodes.map(node=>node.data).join('');}
+      if(tag==='SELECT')source.choices=Array.from(element.options).map(option=>option.value);
+      if(input&&['number','range'].includes(type)||['PROGRESS','METER'].includes(tag)){
+        const minimum=element.getAttribute('min'),maximum=element.getAttribute('max');
+        if(minimum!==null&&minimum.trim()&&Number.isFinite(Number(minimum)))source.minimum=Number(minimum);else if(type==='range'||['PROGRESS','METER'].includes(tag))source.minimum=0;
+        if(maximum!==null&&maximum.trim()&&Number.isFinite(Number(maximum)))source.maximum=Number(maximum);else if(type==='range')source.maximum=100;else if(['PROGRESS','METER'].includes(tag))source.maximum=1;
+      }
+    }
+    if(!source.binding&&typeof source.value==='string'&&!/^(?:w?string)$/i.test(source.dataType)){
+      const value=source.value.trim();if(/^(?:bool|boolean)$/i.test(source.dataType))source.value=value==='true'||value==='1'?true:value==='false'||value==='0'?false:undefined;
+      else source.value=value&&Number.isFinite(Number(value))?Number(value):undefined;
+    }
+    const signature=JSON.stringify(source),previous=processValueRevisions.get(element);if(!previous||previous.signature!==signature)processValueRevisions.set(element,{signature,revision:(previous?.revision??0)+1});source.revision=processValueRevisions.get(element).revision;
+    return source;
+  };
+  const syncNativeProcessValue=element=>{
+    const overrides=propertyOverrides.get(identifyItem(element));if(!overrides?.has('ProcessValue')||!propertyBefore.has(element))return;
+    const source=processValueSource(element);if(source?.binding||source?.value===undefined||source?.value===null)overrides.delete('ProcessValue');else if(String(source.value)!==String(overrides.get('ProcessValue')))overrides.set('ProcessValue',source.value);
+  };
   const snapshotProperties = (element) => {
     const computed = root.defaultView?.getComputedStyle(element) ?? element.style;
     const px = (name, fallback) => /^-?[\d.]+px$/.test(computed[name]) ? Math.round(parseFloat(computed[name])) : Math.round(fallback || 0);
@@ -464,6 +513,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       const raw=computed.getPropertyValue(css).trim(),number=raw===""||raw==="0"?0:/^(?:\d+(?:\.\d+)?|\.\d+)px$/i.test(raw)?Number.parseFloat(raw):NaN;
       values[property]=Number.isInteger(number)&&number>=0&&number<=2147483647?number:null;
     }
+    const process=processValueSource(element);if(process&&!process.binding&&!process.error)values.ProcessValue=process.value??null;
     const pivot=pivotBase(element,computed);
     if(pivot){const current=propertyOverrides.get(identifyItem(element));for(const name of pivotProperties)values[name]=current?.has(name)?current.get(name):pivot[name];}
     const rotation=planarRotation(element,computed);
@@ -509,6 +559,8 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         if (element.getAttribute(entry.name) !== entry.applied) continue;
         if (entry.value === null) element.removeAttribute(entry.name);
         else element.setAttribute(entry.name, entry.value);
+      } else if(entry.kind==='property'){
+        if(element[entry.name]===entry.applied)element[entry.name]=entry.value;
       } else if (entry.node.data === entry.applied) {
         if (createdText.has(entry.node) && !propertyOverrides.get(identifyItem(element))?.has("Text")) entry.node.remove();
         else entry.node.data = entry.value;
@@ -554,7 +606,12 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     }
     if (overrides.has("Width") || overrides.has("Height")) style("box-sizing", "border-box");
     for (const [property, value] of overrides) {
-      if (property === "Text") {
+      if(property==='ProcessValue'){
+        const name=element.tagName==='INPUT'&&['checkbox'].includes(element.type)?'checked':'value';
+        if(name in element&&element.tagName!=='OUTPUT'){const previous=element[name];element[name]=name==='checked'?value:String(value);entries.push({kind:'property',name,value:previous,applied:element[name]});}
+        else if(element.hasAttribute('aria-valuenow')){attribute('aria-valuenow',String(value));const fill=element.querySelector('[data-hmi-faceplate-bar-fill]');if(fill)style('width',Math.max(0,Math.min(100,Number(value)))+'%',fill);}
+        else{const text=textNodes(element);if(!text)throw new Error('ProcessValue non è applicabile al contenuto del controllo.');if(!text.nodes.length){const node=root.createTextNode('');createdText.add(node);text.host.appendChild(node);text.nodes.push(node);}text.nodes.forEach((node,index)=>{entries.push({kind:'text',node,value:node.data,applied:index===0?String(value):''});node.data=index===0?String(value):'';});}
+      }else if (property === "Text") {
         const text = textNodes(element);
         if (!text) continue;
         if (!text.nodes.length) { const node = root.createTextNode(""); createdText.add(node); text.host.appendChild(node); text.nodes.push(node); }
@@ -631,8 +688,9 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     }
     before.delete(element);
   };
-  const render = (element) => {
+  const render = (element,propertiesChanged=false) => {
     restore(element);
+    if(!propertiesChanged)syncNativeProcessValue(element);
     restoreProperties(element);
     if (suspendDepth || !element.isConnected || !element.style) return;
     applyProperties(element);
@@ -680,7 +738,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         const nearestFaceplate=element.closest("[data-hmi-faceplate]"),faceplate=nearestFaceplate&&screen.contains(nearestFaceplate)?nearestFaceplate:undefined;
         const parent=faceplate===element?element.parentElement?.closest("[data-hmi-faceplate]"):undefined;
         let properties, measuredBox, boxMeasured=false;
-        items.push({itemId,name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,paddingAllowsNegative:false,geometryError:pivotErrors.get(itemId),get boundingBox(){if(pivotErrors.has(itemId))return null;if(!boxMeasured){measuredBox=boundingBox(element);boxMeasured=true;}return measuredBox;},get properties(){return properties??=snapshotProperties(element);}});
+        items.push({itemId,name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,paddingAllowsNegative:false,get processValue(){return processValueSource(element);},geometryError:pivotErrors.get(itemId),get boundingBox(){if(pivotErrors.has(itemId))return null;if(!boxMeasured){measuredBox=boundingBox(element);boxMeasured=true;}return measuredBox;},get properties(){return properties??=snapshotProperties(element);}});
       }
       for (const itemId of scripted.keys()) if (!targets.has(itemId)) scripted.delete(itemId);
       for (const itemId of propertyOverrides.keys()) if (!targets.has(itemId)) propertyOverrides.delete(itemId);
@@ -702,13 +760,19 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       const next = new Map();
       for (const command of commands) {
         if (!command || typeof command.itemId !== "string" || !targets.has(command.itemId)) continue;
-        const { property, value } = command;
+        const { property } = command;let value=command.value;
+        if(property==='ProcessValue'){
+          const source=processValueSource(targets.get(command.itemId));
+          if(!source||source.error||source.binding)throw new Error('ProcessValue non è un campo locale modificabile: usa il collegamento tag dal motore script.');
+          if(Number.isSafeInteger(command.valueRevision)&&command.valueRevision<source.revision){if(source.value===undefined||source.value===null)continue;value=source.value;}
+          if(value===null||!['string','number','boolean'].includes(typeof value)||typeof value==='number'&&!Number.isFinite(value)||typeof value==='string'&&value.length>20000||source.dataType?.toLowerCase()==='bool'&&typeof value!=='boolean'||source.choices&&!source.choices.includes(String(value))||typeof value==='number'&&(source.minimum!==undefined&&value<source.minimum||source.maximum!==undefined&&value>source.maximum))throw new Error('ProcessValue non è valido per il tipo o i limiti del controllo.');
+        }
         if(Object.hasOwn(paddingCssProperties,property)){
           if(typeof value!=="number"||!Number.isInteger(value)||value<0||value>2147483647)throw new Error(property+" richiede un Int32 non negativo per questo elemento HTML.");
           if(!supportsPadding(targets.get(command.itemId)))throw new Error("L'oggetto HMI non espone Padding nel layout corrente.");
         }
-        if (!Object.hasOwn(cssProperties, property) && !["Text", "Enabled", "RotationAngle", ...pivotProperties, ...fontProperties,...Object.keys(marginCssProperties),...Object.keys(paddingCssProperties)].includes(property)) continue;
-        if (["Enabled", "Visible", "Font.Italic", "Font.Underline"].includes(property) ? typeof value !== "boolean"
+        if (!Object.hasOwn(cssProperties, property) && !["Text", "ProcessValue", "Enabled", "RotationAngle", ...pivotProperties, ...fontProperties,...Object.keys(marginCssProperties),...Object.keys(paddingCssProperties)].includes(property)) continue;
+        if (property==='ProcessValue'?false:["Enabled", "Visible", "Font.Italic", "Font.Underline"].includes(property) ? typeof value !== "boolean"
           : property === "Text" || property === "Font.Name" ? typeof value !== "string" || value.length > 20000 || (property === "Font.Name" && /[\u0000-\u001f\u007f]/.test(value))
           : property === "RotationCenterPlacement" ? ![0,1,2].includes(value)
           : ["RotationCenterX","RotationCenterY"].includes(property) ? typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value))
@@ -733,13 +797,13 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       for (const [id, properties] of next) propertyOverrides.set(id, properties);
       absolutePivotIds.clear();for(const[id,values]of next)if(values.get("RotationCenterPlacement")===2)absolutePivotIds.add(id);
       for(const id of pivotErrors.keys())if(!absolutePivotIds.has(id))pivotErrors.delete(id);
-      for (const id of changed) { const element = targets.get(id); if (element) render(element); }
+      for (const id of changed) { const element = targets.get(id); if (element) render(element,true); }
       refreshPivots();schedulePivotFrame();
     },
     allowsInteraction,
     allowsReactions,
     setDeclarative(element, visuals) { declarative.set(element, visuals); targets.set(identifyItem(element), element); render(element); },
-    suspend() { if (++suspendDepth !== 1) return; cancelPivotFrame(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); },
+    suspend() { if (++suspendDepth !== 1) return; cancelPivotFrame(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]){syncNativeProcessValue(element);restoreProperties(element);} },
     resume() { suspendDepth = Math.max(0, suspendDepth - 1); if (suspendDepth) return; for (const element of new Set([...declarative.keys(), ...[...scripted.keys(), ...propertyOverrides.keys()].map((id) => targets.get(id)).filter(Boolean)])) render(element); refreshPivots();schedulePivotFrame(); },
     dispose() { cancelPivotFrame();pivotErrors.clear();absolutePivotIds.clear();scripted.clear(); propertyOverrides.clear(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); declarative.clear(); targets.clear(); for (const type of interactionEvents) root.removeEventListener(type, guardInteraction, true); },
   };

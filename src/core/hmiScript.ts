@@ -1,5 +1,10 @@
 import { parse } from "@babel/parser";
 import * as t from "@babel/types";
+import { normalizeMqttTagValue } from "../../runtime/connection-config.mjs";
+import type { HmiScriptProcessValue, HmiScriptProcessValueContext } from "./hmiProcessValue";
+export type { HmiScriptProcessValue, HmiScriptProcessValueContext } from "./hmiProcessValue";
+
+const normalizeProcessTag = normalizeMqttTagValue;
 
 export type HmiScriptScalar = string | number | boolean | null;
 
@@ -151,6 +156,7 @@ export interface HmiScriptScreenItemManager {
   /** Current members, excluding the root and interiors of nested faceplates. */
   items?(scope: "screen" | "faceplate"): HmiScriptScreenItemReference[];
   get(reference: HmiScriptScreenItemReference, property: string): HmiScriptScalar | HmiScriptScreenItemReference;
+  processValue?(reference:HmiScriptScreenItemReference,context:HmiScriptProcessValueContext,writing?:boolean):HmiScriptProcessValue;
   set(reference: HmiScriptScreenItemReference, property: string, value: HmiScriptScalar): void;
   propertyFlashing(reference: HmiScriptScreenItemReference, args: HmiScriptScalar[]): boolean;
   getBoundingBox?(reference:HmiScriptScreenItemReference):HmiScriptBox|null;
@@ -177,7 +183,7 @@ export interface HmiScriptOperatorMessage {
 }
 
 type TagReference = { readonly tag: string; readonly tagSet?: TagSetState };
-interface RuntimeTagStatus { qualityCode: number; timeStamp: string | number; lastError: number; errorDescription: string }
+interface RuntimeTagStatus extends HmiScriptTagStatus { qualityCode: number; timeStamp: string | number; lastError: number; errorDescription: string }
 type TagSetState = { names: string[]; pending: Record<string, HmiScriptScalar>; status: Record<string, RuntimeTagStatus>; lastError: number; errorDescription: string };
 type TagSetReference = { readonly tagSet: TagSetState };
 type DataReference = { readonly data: RuntimeValue[] | Record<string, RuntimeValue>; readonly errorType?: string };
@@ -209,6 +215,8 @@ export function createHmiScriptScope(initializer?: HmiScriptProgram, parent?: Hm
 }
 
 export interface HmiScriptTagStatus {
+  /** A locally entered value is not a PLC acquisition. */
+  localValue?: boolean;
   qualityCode?: number;
   qualityKnown?: boolean;
   timeStamp?: string | number;
@@ -1799,6 +1807,14 @@ export function inspectHmiScriptDefinition(source: string, allowExports = false)
   }
 }
 
+function normalizeHmiProcessValue(value:unknown,definition:HmiScriptProcessValue):string|number|boolean {
+  let result:string|number|boolean;
+  try{result=normalizeProcessTag(value,definition.dataType);}catch(error){const reason=(error instanceof Error?error.message:String(error)).replace('driver MQTT','driver scalare');throw new TypeError('ProcessValue ('+definition.dataType.slice(0,80)+'): '+reason+' Controlla il tipo dichiarato e il valore.');}
+  if(typeof result==='string'&&result.length>20000)throw new Error('ProcessValue supera 20000 caratteri.');
+  if(typeof result==='number'&&(definition.minimum!==undefined&&result<definition.minimum||definition.maximum!==undefined&&result>definition.maximum))throw new Error('ProcessValue è fuori dai limiti del controllo.');
+  if(definition.choices&&!definition.choices.includes(String(result)))throw new Error('ProcessValue non corrisponde a una delle scelte del controllo.');
+  return result;
+}
 function normal(value: string): HmiScriptScalar {
   const trimmed = value.trim();
   if (/^(?:true|yes|on)$/i.test(trimmed)) return true;
@@ -2340,6 +2356,14 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
   let boxMethod:FunctionReference|undefined;
   const errorConstructors = new Map<string,FunctionReference>();
   const errorConstructor = (name:string): FunctionReference => { let value=errorConstructors.get(name);if(!value){value={scriptFunction:{intrinsic:"error-constructor",errorType:name,name,parameters:name==="AggregateError"?["errors","message"]:["message"],program:{version:9,statements:[]}}};errorConstructors.set(name,value);}return value; };
+  const processValueDefinition=(reference:HmiScriptScreenItemReference,writing=false)=>{
+    if(!options.screenItems?.processValue)throw new Error('ProcessValue richiede i componenti Runtime aggiornati del pannello.');
+    const definition=options.screenItems.processValue(reference,{values,tagStatus:{...options.tagStatus,...statusByTag},localTags:options.localTags,requireQuality:Boolean(options.transport)},writing);
+    if(!definition||typeof definition.dataType!=='string'||!['read','write','read-write'].includes(definition.access)||definition.tag!==undefined&&(typeof definition.tag!=='string'||!definition.tag.trim()||definition.tag.length>200))throw new Error('Il collegamento ProcessValue restituito dal contesto non è valido.');
+    if(definition.local&&(!definition.tag||!options.localTags?.has(definition.tag)))throw new Error('Il contesto locale di ProcessValue non è più disponibile.');
+    if(!(writing?['write','read-write']:['read','read-write']).includes(definition.access))throw new Error(writing?'ProcessValue è di sola lettura.':'ProcessValue è di sola scrittura.');
+    return definition;
+  };
   const readMember = (object: RuntimeValue, key: string): RuntimeValue => {
     if (program.version >= 9 && isDataReference(object) && object.errorType && key === "toString" && !Object.prototype.hasOwnProperty.call(object.data,key)) return intrinsicFunction("error-to-string");
     if (program.version >= 5 && isFunctionReference(object)) {
@@ -2364,6 +2388,16 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
         if(program.version>=5&&!object.screenPropertyPath&&key==="GetBoundingBoxInScreenCoordinates"){
           return boxMethod??={scriptFunction:{intrinsic:"screen-box",name:key,parameters:[],program:{version:9,statements:[]},screenBox:{manager:options.screenItems}}};
+        }
+        if(!object.screenPropertyPath&&key==='ProcessValue'){
+          const definition=processValueDefinition(object),tag=definition.tag;
+          if(tag){
+            const status=statusByTag[tag]??options.tagStatus?.[tag],requireQuality=Boolean(options.transport&&!definition.local);
+            if(!definition.local&&(status?.lastError||status?.qualityKnown===false||requireQuality&&(!status||status.localValue||status.qualityCode===undefined)||status?.qualityCode!==undefined&&(!Number.isInteger(status.qualityCode)||status.qualityCode<0||status.qualityCode>65535||![128,192].includes(status.qualityCode&0xc0))))throw new Error('ProcessValue: il tag '+tag+' non ha un campione valido. Controlla collegamento, qualità e stato PLC.');
+            if(!Object.hasOwn(values,tag))throw new Error('ProcessValue: il tag '+tag+' non ha ancora un valore acquisito o di prova.');
+            return normalizeHmiProcessValue(values[tag],definition);
+          }
+          return normalizeHmiProcessValue(definition.value,definition);
         }
         return options.screenItems.get(object, key);
       }
@@ -2527,7 +2561,13 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         : expression.name === "Object.values" ? entries.map(([, value]) => value)
           : entries.map(([key, value]) => ({ data: [key, value] })) };
     }
-    if (expression.kind === "member") return readMember((yield* evaluate(expression.object)), dataKey((yield* evaluate(expression.key))));
+    if (expression.kind === "member") {
+      const object=yield* evaluate(expression.object),key=dataKey(yield* evaluate(expression.key));
+      if(key==='ProcessValue'&&object&&typeof object==='object'&&'screenItemId' in object&&!object.screenPropertyPath){
+        const definition=processValueDefinition(object);if(definition.tag&&remote(definition.tag))yield* readRemote(definition.tag);
+      }
+      return readMember(object,key);
+    }
     if (expression.kind === "tag-ref") return { tag: expression.name };
     if (expression.kind === "tag-set") {
       const pending: Record<string, HmiScriptScalar> = {};
@@ -2843,7 +2883,18 @@ function* executeHmiScriptCoroutine(program: HmiScriptProgram, input: Readonly<R
         else if(isFunctionReference(object)&&object.scriptFunction.screenCollection)throw new Error("La collezione Items e' in sola lettura: modifica le proprieta' dei suoi elementi.");
         else if (object && typeof object === "object" && "screenItemId" in object) {
           if (!options.screenItems) throw new Error("Il contesto corrente non dispone degli oggetti HMI della schermata.");
-          if(!object.screenPropertyPath&&(key==="Margin"||key==="Padding")){
+          if(!object.screenPropertyPath&&key==='ProcessValue'){
+            const definition=processValueDefinition(object,true),primitive=normalizeHmiProcessValue(scalar(value),definition),tag=definition.tag;
+            if(tag){
+              const failure=options.writeFailures?.[tag];
+              if(failure){Object.assign(statusFor(tag),{lastError:failure.code??0x80040002,errorDescription:failure.description??'Scrittura ProcessValue non riuscita.'});throw hmiFault(statusFor(tag).lastError,statusFor(tag).errorDescription);}
+              if(remote(tag)){
+                const receipt=yield* writeRemote({kind:'write',tag,value:primitive,mode:0});
+                if(receipt.outcome!=='delivered')throw hmiFault(statusFor(tag).lastError,statusFor(tag).errorDescription);
+                tick();processValueDefinition(object,true); // No optimistic sample and no replay after context changes.
+              }else{values[tag]=String(primitive);writes[tag]=String(primitive);}
+            }else options.screenItems.set(object,key,primitive);
+          }else if(!object.screenPropertyPath&&(key==="Margin"||key==="Padding")){
             const setter=key==="Margin"?options.screenItems.setMargin:options.screenItems.setPadding;
             if(!setter)throw new Error("La copia di "+key+" richiede i componenti Runtime aggiornati del pannello.");
             const sides=["Left","Top","Right","Bottom"] as const;
@@ -3450,5 +3501,5 @@ export async function executeHmiScriptAsync(program: HmiScriptProgram, input: Re
 /** Il progetto generato non porta con se' Babel: riceve il programma gia' compilato nell'attributo
  * e solo questo piccolo esecutore. Le funzioni sono le stesse usate dai test dell'editor. */
 export function hmiScriptRuntimeModuleSource(): string {
-  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(isScriptErrorName)}\n${String(staticErrorValue)}\n${String(scriptErrorValue)}\n${String(scriptErrorString)}\n${String(patternNames)}\n${String(staticSpreadArray)}\n${String(staticCallArguments)}\n${String(staticSpreadObject)}\n${String(inspectPatternBindings)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\nlet hmiInspectionBudget;\n${String(recordStaticThrow)}\n${String(inspectAssignmentTarget)}\n${String(inspectStaticAssignment)}\n${String(inspectionStep)}\n${String(inspectCallable)}\n${String(inspectInvocation)}\n${String(inspectArrayCallback)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\n${String(normal)}\n${String(isScriptThrown)}\n${String(scriptThrownMessage)}\n${String(undefinedValue)}\n${String(isUndefinedReference)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(isFunctionReference)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(dataArrayCallbackMethod)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptGeometry)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
+  return `// @ts-nocheck\nexport ${String(createHmiScriptScope)}\n${String(isScriptErrorName)}\n${String(staticErrorValue)}\n${String(scriptErrorValue)}\n${String(scriptErrorString)}\n${String(patternNames)}\n${String(staticSpreadArray)}\n${String(staticCallArguments)}\n${String(staticSpreadObject)}\n${String(inspectPatternBindings)}\n${String(staticArrayItems)}\n${String(staticChoice)}\n${String(staticBoundData)}\n${String(updateStaticArray)}\nlet hmiInspectionBudget;\n${String(recordStaticThrow)}\n${String(inspectAssignmentTarget)}\n${String(inspectStaticAssignment)}\n${String(inspectionStep)}\n${String(inspectCallable)}\n${String(inspectInvocation)}\n${String(inspectArrayCallback)}\n${String(walkExpression)}\n${String(staticValues)}\n${String(staticValue)}\n${String(staticTags)}\n${String(bindStaticData)}\n${String(updateStaticMember)}\n${String(staticTag)}\n${String(staticTagSet)}\n${String(staticTagSets)}\n${String(updateStaticTagSet)}\n${String(inspectStatements)}\n${String(inspectModuleVariables)}\n${String(inspectModuleDependencies)}\nexport ${String(inspectHmiScriptProgram)}\nconst normalizeProcessTag = ${String(normalizeMqttTagValue)};\n${String(normalizeHmiProcessValue)}\n${String(normal)}\n${String(isScriptThrown)}\n${String(scriptThrownMessage)}\n${String(undefinedValue)}\n${String(isUndefinedReference)}\n${String(truthy)}\n${String(isTagReference)}\n${String(isTagSetReference)}\n${String(isPopupReference)}\n${String(number)}\n${String(isFunctionReference)}\n${String(scalar)}\n${String(dataKey)}\n${String(isDataReference)}\n${String(checkData)}\n${String(dataGet)}\n${String(dataSet)}\n${String(dataString)}\n${String(dataFromJson)}\n${String(dataJson)}\n${String(dataArrayMethod)}\n${String(mapScriptValues)}\n${String(findScriptValue)}\n${String(dataArrayCallbackMethod)}\n${String(executeHmiScriptCoroutine)}\n${String(performScriptGeometry)}\n${String(performScriptTransport)}\nexport ${String(executeHmiScript)}\nexport ${String(executeHmiScriptAsync)}\n`;
 }

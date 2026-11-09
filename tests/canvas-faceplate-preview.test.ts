@@ -194,3 +194,21 @@ it("modifica Padding nel Canvas reale, segnala i limiti HTML e ripristina uscend
   expect(sent.filter(message=>message.data.type==="framecraft:screen-properties").some(message=>(message.data.commands as {property:string;value:unknown}[]).some(command=>command.property==="Padding.Left"&&command.value===17))).toBe(true);
   expect(network).not.toHaveBeenCalled();await act(async()=>useEditorStore.getState().setInteractionMode("edit"));await flush();expect(element.style.padding).toBe("2px 4px 6px 8px");
 });
+
+it("usa ProcessValue tipizzato nel Canvas con tag progetto e tag locali del faceplate isolati",async()=>{
+  useEditorStore.setState({plcVariables:[{name:"Signal",dataType:"Real",access:"read-write",address:"",description:""}]});
+  owner().setAttribute("data-hmi-events",JSON.stringify([{event:"Tapped",script:'Faceplate.Items("Counter").ProcessValue=17;Faceplate.Items("Value").ProcessValue=12.5;HMIRuntime.Trace("PV_TYPES="+typeof Faceplate.Items("Value").ProcessValue);'}]));
+  await usePanel();await act(async()=>owner().click());await flush(80);
+  expect(owner().querySelector('[data-hmi-faceplate-object="Counter"]')!.textContent).toBe("17");
+  expect(owner("two").querySelector('[data-hmi-faceplate-object="Counter"]')!.textContent).toBe("5");
+  expect(useEditorStore.getState().simulation.values.Signal).toBe("12.5");expect(useEditorStore.getState().simulation.values.Counter).toBeUndefined();
+  expect(useEditorStore.getState().consoleEntries.map(entry=>entry.message).join("\n")).toContain("PV_TYPES=number");expect(network).not.toHaveBeenCalled();
+});
+
+it("legge subito il nuovo campo locale e conserva la digitazione successiva attraverso il ponte asincrono",async()=>{
+  const field=frame.document.createElement("input");field.id="LocalField";field.type="number";field.value="3";frame.document.body.append(field);
+  owner().setAttribute("data-hmi-events",JSON.stringify([{event:"Tapped",script:'const field=Screen.Items("LocalField");field.ProcessValue=7;HMIRuntime.Trace("PV_LOCAL_FAST="+field.ProcessValue);'}]));
+  await usePanel();await act(async()=>owner().click());await flush(80);expect(field.value).toBe("7");expect(useEditorStore.getState().consoleEntries.map(entry=>entry.message).join("\n")).toContain("PV_LOCAL_FAST=7");
+  field.value="9";owner().setAttribute("data-hmi-events",JSON.stringify([{event:"Tapped",script:'const field=Screen.Items("LocalField");HMIRuntime.Trace("PV_LOCAL_EDIT="+field.ProcessValue);field.BackColor=4294901760;'}]));
+  await flush(32);await act(async()=>owner().click());await flush(80);expect(field.value).toBe("9");expect(useEditorStore.getState().consoleEntries.map(entry=>entry.message).join("\n")).toContain("PV_LOCAL_EDIT=9");expect(network).not.toHaveBeenCalled();
+});

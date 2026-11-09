@@ -344,3 +344,73 @@ Fonti primarie: [Button.Padding, HmiPaddingPart read-write](https://docs.tia.sie
 [Padding.Left Int32](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/combobox-rt-unified/combobox.padding-rt-unified/padding.left-rt-unified?contentId=r~ydl314b8FTA7njy3P6UQ).
 Le parti specifiche dei controlli (CellPadding/Caption/Title/assi), la resa negativa nativa
 e il resto dell'object model richiedono ancora verifica; WCU-EVT-10 rimane parziale.
+
+## ProcessValue dal pacchetto 2026.11.09.4
+
+ProcessValue legge e imposta il valore di un controllo. E' disponibile sui campi HTML
+supportati, sui controlli con una dinamizzazione Tag della proprietà e sui valori dei
+faceplate. La documentazione Unified lo definisce Variant read-write; Framecraft applica
+qui i tipi scalari del proprio driver, senza indovinare il tipo dal testo visualizzato.
+
+```javascript
+const speed = Screen.Items("SpeedInput");
+const value = speed.ProcessValue;
+HMIRuntime.Trace("Valore acquisito: " + value);
+speed.ProcessValue = 120;
+```
+
+Un collegamento Tag richiede una variabile unica, dichiarata con tipo e accesso nel
+catalogo PLC. I soli tag rilevati dal sorgente non bastano. Sono supportati Bool, interi
+con/senza segno fino a 32 bit, Real/LReal e String/WString, con la stessa conversione usata
+dal driver MQTT/OPC UA scalare. Una stringa "0012" resta una stringa; i numeri devono stare
+nel tipo dichiarato. Tipi a 64 bit, array/UDT e il resto del Variant nativo restano aperti.
+
+Negli eventi/moduli/timer con trasporto attivo la lettura passa dal client del gateway e
+controlla disponibilita', qualita' e accesso, usando i campioni acquisiti. Non forza una
+lettura dalla CPU. Una disconnessione non viene coperta dal vecchio campione buono. In
+simulazione si leggono i valori di prova; un campo locale usa il proprio valore.
+
+Le scritture passano dalla stessa VM e dallo stesso gateway di Tags.Write, con tipo e
+accessi verificati, ricevute e autorizzazioni del servizio. Si attende la consegna del
+trasporto, senza dichiararla conferma PLC. Il campione e il controllo collegato cambiano
+solo alla successiva acquisizione: niente aggiornamento ottimistico o coda/replay automatico.
+Esiti rejected/uncertain fermano lo script e restano nei risultati; contesti scaduti/abortiti
+non proseguono con altri comandi. Una dinamizzazione sincrona non puo' attendere il gateway:
+per scrivere al PLC usare un evento asincrono, come per gli altri tag.
+
+I binding indiretti usano il selettore attuale dello script e le verifiche gia' previste
+per i riferimenti indiretti: tipo, unicita', lettura/qualita' e destinazione dichiarata.
+Le tabelle di conversione non sono collegamenti uno-a-uno e non vengono scritte come tag.
+I tag locali dei faceplate richiedono il contesto dell'istanza e il tipo dichiarato; non
+vengono inviati al trasporto del progetto. Le due istanze possono usare lo stesso nome locale.
+
+I campi senza tag restano locali: input di testo/numero/range/checkbox, textarea, select,
+output, progress/meter e contenitori HMI supportati. Limiti e scelte sono verificati prima
+di applicare il valore; non si accetta un valore per poi mostrarne uno diverso per clamping.
+Non vengono generati eventi input/change artificiali o sostituiti i nodi figli. Password,
+file e controlli senza un valore applicabile non acquisiscono questo accesso implicitamente.
+
+Il livello locale viene ripristinato uscendo dalla prova; una digitazione successiva resta
+conservata. Le revisioni del campo permettono di leggere subito una scrittura nel parent
+senza aspettare il frame e impediscono ai comandi vecchi di ripristinare un valore superato.
+Sospensione, ridisegno dei faceplate e modifiche grafiche conservano gli input successivi.
+I comandi grafici grezzi non possono modificare un valore collegato aggirando il trasporto.
+
+Pipeline standard, Canvas, VM autonoma Node e aggiornamento assistito condividono il
+contratto. Aggiunto src/framecraftHmiProcessValue.ts nei componenti aggiornabili; i cataloghi
+macchina e le pagine personalizzate non vengono riscritti. Nessuna dipendenza nuova o
+istruzione IR; le versioni precedenti restano leggibili. Per un host custom servono
+snapshot processValue e manager.processValue(reference, context, writing); il codice del
+resolver e' condiviso e privo di accesso a DOM, socket o filesystem.
+
+Verifiche mirate in tests/hmi-process-value.test.ts e test Canvas/trasporto/controlli/
+aggiornamento. `tests/browser/hmi-process-value.mjs` compila un pannello standard e
+verifica con HTTP sintetico letture/scritture tipizzate, mancato aggiornamento ottimistico,
+aggiornamento da campioni, rifiuto server senza replay, campi locali/timer/input e Node.
+Il test non contatta PLC, broker o servizi esterni e non collauda un installer industriale.
+
+Fonti primarie: [IOField.ProcessValue Variant read-write, V21](https://docs.tia.siemens.cloud/r/fr-fr/v21/modele-d-objet-javascript-wincc-unified-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/iofield-rt-unified/iofield.processvalue-rt-unified?contentId=lj1EC2l2K2FArm1EF0JxMg),
+[stessa firma in V20](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/iofield-rt-unified/iofield.processvalue-rt-unified).
+Le scelte di trasporto, conferma e sincronizzazione sono il contratto Framecraft, non una
+promessa di equivalenza di ogni widget e dispositivo Unified. CurrentQuality, formati,
+ShiftDecimalPlaces e altre proprieta'/eventi specifici restano nell'object model aperto.

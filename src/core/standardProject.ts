@@ -120,6 +120,7 @@ import recipeApplyClientSource from "./hmiRecipeApplyClient.ts?raw";
 import recipeApplyControlSource from "./hmiRecipeApply.ts?raw";
 import recipeControlSource from "./hmiRecipeControl.ts?raw";
 import hmiTagBindingSource from "./hmiTagBinding.ts?raw";
+import hmiProcessValueSource from "./hmiProcessValue.ts?raw";
 import hmiExpressionSource from "./hmiExpression.ts?raw";
 import { emptyAlarmCatalog } from "./hmiAlarms";
 import alarmEngineSource from "../../runtime/alarm-engine.mjs?raw";
@@ -352,6 +353,7 @@ import { clearHmiFunctionTrendHistory, renderHmiFunctionTrendControls } from "./
 import { createHmiDataLogRuntime } from "./framecraftHmiDataLogs";
 import { createHmiDataLogClient } from "./framecraftHmiDataLogClient";
 import { resolveHmiTagDynamization, resolveHmiTagReference } from "./framecraftHmiTagBinding";
+import { resolveHmiProcessValue } from "./framecraftHmiProcessValue";
 import scriptCatalogJson from "../framecraft.scripts.json";
 import faceplateCatalogJson from "../framecraft.faceplates.json";
 import dataLogCatalogSource from "../framecraft.logs.json";
@@ -720,7 +722,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   let nextScreenItemId = 0;
   const screenItemId = (element: Element) => { if (!screenItemIds.has(element)) screenItemIds.set(element, "runtime-item-" + ++nextScreenItemId); return screenItemIds.get(element)!; };
   const propertyFlashingSurface = createHmiPropertyFlashingDomSurface(document, screenItemId, undefined, (message: string) => (options.error ?? console.error)("[HMI oggetti] " + message));
-  const propertyFlashing = createHmiPropertyFlashing({ items: () => propertyFlashingSurface.items(), apply: (commands: Parameters<typeof propertyFlashingSurface.apply>[0]) => propertyFlashingSurface.apply(commands), applyProperties: (commands: Parameters<typeof propertyFlashingSurface.applyProperties>[0]) => propertyFlashingSurface.applyProperties(commands), report: (message: string) => (options.error ?? console.error)("[HMI oggetti] " + message) });
+  const propertyFlashing = createHmiPropertyFlashing({ resolveProcessValue: (source: Parameters<typeof resolveHmiProcessValue>[0], context: Parameters<typeof resolveHmiProcessValue>[1], writing?: boolean) => resolveHmiProcessValue(source,context,plcCatalogJson.variables,writing), items: () => propertyFlashingSurface.items(), apply: (commands: Parameters<typeof propertyFlashingSurface.apply>[0]) => propertyFlashingSurface.apply(commands), applyProperties: (commands: Parameters<typeof propertyFlashingSurface.applyProperties>[0]) => propertyFlashingSurface.applyProperties(commands), report: (message: string) => (options.error ?? console.error)("[HMI oggetti] " + message) });
   const renderRuntimeFaceplates = () => { propertyFlashingSurface.suspend(); try { renderFaceplateVisuals(); } finally { propertyFlashingSurface.resume(); } };
   const flashingStyle = document.createElement("style");
   flashingStyle.dataset.framecraftHmiFlashing = "";
@@ -2056,6 +2058,7 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/framecraftHmiDataLogTypes.d.ts", content: dataLogBrowserTypes.replaceAll('"./data-log-deadband.mjs"', '"../runtime/data-log-deadband.mjs"') },
     { path: "src/framecraftHmiExpression.ts", content: hmiExpressionSource },
     { path: "src/framecraftHmiTagBinding.ts", content: hmiTagBindingSource.replace('"./hmiExpression"', '"./framecraftHmiExpression"') },
+    { path: "src/framecraftHmiProcessValue.ts", content: hmiProcessValueSource.replace("'./hmiTagBinding'", "'./framecraftHmiTagBinding'") },
     { path: "src/framecraftHmiRuntime.ts", content: hmiRuntimeSource() },
     { path: "src/styles.css", content: stylesSource(mobile) },
     { path: "public/placeholder.svg", content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"><rect width="800" height="500" fill="#ececec"/><rect x="12" y="12" width="776" height="476" rx="10" fill="none" stroke="#8b8b8b" stroke-width="3" stroke-dasharray="12 10"/><path d="M280 318l78-88 62 62 46-48 76 74H280z" fill="#b9b9b9"/><circle cx="360" cy="180" r="30" fill="#b9b9b9"/><text x="400" y="390" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="28" fill="#555">Sostituisci immagine nell'Inspector</text></svg>\n` },

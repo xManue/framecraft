@@ -41,3 +41,13 @@ it('includes Padding in coherent updates without replacing machine catalogs or c
   expect(plan.changes.some(file=>file.path==='framecraft.scripts.json'||file.path==='src/pages/Custom.tsx')).toBe(false);
   expect(plan.dependenciesChanged).toBe(false);
 },20000); // Cold import compiles the complete standard generator and bundled source assets.
+
+it('creates the typed ProcessValue resolver together with its VM while preserving project data',async()=>{
+  const {standardProjectFiles}=await import('../src/core/standardProject');const files=runtimeUpdateBundle(standardProjectFiles({machineName:'ProcessValue synthetic',layout:'desktop',sections:['main']}));
+  const saved=Object.fromEntries(files.map(file=>[file.path,file.content])) as Record<string,string|null>;
+  saved['src/framecraftHmiProcessValue.ts']=null;saved['src/framecraftScriptRuntime.ts']='export const legacy=true;';saved['src/framecraftHmiRuntime.ts']='export const legacy=true;';saved['framecraft.plc.json']='{"variables":[{"name":"LocalOnly"}]}';
+  const plan=await planRuntimeUpdate(files,{generation:1,files:{...saved,[runtimeManifestPath]:null},backups:[]});
+  expect(plan.changes.find(file=>file.path==='src/framecraftHmiProcessValue.ts')).toMatchObject({kind:'create'});
+  expect(plan.changes.find(file=>file.path==='src/framecraftScriptRuntime.ts')?.after).toContain('processValueDefinition');expect(plan.changes.find(file=>file.path==='src/framecraftScriptRuntime.ts')?.after).not.toContain('__vite_ssr_import_');
+  expect(plan.changes.find(file=>file.path==='src/framecraftHmiRuntime.ts')?.after).toContain('resolveHmiProcessValue');expect(plan.changes.some(file=>file.path==='framecraft.plc.json')).toBe(false);expect(plan.dependenciesChanged).toBe(false);
+},20000);
