@@ -1,3 +1,5 @@
+import {parseTrendQuality,trendQualityIssues,trendQualityColor,trendPointQuality,trendPointUsable,trendQualityRuntimeModuleSource} from './hmi-trend-quality.mjs';
+const fxParseQuality=parseTrendQuality,fxQualityIssues=trendQualityIssues,fxQualityColor=trendQualityColor,fxPointQuality=trendPointQuality,fxPointUsable=trendPointUsable;
 import { hmiControlQualityModuleSource, controlWireQuality, controlSampleCode, controlQuality, publishControlQuality, clearControlQuality } from './hmi-control-quality.mjs';
 const fxWireQuality=controlWireQuality, fxSampleCode=controlSampleCode, fxControlQuality=controlQuality, fxPublishQuality=publishControlQuality, fxClearQuality=clearControlQuality;
 import { appendTrendText, trendArgb, trendAxisLabel, trendAxisRange, trendAxisValue, trendPath, trendCsvCell } from "./hmi-trend.mjs";
@@ -62,7 +64,7 @@ export function parseHmiFunctionTrendConfig(value) {
     }) : fallback.areas;
     const trends = Array.isArray(item.trends) ? item.trends.map((rawTrend, index) => {
         const trend = fxObject(rawTrend);
-        return { id: fxString(trend.id, `curve-${index + 1}`), name: fxString(trend.name, `Curva ${index + 1}`), areaId: fxString(trend.areaId, areas[0]?.id ?? "area-1"), color: fxString(trend.color, ["#00A1D1", "#87BE32", "#D43D51"][index % 3]), mode: ["points", "stepped", "values"].includes(String(trend.mode)) ? trend.mode : "interpolated", visible: fxBool(trend.visible, true), x: normalizeFxSource(trend.x), y: normalizeFxSource(trend.y), range: normalizeFxRange(trend.range), pairToleranceMs: fxNumber(trend.pairToleranceMs, 500), lowThreshold: fxOptional(trend.lowThreshold), highThreshold: fxOptional(trend.highThreshold) };
+        return { id: fxString(trend.id, `curve-${index + 1}`), name: fxString(trend.name, `Curva ${index + 1}`), areaId: fxString(trend.areaId, areas[0]?.id ?? "area-1"), ...(trend.qualityVisualization!==undefined?{qualityVisualization:fxParseQuality(trend.qualityVisualization)}:{}), color: fxString(trend.color, ["#00A1D1", "#87BE32", "#D43D51"][index % 3]), mode: ["points", "stepped", "values"].includes(String(trend.mode)) ? trend.mode : "interpolated", visible: fxBool(trend.visible, true), x: normalizeFxSource(trend.x), y: normalizeFxSource(trend.y), range: normalizeFxRange(trend.range), pairToleranceMs: fxNumber(trend.pairToleranceMs, 500), lowThreshold: fxOptional(trend.lowThreshold), highThreshold: fxOptional(trend.highThreshold) };
     }) : fallback.trends;
     return { version: 1, caption: fxString(item.caption, fallback.caption), sampleIntervalMs: fxNumber(item.sampleIntervalMs, fallback.sampleIntervalMs), maxPoints: Math.round(fxNumber(item.maxPoints, fallback.maxPoints)), online: fxBool(item.online, true), showToolbar: fxBool(item.showToolbar, true), showLegend: fxBool(item.showLegend, true), showGrid: fxBool(item.showGrid, true), showRuler: fxBool(item.showRuler, true), backColor: fxString(item.backColor, fallback.backColor), plotColor: fxString(item.plotColor, fallback.plotColor), areas, trends };
 }
@@ -70,6 +72,7 @@ export function serializeHmiFunctionTrendConfig(config) { return JSON.stringify(
 export function hmiFunctionTrendIssues(config, variables, dataLogs) {
     const issues = [];
     const error = (message) => issues.push({ severity: "error", message });
+    for(const trend of config.trends)for(const issue of fxQualityIssues(trend.qualityVisualization))error(trend.name+": "+issue);
     if (config.sampleIntervalMs < 100)
         error("Il campionamento X/Y deve essere almeno 100 ms.");
     if (config.maxPoints < 2 || config.maxPoints > 100_000)
@@ -146,7 +149,7 @@ export function functionTrendNumericValues(raw) {
         return undefined;
     return values.map(Number);
 }
-export function pairFunctionTrendSamples(xValues, yValues, toleranceMs, invalidPair) {
+export function pairFunctionTrendSamples(xValues, yValues, toleranceMs, invalidPair, includeGaps=false) {
     const xs = xValues.filter((sample) => Number.isFinite(sample.time)).slice().sort((a, b) => a.time - b.time);
     const ys = yValues.filter((sample) => Number.isFinite(sample.time)).slice().sort((a, b) => a.time - b.time);
     const points = [];
@@ -158,8 +161,10 @@ export function pairFunctionTrendSamples(xValues, yValues, toleranceMs, invalidP
         const xSample = xs[index];
         const x = functionTrendNumericValues(xSample?.value);
         const y = functionTrendNumericValues(ySample.value);
-        if (!xSample || Math.abs(xSample.time - ySample.time) > toleranceMs || !x || !y || x.length !== y.length || xSample.value.trim().startsWith("[") !== ySample.value.trim().startsWith("[")) {
-            if(xSample && Math.abs(xSample.time-ySample.time)<=toleranceMs) invalidPair?.();
+        if (!xSample || xSample.gap || ySample.gap || Math.abs(xSample.time - ySample.time) > toleranceMs || !x || !y || x.length !== y.length || xSample.value.trim().startsWith("[") !== ySample.value.trim().startsWith("[")) {
+            const missing=!xSample||xSample.gap==='missing'||ySample.gap==='missing'||Math.abs(xSample.time-ySample.time)>toleranceMs||!xSample.value?.trim()||!ySample.value?.trim();
+            if(!missing)invalidPair?.();
+            if(includeGaps)points.push({time:ySample.time,x:NaN,y:NaN,xQualityCode:xSample?.qualityCode,yQualityCode:ySample.qualityCode,gap:missing?'missing':'invalid'});
             unmatched++;
             continue;
         }
@@ -184,7 +189,7 @@ function fxVisibleRange(range, zoom, pan) {
 function fxDownload(config, state) {
     const rows = ["timestamp;curve;xTag;yTag;x;y;xSource;ySource;xQualityCode;yQualityCode"];
     for (const trend of config.trends)
-        for (const point of state.displayed.get(trend.id) ?? [])
+        for (const point of (state.displayed.get(trend.id) ?? []).filter(point=>!point.gap))
             rows.push([new Date(point.time).toISOString(), trend.name, fxSourceKey(trend.x), fxSourceKey(trend.y), point.x, point.y, trend.x.source, trend.y.source, point.xQualityCode ?? "", point.yQualityCode ?? ""].map(fxCsvCell).join(";"));
     const content = `${rows.join("\n")}\n`;
     const fileName = `${config.caption.replace(/[^a-z0-9_-]+/gi, "-") || "function-trend"}.csv`;
@@ -394,9 +399,9 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
         const tags = new Set(config.trends.flatMap((trend) => [trend.x, trend.y]).filter((source) => source.source === "online" && source.tag).map((source) => source.tag));
         for (const tag of tags) {
             const raw = values[tag];
-            if (!functionTrendNumericValues(raw)) {
-                if (raw?.trim().startsWith("["))
-                    state.onlineValues.delete(tag);
+            if (!functionTrendNumericValues(raw)||options.status?.[tag]?.qualityKnown===false) {
+                const list=raw?.trim().startsWith("[")?[]:state.onlineValues.get(tag)??[];
+                list.push({time:now,value:raw??"",qualityCode:fxSampleCode(options.status?.[tag]),...(options.status?.[tag]?.qualityKnown===false?{gap:"missing"}:{})});if(list.length>maximum)list.splice(0,list.length-maximum);state.onlineValues.set(tag,list);
                 continue;
             }
             const list = raw.trim().startsWith("[") ? [] : state.onlineValues.get(tag) ?? [];
@@ -406,7 +411,7 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
             state.onlineValues.set(tag, list);
         }
     }
-    const messages = [];
+    const messages = config.trends.flatMap(trend=>fxQualityIssues(trend.qualityVisualization).map(issue=>trend.name+": "+issue));
     const existingPlot = root.querySelector(":scope > svg");
     if (existingPlot && !state.zoomArea)
         fxAreaZoom(existingPlot, false, state.plots, () => { });
@@ -422,12 +427,12 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
             const sourceValues = (source, padding = 0) => (source.source === "log" ? options.history?.(source, from - padding, to + padding) ?? [] : state.onlineValues.get(source.tag) ?? []).filter((sample) => sample.time >= from - padding && sample.time <= to + padding);
             const xValues=sourceValues(trend.x,tolerance),yValues=sourceValues(trend.y);
             const codes=[];
-            const paired = pairFunctionTrendSamples(xValues,yValues,tolerance,()=>codes.push(1));
+            const paired = pairFunctionTrendSamples(xValues,yValues,tolerance,()=>codes.push(1),true);
             for (const [source,samples,padding] of [[trend.x,xValues,tolerance],[trend.y,yValues,0]]) {
                 const status=source.source === 'log' ? options.historyState?.(source,from-padding,to+padding) : undefined;
                 if (source.source === 'log' && (status === 'error' || !source.logId || !source.loggedTagId)) codes.push(1);
                 else if (source.source === 'log' && (!options.history || status === 'loading' || status === 'unavailable')) codes.push(0);
-                if (samples.some(sample => !functionTrendNumericValues(sample.value))) codes.push(1);
+                if (samples.some(sample => sample.value?.trim()&&!functionTrendNumericValues(sample.value))) codes.push(1);
                 if (source.source === 'online') {
                     const raw=values[source.tag];codes.push(!source.tag ? 1 : raw === undefined || !raw.trim() ? 0 : functionTrendNumericValues(raw) ? 4 : 1);
                 }
@@ -535,6 +540,14 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
         select.value = state.foreground ?? "";
     }
     const svg = root.querySelector(":scope > svg");
+    let qualityNotes=root.querySelector('[data-hmi-fx-quality-notes]');
+    if(!qualityNotes){qualityNotes=doc.createElement('p');qualityNotes.setAttribute('data-hmi-fx-quality-notes','');qualityNotes.setAttribute('role','status');Object.assign(qualityNotes.style,{margin:'0',padding:'4px 9px',fontSize:'12px',display:'flex',flexWrap:'wrap',gap:'4px 12px'});root.insertBefore(qualityNotes,svg);}
+    qualityNotes.replaceChildren();
+    for(const trend of shown){const counts={bad:0,unknown:0,uncertain:0};for(const point of state.displayed.get(trend.id)??[]){const quality=fxPointQuality(point);if(quality!=='good')counts[quality]++;}
+      if(!counts.bad&&!counts.unknown&&!counts.uncertain)continue;
+      const span=doc.createElement('span'),quality=counts.bad?'bad':counts.unknown?'unknown':'uncertain';span.setAttribute('data-hmi-fx-quality',quality);span.style.color=fxQualityColor(trend.qualityVisualization,quality,'#7a4200');span.textContent=trend.name+': '+counts.bad+' non validi, '+counts.unknown+' non disponibili, '+counts.uncertain+' incerti'+(counts.bad||counts.unknown?' · i campioni non utilizzabili interrompono la linea':'');qualityNotes.append(span);
+    }
+    qualityNotes.hidden=!qualityNotes.childElementCount;qualityNotes.style.display=qualityNotes.hidden?"none":"flex";
     svg.replaceChildren();
     svg.setAttribute("aria-label", `${config.caption}: Y in funzione di X, ${shown.length} curve`);
     state.plots = [];
@@ -549,7 +562,7 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
         const plotHeight = Math.max(15, height - 24);
         const group = fxText(svg, "g", "", { "data-hmi-fx-area": area.id });
         const curves = shown.filter((trend) => trend.areaId === area.id).sort((a, b) => Number(a.id === state.foreground) - Number(b.id === state.foreground));
-        const points = curves.flatMap((trend) => state.displayed.get(trend.id) ?? []);
+        const points = curves.flatMap((trend) => (state.displayed.get(trend.id) ?? []).filter(fxPointUsable));
         const xRange = state.views.get(area.id)?.x ?? fxAxisRange(area.xAxis, points.map((point) => point.x));
         const yRange = state.views.get(area.id)?.y ?? fxAxisRange(area.yAxis, [...points.map((point) => point.y), ...curves.flatMap((trend) => [trend.lowThreshold, trend.highThreshold].filter((value) => value !== undefined))]);
         state.plots.push({ id: area.id, left, top, width, height: plotHeight, xRange, yRange });
@@ -578,31 +591,24 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
         group.append(clip);
         for (const trend of curves) {
             const samples = state.displayed.get(trend.id) ?? [];
-            const coords = [];
-            const valid = [];
-            for (const point of samples) {
-                const x = px(point.x);
-                const y = py(point.y);
-                if (x !== undefined && y !== undefined) {
-                    coords.push([x, y]);
-                    valid.push(point);
-                }
+            const segments=[],valid=[];let segment=[];
+            for(const point of samples){
+                const usable=fxPointUsable(point),x=usable?px(point.x):undefined,y=usable?py(point.y):undefined;
+                if(!usable||x===undefined||y===undefined){if(segment.length)segments.push(segment);segment=[];continue;}
+                const projected={point,xy:[x,y],quality:fxPointQuality(point)};segment.push(projected);valid.push(projected);
             }
-            if (trend.mode !== "points")
-                fxText(clip, "path", "", { "data-hmi-fx-series": trend.id, d: fxPath(trend.mode, coords), fill: "none", stroke: fxArgb(trend.color), "stroke-width": trend.id === state.foreground ? 3 : 2 });
-            else
-                fxText(clip, "g", "", { "data-hmi-fx-series": trend.id });
-            for (let index = 0; index < coords.length; index++) {
-                const [x, y] = coords[index];
-                const point = valid[index];
-                const uncertain = [point.xQualityCode, point.yQualityCode].some((quality) => ["bad", "uncertain"].includes(fxQualityClass(quality)));
-                if (trend.mode === "points" || trend.mode === "values" || uncertain) {
-                    const marker = fxText(clip, "circle", "", { cx: x, cy: y, r: uncertain ? 4 : 3, fill: uncertain ? "#fff" : fxArgb(trend.color), stroke: fxArgb(trend.color), "stroke-width": uncertain ? 2 : 1 });
-                    fxText(marker, "title", `X ${point.x}; Y ${point.y}; qualità X ${point.xQualityCode ?? "non disponibile"}; Y ${point.yQualityCode ?? "non disponibile"}`);
-                }
-                if (trend.mode === "values")
-                    fxText(clip, "text", `${point.x}, ${point.y}`, { x: x + 4, y: y - 4, fill: fxArgb(trend.color), "font-size": 9 });
+            if(segment.length)segments.push(segment);
+            if(trend.mode!=='points')fxText(clip,'path','',{'data-hmi-fx-series':trend.id,d:segments.map(segment=>fxPath(trend.mode,segment.map(item=>item.xy))).join(' '),fill:'none',stroke:fxArgb(trend.color),'stroke-width':trend.id===state.foreground?3:2});
+            else fxText(clip,'g','',{'data-hmi-fx-series':trend.id});
+            if(trend.qualityVisualization?.visible&&trend.mode!=='points')for(const segment of segments)for(let index=1;index<segment.length;index++){
+                const first=segment[index-1],next=segment[index];if(first.quality==='uncertain'||next.quality==='uncertain')fxText(clip,'path','',{'data-hmi-fx-quality-segment':'uncertain',d:fxPath(trend.mode,[first.xy,next.xy]),fill:'none',stroke:fxQualityColor(trend.qualityVisualization,'uncertain',fxArgb(trend.color)),'stroke-width':trend.id===state.foreground?3:2});
             }
+            for(const {point,xy:[x,y],quality}of valid){
+                const uncertain=quality!=='good',color=fxQualityColor(trend.qualityVisualization,quality,fxArgb(trend.color));
+                if(trend.mode==='points'||trend.mode==='values'||uncertain){const marker=fxText(clip,'circle','',{'data-hmi-fx-quality':quality,cx:x,cy:y,r:uncertain?4:3,fill:uncertain?'#fff':color,stroke:color,'stroke-width':uncertain?2:1});fxText(marker,'title','X '+point.x+'; Y '+point.y+'; qualità X '+(point.xQualityCode??'non disponibile')+'; Y '+(point.yQualityCode??'non disponibile'));}
+                if(trend.mode==='values')fxText(clip,'text',point.x+', '+point.y,{x:x+4,y:y-4,fill:color,'font-size':9});
+            }
+            // Non-usable observations are described outside the coordinate system.
             for (const threshold of [trend.lowThreshold, trend.highThreshold])
                 if (threshold !== undefined) {
                     const y = py(threshold);
@@ -613,8 +619,8 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
         if (state.ruler?.areaId === area.id) {
             const x = left + width * state.ruler.ratio;
             const readings = curves.flatMap((trend) => {
-                const closest = (state.displayed.get(trend.id) ?? []).reduce((best, point) => { const coordinate = px(point.x); return coordinate !== undefined && (!best || Math.abs(coordinate - x) < Math.abs((px(best.x) ?? x) - x)) ? point : best; }, undefined);
-                return closest ? [`${trend.name}: X ${closest.x}, Y ${closest.y}`] : [];
+                const closest = (state.displayed.get(trend.id) ?? []).filter(fxPointUsable).reduce((best, point) => { const coordinate = px(point.x); return coordinate !== undefined && (!best || Math.abs(coordinate - x) < Math.abs((px(best.x) ?? x) - x)) ? point : best; }, undefined);
+                return closest ? [`${trend.name}: X ${closest.x}, Y ${closest.y} · qualità ${fxPointQuality(closest)}`] : [];
             });
             fxText(group, "line", "", { x1: x, x2: x, y1: top, y2: top + plotHeight, stroke: "#20262b" });
             fxText(group, "text", readings.join(" · ") || "Nessuna coppia X/Y", { x: left + 5, y: top + 24, fill: "#20262b", "font-size": 10 });
@@ -627,7 +633,7 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
         for (const checkbox of root.querySelectorAll("[data-hmi-fx-visibility]")) {
             const trend = config.trends.find((trend) => trend.id === checkbox.dataset.hmiFxVisibility);
             checkbox.checked = !state.hidden.has(trend.id);
-            checkbox.nextElementSibling.textContent = `${trend.name} · ${state.displayed.get(trend.id)?.length ?? 0} punti`;
+            checkbox.nextElementSibling.textContent = `${trend.name} · ${state.displayed.get(trend.id)?.filter(fxPointUsable).length ?? 0} punti`;
         }
     }
     const codes=[],liveTags=[];
@@ -656,7 +662,7 @@ export function hmiFunctionTrendJsx() {
 }
 export function hmiFunctionTrendRuntimeModuleSource() {
     const helpers = [normalizeFxSource, normalizeFxAxis, normalizeFxRange, defaultHmiFunctionTrendConfig, parseHmiFunctionTrendConfig, functionTrendNumericValues, pairFunctionTrendSamples, fxSourceKey, fxBounds, fxVisibleRange, fxDownload, hostUrlApi, fxInstallListeners, fxToolbar, fxLocalDate, trendArgb, trendAxisValue, trendAxisLabel, trendAxisRange, trendPath, appendTrendText];
-    const source = `// @ts-nocheck\nconst hmiFunctionTrendAttribute = ${JSON.stringify(hmiFunctionTrendAttribute)};\nconst functionTrendStates = new WeakMap();\nconst fxString = ${String(fxString)};\nconst fxNumber = ${String(fxNumber)};\nconst fxOptional = ${String(fxOptional)};\nconst fxBool = ${String(fxBool)};\nconst fxObject = ${String(fxObject)};\n${hmiTrendRuntimeUiModuleSource()}\n${hmiControlQualityModuleSource()}\nconst fxWireQuality=controlWireQuality, fxSampleCode=controlSampleCode, fxControlQuality=controlQuality, fxPublishQuality=publishControlQuality, fxClearQuality=clearControlQuality;\n${helpers.map(String).join("\n")}\nconst fxText = appendTrendText;\nconst fxArgb = trendArgb;\nconst fxAxisLabel = trendAxisLabel;\nconst fxAxisRange = trendAxisRange;\nconst fxAxisValue = trendAxisValue;\nconst fxPath = trendPath;\nconst fxSourcePicker = renderTrendSourcePicker;\nconst fxAreaZoom = installTrendAreaZoom;\nconst fxZoomDragging = trendAreaZoomDragging;\nconst fxZoomRange = trendRuntimeZoomRange;\nconst fxQualityClass = trendQualityClass;\nexport ${String(renderHmiFunctionTrendControl)}\nexport ${String(renderHmiFunctionTrendControls)}\n`;
+    const source = `// @ts-nocheck\nconst hmiFunctionTrendAttribute = ${JSON.stringify(hmiFunctionTrendAttribute)};\nconst functionTrendStates = new WeakMap();\nconst fxString = ${String(fxString)};\nconst fxNumber = ${String(fxNumber)};\nconst fxOptional = ${String(fxOptional)};\nconst fxBool = ${String(fxBool)};\nconst fxObject = ${String(fxObject)};\n${hmiTrendRuntimeUiModuleSource()}\n${trendQualityRuntimeModuleSource()}\nconst fxParseQuality=parseTrendQuality,fxQualityIssues=trendQualityIssues,fxQualityColor=trendQualityColor,fxPointQuality=trendPointQuality,fxPointUsable=trendPointUsable;\n${hmiControlQualityModuleSource()}\nconst fxWireQuality=controlWireQuality, fxSampleCode=controlSampleCode, fxControlQuality=controlQuality, fxPublishQuality=publishControlQuality, fxClearQuality=clearControlQuality;\n${helpers.map(String).join("\n")}\nconst fxText = appendTrendText;\nconst fxArgb = trendArgb;\nconst fxAxisLabel = trendAxisLabel;\nconst fxAxisRange = trendAxisRange;\nconst fxAxisValue = trendAxisValue;\nconst fxPath = trendPath;\nconst fxSourcePicker = renderTrendSourcePicker;\nconst fxAreaZoom = installTrendAreaZoom;\nconst fxZoomDragging = trendAreaZoomDragging;\nconst fxZoomRange = trendRuntimeZoomRange;\nconst fxQualityClass = trendQualityClass;\nexport ${String(renderHmiFunctionTrendControl)}\nexport ${String(renderHmiFunctionTrendControls)}\n`;
     return source.replace("const functionTrendStates = new WeakMap();", "const functionTrendStates = new WeakMap();\nconst fxListenerHosts = new WeakSet();") + `\n${String(trendCsvCell)}\nconst fxCsvCell = trendCsvCell;\nexport ${String(clearHmiFunctionTrendHistory)}\n`;
 }
 

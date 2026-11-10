@@ -1,3 +1,4 @@
+import type { HmiTrendQuality } from "./hmi-trend-quality.mjs";
 import type { PlcVariableDefinition } from "../src/core/plcVariables";
 import type { HmiDataLogCatalog } from "../src/core/hmiDataLogs";
 import { type HmiTrendSourceCatalog } from "./hmi-trend-runtime-ui.mjs";
@@ -28,6 +29,7 @@ export interface HmiTrendSeries {
     logId?: string;
     loggedTagId?: string;
     areaId: string;
+    qualityVisualization?: HmiTrendQuality;
     color: string;
     mode: HmiTrendMode;
     axis: HmiTrendAxisSide;
@@ -70,6 +72,7 @@ export interface HmiTrendSample {
     value: number;
     qualityCode?: number;
     aggregated?: boolean;
+    gap?: "missing"|"invalid";
 }
 export interface HmiTrendRenderOptions {
     now?: number;

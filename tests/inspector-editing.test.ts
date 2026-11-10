@@ -453,3 +453,18 @@ it("persiste Mostra qualità dei dati e consente Annulla",async()=>{
  expect(checkbox.checked).toBe(false);await act(async()=>checkbox.click());expect(source()).toContain('data-hmi-visualize-quality="true"');expect(useEditorStore.getState().history).toHaveLength(1);expect(files.get(file)).toBe(source());
  await act(async()=>useEditorStore.getState().undo());expect(source()).toBe(original);
 });
+
+it.each(['time','xy'] as const)("salva colori qualità della curva %s con Annulla",async kind=>{
+ const trendModule=kind==='time'?await import('../scripts/hmi-trend.mjs'):await import('../scripts/hmi-function-trend.mjs');
+ const attribute=kind==='time'?'data-hmi-trend':'data-hmi-function-trend';
+ const config=kind==='time'?(trendModule as typeof import('../scripts/hmi-trend.mjs')).defaultHmiTrendConfig():(trendModule as typeof import('../scripts/hmi-function-trend.mjs')).defaultHmiFunctionTrendConfig();
+ const fixture='export default function Page(){return <div '+attribute+"='"+JSON.stringify(config)+"' />}",parsed=parseSource(file,fixture);files.set(file,fixture);
+ await act(async()=>useEditorStore.setState({document:parsed,selectedId:Object.values(parsed.nodes).find(node=>node.type==='div')!.id,history:[],future:[]}));
+ await choose('PLC e dati');
+ const quality=()=>[...host.querySelectorAll<HTMLLabelElement>('label')].find(label=>label.textContent?.includes('Colora i campioni'))!.querySelector<HTMLInputElement>('input')!;
+ expect(quality().checked).toBe(false);await act(async()=>quality().click());
+ const current=()=>{const state=useEditorStore.getState(),node=state.document!.nodes[state.selectedId!];return JSON.parse(String(node.props[attribute]));};
+ expect(current().trends[0].qualityVisualization.visible).toBe(true);
+ const picker=host.querySelector<HTMLInputElement>('input[aria-label="Colore dati non validi"]')!;await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(picker,'#334455');picker.dispatchEvent(new Event('change',{bubbles:true}));});
+ expect(current().trends[0].qualityVisualization.badColor).toBe(0xff334455);expect(files.get(file)).toBe(source());await act(async()=>useEditorStore.getState().undo());expect(current().trends[0].qualityVisualization.badColor).toBe(0xfff87171);await act(async()=>useEditorStore.getState().undo());expect(source()).toBe(fixture);
+});

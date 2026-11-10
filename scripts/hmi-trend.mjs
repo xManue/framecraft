@@ -1,3 +1,5 @@
+import {parseTrendQuality,trendQualityIssues,trendQualityColor,trendPointQuality,trendPointUsable,trendQualityRuntimeModuleSource} from './hmi-trend-quality.mjs';
+const timeParseQuality=parseTrendQuality,timeQualityIssues=trendQualityIssues,timeQualityColor=trendQualityColor,timePointQuality=trendPointQuality,timePointUsable=trendPointUsable;
 import { hmiTrendRuntimeUiModuleSource, installTrendAreaZoom, renderTrendSourcePicker, trendAreaZoomDragging, trendQualityClass, trendRuntimeZoomRange } from "./hmi-trend-runtime-ui.mjs";
 import { hmiControlQualityModuleSource, controlWireQuality, controlSampleCode, controlQuality, publishControlQuality, clearControlQuality } from './hmi-control-quality.mjs';
 const timeWireQuality=controlWireQuality, timeSampleCode=controlSampleCode, timeControlQuality=controlQuality, timePublishQuality=publishControlQuality, timeClearQuality=clearControlQuality;
@@ -36,10 +38,10 @@ export function trendFormatTime(time, timeZone = "local", date = false) {
 }
 function trendWorstSample(first, next) {
     const severity = { good: 0, unknown: 1, uncertain: 2, bad: 3 };
-    return !first || severity[timeQualityClass(next.qualityCode)] > severity[timeQualityClass(first.qualityCode)] ? next : first;
+    return !first || severity[timePointQuality(next)] > severity[timePointQuality(first)] ? next : first;
 }
 export function aggregateTrendSamples(source, from, to, pixels, mode = "time-average-stepped") {
-    const ordered = source.filter(sample => Number.isFinite(sample.time) && Number.isFinite(sample.value));
+    const ordered = source.filter(sample => Number.isFinite(sample.time)&&(Number.isFinite(sample.value)||sample.gap));
     if (ordered.some((sample, index) => index && sample.time < ordered[index - 1].time)) ordered.sort((a, b) => a.time - b.time);
     const raw = ordered.filter(sample => sample.time >= from && sample.time <= to);
     const width = Math.max(1, Math.min(4096, Math.floor(Number.isFinite(pixels) ? pixels : 532)));
@@ -50,6 +52,7 @@ export function aggregateTrendSamples(source, from, to, pixels, mode = "time-ave
     const buckets = Array.from({ length: width }, () => ({ firstPoint: undefined, lastPoint: undefined, minimum: undefined, maximum: undefined, coverage: 0, mean: 0, worst: undefined, first: undefined, last: undefined }));
     for (const sample of raw) {
         const bucket = buckets[bucketAt(sample.time)];
+        if(!timePointUsable(sample))bucket.invalid??=sample;
         bucket.firstPoint ??= sample;
         bucket.lastPoint = sample;
         if (!bucket.minimum || sample.value < bucket.minimum.value) bucket.minimum = sample;
@@ -65,6 +68,7 @@ export function aggregateTrendSamples(source, from, to, pixels, mode = "time-ave
                 const bucket = buckets[bucketIndex];
                 const stop = Math.min(end, bucketIndex === width - 1 ? to : from + (bucketIndex + 1) * duration);
                 if (stop <= start) continue;
+                if(!timePointUsable(sample)){bucket.invalid??=sample;bucket.worst=trendWorstSample(bucket.worst,sample);start=stop;continue;}
                 const weight = stop - start, total = bucket.coverage + weight;
                 bucket.mean = bucket.mean * (bucket.coverage / total) + sample.value * (weight / total);
                 bucket.coverage = total;
@@ -75,8 +79,9 @@ export function aggregateTrendSamples(source, from, to, pixels, mode = "time-ave
             }
         }
     }
-    const samples = buckets.flatMap(bucket => {
+    const samples = buckets.flatMap((bucket,bucketIndex) => {
         if (!bucket.worst) return [];
+        if(bucket.invalid)return [{...bucket.invalid,time:from+(bucketIndex+.5)*duration,aggregated:true}];
         if (mode === "time-average-stepped") {
             if (!bucket.coverage) return [{ ...bucket.lastPoint, qualityCode: bucket.worst.qualityCode, aggregated: true }];
             const bad = timeQualityClass(bucket.worst.qualityCode) === "bad";
@@ -114,6 +119,7 @@ function normalizeTrendSeries(value, index, fallbackAreaId = "area-1") {
         logId: trendString(item.logId).trim() || undefined,
         loggedTagId: trendString(item.loggedTagId).trim() || undefined,
         areaId: trendString(item.areaId, fallbackAreaId).trim() || fallbackAreaId,
+        ...(item.qualityVisualization!==undefined?{qualityVisualization:timeParseQuality(item.qualityVisualization)}:{}),
         color: trendString(item.color, ["#00A1D1", "#87BE32", "#F3A712", "#D43D51"][index % 4]),
         mode,
         axis: item.axis === "right" ? "right" : "left",
@@ -185,6 +191,7 @@ export function serializeHmiTrendConfig(config) {
 }
 export function hmiTrendIssues(config, variables, dataLogs) {
     const issues = [];
+    for(const trend of config.trends)for(const message of timeQualityIssues(trend.qualityVisualization))issues.push({severity:"error",message:trend.name+": "+message});
     if (!trendTimeZoneValid(config.timeZone))
         issues.push({ severity: "error", message: "Fuso orario non valido. Scegli Ora del dispositivo, UTC o un identificatore come Europe/Rome. Nel grafico viene usato UTC finché lo correggi." });
     if (config.timeRangeMs < 1_000)
@@ -310,8 +317,8 @@ export function trendCsvCell(value) {
 function trendCsv(config, state) {
     const rows = ["timestamp;trend;tag;value;source;qualityCode"];
     for (const trend of config.trends)
-        for (const sample of state.displayedSamples.get(trend.id) ?? state.samples.get(trend.id) ?? [])
-            rows.push([new Date(sample.time).toISOString(), trend.name, trend.tag, sample.value, trend.source, sample.qualityCode ?? ""].map(trendCsvCell).join(";"));
+        for (const sample of (state.displayedSamples.get(trend.id) ?? state.samples.get(trend.id) ?? []).filter(sample=>!sample.gap))
+            rows.push([new Date(sample.time).toISOString(), trend.name, trend.tag, Number.isFinite(sample.value)?sample.value:"", trend.source, sample.qualityCode ?? ""].map(trendCsvCell).join(";"));
     return `${rows.join("\n")}\n`;
 }
 function downloadTrendCsv(config, state, options) {
@@ -535,10 +542,9 @@ export function renderHmiTrendControl(host, values, options = {}) {
         for (const trend of config.trends.filter((item) => item.source === "online")) {
             const rawValue = values[trend.tag];
             const value = rawValue?.trim() ? Number(rawValue) : NaN;
-            if (!trend.tag || !Number.isFinite(value))
-                continue;
+            if (!trend.tag)continue;
             const samples = state.samples.get(trend.id) ?? [];
-            samples.push({ time: now, value, qualityCode: timeSampleCode(options.status?.[trend.tag]) });
+            samples.push({ time: now, value, qualityCode: timeSampleCode(options.status?.[trend.tag]),...(options.status?.[trend.tag]?.qualityKnown===false?{gap:"missing"}:!Number.isFinite(value)?{gap:rawValue===undefined||!rawValue.trim()?"missing":"invalid"}:{}) });
             const keepAfter = now - Math.max(config.timeRangeMs * 16, 60_000);
             let first = 0;
             while (first < samples.length - 1 && samples[first].time < keepAfter)
@@ -626,19 +632,20 @@ export function renderHmiTrendControl(host, values, options = {}) {
         }
         codes.push(acquisition);
         const samples=(config.aggregation === 'time-average-stepped' ? sourceSamples : visibleSamples).get(trend.id) ?? [];
-        codes.push(samples.length ? timeControlQuality(samples.map(sample => Number.isFinite(sample.value) ? timeWireQuality(sample.qualityCode) : 1)) : 0);
+        codes.push(samples.length ? timeControlQuality(samples.map(sample => sample.gap==='missing' ? 0 : Number.isFinite(sample.value) ? timeWireQuality(sample.qualityCode) : 1)) : 0);
         if (!state.paused && config.online && trend.source === 'online' && trend.tag) liveTags.push(trend.tag);
     }
     state.displayedSamples = visibleSamples;
     state.displayedSourceSamples = sourceSamples;
     const qualityCounts = { bad: 0, uncertain: 0, unknown: 0 };
     for (const samples of visibleSamples.values()) for (const sample of samples) {
-        const quality = timeQualityClass(sample.qualityCode);
+        const quality = timePointQuality(sample);
         if (quality !== "good") qualityCounts[quality]++;
     }
     const qualityNote = root.querySelector("[data-hmi-trend-quality-note]");
-    qualityNote.hidden = !qualityCounts.bad && !qualityCounts.uncertain && !qualityCounts.unknown;
-    qualityNote.textContent = "Qualità campioni: " + qualityCounts.uncertain + " incerti (cerchio vuoto), " + qualityCounts.bad + " non validi (croce; linea interrotta), " + qualityCounts.unknown + " senza qualità disponibile (non significa Good).";
+    const qualitySettings=config.trends.flatMap(trend=>timeQualityIssues(trend.qualityVisualization).map(message=>trend.name+': '+message));
+    qualityNote.hidden = !qualitySettings.length&&!qualityCounts.bad && !qualityCounts.uncertain && !qualityCounts.unknown;
+    qualityNote.textContent = (qualitySettings.length?qualitySettings.join(" ")+" ":"")+"Qualità campioni: " + qualityCounts.uncertain + " incerti (cerchio vuoto), " + qualityCounts.bad + " non validi (croce alla base; valore escluso, linea interrotta), " + qualityCounts.unknown + " senza qualità disponibile (non significa Good).";
     const plotLeft = 54;
     const plotWidth = 532;
     const pixelWidth = svg.getBoundingClientRect().width;
@@ -670,8 +677,8 @@ export function renderHmiTrendControl(host, values, options = {}) {
         const areaTrends = shown.filter((trend) => trend.areaId === plot.area.id);
         const leftAxis = plot.area.leftAxis ?? config.leftAxis;
         const rightAxis = plot.area.rightAxis ?? config.rightAxis;
-        const leftRange = state.views.get(plot.area.id)?.left ?? trendAxisRange(leftAxis, areaTrends.filter((trend) => trend.axis === "left").flatMap((trend) => (visibleSamples.get(trend.id) ?? []).map((sample) => sample.value)));
-        const rightRange = state.views.get(plot.area.id)?.right ?? trendAxisRange(rightAxis, areaTrends.filter((trend) => trend.axis === "right").flatMap((trend) => (visibleSamples.get(trend.id) ?? []).map((sample) => sample.value)));
+        const leftRange = state.views.get(plot.area.id)?.left ?? trendAxisRange(leftAxis, areaTrends.filter((trend) => trend.axis === "left").flatMap((trend) => (visibleSamples.get(trend.id) ?? []).filter(timePointUsable).map((sample) => sample.value)));
+        const rightRange = state.views.get(plot.area.id)?.right ?? trendAxisRange(rightAxis, areaTrends.filter((trend) => trend.axis === "right").flatMap((trend) => (visibleSamples.get(trend.id) ?? []).filter(timePointUsable).map((sample) => sample.value)));
         state.plots.push({ id: plot.area.id, left: plot.left, top: plot.top, width: plot.width, height: plot.height, xRange: [start, end], yRange: leftRange, rightRange });
         const grid = doc.createElementNS("http://www.w3.org/2000/svg", "g");
         grid.setAttribute("stroke", "#d7dcdf");
@@ -713,37 +720,27 @@ export function renderHmiTrendControl(host, values, options = {}) {
             const samples = reducedSamples.get(trend.id)?.samples ?? [];
             const axis = trend.axis === "right" ? rightAxis : leftAxis;
             const range = trend.axis === "right" ? rightRange : leftRange;
-            const points = samples.flatMap((sample) => {
-                const scaled = trendAxisValue(sample.value, axis.scale);
-                return scaled === undefined ? [] : [{ sample, xy: [plot.left + (sample.time - start) / windowMs * plot.width, plot.top + (1 - (scaled - range[0]) / (range[1] - range[0])) * plot.height] }];
+            const points=samples.map(sample=>{
+                const scaled=trendAxisValue(sample.value,axis.scale),drawable=timePointUsable(sample)&&scaled!==undefined;
+                return {sample,drawable,quality:timePointQuality(sample),xy:[plot.left+(sample.time-start)/windowMs*plot.width,drawable?plot.top+(1-(scaled-range[0])/(range[1]-range[0]))*plot.height:plot.top+plot.height-5]};
             });
-            const segments = [];
-            let segment = [];
-            for (const point of points) {
-                if (timeQualityClass(point.sample.qualityCode) === "bad") {
-                    if (segment.length)
-                        segments.push(segment);
-                    segment = [];
-                }
-                else
-                    segment.push(point.xy);
+            const segments=[];let segment=[];
+            for(const point of points){if(!point.drawable){if(segment.length)segments.push(segment);segment=[];}else segment.push(point.xy);}
+            if(segment.length)segments.push(segment);
+            const path=appendTrendText(clip,'path','',{d:trend.mode==='points'?'':segments.map(segment=>trendPath(trend.mode,segment)).join(' '),fill:'none',stroke:trendArgb(trend.color),'stroke-width':2,'vector-effect':'non-scaling-stroke'});path.setAttribute('data-hmi-trend-series',trend.id);
+            if(trend.qualityVisualization?.visible&&trend.mode!=='points')for(let index=1;index<points.length;index++){
+                const previous=points[index-1],point=points[index];
+                if(previous.drawable&&point.drawable&&(previous.quality==='uncertain'||point.quality==='uncertain'))appendTrendText(clip,'path','',{'data-hmi-trend-quality-segment':'uncertain',d:trendPath(trend.mode,[previous.xy,point.xy]),fill:'none',stroke:timeQualityColor(trend.qualityVisualization,'uncertain',trendArgb(trend.color)),'stroke-width':2});
             }
-            if (segment.length)
-                segments.push(segment);
-            const path = appendTrendText(clip, "path", "", { d: trend.mode === "points" ? "" : segments.map((segment) => trendPath(trend.mode, segment)).join(" "), fill: "none", stroke: trendArgb(trend.color), "stroke-width": 2, "vector-effect": "non-scaling-stroke" });
-            path.setAttribute("data-hmi-trend-series", trend.id);
-            for (const { sample, xy: [x, y] } of points) {
-                const quality = timeQualityClass(sample.qualityCode);
-                const invalid = quality === "bad" || quality === "uncertain";
-                if (trend.mode === "points" || trend.mode === "values" || invalid) {
-                    const marker = quality === "bad"
-                        ? appendTrendText(clip, "path", "", { d: "M" + (x - 4) + " " + (y - 4) + "L" + (x + 4) + " " + (y + 4) + "M" + (x - 4) + " " + (y + 4) + "L" + (x + 4) + " " + (y - 4), fill: "none", stroke: trendArgb(trend.color), "stroke-width": 2 })
-                        : appendTrendText(clip, "circle", "", { cx: x, cy: y, r: invalid ? 4 : 3, fill: invalid ? "#fff" : trendArgb(trend.color), stroke: trendArgb(trend.color), "stroke-width": invalid ? 2 : 1 });
-                    marker.setAttribute("data-hmi-trend-quality", quality);
-                    appendTrendText(marker, "title", trend.name + ": " + sample.value + "; " + trendFormatTime(sample.time, zone, true) + "; qualità " + quality + " (" + (sample.qualityCode ?? "non disponibile") + ")" + (sample.aggregated ? "; punto aggregato, non un campione originale" : ""));
+            for(const {sample,xy:[x,y],drawable,quality}of points){
+                const exceptional=!drawable||quality==='uncertain'||quality==='unknown'&&trend.qualityVisualization?.visible;
+                const color=timeQualityColor(trend.qualityVisualization,drawable?quality:quality==='unknown'?'unknown':'bad',trendArgb(trend.color));
+                if(trend.mode==='points'||trend.mode==='values'||exceptional){
+                    const marker=!drawable?appendTrendText(clip,'path','',{d:'M'+(x-4)+' '+(y-4)+'L'+(x+4)+' '+(y+4)+'M'+(x-4)+' '+(y+4)+'L'+(x+4)+' '+(y-4),fill:'none',stroke:color,'stroke-width':2}):appendTrendText(clip,'circle','',{cx:x,cy:y,r:exceptional?4:3,fill:exceptional?'#fff':color,stroke:color,'stroke-width':exceptional?2:1});
+                    marker.setAttribute('data-hmi-trend-quality',drawable?quality:sample.gap==='missing'?'unknown':'bad');
+                    appendTrendText(marker,'title',trend.name+': '+(drawable?sample.value:'valore non utilizzabile')+'; '+trendFormatTime(sample.time,zone,true)+'; qualità '+quality+' ('+(sample.qualityCode??'non disponibile')+')'+(sample.aggregated?'; punto aggregato, non un campione originale':''));
                 }
-                if (trend.mode === "values")
-                    appendTrendText(clip, "text", String(sample.value), { x: x + 4, y: y - 4, fill: trendArgb(trend.color), "font-size": 9 });
+                if(trend.mode==='values'&&drawable)appendTrendText(clip,'text',String(sample.value),{x:x+4,y:y-4,fill:color,'font-size':9});
             }
             for (const [kind, threshold] of [["low", trend.lowThreshold], ["high", trend.highThreshold]]) {
                 if (threshold === undefined)
@@ -761,7 +758,7 @@ export function renderHmiTrendControl(host, values, options = {}) {
         const at = start + windowMs * state.rulerRatio;
         const ruler = appendTrendText(svg, "line", "", { x1: x, y1: plotTop, x2: x, y2: plotBottom, stroke: "#20262b", "stroke-width": 1.5 });
         appendTrendText(ruler, "title", trendFormatTime(at, zone, true));
-        const readings = shown.flatMap((trend) => { const samples = visibleSamples.get(trend.id) ?? []; const closest = samples.reduce((best, sample) => !best || Math.abs(sample.time - at) < Math.abs(best.time - at) ? sample : best, undefined); return closest ? [`${trend.name}: ${closest.value}`] : []; });
+        const readings = shown.flatMap((trend) => { const samples = visibleSamples.get(trend.id) ?? []; const closest = samples.reduce((best, sample) => !best || Math.abs(sample.time - at) < Math.abs(best.time - at) ? sample : best, undefined); return closest ? [`${trend.name}: ${timePointUsable(closest)?closest.value:"dato non utilizzabile"} · qualità ${timePointQuality(closest)}`] : []; });
         appendTrendText(svg, "text", readings.join("  ·  ") || "Nessun campione", { x: Math.min(x + 5, 420), y: plotTop + 13, fill: "#20262b", "font-size": 10, "font-weight": 700 });
     }
     if (!config.trends.some((trend) => trend.source === "online" ? trend.tag : trend.logId && trend.loggedTagId))
@@ -797,7 +794,7 @@ export function hmiTrendJsx() {
     return `      <div data-hmi-type="HmiTrendControl" data-hmi-trend='${serializeHmiTrendConfig(defaultHmiTrendConfig())}' style={{ width: 640, height: 320, background: "#F7F8F9" }}>Configura il Trend Control dall'Inspector</div>\n`;
 }
 export function hmiTrendRuntimeModuleSource() {
-    const source = `// @ts-nocheck\nconst hmiTrendAttribute = ${JSON.stringify(hmiTrendAttribute)};\nconst hmiTrendModes = ${JSON.stringify(hmiTrendModes)};\nconst trendStates = new WeakMap();\nconst trendListenerHosts = new WeakSet();\n${hmiTrendRuntimeUiModuleSource()}\n${hmiControlQualityModuleSource()}\nconst timeWireQuality=controlWireQuality, timeSampleCode=controlSampleCode, timeControlQuality=controlQuality, timePublishQuality=publishControlQuality, timeClearQuality=clearControlQuality;\nconst timeSourcePicker = renderTrendSourcePicker;\nconst timeAreaZoom = installTrendAreaZoom;\nconst timeZoomDragging = trendAreaZoomDragging;\nconst timeZoomRange = trendRuntimeZoomRange;\nconst timeQualityClass = trendQualityClass;\nconst trendString = ${String(trendString)};\nconst trendNumber = ${String(trendNumber)};\nconst trendOptionalNumber = ${String(trendOptionalNumber)};\nconst trendBool = ${String(trendBool)};\n${String(normalizeTrendAxis)}\n${String(normalizeTrendArea)}\n${String(normalizeTrendSeries)}\n${String(defaultHmiTrendConfig)}\nexport ${String(parseHmiTrendConfig)}\n${String(trendArgb)}\n${String(trendAxisValue)}\n${String(trendAxisLabel)}\n${String(trendAxisRange)}\n${String(trendPath)}\n${String(trendCsv)}\n${String(downloadTrendCsv)}\n${String(appendTrendText)}\n${String(trendState)}\n${String(installTrendListeners)}\n${String(trendChrome)}\nexport ${String(renderHmiTrendControl)}\nexport ${String(renderHmiTrendControls)}\nexport ${String(clearHmiTrendHistory)}\n`;
+    const source = `// @ts-nocheck\nconst hmiTrendAttribute = ${JSON.stringify(hmiTrendAttribute)};\nconst hmiTrendModes = ${JSON.stringify(hmiTrendModes)};\nconst trendStates = new WeakMap();\nconst trendListenerHosts = new WeakSet();\n${hmiTrendRuntimeUiModuleSource()}\n${trendQualityRuntimeModuleSource()}\nconst timeParseQuality=parseTrendQuality,timeQualityIssues=trendQualityIssues,timeQualityColor=trendQualityColor,timePointQuality=trendPointQuality,timePointUsable=trendPointUsable;\n${hmiControlQualityModuleSource()}\nconst timeWireQuality=controlWireQuality, timeSampleCode=controlSampleCode, timeControlQuality=controlQuality, timePublishQuality=publishControlQuality, timeClearQuality=clearControlQuality;\nconst timeSourcePicker = renderTrendSourcePicker;\nconst timeAreaZoom = installTrendAreaZoom;\nconst timeZoomDragging = trendAreaZoomDragging;\nconst timeZoomRange = trendRuntimeZoomRange;\nconst timeQualityClass = trendQualityClass;\nconst trendString = ${String(trendString)};\nconst trendNumber = ${String(trendNumber)};\nconst trendOptionalNumber = ${String(trendOptionalNumber)};\nconst trendBool = ${String(trendBool)};\n${String(normalizeTrendAxis)}\n${String(normalizeTrendArea)}\n${String(normalizeTrendSeries)}\n${String(defaultHmiTrendConfig)}\nexport ${String(parseHmiTrendConfig)}\n${String(trendArgb)}\n${String(trendAxisValue)}\n${String(trendAxisLabel)}\n${String(trendAxisRange)}\n${String(trendPath)}\n${String(trendCsv)}\n${String(downloadTrendCsv)}\n${String(appendTrendText)}\n${String(trendState)}\n${String(installTrendListeners)}\n${String(trendChrome)}\nexport ${String(renderHmiTrendControl)}\nexport ${String(renderHmiTrendControls)}\nexport ${String(clearHmiTrendHistory)}\n`;
     const helpers = `const hmiTrendAggregations = ${JSON.stringify(hmiTrendAggregations)};\nconst hmiTrendTimeZones = ${JSON.stringify(hmiTrendTimeZones)};\nconst trendDateFormatters = new Map();\n${String(trendTimeZoneValid)}\n${String(trendFormatTime)}\n${String(trendWorstSample)}\n${String(aggregateTrendSamples)}\n`;
     return source.replace("const trendStates = new WeakMap();", helpers + "const trendStates = new WeakMap();").replace(String(trendCsv), String(trendCsvCell) + "\n" + String(trendCsv));
 }

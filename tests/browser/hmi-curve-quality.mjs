@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import {mkdir,mkdtemp,writeFile,symlink} from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createServer,build,preview} from 'vite';
+const {chromium}=await import(process.env.FRAMECRAFT_PLAYWRIGHT_MODULE||'playwright');
+const root=fileURLToPath(new URL('../../',import.meta.url));let editor,server,browser;const errors=[];let external=0,writes=0,snapshots=0;
+try{
+ await mkdir(path.join(root,'.hmi-preview'),{recursive:true});const generated=await mkdtemp(path.join(root,'.hmi-preview/curve-quality-browser-'));
+ editor=await createServer({root,configLoader:'runner',cacheDir:path.join(generated,'cache'),server:{watch:null,warmup:{clientFiles:[]}},logLevel:'error'});
+ const {standardProjectFiles}=await editor.ssrLoadModule('/src/core/standardProject.ts');
+ const time=await editor.ssrLoadModule('/src/core/hmiTrend.ts'),xy=await editor.ssrLoadModule('/src/core/hmiFunctionTrend.ts');
+ for(const file of standardProjectFiles({machineName:'Synthetic curve quality',layout:'desktop',sections:['main']})){const target=path.join(generated,file.path);assert.ok(target.startsWith(generated+path.sep));await mkdir(path.dirname(target),{recursive:true});await writeFile(target,file.content);}
+ const colors={badColor:0xffa11b2d,uncertainColor:0xff8c6900,visible:true};
+ const a=time.defaultHmiTrendConfig();a.timeRangeMs=60000;a.sampleIntervalMs=100;a.aggregation='none';a.trends[0].tag='A';a.trends[0].qualityVisualization=colors;
+ const b=xy.defaultHmiFunctionTrendConfig();b.sampleIntervalMs=100;b.trends[0].x.tag='X';b.trends[0].y.tag='Y';b.trends[0].pairToleranceMs=0;b.trends[0].qualityVisualization=colors;
+ const variables=['A','X','Y'].map(name=>({name,dataType:'Real',access:'read',address:'',description:''}));
+ await writeFile(path.join(generated,'framecraft.plc.json'),JSON.stringify({version:1,variables}));
+ await writeFile(path.join(generated,'framecraft.runtime.json'),JSON.stringify({version:1,gateway:{enabled:true,path:'/_framecraft/plc/v1',pollMs:250}}));
+ const attr=value=>JSON.stringify(value).replaceAll('&','&amp;').replaceAll('"','&quot;');
+ await writeFile(path.join(generated,'index.html'),'<!doctype html><html><head><link rel="icon" href="data:,"></head><body style="margin:16px;background:#eef0f2"><main style="display:flex;gap:16px"><div id="time" data-hmi-type="HmiTrendControl" data-hmi-trend="'+attr(a)+'" style="width:620px;height:470px"></div><div id="xy" data-hmi-type="HmiFunctionTrendControl" data-hmi-function-trend="'+attr(b)+'" style="width:620px;height:470px"></div></main><script type="module">import{installFramecraftHmiRuntime,runtimeTagValues,runtimeTagStatus}from"/src/framecraftHmiRuntime.ts";window.qa={values:runtimeTagValues,status:runtimeTagStatus,errors:[]};window.qa.dispose=installFramecraftHmiRuntime({navigate:()=>{},routes:[],error:m=>window.qa.errors.push(m)});</script></body></html>');
+ await symlink(process.env.FRAMECRAFT_RUNTIME_UPDATE_NODE_MODULES||path.join(root,'node_modules'),path.join(generated,'node_modules'),'junction');
+ await build({root:generated,configLoader:'runner',logLevel:'error'});server=await preview({root:generated,configLoader:'runner',logLevel:'error',preview:{host:'127.0.0.1',port:0,strictPort:false}});
+ const origin='http://127.0.0.1:'+server.httpServer.address().port;browser=await chromium.launch({channel:'msedge',headless:true});const context=await browser.newContext({viewport:{width:1320,height:820}});
+ let values={A:'10',X:'1',Y:'10'},quality={A:192,X:192,Y:192};
+ await context.route('**/*',async route=>{const url=new URL(route.request().url());if(url.protocol==='data:')return route.continue();if(url.origin!==origin){external++;return route.abort();}if(url.pathname.endsWith('/snapshot')){snapshots++;return route.fulfill({json:{version:1,allowWrites:false,connections:[{id:'synthetic',state:'connected'}],tags:variables.map(item=>({...item,connectionId:'synthetic',writable:false})),samples:variables.map(item=>({tag:item.name,connectionId:'synthetic',value:values[item.name],qualityCode:quality[item.name],timestamp:Date.now(),receivedAt:Date.now()}))}});}if(url.pathname.endsWith('/write')){writes++;return route.abort();}if(url.pathname.startsWith('/_framecraft/'))throw Error('Unexpected service '+url.pathname);return route.continue();});
+ const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto(origin);await page.waitForFunction(()=>window.qa?.values().A==='10'&&document.querySelector('#xy [data-hmi-fx-series]'));
+ values={A:'15',X:'2',Y:'15'};quality={A:64,X:192,Y:64};
+ await page.waitForFunction(()=>document.querySelector('#time [data-hmi-trend-quality-segment]')?.getAttribute('stroke')==='#8c6900ff'&&document.querySelector('#xy [data-hmi-fx-quality-segment]')?.getAttribute('stroke')==='#8c6900ff');
+ await page.screenshot({path:path.join(generated,'uncertain-curves.png')});
+ values={A:'1000000000000',X:'1000000000000',Y:'1000000000000'};quality={A:0,X:0,Y:0};await page.waitForFunction(()=>document.querySelector('#time [data-hmi-trend-quality="bad"]')&&document.querySelector('#xy [data-hmi-fx-quality="bad"]'));
+ values={A:'20',X:'3',Y:'20'};quality={A:192,X:192,Y:192};
+ await page.waitForFunction(()=>['#time [data-hmi-trend-series]','#xy [data-hmi-fx-series]'].every(selector=>(document.querySelector(selector)?.getAttribute('d')?.match(/M/g)||[]).length>=2));
+ assert.equal(await page.locator('main').innerText().then(text=>text.includes('1000000000000')),false);assert.equal(await page.locator('#time [data-hmi-trend-quality="bad"]').first().getAttribute('stroke'),'#a11b2dff');
+ const before=await page.locator('#xy [data-hmi-fx-series]').getAttribute('d');quality={A:undefined,X:undefined,Y:undefined};
+ await page.waitForFunction(()=>window.qa.status().A.qualityKnown===false&&document.querySelector('#time [data-hmi-trend-quality="unknown"]')&&/[1-9][0-9]* non disponibili/.test(document.querySelector('#xy [data-hmi-fx-quality-notes]')?.textContent||''));
+ values={A:'25',X:'4',Y:'25'};quality={A:192,X:192,Y:192};await page.waitForFunction(()=>['#time [data-hmi-trend-series]','#xy [data-hmi-fx-series]'].every(selector=>(document.querySelector(selector)?.getAttribute('d')?.match(/M/g)||[]).length>=3));assert.notEqual(await page.locator('#xy [data-hmi-fx-series]').getAttribute('d'),before);
+ await page.screenshot({path:path.join(generated,'quality-gaps.png')});
+ assert.equal(await page.locator('main').innerText().then(text=>text.includes('NaN')),false);assert.deepEqual(await page.evaluate(()=>window.qa.errors),[]);assert.deepEqual(errors,[]);assert.equal(writes,0);assert.equal(external,0);await page.evaluate(()=>window.qa.dispose());await page.waitForTimeout(100);const stopped=snapshots;await page.waitForTimeout(600);assert.equal(snapshots,stopped);
+ console.log(JSON.stringify({passed:true,generated,compiledStandardPanel:true,perCurveColors:true,timeAndXYUncertain:true,badExcludedFromAxes:true,brokenTraces:true,staleUnacquiredValuesExcluded:true,recovery:true,disposed:true,realPlcWrites:0,writes,external}));
+}finally{await browser?.close();await server?.close();await editor?.close();}

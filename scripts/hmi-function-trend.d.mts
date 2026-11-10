@@ -1,3 +1,4 @@
+import type { HmiTrendQuality } from "./hmi-trend-quality.mjs";
 import type { PlcVariableDefinition } from "../src/core/plcVariables";
 import type { HmiDataLogCatalog } from "../src/core/hmiDataLogs";
 import { type HmiTrendAxis, type HmiTrendIssue, type HmiTrendMode } from "./hmi-trend.mjs";
@@ -21,6 +22,7 @@ export interface HmiFunctionTrendSeries {
     id: string;
     name: string;
     areaId: string;
+    qualityVisualization?: HmiTrendQuality;
     color: string;
     mode: HmiTrendMode;
     visible: boolean;
@@ -54,6 +56,7 @@ export interface HmiFunctionTrendConfig {
     trends: HmiFunctionTrendSeries[];
 }
 export interface HmiFunctionTrendValue {
+    gap?: "missing"|"invalid";
     time: number;
     value: string;
     qualityCode?: number;
@@ -62,6 +65,7 @@ export interface HmiFunctionTrendPoint {
     time: number;
     x: number;
     y: number;
+    gap?: "missing"|"invalid";
     xQualityCode?: number;
     yQualityCode?: number;
 }
@@ -82,7 +86,7 @@ export declare function parseHmiFunctionTrendConfig(value: unknown): HmiFunction
 export declare function serializeHmiFunctionTrendConfig(config: HmiFunctionTrendConfig): string;
 export declare function hmiFunctionTrendIssues(config: HmiFunctionTrendConfig, variables?: readonly PlcVariableDefinition[], dataLogs?: HmiDataLogCatalog): HmiTrendIssue[];
 export declare function functionTrendNumericValues(raw: string | undefined): number[] | undefined;
-export declare function pairFunctionTrendSamples(xValues: readonly HmiFunctionTrendValue[], yValues: readonly HmiFunctionTrendValue[], toleranceMs: number, invalidPair?: () => void): {
+export declare function pairFunctionTrendSamples(xValues: readonly HmiFunctionTrendValue[], yValues: readonly HmiFunctionTrendValue[], toleranceMs: number, invalidPair?: () => void, includeGaps?:boolean): {
     points: HmiFunctionTrendPoint[];
     unmatched: number;
 };

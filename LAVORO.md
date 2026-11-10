@@ -7140,6 +7140,39 @@ Verifiche del 5 ottobre 2026:
 - Restano gli oggetti/proprieta' specifici, altre fonti qualita', configurazione annidata
   QualityVisualization e Variant/formati indicati in WCU-EVT-10, che resta PARZIALE.
 
+## 208. Qualità delle singole curve e interruzioni dei grafici (10 novembre 2026)
+
+- Verificati i campi BadColor/UncertainColor UInt32 e Visible Boolean di
+  QualityVisualization nella [referenza Siemens](https://support.industry.siemens.com/cs/attachments/109896132/WCC_Unified_ProgRef_enUS_en-US.pdf),
+  pp. 2078-2079, e la loro posizione nella
+  [curva X/Y](https://docs.tia.siemens.cloud/r/en-us/v20/configuring-screens-rt-unified/reference-of-the-screen-objects-rt-unified/controls-rt-unified/function-trend-control-rt-unified).
+- Ogni curva Time/Function Trend ha qualityVisualization opzionale: badColor,
+  uncertainColor e visible. Colori ARGB UInt32, trasparenza conservata e impostazioni
+  malformate segnalate senza conversioni bitwise che trasformino valori fuori limite.
+  La configurazione non riscrive qualità o valori dei campioni.
+- Inspector: "Qualità dei campioni", abilitazione dei colori e due selettori; stessa UI
+  per entrambe le curve, normale salvataggio/cronologia e Annulla.
+- Time: Bad escluso da linee, scala automatica e valori del righello; croce alla base
+  per il tempo non utilizzabile. Campioni mancanti e non numerici sono interruzioni,
+  preservate anche da min/max e media temporale. CSV mantiene le osservazioni numeriche
+  originali con i codici originali, senza esportare numeri inventati per i vuoti interni.
+- X/Y: qualità Bad di uno dei due canali interrompe il tracciato; coordinate escluse
+  anche da valori, scale e righello. Coppie mancanti, array incompatibili e ingressi
+  non numerici mantengono la discontinuità; riepilogo per curva fuori dagli assi.
+  L'API di pairing conserva il risultato preesistente, con vuoti espliciti interni opzionali.
+- Segnali esplicitamente non acquisiti (qualityKnown=false) non generano nuove coordinate
+  da vecchi valori conservati. Gli archivi vecchi senza qualità restano identificati come
+  sconosciuti, senza inventare Good o dedurre guasti da un normale log on-change.
+- Qualità storica peggiore mantenuta finché il campione esce dall'intervallo visibile;
+  i soli colori non rendono utilizzabili dati non validi e non abilitano comandi PLC.
+- Pacchetto 2026.11.10.4, renderer condiviso serializzato, risorse distribuite e pipeline
+  nuovo pannello/Aggiorna componenti del pannello. Nessuna nuova dipendenza o versione IR.
+- Prove mirate su renderer/dati, Inspector con Annulla, ponte e risorse; pannello compilato
+  con Gateway HTTP sintetico, guasti/recupero e arresto dei polling. Nessun PLC/broker reale.
+- WCU-EVT-10 resta PARZIALE: i riferimenti e get/set script delle collezioni native
+  di curve/assi/QualityVisualization non sono ancora disponibili. Questo passaggio completa
+  configurazione e resa dei campioni; non dichiara il modello oggetti completo.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima
