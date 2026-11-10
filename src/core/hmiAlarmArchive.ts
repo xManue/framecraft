@@ -1,3 +1,4 @@
+import { publishServiceQuality, clearControlQuality, alarmEventsQuality } from "../../scripts/hmi-control-quality.mjs";
 import { AlarmHistoryError, alarmHistoryStates, alarmStatisticsOrders, parseAlarmHistoryQuery, parseAlarmHistorySnapshot, parseAlarmStatisticsQuery, parseAlarmStatisticsSnapshot, type AlarmHistoryQuery, type AlarmHistorySnapshot, type AlarmStatisticsQuery, type AlarmStatisticsSnapshot, type AlarmStatisticsOrder } from "../../runtime/alarm-history.mjs";
 import { OperatorAuthError } from "../../runtime/operator-policy.mjs";
 import { hmiAlarmElementBlocked } from "./hmiAlarmControl";
@@ -117,6 +118,7 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
   const style = document.createElement("style"); style.textContent = css; document.head.append(style);
   host.dataset.hmiAlarmArchiveRoot = ""; host.setAttribute("role", "region"); host.setAttribute("aria-label", "Storico allarmi su disco");
   let active = true, busy = false, epoch = 0, filtersOpen = false, helpOpen = false, changed = false, failed = false;
+  const qualityType=host.getAttribute("data-hmi-type");
   let snapshot: AlarmHistorySnapshot | undefined, applied: AlarmHistoryQuery = {}, draft: Record<string, string> = {}, controller: AbortController | undefined, focusKey: string | undefined;
   let fixedDates: Record<string, string> = {};
   let notice = "Carica lo storico per consultare gli eventi salvati dal servizio. Nessuna lettura automatica.";
@@ -250,6 +252,7 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
     if (focused && host.contains(focused)) focusKey = focused.getAttribute("data-archive-focus") ?? undefined; else if (focused && focused !== document.body) focusKey = undefined;
     resetUser(); host.replaceChildren(); host.setAttribute("aria-busy", String(busy));
     host.append(make("h2", "Storico allarmi su disco"), make("p", "Eventi salvati dal servizio, anche da avvii precedenti. Non è lo stato attuale della macchina. Sola lettura, nessun comando PLC."));
+    publishServiceQuality(host,host.firstElementChild!,()=>!active||!options.enabled||!permitted()||identity()!==userKey||host.getAttribute("data-hmi-type")!==qualityType?0:busy?0:failed?1:snapshot?alarmEventsQuality(snapshot.events.map(row=>row.event)):0);
     if (!options.enabled) host.append(make("p", "Gateway disabilitato. Configura il servizio del progetto: la prova locale non crea uno storico su disco."));
     else if (!permitted()) { host.append(make("p", "Accedi con un account autorizzato a consultare tutto lo storico (alarms.history.read). Il ruolo, il PIN browser e la presa visione non concedono questo permesso.")); const login = button("Apri accesso operatore", () => {}); login.disabled = hmiAlarmElementBlocked(host); login.dataset.archiveFocus = "login"; login.addEventListener("click", () => { if (active && !login.disabled && !hmiAlarmElementBlocked(host)) openOperatorSession(login); }); host.append(login); }
     const form = make("form"), filters = make("details"), fields = make("div"); filters.open = filtersOpen; filters.append(make("summary", "Filtri dello storico (facoltativi)")); fields.className = "archive-fields"; filters.append(fields); filters.addEventListener("toggle", () => { if (filters.isConnected) filtersOpen = filters.open; });
@@ -296,5 +299,5 @@ export function createHmiAlarmArchive(host: HTMLElement, options: { enabled: boo
   }
   const whoChanged = () => identity() !== userKey;
   const changedUser = () => { if (identity() === userKey) return; resetUser(); render(); }; view.addEventListener("framecraft:user-changed", changedUser); render();
-  return { refresh: render, dispose() { if (!active) return; active = false; epoch++; controller?.abort(); releaseExport(); releaseStatistics(); savedViews.dispose(); view.removeEventListener("framecraft:user-changed", changedUser); style.remove(); delete host.dataset.hmiAlarmArchiveRoot; host.removeAttribute("aria-busy"); if (role === null) host.removeAttribute("role"); else host.setAttribute("role", role); if (label === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", label); host.replaceChildren(...original); } };
+  return { refresh: render, dispose() { if (!active) return; active = false; clearControlQuality(host); epoch++; controller?.abort(); releaseExport(); releaseStatistics(); savedViews.dispose(); view.removeEventListener("framecraft:user-changed", changedUser); style.remove(); delete host.dataset.hmiAlarmArchiveRoot; host.removeAttribute("aria-busy"); if (role === null) host.removeAttribute("role"); else host.setAttribute("role", role); if (label === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", label); host.replaceChildren(...original); } };
 }

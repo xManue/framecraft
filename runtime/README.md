@@ -2329,10 +2329,30 @@ con qualita'/limiti dell'acquisizione manuale; non certifica il collegamento liv
 La qualita' dei dati letti resta distinta da applicazione PLC, ricevute dei comandi,
 validita' di una bozza e verifiche d'integrita' del registro. Cambio operatore, permessi,
 configurazione, risposte tardive e chiusura invalidano i risultati non piu' utilizzabili.
-L'engine allarmi fornisce usabilita' good/bad/unknown: la qualita' raw e quella storica
-restano da estendere senza inventare bit o qualificare come Good eventi privi di qualita'.
+Nel pacchetto 2026.11.10.1 l'engine allarmi fornisceva l'usabilita' good/bad/unknown;
+il pacchetto seguente estende i nuovi dati con i codici originali e conserva il fallback legacy.
 
 Pipeline e aggiornamento distribuiscono anche src/framecraftHmiControlQuality.mjs e i
 suoi tipi, insieme ai renderer dipendenti; nessuna nuova dipendenza, modifica ai cataloghi
 o nodo IR. Verificati Canvas, risorse del plugin e pannello compilato con richieste HTTP
 sintetiche. Nessun PLC/broker o installer reale collaudato. Contratto in SCREEN-ITEMS.md.
+
+## Qualita' originale degli allarmi dal pacchetto 2026.11.10.2
+
+Righe ed eventi nuovi contengono qualityDetails versione 1: tag, QualityCode del driver
+e stato del dato per segnale e soglia dinamica. Le copie degli eventi restano immutabili
+quando arrivano campioni successivi. Snapshot, archivio JSON/SQLite e viste validano
+la struttura; eventi vecchi restano leggibili senza qualita' retroattiva inventata.
+CurrentQuality e' derivato dai dati originali: un Uncertain non abilita rientri o
+conferme prima vietati. Revisioni cambiate invalidano le proposte vecchie come previsto.
+
+Storico su disco e di sessione aggregano la pagina mostrata; annotazioni operatore senza
+acquisizioni non aggiungono sorgenti. Legacy e pagine vuote None, letture fallite Bad.
+Il CSV degli eventi conserva i metadati in source_quality_json; i dettagli sono versione 2.
+Le altre colonne conservano ordine e significato; nessun parziale oltre i limiti di export.
+
+Aggiornare insieme motore, validator, helper, viste ed export mediante il bundle. Nessuna
+migrazione di tabelle/indici e nessuna riscrittura di record vecchi. Un Runtime precedente
+rifiuta i payload nuovi: dopo nuove registrazioni, il solo rollback del codice non e'
+una procedura compatibile dei dati. Non eliminare eventi per forzarlo. Verificati dati
+sintetici, riapertura SQLite, fallimento atomico, Canvas e pannello compilato; non hardware.

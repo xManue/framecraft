@@ -521,8 +521,9 @@ locale gia' acquisito: non avvia letture, polling, applicazioni o tentativi auto
   righe non possono trasformare un segnale monitorato Bad in Good.
 - L'engine allarmi espone good/bad/unknown, non il QualityCode originale: l'adattatore
   riporta questa usabilita' e non inventa Uncertain o bit dei limiti mancanti. Lo storico
-  di sessione, privo della qualita' originaria, resta None se collegato; una perdita
-  del servizio e' Bad. Archivi persistenti e fedelta' ai codici raw restano aperti.
+  di sessione privo della qualita' originaria resta None se collegato; una perdita
+  del servizio e' Bad. Dal pacchetto 2026.11.10.2 i nuovi eventi e gli archivi portano
+  anche la qualita' delle sorgenti: vedere il contratto seguente.
 - Ricette: prima della lettura e durante il caricamento None; archivio validato, anche
   vuoto, Good; ultima rilettura fallita Bad fino a una rilettura esplicita riuscita.
   Errori di compilazione della bozza e ricevute dei comandi restano distinti dalla qualita'
@@ -548,3 +549,46 @@ Fonti: [AlarmControl.CurrentQuality, Int32 readonly e qualita' peggiore](https:/
 [Audit Viewer e CurrentQuality](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/reference-of-the-screen-objects-rt-unified/my-controls-rt-unified/audit-viewer-rt-unified).
 Le regole di consultazione di archivi e confronto manuale qui definite sono il contratto
 Framecraft; non dichiarano equivalenza di tutti i comportamenti interni dei controlli vendor.
+
+## Qualita' originale degli allarmi dal pacchetto 2026.11.10.2
+
+Il motore aggiunge qualityDetails versione 1 a righe ed eventi nuovi. Per il segnale e
+per l'eventuale soglia dinamica conserva nome tag, QualityCode ricevuto dal driver
+(normalizzato a 16 bit) e stato del dato: valid, missing o invalid. Sono incluse le
+verifiche di tipo del valore e degli errori; errori del calcolo allarme non diventano
+Good per il solo fatto che il codice sul filo era buono. Non sono esposti valori,
+indirizzi di connessione o credenziali nei metadati di qualita'.
+
+CurrentQuality riporta la qualita' peggiore e i bit dei limiti delle sorgenti originali.
+Un campione Uncertain resta riconoscibile come tale; il motore continua a richiedere
+la qualita' prevista per valutare attivazioni/rientri e conferme. Il cambiamento del
+QualityCode aggiorna la revisione della riga ma non crea transizioni allarme fittizie.
+Una soglia di allarme superata non inventa UpperLimitViolation/LowerLimitViolation:
+quei bit descrivono le indicazioni effettive dei codici di qualita' delle sorgenti.
+
+Gli eventi ricevono una copia dei metadati noti al servizio in quel momento. La qualita'
+di un evento storico non viene ricalcolata dal valore o dallo stato live successivo.
+Lo storico di sessione aggrega la pagina mostrata; lo storico su disco aggrega gli
+eventi della pagina validata, applicando anche caricamento/errori e identita' del lettore.
+Le annotazioni Commented non sono acquisizioni di segnale e non aggiungono sorgenti.
+Pagina vuota o eventi vecchi senza metadati: None, senza retrocompilare informazioni
+mai registrate. Le righe live di un servizio precedente conservano solo l'usabilita'
+good/bad/unknown effettivamente fornita da quel servizio.
+
+Il payload JSON dell'archivio salva i nuovi metadati senza cambiare tabelle o indici SQL
+e senza riscrivere gli eventi precedenti. Validator del protocollo e dell'archivio
+rifiutano formati, sorgenti o codici malformati. Un batch non valido non viene scritto
+parzialmente e il writer mantiene il normale blocco dopo un guasto. Riapertura e lettura
+in sola lettura preservano sia record vecchi sia nuovi.
+
+Il CSV degli eventi aggiunge in coda source_quality_json, con JSON quotato per cella;
+per eventi senza metadati la cella e' vuota. Il file dettagli passa a versione 2 e
+descrive la codifica. Quote CSV, protezione dei testi formula, ordinamento, snapshot
+di sequenza e limiti di volume restano applicati. Non e' un formato di importazione
+vendor e non modifica l'archivio o i segnali.
+
+Aggiorna componenti del pannello aggiorna insieme writer, validator, helper, viste ed
+export. Compatibilita' di lettura verso i record vecchi verificata; il vecchio Runtime
+rifiuta il campo nuovo. Dopo aver registrato eventi nuovi non basta ripristinare solo
+i file di codice precedenti: occorre una procedura verificata di compatibilita' dei dati.
+Nessun evento nuovo viene cancellato o degradato automaticamente per consentire un ritorno.

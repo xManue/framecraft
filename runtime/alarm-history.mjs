@@ -1,4 +1,4 @@
-import { alarmShelvingEventValid } from "./alarm-engine.mjs";
+import { alarmShelvingEventValid, alarmQualityDetailsValid } from "./alarm-engine.mjs";
 const messages = {
   ALARM_NOTE_INPUT: [400, "Nota allarme non valida", "Seleziona un evento reale e inserisci da 1 a 1000 caratteri. La nota è testo, senza comandi o contenuti eseguibili."],
   ALARM_NOTE_MISSING: [404, "Evento allarme non disponibile nell’archivio", "Ricarica lo storico o seleziona nuovamente l’allarme. Nessuna nota viene collegata a un evento inventato."],
@@ -47,7 +47,7 @@ function validNoteEvent(value) {
   return historyKeys(value.note, ["id", "reference", "text"], ["authorName"]) && historyUuid(value.note.id) && noteReference(value.note.reference) && alarmNoteTextValid(value.note.text) && value.note.reference.occurrence === value.occurrence && value.actor !== undefined && (value.note.authorName === undefined || text(value.note.authorName, 160) && value.note.authorName === value.note.authorName.trim() && !/[\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value.note.authorName));
 }
 export function parseHistoryEvent(value) {
-  if (!historyKeys(value, ["sequence", "id", "occurrence", "name", "text", "alarmClass", "priority", "area", "state", "time"], ["actor", "shelving", "note"]) || !integer(value.sequence, 1) || !text(value.id, 80) || !/^[A-Za-z0-9_-]+$/.test(value.id) || !text(value.occurrence, 80) || !text(value.name, 200) || !text(value.text, 1000) || !text(value.alarmClass, 200) || !text(value.area, 200, true) || !integer(value.priority, 0, 255) || !alarmHistoryStates.includes(value.state) || !Number.isFinite(value.time) || Math.abs(value.time) > 8640000000000000 || value.actor !== undefined && !text(value.actor, 200) || !alarmShelvingEventValid(value) || !validNoteEvent(value)) fail("ALARM_HISTORY_RESPONSE");
+  if (!historyKeys(value, ["sequence", "id", "occurrence", "name", "text", "alarmClass", "priority", "area", "state", "time"], ["actor", "shelving", "note", "qualityDetails"]) || !integer(value.sequence, 1) || !text(value.id, 80) || !/^[A-Za-z0-9_-]+$/.test(value.id) || !text(value.occurrence, 80) || !text(value.name, 200) || !text(value.text, 1000) || !text(value.alarmClass, 200) || !text(value.area, 200, true) || !integer(value.priority, 0, 255) || !alarmHistoryStates.includes(value.state) || !Number.isFinite(value.time) || Math.abs(value.time) > 8640000000000000 || value.actor !== undefined && !text(value.actor, 200) || !alarmShelvingEventValid(value) || !validNoteEvent(value) || value.qualityDetails!==undefined&&!alarmQualityDetailsValid(value.qualityDetails)) fail("ALARM_HISTORY_RESPONSE");
   if (["Acknowledged", "Confirmed", "Shelved"].includes(value.state) && value.actor === undefined || ["Incoming", "Outgoing"].includes(value.state) && value.actor !== undefined) fail("ALARM_HISTORY_RESPONSE");
   return structuredClone(value);
 }

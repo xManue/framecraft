@@ -1,3 +1,6 @@
+export interface AlarmQualitySource {tag:string; state:"valid"|"missing"|"invalid"; qualityCode?:number}
+export interface AlarmQualityDetails {version:1; sources:AlarmQualitySource[]; invalid?:true}
+export function alarmQualityDetailsValid(value: unknown, expectedTags?: readonly string[]): value is AlarmQualityDetails;
 export interface AlarmVariable { name: string; dataType: string; access: string; detected?: boolean }
 export interface AlarmClass { name: string; acknowledgment: "none" | "single" | "reset" }
 export type AlarmAnalogKind = "high" | "low" | "high-equal" | "low-equal" | "equal" | "not-equal";
@@ -7,8 +10,8 @@ export interface AlarmShelvingConfig { enabled: boolean; maxMinutes: number }
 export interface AlarmShelving { mode: "timed" | "one-shot"; startedAt: number; until: number; actor: string; reason: string }
 export type AlarmShelvingEvent = { mode: "timed" | "one-shot"; until: number; reason: string } | { cause: "operator" | "elapsed" | "returned"; reason: string };
 export interface AlarmCatalog { version: 1; classes: AlarmClass[]; alarms: AlarmDefinition[]; maxHistory: number; archive?: { enabled: boolean; maxRecords: number }; shelving?: AlarmShelvingConfig }
-export interface AlarmRow extends AlarmDefinition { acknowledgment: AlarmClass["acknowledgment"]; active: boolean | null; acknowledged: boolean; confirmed: boolean; pending: boolean; quality: "unknown" | "bad" | "good"; diagnostic?: string; occurrence?: string; revision: number; activatedAt?: number; clearedAt?: number; shelving?: AlarmShelving }
-export interface AlarmEvent { sequence: number; id: string; occurrence: string; name: string; text: string; alarmClass: string; priority: number; area: string; state: "Incoming" | "Outgoing" | "Acknowledged" | "Confirmed" | "Shelved" | "Unshelved" | "Commented"; time: number; actor?: string; shelving?: AlarmShelvingEvent; note?: { id: string; authorName?: string; reference: { archiveId: string; seq: number; instanceId: string; occurrence: string }; text: string } }
+export interface AlarmRow extends AlarmDefinition { qualityDetails?:AlarmQualityDetails; acknowledgment: AlarmClass["acknowledgment"]; active: boolean | null; acknowledged: boolean; confirmed: boolean; pending: boolean; quality: "unknown" | "bad" | "good"; diagnostic?: string; occurrence?: string; revision: number; activatedAt?: number; clearedAt?: number; shelving?: AlarmShelving }
+export interface AlarmEvent { qualityDetails?:AlarmQualityDetails; sequence: number; id: string; occurrence: string; name: string; text: string; alarmClass: string; priority: number; area: string; state: "Incoming" | "Outgoing" | "Acknowledged" | "Confirmed" | "Shelved" | "Unshelved" | "Commented"; time: number; actor?: string; shelving?: AlarmShelvingEvent; note?: { id: string; authorName?: string; reference: { archiveId: string; seq: number; instanceId: string; occurrence: string }; text: string } }
 export interface AlarmSnapshot { version: 1; instanceId: string; revision: number; sequence: number; rows: AlarmRow[]; history: AlarmEvent[]; historyDropped: number; actionsEnabled?: boolean; shelving?: AlarmShelvingConfig }
 export type AlarmCommand = { alarmId: string; occurrence: string; revision: number } & ({ action: "acknowledge" | "confirm" } | { action: "shelve"; mode: "timed" | "one-shot"; minutes: number; reason: string } | { action: "unshelve"; reason: string });
 export function alarmShelvingConfigValid(value: unknown): boolean;

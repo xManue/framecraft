@@ -8,3 +8,6 @@ export declare function hmiControlQualityModuleSource(): string;
 export declare function serviceQualitySignature(host: Element): string;
 export declare function publishServiceQuality(host: HTMLElement, root: Element, read: () => number): void;
 export declare function alarmRowsQuality(rows: readonly {enabled?: boolean; quality?: string; active?: boolean|null}[]): number;
+
+export declare function alarmRecordQuality(record: unknown): number | undefined;
+export declare function alarmEventsQuality(events: readonly unknown[]): number;

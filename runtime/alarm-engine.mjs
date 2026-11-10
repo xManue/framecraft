@@ -139,6 +139,24 @@ function bitValue(value, type, bit) {
 
 export { alarmStateLabel } from "./alarm-labels.mjs";
 
+/** Optional additive metadata: old snapshots and old archive events remain readable. */
+export function alarmQualityDetailsValid(value, expectedTags) {
+  if(!object(value)||value.version!==1||!Array.isArray(value.sources)||value.sources.length<1||value.sources.length>2||Object.keys(value).some(key=>!['version','sources','invalid'].includes(key))||value.invalid!==undefined&&value.invalid!==true)return false;
+  const tags=new Set();
+  for(const source of value.sources){
+    if(!object(source)||!Object.hasOwn(source,'tag')||!Object.hasOwn(source,'state')||!text(source.tag)||tags.has(source.tag)||!['valid','missing','invalid'].includes(source.state)||Object.keys(source).some(key=>!['tag','state','qualityCode'].includes(key))||source.qualityCode!==undefined&&(!Number.isInteger(source.qualityCode)||source.qualityCode<0||source.qualityCode>65535))return false;
+    tags.add(source.tag);
+  }
+  return !expectedTags||tags.size===expectedTags.length&&expectedTags.every(tag=>tags.has(tag));
+}
+function alarmSourceQuality(tag,sample,type,bit) {
+  const raw=sample?.qualityCode,known=Number.isInteger(raw)&&raw>=0&&raw<=65535;let state='missing';
+  if(sample?.lastError||raw!==undefined&&!known)state='invalid';
+  else if(sample?.value!==undefined){
+    try{if(!['string','number','boolean'].includes(typeof sample.value))throw Error();if(bit!==undefined){if(bitValue(sample.value,type,bit)===undefined)throw Error();}else numericValue(sample.value,type);state='valid';}catch{state='invalid';}
+  }
+  return {tag,state,...(known?{qualityCode:raw}:{})};
+}
 export function parseAlarmSnapshot(value) {
   if (!object(value) || value.version !== 1 || !text(value.instanceId, 80) || !Number.isSafeInteger(value.revision) || value.revision < 0 || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !Array.isArray(value.rows) || value.rows.length > 2000 || !Array.isArray(value.history) || value.history.length > 10000
     || !Number.isSafeInteger(value.historyDropped) || value.historyDropped !== value.sequence - value.history.length || typeof value.actionsEnabled !== "boolean") throw new Error("Stato allarmi del servizio non valido.");
@@ -156,11 +174,13 @@ export function parseAlarmSnapshot(value) {
   }
   const definitions = value.rows.map(({ id, name, text, tag, className, priority, area, enabled, trigger }) => ({ id, name, text, tag, className, priority, area, enabled, trigger }));
   if (alarmCatalogIssues({ version: 1, maxHistory: 100, classes: [...classes].map(([name, acknowledgment]) => ({ name, acknowledgment })), alarms: definitions }).length) throw new Error("Catalogo allarmi del servizio non valido.");
+  for(const row of value.rows)if(row.qualityDetails!==undefined&&!alarmQualityDetailsValid(row.qualityDetails,dependencyTags(row)))throw new Error('Qualita delle sorgenti allarme non valida.');
   let previous = value.historyDropped;
   const definitionsById = new Map(value.rows.map((row) => [row.id, row]));
   for (const entry of value.history) {
     if (!object(entry) || entry.sequence !== previous + 1 || !ids.has(entry.id) || !text(entry.occurrence, 80) || !text(entry.name) || !text(entry.text, 1000) || !text(entry.alarmClass) || typeof entry.area !== "string" || entry.area.length > 200 || !Number.isInteger(entry.priority) || entry.priority < 0 || entry.priority > 255
       || !["Incoming", "Outgoing", "Acknowledged", "Confirmed", "Shelved", "Unshelved"].includes(entry.state) || !Number.isFinite(entry.time) || Math.abs(entry.time) > 8640000000000000 || entry.actor !== undefined && !text(entry.actor) || !alarmShelvingEventValid(entry)) throw new Error("Storico allarmi del servizio non valido.");
+    if(entry.qualityDetails!==undefined&&!alarmQualityDetailsValid(entry.qualityDetails,dependencyTags(definitionsById.get(entry.id))))throw new Error('Qualita storica delle sorgenti allarme non valida.');
     previous = entry.sequence;
     const definition = definitionsById.get(entry.id);
     if (entry.name !== definition.name || entry.text !== definition.text || entry.alarmClass !== definition.className || entry.priority !== definition.priority || entry.area !== (definition.area ?? "")) throw new Error("Storico allarmi incoerente nel servizio.");
@@ -174,14 +194,14 @@ export function createAlarmEngine(value, variables, options = {}) {
   const tags = new Map(variables.filter(item => !item.detected).map((item) => [item.name, item])), classes = new Map(catalog.classes.map((item) => [item.name, item.acknowledgment]));
   const rows = new Map(), byTag = new Map(), samples = new Map(), history = [], pendingEvents = [], listeners = new Set(), instanceId = crypto.randomUUID(); let sequence = 0, revision = 0;
   for (const item of definitions.values()) {
-    rows.set(item.id, { ...item, acknowledgment: classes.get(item.className), active: null, acknowledged: false, confirmed: false, pending: false, quality: "unknown", revision: 0 });
+    rows.set(item.id, { ...item, acknowledgment: classes.get(item.className), active: null, acknowledged: false, confirmed: false, pending: false, quality: "unknown", revision: 0, qualityDetails: {version:1,sources:dependencyTags(item).map(tag=>({tag,state:"missing"}))} });
     for (const tag of dependencyTags(item)) { if (!byTag.has(tag)) byTag.set(tag, []); byTag.get(tag).push(item.id); }
   }
   const deadlines = new Map();
   const snapshot = () => copy({ version: 1, instanceId, revision, sequence, rows: [...rows.values()], history, historyDropped: Math.max(0, sequence - history.length), ...(catalog.shelving ? { shelving: catalog.shelving } : {}) });
   const notify = () => { if (pendingEvents.length) { const events = pendingEvents.splice(0); try { options.onEvents?.(copy(events)); } catch { /* Archive failure cannot stop alarm acquisition. */ } } for (const listener of listeners) try { listener(snapshot()); } catch { /* A viewer cannot alter alarm acquisition. */ } };
   const event = (row, state, actor, shelving) => {
-    const entry = { sequence: ++sequence, id: row.id, occurrence: row.occurrence, name: row.name, text: row.text, alarmClass: row.className, priority: row.priority, area: row.area ?? "", state, time: now(), ...(actor ? { actor } : {}), ...(shelving ? { shelving } : {}) };
+    const entry = { sequence: ++sequence, id: row.id, occurrence: row.occurrence, name: row.name, text: row.text, alarmClass: row.className, priority: row.priority, area: row.area ?? "", state, time: now(), qualityDetails:copy(row.qualityDetails), ...(actor ? { actor } : {}), ...(shelving ? { shelving } : {}) };
     history.push(entry); pendingEvents.push(entry); if (history.length > catalog.maxHistory) history.shift();
     try { options.onEvent?.(copy(entry)); } catch { /* Diagnostics must not stop state transitions. */ }
   };
@@ -207,6 +227,7 @@ export function createAlarmEngine(value, variables, options = {}) {
       const row = rows.get(id), before = JSON.stringify(row), trigger = row.trigger, sample = samples.get(row.tag);
       const dynamic = trigger.kind !== "bit" && object(trigger.limit), limitSample = dynamic ? samples.get(trigger.limit.tag) : undefined;
       const signalQuality = sampleQuality(sample), limitQuality = dynamic ? sampleQuality(limitSample) : "good";
+      row.qualityDetails={version:1,sources:dependencyTags(row).map(tag=>alarmSourceQuality(tag,samples.get(tag),tags.get(tag).dataType.toLowerCase(),tag===row.tag&&trigger.kind==='bit'?trigger.bit:undefined))};
       if (signalQuality !== "good" || limitQuality !== "good") {
         row.quality = [signalQuality, limitQuality].includes("bad") ? "bad" : "unknown";
         row.diagnostic = signalQuality !== "good" ? "Segnale non valido o qualità sconosciuta. Controlla connessione e mapping: l'ultimo stato allarme non viene cancellato." : "Soglia PLC non disponibile o qualità non valida. Controlla il segnale usato come soglia: l'ultimo stato allarme non viene cancellato, senza valori sostitutivi.";
@@ -229,6 +250,7 @@ export function createAlarmEngine(value, variables, options = {}) {
         } catch {
           row.quality = "bad"; row.diagnostic = "Valore incompatibile con il tipo o la soglia. Controlla catalogo e formato del campione PLC.";
         }
+        if(row.quality==="bad")row.qualityDetails.invalid=true;
         if (row.quality === "good" && active !== row.active) {
           row.active = active;
           if (active) {

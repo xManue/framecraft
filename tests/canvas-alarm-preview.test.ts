@@ -231,5 +231,6 @@ it('reads service CurrentQuality through the Canvas bridge and clears it on retu
  probe.setAttribute('data-hmi-events',JSON.stringify([{event:'Tapped',script:'HMIRuntime.Trace("ALARM_QUALITY="+Screen.Items("AlarmTable").CurrentQuality);'}]));
  await start();await act(async()=>probe.click());await flush();expect(useEditorStore.getState().consoleEntries.map(entry=>entry.message).join('\n')).toContain('ALARM_QUALITY=4');
  expect((frame as any)[Symbol.for('framecraft.control-quality.v1')].get(table).quality).toBe(4);
+ const simulation=useEditorStore.getState().simulation;await act(async()=>useEditorStore.setState({simulation:{...simulation,status:{...simulation.status,Signal:{qualityCode:64}}}}));await flush();await act(async()=>probe.click());await flush();expect(useEditorStore.getState().consoleEntries.map(entry=>entry.message).join('\n')).toContain('ALARM_QUALITY=2');expect(latest().snapshot.rows[0]).toMatchObject({active:true,quality:'bad'});
  await act(async()=>useEditorStore.setState({interactionMode:'edit'}));await flush();expect((frame as any)[Symbol.for('framecraft.control-quality.v1')]?.get(table)).toBeUndefined();expect(network).not.toHaveBeenCalled();
 });

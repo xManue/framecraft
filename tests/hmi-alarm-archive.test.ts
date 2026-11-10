@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { createHmiAlarmArchive } from "../src/core/hmiAlarmArchive";
+import {createHmiPropertyFlashing,createHmiPropertyFlashingDomSurface} from "../scripts/hmi-property-flashing.mjs";
+import {resolveHmiCurrentQuality} from "../src/core/hmiCurrentQuality";
+import {executeHmiScript,inspectHmiScript} from "../src/core/hmiScript";
 import { createAlarmStatisticsAccumulator } from "../runtime/alarm-history.mjs";
 const user = vi.hoisted(() => ({ id: "synthetic", permitted: true }));
 const open = vi.hoisted(() => vi.fn());
@@ -10,7 +13,7 @@ const data = () => ({ version: 1, id, namespace: id, sequence: 3, count: 3, inco
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); document.body.replaceChildren(); user.id = "synthetic"; user.permitted = true; vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); open.mockClear(); });
 const button = (host: HTMLElement, text: string) => [...host.querySelectorAll("button")].find(node => node.textContent === text)!;
-function fixture(request = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(data()))), enabled = true, timeoutMs = 10000) { const host = document.createElement("div"); host.textContent = "Segnaposto"; document.body.append(host); const control = createHmiAlarmArchive(host, { enabled, request, timeoutMs }); cleanup.push(() => control.dispose()); return { host, request, control }; }
+function fixture(request = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(data()))), enabled = true, timeoutMs = 10000) { const host = document.createElement("div"); host.dataset.hmiType="HmiAlarmArchive"; host.textContent = "Segnaposto"; document.body.append(host); const control = createHmiAlarmArchive(host, { enabled, request, timeoutMs }); cleanup.push(() => control.dispose()); return { host, request, control }; }
 const load = async (test: ReturnType<typeof fixture>) => { button(test.host, "Carica storico").click(); await vi.waitFor(() => expect(test.host.querySelector('[aria-label="Eventi storici degli allarmi"]')).not.toBeNull()); };
 function statisticsData() {
   const accumulator = createAlarmStatisticsAccumulator();
@@ -109,3 +112,7 @@ it("times out a CSV page without retrying or exposing temporary files", async ()
   test.request.mockImplementation((_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(Error("timeout")))));
   button(test.host, "Prepara CSV dei risultati filtrati").click(); await vi.advanceTimersByTimeAsync(501); expect(test.host.textContent).toContain("Preparazione CSV scaduta"); expect(test.host.getAttribute("aria-busy")).toBe("false"); expect(test.request).toHaveBeenCalledTimes(2); expect(files.create).not.toHaveBeenCalled();
 });
+
+function currentQuality(test:ReturnType<typeof fixture>){test.host.dataset.hmiName='Archive';const surface=createHmiPropertyFlashingDomSurface(document),controller=createHmiPropertyFlashing(Object.assign(surface,{resolveCurrentQuality:(sources:Parameters<typeof resolveHmiCurrentQuality>[0],ctx:Parameters<typeof resolveHmiCurrentQuality>[1])=>resolveHmiCurrentQuality(sources,ctx,[])}));cleanup.push(()=>surface.dispose());const screenItems=controller.context(surface.items().find(item=>item.name==='Archive')!.itemId),program=inspectHmiScript('return item.CurrentQuality;').program!;return()=>{const result=executeHmiScript(program,{}, {screenItems});expect(result.error).toBeUndefined();expect(result.writes).toEqual({});return result.returned;};}
+it('publishes immutable quality of historical records, not the current signal',async()=>{const value=data(),details={version:1,sources:[{tag:'Signal',state:'valid',qualityCode:193}]};for(const row of value.events)Object.assign(row.event,{qualityDetails:details});const test=fixture(vi.fn(async()=>new Response(JSON.stringify(value)))),quality=currentQuality(test);expect(quality()).toBe(0);expect(test.request).not.toHaveBeenCalled();await load(test);expect(quality()).toBe(132);for(let i=0;i<3;i++)expect(quality()).toBe(132);expect(test.request).toHaveBeenCalledOnce();user.permitted=false;expect(quality()).toBe(0);test.control.dispose();expect(quality()).toBe(0);});
+it('keeps legacy and empty archive pages None while failed or malformed reads are Bad',async()=>{const test=fixture(),quality=currentQuality(test);await load(test);expect(quality()).toBe(0);test.request.mockResolvedValueOnce(new Response('synthetic',{status:503}));button(test.host,'Aggiorna dalla prima pagina').click();await vi.waitFor(()=>expect(quality()).toBe(1));const empty={...data(),events:[],nextBefore:null};test.request.mockResolvedValueOnce(new Response(JSON.stringify(empty)));button(test.host,'Carica storico').click();await vi.waitFor(()=>expect(test.host.querySelector('[aria-label="Eventi storici degli allarmi"]')).not.toBeNull());expect(quality()).toBe(0);});

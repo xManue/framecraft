@@ -48,3 +48,5 @@ it("stops a budget overflow with no truncated success", async () => {
   vi.stubGlobal("TextEncoder", class { encode(text: string) { return { byteLength: text.startsWith("\uFEFF") ? 1 : 64 * 1024 * 1024 }; } });
   await expect(collectAlarmHistoryCsv(fixture())).rejects.toMatchObject({ message: expect.stringContaining("64 MiB"), remedy: expect.stringContaining("Nessun file parziale") });
 });
+
+it('exports original source quality as quoted JSON without inventing legacy quality',async()=>{const test=fixture(),data=page([2,1],null),details={version:1 as const,sources:[{tag:'Signal',state:'valid' as const,qualityCode:193}]};data.events[0].event.qualityDetails=details;const result=await collectAlarmHistoryCsv({...test,snapshot:data,read:async()=>data});const csv=result.parts.join('');expect(csv).toContain('"source_quality_json"');expect(csv).toContain(JSON.stringify(details).replaceAll('"','""'));expect(csv.split('\r\n')[2]).toMatch(/;""$/);expect(data.events[1].event.qualityDetails).toBeUndefined();expect(result.manifest).toMatchObject({version:2,qualityEncoding:'framecraft-alarm-quality-v1-json',legacyQuality:'empty-unknown'});});

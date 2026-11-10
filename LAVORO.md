@@ -7096,6 +7096,25 @@ Verifiche del 5 ottobre 2026:
 - Restano fedelta' raw/storica degli allarmi e altri adattatori, VisualizeQuality, Variant,
   formati, finestre/lifecycle e le altre voci della fase 3. WCU-EVT-10 resta parziale.
 
+## 206. Qualita' originale e storica degli allarmi (10 novembre 2026)
+
+- Metadati versionati e validati per segnale e soglia dinamica: QualityCode originale del
+  driver e validita' tipizzata, senza propagare descrizioni interne di errore o valori.
+  Distinti CurrentQuality e usabilita' good-only del motore: comandi non allentati.
+- Copie immutabili negli eventi, revisione sulle variazioni di qualita' senza eventi
+  fittizi. Sorgenti ripetute deduplicate e limiti solo dai codici effettivamente acquisiti.
+- Sessione e archivio su disco aggregano la pagina mostrata. Legacy senza qualita' None,
+  note escluse dalle acquisizioni; caricamento/errori/accesso gestiti nell'archivio.
+- JSON dell'archivio esteso senza migrazioni SQL o riscritture; riapertura vecchi/nuovi
+  record e rifiuto atomico dei batch malformati. CSV con source_quality_json e dettagli
+  versione 2, senza perdere quote/protezione formule o i limiti di volume.
+- Pacchetto 2026.11.10.2, pipeline e aggiornamento coerente. Documentato il limite del
+  rollback: il vecchio Runtime rifiuta i payload nuovi, non si eliminano eventi per forzarlo.
+- Verifiche mirate, SQLite, ponte Canvas, pannello compilato con HTTP sintetico e zero
+  comandi macchina; nessun PLC/broker esterno o installer industriale collaudato.
+- Restano VisualizeQuality, altri adattatori, Variant/formati e oggetti/proprieta' della
+  fase 3; WCU-EVT-10 resta parziale prima di proseguire con Optix e AI.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

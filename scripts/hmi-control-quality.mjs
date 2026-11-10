@@ -29,7 +29,7 @@ export function clearControlQuality(host) {
     host.ownerDocument.defaultView?.[Symbol.for('framecraft.control-quality.v1')]?.delete(host);
 }
 export function hmiControlQualityModuleSource() {
-    return [controlWireQuality,controlSampleCode,controlQuality,publishControlQuality,clearControlQuality,serviceQualitySignature,publishServiceQuality,alarmRowsQuality].map(String).join('\n');
+    return [controlWireQuality,controlSampleCode,controlQuality,publishControlQuality,clearControlQuality,serviceQualitySignature,publishServiceQuality,alarmRecordQuality,alarmEventsQuality,alarmRowsQuality].map(String).join('\n');
 }
 
 /** Metadata that changes which service supplies the displayed data. */
@@ -42,8 +42,24 @@ export function publishServiceQuality(host, root, read) {
     const records=view[Symbol.for('framecraft.control-quality.v1')] ??= new WeakMap();
     records.set(host,Object.freeze({kind:'service',signature:serviceQualitySignature(host),root,get quality(){try{return controlQuality([read()]);}catch{return 1;}},liveTags:Object.freeze([])}));
 }
-/** Alarm engine usability, not the original wire QualityCode (which is not in its rows). */
+/** Raw source quality at acquisition time; missing legacy event metadata stays unknown. */
+export function alarmRecordQuality(record) {
+    if(!record||record.qualityDetails===undefined)return undefined;
+    const details=record.qualityDetails;
+    if(!details||details.version!==1||!Array.isArray(details.sources)||details.sources.length<1||details.sources.length>2||details.invalid!==undefined&&details.invalid!==true)return 1;
+    const tags=new Set(),codes=[];
+    if(details.invalid)codes.push(1);
+    for(const source of details.sources){
+        if(!source||typeof source.tag!=='string'||!source.tag.trim()||source.tag.length>200||tags.has(source.tag)||!['valid','missing','invalid'].includes(source.state))return 1;
+        tags.add(source.tag);codes.push(controlWireQuality(source.qualityCode),source.state==='invalid'?1:source.state==='missing'?0:4);
+    }
+    return controlQuality(codes);
+}
+export function alarmEventsQuality(events) {
+    return Array.isArray(events)?controlQuality(events.filter(event=>event?.state!=='Commented').map(event=>alarmRecordQuality(event)??0)):1;
+}
+/** Legacy rows contribute only the usability their older service actually reported. */
 export function alarmRowsQuality(rows) {
     if(!Array.isArray(rows))return 1;
-    return controlQuality(rows.filter(row=>row?.enabled!==false).map(row=>row?.quality==='good'&&typeof row.active==='boolean'?4:row?.quality==='unknown'?0:1));
+    return controlQuality(rows.filter(row=>row?.enabled!==false).map(row=>alarmRecordQuality(row)??(row?.quality==='good'&&typeof row.active==='boolean'?4:row?.quality==='unknown'?0:1)));
 }

@@ -1,4 +1,4 @@
-import { publishServiceQuality, clearControlQuality, alarmRowsQuality } from "./hmi-control-quality.mjs";
+import { publishServiceQuality, clearControlQuality, alarmEventsQuality, alarmRowsQuality } from "./hmi-control-quality.mjs";
 import { alarmStateLabel } from "../runtime/alarm-labels.mjs";
 import { activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile } from "./hmi-alarm-views.mjs";
 export function hmiAlarmElementBlocked(host) {
@@ -14,7 +14,7 @@ export function hmiAlarmElementBlocked(host) {
     return false;
 }
 export function createHmiAlarmControlWith(host, action, rowFilter, runtime, viewContext) {
-    const { publishServiceQuality, clearControlQuality, alarmRowsQuality, alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile } = runtime;
+    const { publishServiceQuality, clearControlQuality, alarmEventsQuality, alarmRowsQuality, alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile } = runtime;
     const original = [...host.childNodes], oldStyle = host.getAttribute("style"), oldRole = host.getAttribute("role"), oldLabel = host.getAttribute("aria-label");
     host.dataset.hmiAlarmRoot = "";
     host.setAttribute("role", "region");
@@ -247,7 +247,6 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
         const columnSignature = JSON.stringify(columns); if (columnSignature !== columnsUiSignature) { columnsUiSignature = columnSignature; fillColumnFields(); }
         try { parseAlarmViewFilters("active", filterValues()); validFilters = true; } catch { validFilters = false; }
         const definitions = (snapshot?.rows ?? []).filter(row => (!rowFilter || rowFilter(row)) && (!match || row.className === match[1]));
-        publishServiceQuality?.(host,notice,()=>qualityDefinition!==JSON.stringify(['data-hmi-type','data-hmi-alarm-source','data-hmi-filter'].map(name=>host.getAttribute(name)))?0:!observed?0:!connected?1:invalidFilter||!validFilters?1:source==='history'?0:alarmRowsQuality?.(definitions)??0);
         const zones = [...new Set(definitions.map(row => row.area ?? "").filter(Boolean))].sort();
         const zoneSignature = JSON.stringify([zones, area.value]);
         if (area.dataset.zones !== zoneSignature) {
@@ -269,6 +268,7 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
             ? [...(snapshot?.history ?? [])].reverse().filter((row) => matches(row.alarmClass, row.area, [row.name, row.text, row.id]))
             : [...(snapshot?.rows ?? [])].filter((row) => (row.pending || row.quality !== "good" || row.shelving) && (!rowFilter || rowFilter(row)) && matches(row.className, row.area ?? "", [row.name, row.text, row.id], row)).sort((a, b) => compareAlarmViewRows(a, b, extra.order.value));
         page = Math.min(page, Math.max(0, Math.ceil(rows.length / 100) - 1));
+        publishServiceQuality?.(host,notice,()=>qualityDefinition!==JSON.stringify(['data-hmi-type','data-hmi-alarm-source','data-hmi-filter'].map(name=>host.getAttribute(name)))?0:!observed?0:!connected?1:invalidFilter||!validFilters?1:source==='history'?alarmEventsQuality?.(rows.slice(page*100,(page+1)*100))??0:alarmRowsQuality?.(definitions)??0);
         previous.disabled = busy || !!review || !!shelfProposal || page === 0;
         next.disabled = busy || !!review || !!shelfProposal || (page + 1) * 100 >= rows.length;
         previous.hidden = next.hidden = rows.length <= 100;
@@ -445,5 +445,5 @@ export function createHmiAlarmControlWith(host, action, rowFilter, runtime, view
 }
 
 export function createHmiAlarmControl(host, action, rowFilter, viewContext) {
-    return createHmiAlarmControlWith(host, action, rowFilter, { publishServiceQuality, clearControlQuality, alarmRowsQuality, alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile }, viewContext);
+    return createHmiAlarmControlWith(host, action, rowFilter, { publishServiceQuality, clearControlQuality, alarmEventsQuality, alarmRowsQuality, alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile }, viewContext);
 }
