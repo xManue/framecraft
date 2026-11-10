@@ -546,7 +546,9 @@ function HmiDynamizationSection({ node, expandSignal }: { node: EditorNode; expa
   const [property, setProperty] = useState(available[0] ?? "ProcessValue");
   useEffect(() => { if (!available.includes(property)) setProperty(available[0] ?? "ProcessValue"); }, [available, property]);
   const write = (next: Dynamization[]) => void (next.length ? update(hmiDynamizationAttribute, serializeHmiDynamizations(next)) : removeAttribute(hmiDynamizationAttribute));
-  return <InspectorSection title={`Dinamica PLC${items.length ? ` · ${items.length}` : ""}`} icon={<Zap size={12} />} initiallyOpen={items.length > 0} expandSignal={expandSignal}>
+  return <InspectorSection title={`Dinamica PLC${items.length ? ` · ${items.length}` : ""}`} icon={<Zap size={12} />} initiallyOpen={items.length > 0 || node.props["data-hmi-visualize-quality"] === "true"} expandSignal={expandSignal}>
+    <label className="inspector-checkbox"><input type="checkbox" checked={node.props['data-hmi-visualize-quality']==='true'} onChange={event=>void update('data-hmi-visualize-quality',String(event.target.checked))} /> Mostra qualità dei dati</label>
+    <p className="inspector-note">Nel pannello segnala dati mancanti, non validi, incerti o ai limiti. Non modifica il valore e non autorizza comandi.</p>
     {!items.length && <p className="inspector-note">Fai cambiare colore, visibilità, testo o geometria in base a una variabile PLC.</p>}
     <div className="dynamization-list">{items.map((item, index) => <DynamizationCard key={`${item.property}-${index}`} item={item} index={index} all={items} properties={available} onWrite={write} />)}</div>
     {available.length > 0 && <div className="dynamization-add"><select value={property} aria-label="Proprietà dinamica da aggiungere" onChange={(event) => setProperty(event.target.value)}>{available.map((name) => <option key={name} value={name}>{dynamizationLabels[name] ?? name}</option>)}</select><button type="button" onClick={() => write([...items, newHmiDynamization(property, bound)])}><Plus size={12} /> Aggiungi dinamica</button></div>}

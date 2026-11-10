@@ -1,0 +1,3 @@
+import type {HmiQualityCommand,HmiScreenItemSnapshot} from './hmi-property-flashing.mjs';
+export function createHmiQualityVisuals(root:Document,target:(id:string)=>{element:Element;enabled:boolean;name?:string}|undefined,active?:()=>boolean):{apply(commands:HmiQualityCommand[]):void;refresh():void;hide():void;dispose():void};
+export function createHmiQualityPreview(view:Window,surface:{hasQualityTargets():boolean;qualityItems():HmiScreenItemSnapshot[];applyQuality(commands:HmiQualityCommand[]):void},options:{origin():string|undefined;pageId():string;active():boolean}):{tick():void;clear():void;dispose():void};

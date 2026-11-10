@@ -1,3 +1,5 @@
+import { createHmiQualityVisuals } from './hmi-quality-visuals.mjs';
+const makeQualityVisuals=createHmiQualityVisuals;
 // Shared by the editor bridge and the generated runtime. References contain IDs, never DOM objects.
 export function createHmiPropertyFlashing(surface) {
   const state = new Map();
@@ -40,10 +42,33 @@ export function createHmiPropertyFlashing(surface) {
     for (const itemId of propertyState.keys()) if (!live.has(itemId)){propertyState.delete(itemId);processValueVersions.delete(itemId);}
     return [...propertyState].flatMap(([itemId, values]) => [...values].map(([property, value]) => ({ itemId, property, value,...(property==="ProcessValue"&&Number.isSafeInteger(processValueVersions.get(itemId))?{valueRevision:processValueVersions.get(itemId)}:{}) })));
   };
+  const qualityReader=items=>{
+    const children=new Map(),sources=new Map();
+    for(const item of items)if(item.parentItemId){const key=item.screenId+'\0'+item.parentItemId;if(!children.has(key))children.set(key,[]);children.get(key).push(item);}
+    return (rootItem,context,ownerFaceplate)=>{
+      if(!rootItem.quality||!surface.resolveCurrentQuality)throw Error('CurrentQuality richiede i componenti Runtime aggiornati del pannello.');
+      const queue=[rootItem],seen=new Set(),result=[];
+      while(queue.length){const item=queue.pop();if(seen.has(item.itemId))continue;if(seen.size>=4096)throw Error('CurrentQuality supera 4096 oggetti: leggi i singoli controlli.');seen.add(item.itemId);
+        if(!sources.has(item.itemId))sources.set(item.itemId,item.quality);const source=sources.get(item.itemId);
+        result.push(source?{...source,bindings:source.bindings?.map(binding=>({...binding,currentContext:Boolean(ownerFaceplate&&item.faceplateId===ownerFaceplate)}))}:{unknown:true});
+        for(const child of children.get(item.screenId+'\0'+item.itemId)??[])queue.push(child);
+      }
+      return surface.resolveCurrentQuality(result,context);
+    };
+  };
   return {
+    qualityCommands(context,snapshots=surface.items()){
+      if(snapshots.length>4096)throw Error('VisualizeQuality supera 4096 oggetti.');
+      const read=qualityReader(snapshots),commands=[];
+      for(const item of snapshots)if((propertyState.get(item.itemId)?.get('VisualizeQuality')??item.visualizeQuality)===true){
+        try{commands.push({itemId:item.itemId,quality:read(item,typeof context==='function'?context(item):context,undefined)});}
+        catch(error){report('VisualizeQuality: '+String(error?.message??error));commands.push({itemId:item.itemId,quality:1});}
+      }
+      return commands;
+    },
     commands,
     propertyCommands,
-    reset() { revision++; reported.clear(); state.clear(); propertyState.clear();processValueVersions.clear(); surface.applyProperties?.([]); publish(); },
+    reset() { revision++; reported.clear(); state.clear(); propertyState.clear();processValueVersions.clear(); surface.applyProperties?.([]);surface.applyQuality?.([]); publish(); },
     context(ownerId) {
       const contextRevision = revision;
       const assertActive = () => { if (contextRevision !== revision) throw new Error("Il contesto oggetti HMI non e' piu' attivo."); };
@@ -108,12 +133,8 @@ export function createHmiPropertyFlashing(surface) {
         },
         currentQuality(reference,context){
           const rootItem=itemFor(reference);if(reference.screenPropertyPath)throw new Error('CurrentQuality richiede un oggetto grafico, non una sua parte.');
-          if(!rootItem.quality||!surface.resolveCurrentQuality)throw new Error('CurrentQuality richiede i componenti Runtime aggiornati del pannello.');
-          const items=surface.items(),children=new Map(),owner=items.find(item=>item.itemId===ownerId),ownerFaceplate=owner?.faceplateId;
-          for(const item of items)if(item.parentItemId&&item.screenId===rootItem.screenId){if(!children.has(item.parentItemId))children.set(item.parentItemId,[]);children.get(item.parentItemId).push(item);}
-          const queue=[rootItem],seen=new Set(),sources=[];
-          while(queue.length){const item=queue.pop();if(seen.has(item.itemId))continue;if(seen.size>=4096)throw new Error('CurrentQuality supera 4096 oggetti: leggi i singoli controlli.');seen.add(item.itemId);const source=item.quality;if(source)sources.push({...source,bindings:source.bindings?.map(binding=>({...binding,currentContext:Boolean(ownerFaceplate&&item.faceplateId===ownerFaceplate)}))});else sources.push({unknown:true});for(const child of children.get(item.itemId)??[])queue.push(child);}
-          return surface.resolveCurrentQuality(sources,context);
+          const items=surface.items(),owner=items.find(item=>item.itemId===ownerId);
+          return qualityReader(items)(rootItem,context,owner?.faceplateId);
         },
         processValue(reference,context,writing=false){
           const item=itemFor(reference);if(reference.screenPropertyPath)throw new Error('ProcessValue richiede un oggetto grafico, non una sua parte.');
@@ -159,7 +180,7 @@ export function createHmiPropertyFlashing(surface) {
             if(value===null||!['string','number','boolean'].includes(typeof value)||typeof value==='number'&&!Number.isFinite(value)||typeof value==='string'&&value.length>20000)throw new Error('ProcessValue richiede un valore scalare valido.');
           }
           else if(key.startsWith("Margin.")||key.startsWith("Padding."))validateInset(item,reference.screenPropertyPath,property,value);
-          else if (["Visible", "Enabled", "Font.Italic", "Font.Underline"].includes(key)) {
+          else if (["Visible", "Enabled", "VisualizeQuality", "Font.Italic", "Font.Underline"].includes(key)) {
             if (typeof value !== "boolean") throw new Error(key + " richiede un Boolean.");
           } else if (key === "Font.Name") {
             if (typeof value !== "string" || value.length > 20000 || /[\u0000-\u001f\u007f]/.test(value)) throw new Error("Font.Name richiede una stringa fino a 20000 caratteri senza caratteri di controllo.");
@@ -244,6 +265,9 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
   const declarative = new Map();
   const before = new Map();
   const propertyOverrides = new Map();
+  const qualityEnabled=element=>propertyOverrides.get(identifyItem(element))?.get('VisualizeQuality')??element.getAttribute('data-hmi-visualize-quality')==='true';
+  let qualityVisuals;
+  const visualSurface=()=>qualityVisuals??=makeQualityVisuals(root,id=>{const element=targets.get(id);return element?{element,enabled:qualityEnabled(element),name:element.getAttribute('data-hmi-name')||element.id}:undefined;},()=>!suspendDepth&&interactionEnabled());
   const propertyBefore = new Map();
   const pivotProperties=["RotationCenterPlacement","RotationCenterX","RotationCenterY"];
   let pivotFrame, refreshingPivots=false;
@@ -529,7 +553,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
   const snapshotProperties = (element) => {
     const computed = root.defaultView?.getComputedStyle(element) ?? element.style;
     const px = (name, fallback) => /^-?[\d.]+px$/.test(computed[name]) ? Math.round(parseFloat(computed[name])) : Math.round(fallback || 0);
-    const values = { Left: px("left", element.offsetLeft), Top: px("top", element.offsetTop), Width: Math.round(element.offsetWidth || px("width", 0)), Height: Math.round(element.offsetHeight || px("height", 0)),
+    const values = { VisualizeQuality: element.getAttribute('data-hmi-visualize-quality')==='true', Left: px("left", element.offsetLeft), Top: px("top", element.offsetTop), Width: Math.round(element.offsetWidth || px("width", 0)), Height: Math.round(element.offsetHeight || px("height", 0)),
       Visible: !element.hidden && computed.visibility !== "hidden" && computed.visibility !== "collapse" && computed.display !== "none",
       Enabled: !element.hasAttribute("disabled") && !element.hasAttribute("inert") && element.getAttribute("aria-disabled") !== "true" && computed.pointerEvents !== "none" };
     if(supportsMargin(element,computed))for(const[property,css]of Object.entries(marginCssProperties)){
@@ -743,8 +767,11 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     element.style.animation = (baseAnimation && baseAnimation !== "none" ? baseAnimation + ", " : "") + animations.join(", ");
   };
   return {
-    items() {
-      refreshPivots();
+    hasQualityTargets(){return Boolean(root.querySelector('[data-hmi-visualize-quality="true"]'))||[...propertyOverrides.values()].some(values=>values.get('VisualizeQuality')===true);},
+    qualityItems(){return this.items(true).map(item=>({itemId:item.itemId,parentItemId:item.parentItemId,name:item.name,screenId:item.screenId,faceplateId:item.faceplateId,parentFaceplateId:item.parentFaceplateId,flashing:[],visualizeQuality:item.visualizeQuality,quality:item.quality}));},
+    applyQuality(commands){if(commands.length||qualityVisuals)visualSurface().apply(commands);},
+    items(qualityOnly=false) {
+      if(!qualityOnly)refreshPivots();
       for(const id of absolutePivotIds)if(!targets.get(id)?.isConnected){absolutePivotIds.delete(id);pivotErrors.delete(id);}
       for (const element of [...before.keys()]) if (!element.isConnected) restore(element);
       for (const element of [...propertyBefore.keys()]) if (!element.isConnected) { propertyOverrides.delete(identifyItem(element)); restoreProperties(element); }
@@ -752,10 +779,10 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       targets.clear();
       const defaultScreen = root.querySelector("[data-hmi-screen], [data-hmi-type='HmiScreen'], [data-framecraft-runtime-popup-id]") ?? root.body ?? root.documentElement;
       if (!defaultScreen) return [];
-      const elements = new Set([defaultScreen, ...root.querySelectorAll("[data-hmi-name], [data-hmi-type], [data-hmi-screen], [data-hmi-faceplate], [data-hmi-events], [data-hmi-dynamizations], [data-framecraft-runtime-popup-id], [id]")]);
+      const elements = new Set([defaultScreen, ...root.querySelectorAll("[data-hmi-name], [data-hmi-type], [data-hmi-screen], [data-hmi-faceplate], [data-hmi-events], [data-hmi-dynamizations], [data-hmi-visualize-quality], [data-framecraft-runtime-popup-id], [id]")]);
       const items = [];
       for (const element of elements) {
-        if (!element.style) continue;
+        if (!element.style||element.closest("[data-framecraft-quality-layer]")) continue;
         const itemId = identifyItem(element);
         let flashing = [];
         try { const bindings = JSON.parse(element.getAttribute("data-hmi-dynamizations") ?? "[]"); if (Array.isArray(bindings)) flashing = bindings.filter((binding) => binding?.kind === "Flashing"); } catch { /* Invalid configuration is reported by the HMI validator. */ }
@@ -767,7 +794,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         let properties, measuredBox, boxMeasured=false;
         let container=element.parentElement;while(container&&container!==screen&&!elements.has(container))container=container.parentElement;
         const parentItemId=element!==screen&&container&&screen.contains(container)?identifyItem(container):undefined;
-        items.push({itemId,parentItemId,get quality(){return qualitySource(element);},name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,paddingAllowsNegative:false,get processValue(){return processValueSource(element);},geometryError:pivotErrors.get(itemId),get boundingBox(){if(pivotErrors.has(itemId))return null;if(!boxMeasured){measuredBox=boundingBox(element);boxMeasured=true;}return measuredBox;},get properties(){return properties??=snapshotProperties(element);}});
+        items.push({itemId,parentItemId,visualizeQuality:qualityEnabled(element),get quality(){return qualitySource(element);},name:element.getAttribute("data-hmi-name")||element.id||element.getAttribute("data-hmi-screen")||"",screenId:identifyItem(screen),faceplateId:faceplate?identifyItem(faceplate):undefined,parentFaceplateId:parent&&screen.contains(parent)?identifyItem(parent):undefined,flashing,paddingAllowsNegative:false,get processValue(){return processValueSource(element);},geometryError:pivotErrors.get(itemId),get boundingBox(){if(pivotErrors.has(itemId))return null;if(!boxMeasured){measuredBox=boundingBox(element);boxMeasured=true;}return measuredBox;},get properties(){return properties??=snapshotProperties(element);}});
       }
       for (const itemId of scripted.keys()) if (!targets.has(itemId)) scripted.delete(itemId);
       for (const itemId of propertyOverrides.keys()) if (!targets.has(itemId)) propertyOverrides.delete(itemId);
@@ -801,8 +828,8 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
           if(typeof value!=="number"||!Number.isInteger(value)||value<0||value>2147483647)throw new Error(property+" richiede un Int32 non negativo per questo elemento HTML.");
           if(!supportsPadding(targets.get(command.itemId)))throw new Error("L'oggetto HMI non espone Padding nel layout corrente.");
         }
-        if (!Object.hasOwn(cssProperties, property) && !["Text", "ProcessValue", "Enabled", "RotationAngle", ...pivotProperties, ...fontProperties,...Object.keys(marginCssProperties),...Object.keys(paddingCssProperties)].includes(property)) continue;
-        if (property==='ProcessValue'?false:["Enabled", "Visible", "Font.Italic", "Font.Underline"].includes(property) ? typeof value !== "boolean"
+        if (!Object.hasOwn(cssProperties, property) && !["Text", "ProcessValue", "Enabled", "VisualizeQuality", "RotationAngle", ...pivotProperties, ...fontProperties,...Object.keys(marginCssProperties),...Object.keys(paddingCssProperties)].includes(property)) continue;
+        if (property==='ProcessValue'?false:["Enabled", "Visible", "VisualizeQuality", "Font.Italic", "Font.Underline"].includes(property) ? typeof value !== "boolean"
           : property === "Text" || property === "Font.Name" ? typeof value !== "string" || value.length > 20000 || (property === "Font.Name" && /[\u0000-\u001f\u007f]/.test(value))
           : property === "RotationCenterPlacement" ? ![0,1,2].includes(value)
           : ["RotationCenterX","RotationCenterY"].includes(property) ? typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value))
@@ -828,13 +855,13 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       absolutePivotIds.clear();for(const[id,values]of next)if(values.get("RotationCenterPlacement")===2)absolutePivotIds.add(id);
       for(const id of pivotErrors.keys())if(!absolutePivotIds.has(id))pivotErrors.delete(id);
       for (const id of changed) { const element = targets.get(id); if (element) render(element,true); }
-      refreshPivots();schedulePivotFrame();
+      refreshPivots();schedulePivotFrame();qualityVisuals?.refresh();
     },
     allowsInteraction,
     allowsReactions,
     setDeclarative(element, visuals) { declarative.set(element, visuals); targets.set(identifyItem(element), element); render(element); },
-    suspend() { if (++suspendDepth !== 1) return; cancelPivotFrame(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]){syncNativeProcessValue(element);restoreProperties(element);} },
-    resume() { suspendDepth = Math.max(0, suspendDepth - 1); if (suspendDepth) return; for (const element of new Set([...declarative.keys(), ...[...scripted.keys(), ...propertyOverrides.keys()].map((id) => targets.get(id)).filter(Boolean)])) render(element); refreshPivots();schedulePivotFrame(); },
-    dispose() { cancelPivotFrame();pivotErrors.clear();absolutePivotIds.clear();scripted.clear(); propertyOverrides.clear(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); declarative.clear(); targets.clear(); for (const type of interactionEvents) root.removeEventListener(type, guardInteraction, true); },
+    suspend() { if (++suspendDepth !== 1) return; qualityVisuals?.hide();cancelPivotFrame(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]){syncNativeProcessValue(element);restoreProperties(element);} },
+    resume() { qualityVisuals?.refresh();suspendDepth = Math.max(0, suspendDepth - 1); if (suspendDepth) return; for (const element of new Set([...declarative.keys(), ...[...scripted.keys(), ...propertyOverrides.keys()].map((id) => targets.get(id)).filter(Boolean)])) render(element); refreshPivots();schedulePivotFrame(); },
+    dispose() { qualityVisuals?.dispose();cancelPivotFrame();pivotErrors.clear();absolutePivotIds.clear();scripted.clear(); propertyOverrides.clear(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); declarative.clear(); targets.clear(); for (const type of interactionEvents) root.removeEventListener(type, guardInteraction, true); },
   };
 }

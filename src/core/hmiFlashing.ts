@@ -1,3 +1,4 @@
+import { createHmiQualityVisuals } from '../../scripts/hmi-quality-visuals.mjs';
 import type { Dynamization } from "./hmiStandard";
 import { createHmiPropertyFlashing, createHmiPropertyFlashingDomSurface } from "../../scripts/hmi-property-flashing.mjs";
 
@@ -114,5 +115,5 @@ export function hmiFlashingContrast(left: string, right: string): number | undef
 }
 
 export function hmiFlashingRuntimeSource(): string {
-  return `// @ts-nocheck\nconst hmiFlashingProperties = ${JSON.stringify(hmiFlashingProperties)};\nconst flashingRates = ${JSON.stringify(flashingRates)};\n${String(flashingNumber)}\n${String(flashingProperty)}\n${String(flashingCssColor)}\nexport ${String(resolveHmiFlashing)}\nconst animationNames = ${JSON.stringify(animationNames)};\nconst variableStem = ${JSON.stringify(variableStem)};\nexport ${String(hmiFlashingInlineStyle)}\nexport const hmiFlashingCss = ${JSON.stringify(hmiFlashingCss)};\nexport ${String(createHmiPropertyFlashing)}\nexport ${String(createHmiPropertyFlashingDomSurface)}\n`;
+  return `// @ts-nocheck\nconst hmiFlashingProperties = ${JSON.stringify(hmiFlashingProperties)};\nconst flashingRates = ${JSON.stringify(flashingRates)};\n${String(flashingNumber)}\n${String(flashingProperty)}\n${String(flashingCssColor)}\nexport ${String(resolveHmiFlashing)}\nconst animationNames = ${JSON.stringify(animationNames)};\nconst variableStem = ${JSON.stringify(variableStem)};\nexport ${String(hmiFlashingInlineStyle)}\nexport const hmiFlashingCss = ${JSON.stringify(hmiFlashingCss)};\nexport ${String(createHmiPropertyFlashing)}\n${String(createHmiQualityVisuals)}\nconst makeQualityVisuals=createHmiQualityVisuals;\nexport ${String(createHmiPropertyFlashingDomSurface)}\n`;
 }

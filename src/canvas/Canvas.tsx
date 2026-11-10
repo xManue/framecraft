@@ -20,6 +20,7 @@ import { createHmiFaceplatePopupManager } from "../core/hmiPopupManager";
 import { createHmiDataLogRuntime } from "../core/hmiDataLogs";
 import { createHmiTrendPreviewModel, downloadHmiTrendPreviewCsv } from "../core/hmiTrendPreview";
 import { createHmiGeometryPreviewClient } from "../../scripts/hmi-geometry-preview.mjs";
+import { qualityPreviewCommands } from '../core/hmiQualityPreview';
 import { useVisualEditGuide } from "./visualEditGuide";
 import { hmiAlarmPreviewSession } from "../core/hmiAlarmPreview";
 import { useEditorShortcuts } from "../state/editorShortcuts";
@@ -127,6 +128,7 @@ export function Canvas() {
   const previewSelectionVersionRef = useRef(0);
   const selectionProtocolRef = useRef(0);
   const hmiScriptQueueRef = useRef(Promise.resolve());
+  const qualityRequestRef=useRef({pageId:"",sequence:0});
   const hmiScreenItemsRef = useRef<HmiScreenItemSnapshot[]>([]);
   const geometryClientRef = useRef<ReturnType<typeof createHmiGeometryPreviewClient> | undefined>(undefined);
   if(!geometryClientRef.current)geometryClientRef.current=createHmiGeometryPreviewClient(window,()=>{
@@ -960,6 +962,15 @@ export function Canvas() {
           if (result.navigation.length) hmiPopupManager.closeParentBound("screen");
           sendAlarmMessage({ type: "framecraft:hmi-event-result", instanceId: message.instanceId, navigation: result.navigation, faceplateEvents: result.faceplateEvents, faceplateFromParent: true });
         }).catch((error) => useEditorStore.getState().addPreviewOutput("stderr", `[HMI FACEPLATE ${message.eventName}] ${error instanceof Error ? error.message : String(error)}`));
+      } else if(event.data.type==='framecraft:quality-request'){
+        const page=alarmPageRef.current,message=event.data,store=useEditorStore.getState();
+        if(!page||event.origin!==page.origin||event.origin!==alarmOrigin()||message.pageId!==page.pageId||!Number.isSafeInteger(message.sequence)||message.sequence<1||store.interactionMode!=='navigate')return;
+        const previous=qualityRequestRef.current;
+        if(previous.pageId===page.pageId&&message.sequence<=previous.sequence)return;
+        qualityRequestRef.current={pageId:page.pageId,sequence:message.sequence};
+        const context=hmiScriptContexts.options(store.scriptCatalog,store.previewPath,'dynamizations');
+        const commands=qualityPreviewCommands(message.items,{...context,values:store.simulation.values,tagStatus:store.simulation.status,requireQuality:false},store.plcVariables);
+        if(commands)sendAlarmMessage({type:'framecraft:quality-result',sequence:message.sequence,commands});
       } else if (event.data.type === "framecraft:screen-property-error") {
         const page=alarmPageRef.current,message=event.data;
         if(!page||event.origin!==page.origin||event.origin!==alarmOrigin()||message.pageId!==page.pageId||typeof message.message!=="string"||message.message.length>1000)return;

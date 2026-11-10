@@ -732,7 +732,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   let nextScreenItemId = 0;
   const screenItemId = (element: Element) => { if (!screenItemIds.has(element)) screenItemIds.set(element, "runtime-item-" + ++nextScreenItemId); return screenItemIds.get(element)!; };
   const propertyFlashingSurface = createHmiPropertyFlashingDomSurface(document, screenItemId, undefined, (message: string) => (options.error ?? console.error)("[HMI oggetti] " + message));
-  const propertyFlashing = createHmiPropertyFlashing({ resolveCurrentQuality: (sources: Parameters<typeof resolveHmiCurrentQuality>[0], context: Parameters<typeof resolveHmiCurrentQuality>[1]) => resolveHmiCurrentQuality(sources,{...context,requireQuality:gatewayConfig.enabled},plcCatalogJson.variables,gatewayConfig.enabled ? (tag: string) => { const definition=gatewaySnapshot?.tags.find(item=>item.name===tag);return gatewayClient?.state==='connected'&&Boolean(definition&&gatewaySnapshot?.connections.some(connection=>connection.id===definition.connectionId&&connection.state==='connected')); } : undefined), resolveProcessValue: (source: Parameters<typeof resolveHmiProcessValue>[0], context: Parameters<typeof resolveHmiProcessValue>[1], writing?: boolean) => resolveHmiProcessValue(source,context,plcCatalogJson.variables,writing), items: () => propertyFlashingSurface.items(), apply: (commands: Parameters<typeof propertyFlashingSurface.apply>[0]) => propertyFlashingSurface.apply(commands), applyProperties: (commands: Parameters<typeof propertyFlashingSurface.applyProperties>[0]) => propertyFlashingSurface.applyProperties(commands), report: (message: string) => (options.error ?? console.error)("[HMI oggetti] " + message) });
+  const propertyFlashing = createHmiPropertyFlashing({ resolveCurrentQuality: (sources: Parameters<typeof resolveHmiCurrentQuality>[0], context: Parameters<typeof resolveHmiCurrentQuality>[1]) => resolveHmiCurrentQuality(sources,{...context,requireQuality:gatewayConfig.enabled},plcCatalogJson.variables,gatewayConfig.enabled ? (tag: string) => { const definition=gatewaySnapshot?.tags.find(item=>item.name===tag);return gatewayClient?.state==='connected'&&Boolean(definition&&gatewaySnapshot?.connections.some(connection=>connection.id===definition.connectionId&&connection.state==='connected')); } : undefined), resolveProcessValue: (source: Parameters<typeof resolveHmiProcessValue>[0], context: Parameters<typeof resolveHmiProcessValue>[1], writing?: boolean) => resolveHmiProcessValue(source,context,plcCatalogJson.variables,writing), items: () => propertyFlashingSurface.items(), applyQuality: commands=>propertyFlashingSurface.applyQuality(commands), apply: (commands: Parameters<typeof propertyFlashingSurface.apply>[0]) => propertyFlashingSurface.apply(commands), applyProperties: (commands: Parameters<typeof propertyFlashingSurface.applyProperties>[0]) => propertyFlashingSurface.applyProperties(commands), report: (message: string) => (options.error ?? console.error)("[HMI oggetti] " + message) });
   const renderRuntimeFaceplates = () => { propertyFlashingSurface.suspend(); try { renderFaceplateVisuals(); } finally { propertyFlashingSurface.resume(); } };
   const flashingStyle = document.createElement("style");
   flashingStyle.dataset.framecraftHmiFlashing = "";
@@ -1269,6 +1269,17 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
   renderRuntimeFaceplates();
   renderTrendControls();
   const trendTimer = setInterval(renderTrendControls, 250);
+  let qualityRenderError="";
+  const renderQuality=()=>{
+    try{
+      if(!propertyFlashingSurface.hasQualityTargets()){propertyFlashingSurface.applyQuality([]);return;}
+      const context=scriptContexts.options(scriptCatalog,window.location.pathname,"dynamizations");
+      propertyFlashingSurface.applyQuality(propertyFlashing.qualityCommands({...context,values,tagStatus,requireQuality:gatewayConfig.enabled},propertyFlashingSurface.qualityItems()));
+      qualityRenderError="";
+    }catch(error){propertyFlashingSurface.applyQuality([]);const message=error instanceof Error?error.message:String(error);if(message!==qualityRenderError)(options.error??console.error)("[HMI qualità] "+message);qualityRenderError=message;}
+  };
+  renderQuality();
+  const qualityTimer=setInterval(renderQuality,250);
   requestRefresh();
   return () => {
     scriptAbort.abort();
@@ -1312,7 +1323,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     for (const timer of cycleTimers.values()) clearInterval(timer);
     for (const timer of scheduledIntervals) clearInterval(timer);
     for (const timer of scheduledTimeouts) clearTimeout(timer);
-    clearInterval(trendTimer);
+    clearInterval(trendTimer);clearInterval(qualityTimer);
     stopDataLogSubscription();
     dataLogRuntime.stop();
     propertyFlashing.reset();

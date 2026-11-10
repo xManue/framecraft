@@ -2,6 +2,7 @@ import { transformSync } from "@babel/core";
 import * as t from "@babel/types";
 import { equalGapOffset, gridOffset, snapOffset } from "./framecraft-snap.mjs";
 import { overlayCandidate } from "./framecraft-picking.mjs";
+import { createHmiQualityVisuals, createHmiQualityPreview } from './hmi-quality-visuals.mjs';
 import { createHmiPropertyFlashingDomSurface } from "./hmi-property-flashing.mjs";
 import { installHmiGeometryPreviewEndpoint } from "./hmi-geometry-preview.mjs";
 import { alarmStateLabel } from "../runtime/alarm-labels.mjs";
@@ -175,7 +176,8 @@ export function installStandalonePreviewControls(view) {
 // The bridge is shipped to the previewed project as source text, so the maths it needs is not
 // imported by it but written into it. Stringifying the real functions keeps one copy: what the
 // tests check is exactly what runs inside the page.
-const sharedHelpers = `const hmiAlarmSummaryAttribute = ${JSON.stringify(hmiAlarmSummaryAttribute)};\nconst hmiAlarmSummaryCss = ${JSON.stringify(hmiAlarmSummaryCss)};\n` + [snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installHmiGeometryPreviewEndpoint, installPanelLayoutPreference, alarmStateLabel, hmiAlarmElementBlocked, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView].map((helper) => String(helper)).join("\n") + `
+const sharedHelpers = `const hmiAlarmSummaryAttribute = ${JSON.stringify(hmiAlarmSummaryAttribute)};\nconst hmiAlarmSummaryCss = ${JSON.stringify(hmiAlarmSummaryCss)};\n` + [createHmiQualityVisuals, createHmiQualityPreview, snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installHmiGeometryPreviewEndpoint, installPanelLayoutPreference, alarmStateLabel, hmiAlarmElementBlocked, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView].map((helper) => String(helper)).join("\n") + `
+const makeQualityVisuals=createHmiQualityVisuals;
 ${alarmViewsRuntimeModuleSource()}
 ${hmiControlQualityModuleSource()}
 const createHmiAlarmControl = (host, action, rowFilter) => (${String(createHmiAlarmControlWith)})(host, action, rowFilter, { publishServiceQuality, clearControlQuality, alarmEventsQuality, alarmRowsQuality, alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile });
@@ -254,6 +256,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
   let simulationOn = false;
   const alarmPreview = createHmiAlarmPreviewBridge(window, { active: () => mode === "navigate" && simulationOn, navigate: (route) => navigateHmiTarget(route) });
   let editorShortcutBindings = defaultEditorShortcuts(), editorShortcutOrigin;
+  const qualityPreview=createHmiQualityPreview(window,propertyFlashingSurface,{active:()=>mode==='navigate',origin:()=>editorShortcutOrigin,pageId:()=>alarmPreview.pageId});
   const stopGeometryPreview = installHmiGeometryPreviewEndpoint(window, propertyFlashingSurface, () => ({pageId:alarmPreview.pageId,origin:editorShortcutOrigin}));
   window.addEventListener("pagehide", event => { if(!event.persisted) stopGeometryPreview(); });
   const stopThumbnailCapture = installPreviewThumbnailCapture(window, { pageId: () => alarmPreview.pageId, allowedOrigin: () => editorShortcutOrigin, enabled: () => mode === "edit" });
@@ -844,6 +847,8 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
   // La pagina cambia sotto i piedi a ogni salvataggio (l'HMR non ricarica): finche' la simulazione
   // e' accesa si guarda se la lista degli oggetti dinamizzati e' diventata un'altra.
   const selectionMutationObserver = new MutationObserver((records) => {
+    records=records.filter(record=>!(record.target.nodeType===1&&record.target.closest('[data-framecraft-quality-layer]'))&&!(record.type==='childList'&&[...record.addedNodes,...record.removedNodes].length&&[...record.addedNodes,...record.removedNodes].every(node=>node.nodeType===1&&node.hasAttribute('data-framecraft-quality-layer'))));
+    if(!records.length)return;
     if (records.every((record) => record.attributeName !== "data-hmi-alarm-summary" && record.target.nodeType === 1 && record.target.closest("[data-hmi-alarm-root], [data-hmi-alarm-summary-root]"))) return;
     scheduleTrackedSelection(); scheduleCollect();
     if (records.some((record) => record.type !== "attributes" || record.attributeName === "data-hmi-text")) scheduleLanguage();
@@ -1175,7 +1180,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
     if (event.data?.type === "framecraft:alarm-preview" || event.data?.type === "framecraft:alarm-command-result") { alarmPreview.receive(event); return; }
     if (event.data?.type === "framecraft:set-mode") {
       if (event.data.mode === "navigate") { cancelDrag(); endControlledTransform(true); }
-      if (event.data.mode === "edit") { propertyFlashingSurface.applyProperties([]); propertyFlashingSurface.apply([]); }
+      if (event.data.mode === "edit") { qualityPreview.clear();propertyFlashingSurface.applyProperties([]); propertyFlashingSurface.apply([]); }
       mode = event.data.mode === "navigate" ? "navigate" : "edit";
       if (mode === "navigate") { cancelNudge(); cancelRegionPick(); }
       document.documentElement.dataset.framecraftMode = mode;

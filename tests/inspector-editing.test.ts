@@ -445,3 +445,11 @@ describe("comandi espliciti per la scritta", () => {
     expect(textField().value).toBe("M2501"); expect(desktop.writeFile).toHaveBeenCalledOnce();
   });
 });
+
+it("persiste Mostra qualità dei dati e consente Annulla",async()=>{
+ await choose('PLC e dati');
+ const button=section('Dinamica PLC');if(button.getAttribute('aria-expanded')!=='true')await act(async()=>button.click());
+ const checkbox=[...host.querySelectorAll<HTMLLabelElement>('label')].find(label=>label.textContent?.includes('Mostra qualità dei dati'))!.querySelector<HTMLInputElement>('input')!;
+ expect(checkbox.checked).toBe(false);await act(async()=>checkbox.click());expect(source()).toContain('data-hmi-visualize-quality="true"');expect(useEditorStore.getState().history).toHaveLength(1);expect(files.get(file)).toBe(source());
+ await act(async()=>useEditorStore.getState().undo());expect(source()).toBe(original);
+});

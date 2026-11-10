@@ -7115,6 +7115,31 @@ Verifiche del 5 ottobre 2026:
 - Restano VisualizeQuality, altri adattatori, Variant/formati e oggetti/proprieta' della
   fase 3; WCU-EVT-10 resta parziale prima di proseguire con Optix e AI.
 
+## 207. VisualizeQuality nel pannello e nell'editor (10 novembre 2026)
+
+- Verificato [IOField.VisualizeQuality Boolean read/write](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/iofield-rt-unified/iofield.visualizequality-rt-unified) nella documentazione Siemens V20.
+  Framecraft espone la stessa proprieta' comune anche sui propri contenitori e controlli;
+  non implica gli oggetti annidati nativi QualityVisualization o i colori configurabili.
+- In PLC e dati, Dinamica PLC: "Mostra qualità dei dati", persistente nella pagina,
+  con cronologia/Annulla. Disattivato per impostazione iniziale sui pannelli esistenti.
+- Avvisi temporanei con testo, simbolo e bordo per None, Bad, Uncertain e limiti;
+  Good senza limiti non aggiunge segni. Riusato CurrentQuality, comprese sorgenti,
+  gruppi, dipendenze e disponibilita' del Gateway. Nessun comando o contatto PLC nuovo.
+- Overlay separato dai nodi del progetto: non modifica valori, stili, focus o layout;
+  coordinate viewport, limiti di scorrimento, oggetti nascosti e popup modali rispettati.
+  Ripristino su Modifica, reset, cattura/sospensione e smontaggio. Il vecchio valore
+  resta soggetto alle regole good-only del collegamento, indipendentemente dall'avviso.
+- Ponte anteprima con snapshot leggeri senza geometria/proprieta' CSS: origini, finestra,
+  pagina e sequenze verificate, limiti di dimensione e scadenza delle risposte perse.
+  Non ricalcola script e non espone DOM. Nessun rimbalzo nella selezione.
+- Pacchetto 2026.11.10.3: nuovo pannello, aggiornamento componenti e plugin distribuito
+  comprendono il renderer condiviso. Nessuna nuova dipendenza o versione IR.
+- Verifiche mirate: get/set e tipi, sorgenti/limiti, reset, ponte, Canvas cross-origin,
+  Inspector con Annulla, risorse distribuite e pannello compilato con HTTP sintetico;
+  nessun PLC/broker reale e nessuna richiesta esterna. TypeScript verificato separatamente.
+- Restano gli oggetti/proprieta' specifici, altre fonti qualita', configurazione annidata
+  QualityVisualization e Variant/formati indicati in WCU-EVT-10, che resta PARZIALE.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima
