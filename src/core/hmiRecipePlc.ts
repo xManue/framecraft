@@ -1,3 +1,4 @@
+import { controlQuality, controlWireQuality } from "../../scripts/hmi-control-quality.mjs";
 import { RecipePlcError, type RecipePlcCapture } from "../../runtime/recipe-plc.mjs";
 import type { RecipeRecord, RecipeScalar, RecipeSchema } from "../../runtime/recipe-catalog.mjs";
 import type { RecipeSnapshot } from "../../runtime/recipe-store.mjs";
@@ -64,5 +65,13 @@ export function createHmiRecipePlc(options: Options) {
     block.append(make("p", "Crea una nuova bozza locale, con un nome da scegliere e una conferma di salvataggio. Non sovrascrive ricette né invia valori al PLC. Per applicare usa la sezione Applicazione al PLC e attendi la conferma del programma macchina."));
     return block;
   }
-  return { render, reset, dispose() { active = false; reset(); } };
+  function currentQuality(): number | undefined {
+    if(!active || key!==options.schema()?.id+":"+options.snapshot()?.revision)return undefined;
+    if(!permitted('recipes.capture'))return capture||reading||error?0:undefined;
+    if(reading)return 0;
+    if(error)return 1;
+    if(!capture)return undefined;
+    return controlQuality([...capture.entries.flatMap(entry=>[controlWireQuality(entry.qualityCode),...(entry.ok?[]:[1])]),...(capture.complete?[]:[1])]);
+  }
+  return { render, reset, currentQuality, dispose() { active = false; reset(); } };
 }

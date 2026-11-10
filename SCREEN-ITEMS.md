@@ -461,9 +461,9 @@ CurrentQuality, come Font/Margin/Padding, non espone DOM o stato interno dell'ap
 Setter e comandi grafici grezzi sono rifiutati senza eliminare gli altri livelli grafici.
 
 La raccolta copre le sorgenti dichiarate nei metadati Framecraft, non dipendenze arbitrarie
-di codice React esterno. Expression non modellate e controlli di servizio
-(allarmi/ricette/audit) contribuiscono come sorgenti non conosciute, finche' manca l'adattatore
-specifico. I Variant non scalari/64 bit delle altre famiglie e VisualizeQuality
+di codice React esterno. Expression non modellate e viste di servizio prive di un adattatore
+contribuiscono come sorgenti non conosciute. Gli adattatori di allarmi live, ricette e audit
+sono descritti sotto; non estendono implicitamente il contratto agli archivi allarmi. I Variant non scalari/64 bit delle altre famiglie e VisualizeQuality
 e il namespace delle enumerazioni vendor restano da completare nelle rispettive famiglie.
 Nessuna equivalenza generale delle soglie e degli oggetti Siemens viene dichiarata.
 
@@ -504,3 +504,47 @@ della cache storico, con permessi e timeout esistenti.
 Questo e' il contratto di aggregazione Framecraft per le sue viste; la presenza della
 proprieta' nei controlli vendor non prova equivalenza di tutti i criteri interni Siemens.
 Restano VisualizeQuality, altri widget di servizio, Variant e le API specifiche residue.
+
+## CurrentQuality dei controlli di servizio dal pacchetto 2026.11.10.1
+
+Alarm Control, indicatore e riga allarmi, archivio ricette, confronto PLC delle ricette e
+registro audit contribuiscono alla stessa lettura readonly e all'aggregazione dei gruppi.
+Il registro del renderer fornisce solo numeri: allo script non passano callback, DOM,
+record dell'archivio o riferimenti agli account. Il getter consulta esclusivamente stato
+locale gia' acquisito: non avvia letture, polling, applicazioni o tentativi automatici.
+
+- Allarmi live: None prima del primo aggiornamento o senza variabili influenti, Bad se
+  il servizio non e' disponibile o un segnale monitorato non e' utilizzabile, altrimenti
+  qualita' peggiore delle righe abilitate della sorgente configurata. I segnali normali
+  contribuiscono anche se non sono visualizzati come allarmi attivi. I filtri di classe
+  progettati e quelli dei riepiloghi delimitano la sorgente; i filtri runtime che nascondono
+  righe non possono trasformare un segnale monitorato Bad in Good.
+- L'engine allarmi espone good/bad/unknown, non il QualityCode originale: l'adattatore
+  riporta questa usabilita' e non inventa Uncertain o bit dei limiti mancanti. Lo storico
+  di sessione, privo della qualita' originaria, resta None se collegato; una perdita
+  del servizio e' Bad. Archivi persistenti e fedelta' ai codici raw restano aperti.
+- Ricette: prima della lettura e durante il caricamento None; archivio validato, anche
+  vuoto, Good; ultima rilettura fallita Bad fino a una rilettura esplicita riuscita.
+  Errori di compilazione della bozza e ricevute dei comandi restano distinti dalla qualita'
+  dei dati letti. Un Good non conferma una scrittura ne' l'applicazione al PLC.
+- Il confronto PLC manuale contribuisce solo quando mostrato: caricamento None, errore
+  o acquisizione incompleta Bad, valori utilizzabili con qualita' e limiti dei campioni.
+  Descrive quella acquisizione con timestamp, non la connessione attuale della macchina.
+  Non campiona al leggere CurrentQuality e non aggira i requisiti di qualita', eta' o
+  coerenza temporale previsti dalla cattura. Durante la modifica della bozza il confronto
+  nascosto non contribuisce; un cambio schema/revisione invalida il confronto precedente.
+- Audit: None prima della richiesta o durante la lettura, Good per una pagina validata
+  anche senza eventi, Bad per una lettura fallita. Si tratta dello stato di consultazione
+  Framecraft, non della certificazione degli esiti, dell'integrita' futura del registro
+  o della sicurezza della macchina. Non sostituisce verifiche di audit o conferme PLC.
+
+Cambio identita'/permessi, risposte tardive, cambio tipo/sorgente del controllo, sostituzione
+del contenuto e dispose non conservano un vecchio Good valido per un'altra vista o utente.
+I codici nativi sono validati anche prima delle operazioni bitwise: interi oltre il dominio
+ammesso non vengono troncati a un Good. Nuovi pannelli e Aggiorna componenti del pannello
+consegnano insieme helper, renderer e collegamenti; nessun catalogo macchina sostituito.
+
+Fonti: [AlarmControl.CurrentQuality, Int32 readonly e qualita' peggiore](https://docs.tia.siemens.cloud/r/zh-cn/v21/wincc-unified-javascript-%E5%AF%B9%E8%B1%A1%E6%A8%A1%E5%9E%8B-rt-unified/hmiruntime-rt-unified/ui-rt-unified/screen-items-rt-unified/alarmcontrol-rt-unified/alarmcontrol.currentquality-rt-unified?contentId=nE9kCFtZdSSZYfjiGweDtQ),
+[Audit Viewer e CurrentQuality](https://docs.tia.siemens.cloud/r/en-us/v21/configuring-screens-rt-unified/reference-of-the-screen-objects-rt-unified/my-controls-rt-unified/audit-viewer-rt-unified).
+Le regole di consultazione di archivi e confronto manuale qui definite sono il contratto
+Framecraft; non dichiarano equivalenza di tutti i comportamenti interni dei controlli vendor.

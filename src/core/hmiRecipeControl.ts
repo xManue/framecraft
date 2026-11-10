@@ -1,3 +1,4 @@
+import { publishServiceQuality, clearControlQuality, controlQuality } from "../../scripts/hmi-control-quality.mjs";
 import { parseRecipeCommand, parseRecipeValues, recipeText, RecipeStoreError, type RecipeCommand, type RecipeField, type RecipeRecord, type RecipeScalar, type RecipeSchema } from "../../runtime/recipe-catalog.mjs";
 import type { RecipeSnapshot } from "../../runtime/recipe-store.mjs";
 import { HmiRecipeError, type HmiRecipeClient } from "./hmiRecipeClient";
@@ -56,11 +57,12 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
   host.dataset.hmiRecipeRoot = ""; host.setAttribute("role", "region"); host.setAttribute("aria-label", "Archivio ricette");
   let active = true, snapshot: RecipeSnapshot | undefined, schemaId = "", recordId = "", draft: Draft | undefined, review: RecipeCommand | undefined;
   let message = "Carica l’archivio per vedere le ricette autorizzate. Nessuna lettura automatica.", error: HmiRecipeError | RecipeStoreError | undefined;
-  let controller = new AbortController(), epoch = 0;
+  let controller = new AbortController(), epoch = 0, archiveQuality = 0;
   const identity = () => { const user = operatorSessionProfile(); return user ? JSON.stringify([user.id, user.capabilities]) : ""; };
   let userKey = identity();
+  const qualityType=host.getAttribute("data-hmi-type");
   let apply: ReturnType<typeof createHmiRecipeApply> | undefined;
-  const exchange = client ? createHmiRecipeExchange({ document, client, snapshot: () => snapshot, schema: () => schema(), blocked: () => !active || !!draft || !!apply?.dirty || !!client.apply?.pending || !!client.apply?.damaged || hmiAlarmElementBlocked(host), changed: render, saved: next => { snapshot = next; recordId = schema()?.records.find(item => item.id === recordId)?.id ?? schema()?.records[0]?.id ?? ""; } }) : undefined;
+  const exchange = client ? createHmiRecipeExchange({ document, client, snapshot: () => snapshot, schema: () => schema(), blocked: () => !active || !!draft || !!apply?.dirty || !!client.apply?.pending || !!client.apply?.damaged || hmiAlarmElementBlocked(host), changed: render, saved: next => { snapshot = next; archiveQuality=4; recordId = schema()?.records.find(item => item.id === recordId)?.id ?? schema()?.records[0]?.id ?? ""; } }) : undefined;
   const plc = client ? createHmiRecipePlc({ document, client, snapshot: () => snapshot, schema: () => schema(), record: () => record(), blocked: () => !active || !!draft || !!exchange?.dirty || !!apply?.dirty || !!client.apply?.pending || !!client.apply?.damaged || hmiAlarmElementBlocked(host), changed: render, create: (values, capturedAt) => start("create", values, capturedAt) }) : undefined;
   if (client?.apply) apply = createHmiRecipeApply({ host, client: client.apply, snapshot: () => snapshot, schema: () => schema(), record: () => record(), blocked: () => !active || !!draft || !!client.pending || !!exchange?.dirty || hmiAlarmElementBlocked(host), changed: render, confirm });
   const make = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; };
@@ -84,13 +86,13 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
   }
   async function load() {
     if (!client || hmiAlarmElementBlocked(host)) return;
-    const currentEpoch = epoch;
+    const currentEpoch = epoch; archiveQuality=0;
     try {
       const next = await client.read(controller.signal); if (!active || currentEpoch !== epoch) return;
-      snapshot = next; schemaId = next.schemas.find(item => item.id === schemaId)?.id ?? next.schemas[0]?.id ?? "";
+      snapshot = next; archiveQuality=4; schemaId = next.schemas.find(item => item.id === schemaId)?.id ?? next.schemas[0]?.id ?? "";
       recordId = schema()?.records.find(item => item.id === recordId)?.id ?? schema()?.records[0]?.id ?? "";
       error = undefined; message = draft ? "Archivio riletto. La bozza è conservata sulla revisione precedente: confronta i valori prima di aggiornarne la base." : "Archivio letto dal servizio. Nessun valore è stato inviato al PLC."; render();
-    } catch (reason) { if (active && currentEpoch === epoch) fail(reason); }
+    } catch (reason) { if (active && currentEpoch === epoch) { archiveQuality=1;fail(reason); } }
   }
   function start(mode: Mode, values?: Record<string, RecipeScalar>, capturedAt?: number) {
     const selected = schema(), current = record(); if (!snapshot || !selected || mode !== "create" && !current || client?.pending || exchange?.dirty || apply?.dirty || client?.apply?.pending || client?.apply?.damaged) return;
@@ -124,7 +126,7 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
     const targetRecord = command?.targetId ?? command?.recordId ?? (draft ? ["create", "copy"].includes(draft.mode) ? draft.targetId : draft.record!.id : recordId);
     try {
       const result = await (retry ? client.retry(controller.signal) : client.send(command!, controller.signal)); if (!active || currentEpoch !== epoch) return;
-      snapshot = result.snapshot; schemaId = targetSchema; recordId = targetRecord;
+      snapshot = result.snapshot; archiveQuality=4; schemaId = targetSchema; recordId = targetRecord;
       if (!record()) recordId = schema()?.records[0]?.id ?? "";
       draft = undefined; review = undefined; error = undefined; exchange?.clear();
       message = result.duplicate ? `Richiesta già registrata (sequenza ${result.appliedSequence}). I valori mostrati sono quelli attuali dell’archivio, non una conferma PLC.` : "Salvato nell’archivio del servizio. Nessun trasferimento al PLC."; render();
@@ -162,6 +164,7 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
     const status = make("p", client?.busy ? "Operazione in corso… Attendi il termine prima di uscire." : error ? error.message + ". " + error.remedy : message); status.setAttribute("role", error && !client?.busy ? "alert" : "status");
     const toolbar = group(); toolbar.append(button(client?.busy ? "Operazione in corso…" : "Rileggi archivio", () => { void load(); }, !client));
     host.replaceChildren(style, notice, toolbar, status); host.setAttribute("aria-busy", String(!!client?.busy));
+    publishServiceQuality(host,notice,()=>{if(!active||!client||identity()!==userKey||host.getAttribute("data-hmi-type")!==qualityType)return 0;const comparison=!draft?plc?.currentQuality():undefined;return controlQuality([archiveQuality,...(comparison===undefined?[]:[comparison])]);});
     if (!client) { host.append(make("p", "Servizio ricette non configurato. Controlla gateway e namespace in framecraft.recipes-ui.json, poi configura un’identità operatore con permessi verificati sul server. Il PIN browser non abilita l’archivio.")); return; }
     const pending = client.pending;
     if (pending && !client.busy) {
@@ -207,8 +210,8 @@ export function createHmiRecipeControl(host: HTMLElement, options: HmiRecipeCont
     }
     if (focus) [...host.querySelectorAll<HTMLElement>("[data-recipe-focus]")].find(node => node.dataset.recipeFocus === focus)?.focus();
   }
-  const userChanged = () => { const next = identity(); if (next === userKey) return; userKey = next; epoch++; controller.abort(); controller = new AbortController(); snapshot = undefined; draft = undefined; review = undefined; exchange?.reset(); plc?.reset(); apply?.reset(); client?.discardRetryBody(); error = undefined; message = "Accesso cambiato: i dati precedenti sono stati rimossi. Rileggi l’archivio."; render(); };
+  const userChanged = () => { const next = identity(); if (next === userKey) return; userKey = next; epoch++; controller.abort(); controller = new AbortController(); archiveQuality=0; snapshot = undefined; draft = undefined; review = undefined; exchange?.reset(); plc?.reset(); apply?.reset(); client?.discardRetryBody(); error = undefined; message = "Accesso cambiato: i dati precedenti sono stati rimossi. Rileggi l’archivio."; render(); };
   view.addEventListener("framecraft:user-changed", userChanged);
   const unhook = client?.subscribe(render), unsubscribe = () => { unhook?.(); apply?.dispose(); }; render();
-  return { canLeave, refresh: render, dispose() { if (!active) return; active = false; unsubscribe?.(); controller.abort(); exchange?.dispose(); plc?.dispose(); navigationGuards.delete(canLeave); view.removeEventListener("beforeunload", unload); view.removeEventListener("framecraft:user-changed", userChanged); delete host.dataset.hmiRecipeRoot; host.removeAttribute("aria-busy"); if (oldRole === null) host.removeAttribute("role"); else host.setAttribute("role", oldRole); if (oldLabel === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", oldLabel); host.replaceChildren(...original); } };
+  return { canLeave, refresh: render, dispose() { if (!active) return; active = false; clearControlQuality(host); unsubscribe?.(); controller.abort(); exchange?.dispose(); plc?.dispose(); navigationGuards.delete(canLeave); view.removeEventListener("beforeunload", unload); view.removeEventListener("framecraft:user-changed", userChanged); delete host.dataset.hmiRecipeRoot; host.removeAttribute("aria-busy"); if (oldRole === null) host.removeAttribute("role"); else host.setAttribute("role", oldRole); if (oldLabel === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", oldLabel); host.replaceChildren(...original); } };
 }

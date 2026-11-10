@@ -14,7 +14,7 @@ export function controlQuality(codes) {
     let bad=false,none=false,uncertain=false,flags=0,count=0;
     for (const code of codes) {
         count++;
-        if (!Number.isInteger(code) || code < 0 || (code & ~199) !== 0 || ![0,1,2,4].includes(code & 7)) { bad=true;continue; }
+        if (!Number.isInteger(code) || code < 0 || code > 199 || (code & ~199) !== 0 || ![0,1,2,4].includes(code & 7)) { bad=true;continue; }
         const base=code & 7;bad ||= base === 1;none ||= base === 0;uncertain ||= base === 2;flags |= code & 192;
     }
     return (bad ? 1 : none || !count ? 0 : uncertain ? 2 : 4) | flags;
@@ -29,5 +29,21 @@ export function clearControlQuality(host) {
     host.ownerDocument.defaultView?.[Symbol.for('framecraft.control-quality.v1')]?.delete(host);
 }
 export function hmiControlQualityModuleSource() {
-    return [controlWireQuality,controlSampleCode,controlQuality,publishControlQuality,clearControlQuality].map(String).join('\n');
+    return [controlWireQuality,controlSampleCode,controlQuality,publishControlQuality,clearControlQuality,serviceQualitySignature,publishServiceQuality,alarmRowsQuality].map(String).join('\n');
+}
+
+/** Metadata that changes which service supplies the displayed data. */
+export function serviceQualitySignature(host) {
+    return JSON.stringify(['data-hmi-type','data-hmi-alarm-source','data-hmi-filter','data-hmi-alarm-summary'].map(name => host.getAttribute(name)));
+}
+/** The getter reads local state only; transport and command outcomes stay separate. */
+export function publishServiceQuality(host, root, read) {
+    const view=host.ownerDocument.defaultView;if(!view || !root)return;
+    const records=view[Symbol.for('framecraft.control-quality.v1')] ??= new WeakMap();
+    records.set(host,Object.freeze({kind:'service',signature:serviceQualitySignature(host),root,get quality(){try{return controlQuality([read()]);}catch{return 1;}},liveTags:Object.freeze([])}));
+}
+/** Alarm engine usability, not the original wire QualityCode (which is not in its rows). */
+export function alarmRowsQuality(rows) {
+    if(!Array.isArray(rows))return 1;
+    return controlQuality(rows.filter(row=>row?.enabled!==false).map(row=>row?.quality==='good'&&typeof row.active==='boolean'?4:row?.quality==='unknown'?0:1));
 }

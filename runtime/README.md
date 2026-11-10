@@ -2301,8 +2301,8 @@ vecchio campione dopo la disconnessione. Nessun comando o lettura CPU impliciti.
 Integrati Canvas, pipeline, modulo aggiornabile e VM autonoma. Verificati gli stati nel
 pannello compilato con gateway HTTP sintetico, recupero, limiti, gruppi, timer e Node.
 Limiti di elaborazione espliciti, tipi/configurazioni invalidi e fonti non conosciute
-non vengono trasformati in Good. Altri widget di servizio e VisualizeQuality
-richiedono ancora adattatori specifici. Contratto e fonti in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).
+non vengono trasformati in Good. Gli adattatori dei servizi supportati sono descritti
+sotto; altri widget e VisualizeQuality richiedono ancora lavoro specifico. Contratto e fonti in [SCREEN-ITEMS.md](../SCREEN-ITEMS.md).
 
 ## Qualita' delle viste Trend/X-Y dal pacchetto 2026.11.09.6
 
@@ -2317,3 +2317,22 @@ dal getter. Permessi, timeout, recupero esplicito e invalidazione al cambio oper
 restano applicati. Pipeline e Aggiorna componenti del pannello consegnano renderer,
 cache storico, resolver e collegamenti insieme; cataloghi e pagine restano fuori dal bundle.
 Nessun nuovo trasporto di array o comando PLC. Verifica con dati sintetici, non hardware.
+
+## Qualita' delle letture dei servizi dal pacchetto 2026.11.10.1
+
+Allarmi live/riepiloghi, ricette e audit pubblicano CurrentQuality attraverso il medesimo
+resolver readonly. Nessuna rete o azione viene attivata dal getter. Per ricette e audit,
+una lettura validata anche vuota e' Good, un caricamento e' None, un errore e' Bad fino
+al recupero esplicito. Il confronto PLC delle ricette contribuisce solo quando mostrato,
+con qualita'/limiti dell'acquisizione manuale; non certifica il collegamento live.
+
+La qualita' dei dati letti resta distinta da applicazione PLC, ricevute dei comandi,
+validita' di una bozza e verifiche d'integrita' del registro. Cambio operatore, permessi,
+configurazione, risposte tardive e chiusura invalidano i risultati non piu' utilizzabili.
+L'engine allarmi fornisce usabilita' good/bad/unknown: la qualita' raw e quella storica
+restano da estendere senza inventare bit o qualificare come Good eventi privi di qualita'.
+
+Pipeline e aggiornamento distribuiscono anche src/framecraftHmiControlQuality.mjs e i
+suoi tipi, insieme ai renderer dipendenti; nessuna nuova dipendenza, modifica ai cataloghi
+o nodo IR. Verificati Canvas, risorse del plugin e pannello compilato con richieste HTTP
+sintetiche. Nessun PLC/broker o installer reale collaudato. Contratto in SCREEN-ITEMS.md.

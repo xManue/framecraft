@@ -519,7 +519,11 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       if(record&&record.signature===element.getAttribute(attribute)&&record.root?.parentElement===element){source.qualities=[record.quality];source.statusTags=record.liveTags;}
       else source.unknown=true;
     }
-    if(/^Hmi(?:Alarm|Recipe|Audit)/.test(element.getAttribute('data-hmi-type')??''))source.unknown=true;
+    if(/^Hmi(?:Alarm|Recipe|Audit)/.test(element.getAttribute('data-hmi-type')??'')){
+      const record=element.ownerDocument.defaultView?.[Symbol.for('framecraft.control-quality.v1')]?.get(element);
+      const signature=JSON.stringify(['data-hmi-type','data-hmi-alarm-source','data-hmi-filter','data-hmi-alarm-summary'].map(name=>element.getAttribute(name)));
+      if(record?.kind==='service'&&record.signature===signature&&record.root?.parentElement===element)source.qualities=[record.quality];else source.unknown=true;
+    }
     return source;
   };
   const snapshotProperties = (element) => {

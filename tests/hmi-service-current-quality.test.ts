@@ -1,0 +1,65 @@
+// @vitest-environment jsdom
+import {randomUUID} from 'node:crypto';
+import {captureRecipePlc} from '../runtime/recipe-plc.mjs';
+import type {RecipeSnapshot} from '../runtime/recipe-store.mjs';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {createAlarmEngine,emptyAlarmCatalog,type AlarmCatalog} from '../runtime/alarm-engine.mjs';
+import {createHmiAlarmControl} from '../src/core/hmiAlarmControl';
+import {createHmiAlarmSummary,defaultHmiAlarmSummaryConfig,serializeHmiAlarmSummaryConfig} from '../src/core/hmiAlarmSummary';
+import {createHmiRecipeControl} from '../src/core/hmiRecipeControl';
+import {createHmiRecipeClient} from '../src/core/hmiRecipeClient';
+import {createHmiAuditControl} from '../src/core/hmiAuditControl';
+import {createHmiPropertyFlashing,createHmiPropertyFlashingDomSurface} from '../scripts/hmi-property-flashing.mjs';
+import {alarmRowsQuality,controlQuality,publishServiceQuality} from '../scripts/hmi-control-quality.mjs';
+import {resolveHmiCurrentQuality} from '../src/core/hmiCurrentQuality';
+import {executeHmiScript,inspectHmiScript} from '../src/core/hmiScript';
+const auth=vi.hoisted(()=>({id:'operator',capabilities:['audit.read','recipes.read']}));
+vi.mock('../src/core/hmiOperatorSession',()=>({operatorSessionProfile:()=>auth.id?auth:undefined,operatorSessionHeaders:()=>({}),openOperatorSession:vi.fn()}));
+const cleanup:(()=>void)[]=[];
+beforeEach(()=>{auth.id='operator';auth.capabilities=['audit.read','recipes.read'];document.body.innerHTML='<main data-hmi-screen="Main"></main>';});
+afterEach(()=>{cleanup.splice(0).reverse().forEach(fn=>fn());document.body.replaceChildren();sessionStorage.clear();vi.restoreAllMocks();});
+function scene(type:string){
+ const host=document.createElement('div');host.dataset.hmiType=type;host.dataset.hmiName='Control'+document.querySelectorAll('[data-hmi-name]').length;host.textContent='Placeholder';document.querySelector('main')!.append(host);
+ const surface=createHmiPropertyFlashingDomSurface(document),controller=createHmiPropertyFlashing(Object.assign(surface,{resolveCurrentQuality:(sources:Parameters<typeof resolveHmiCurrentQuality>[0],ctx:Parameters<typeof resolveHmiCurrentQuality>[1])=>resolveHmiCurrentQuality(sources,ctx,[])}));cleanup.push(()=>surface.dispose());
+ const context=controller.context(surface.items().find(item=>item.name===host.dataset.hmiName)!.itemId),program=inspectHmiScript('return item.CurrentQuality;').program!;
+ const read=()=>{const result=executeHmiScript(program,{}, {screenItems:context});expect(result.error).toBeUndefined();expect(result.writes).toEqual({});return result.returned;};
+ return {host,read};
+}
+const button=(host:HTMLElement,text:string)=>[...host.querySelectorAll('button')].find(node=>node.textContent===text)!;
+const catalog:AlarmCatalog={...emptyAlarmCatalog(),classes:[{name:'C',acknowledgment:'single'},{name:'D',acknowledgment:'single'}],alarms:['A','B'].map((tag,index)=>({id:tag,name:tag,text:tag,tag,className:index?'D':'C',priority:1,enabled:true,trigger:{kind:'bit',bit:0,activeWhen:'set'}}))};
+function alarms(){return createAlarmEngine(catalog,['A','B'].map(name=>({name,dataType:'Bool',access:'read'})));}
+const recipe:RecipeSnapshot={version:1,revision:'a'.repeat(64),sequence:0,persistence:'server-file',schemas:[{id:'s',name:'Schema',fields:[{id:'speed',name:'Speed',type:'number'}],records:[{id:'r',name:'Record',values:{speed:12}}]}]};
+const audit=()=>({version:1,id:randomUUID(),namespace:randomUUID(),verified:true,sequence:0,uncertainCount:0,unresolvedCount:0,events:[],nextBefore:null});
+const json=(value:unknown)=>new Response(JSON.stringify(value));
+function recipeScene(request=vi.fn<typeof fetch>(async()=>json(recipe))){const f=scene('HmiRecipeControl'),client=createHmiRecipeClient({scope:randomUUID(),request}),control=createHmiRecipeControl(f.host,{client,confirm:()=>true});cleanup.push(()=>client.dispose(),()=>control.dispose());return {...f,client,control,request,load:()=>button(f.host,'Rileggi archivio').click()};}
+function auditScene(request=vi.fn<typeof fetch>(async()=>json(audit()))){const f=scene('HmiAuditControl'),control=createHmiAuditControl(f.host,{enabled:true,request});cleanup.push(()=>control.dispose());return {...f,control,request,load:()=>button(f.host,'Carica registro').click()};}
+it('aggregates alarm engine usability without inventing wire flags or quality for empty sources',()=>{
+ expect(alarmRowsQuality([])).toBe(0);expect(alarmRowsQuality([{quality:'good',active:false},{quality:'unknown'}])).toBe(0);expect(alarmRowsQuality([{quality:'good',active:false},{quality:'bad'}])).toBe(1);expect(alarmRowsQuality([{quality:'good',active:null}])).toBe(1);expect(alarmRowsQuality([{quality:'good',active:false},{quality:'bad',enabled:false}])).toBe(4);
+ expect(controlQuality([2**32+4])).toBe(1);expect(resolveHmiCurrentQuality([{qualities:[2**32+4]}],{values:{},requireQuality:false},[])).toBe(1);
+});
+it('reads all influencing live alarm rows, including normal rows, without issuing a command',()=>{
+ const f=scene('HmiAlarmControl'),action=vi.fn(),control=createHmiAlarmControl(f.host,action),engine=alarms();cleanup.push(control.dispose);expect(f.read()).toBe(0);
+ control.update(engine.snapshot());expect(f.read()).toBe(0);engine.updateSamples([{tag:'A',value:false,qualityCode:192},{tag:'B',value:false,qualityCode:192}]);control.update(engine.snapshot());expect(f.read()).toBe(4);expect(f.host.textContent).not.toContain('2 risultati');
+ engine.updateSample({tag:'B',value:true,qualityCode:64});control.update(engine.snapshot());expect(f.read()).toBe(1);expect(action).not.toHaveBeenCalled();
+ control.update(engine.snapshot(),false);expect(f.read()).toBe(1);engine.updateSample({tag:'B',value:false,qualityCode:192});control.update(engine.snapshot());expect(f.read()).toBe(4);control.dispose();expect(f.read()).toBe(0);
+});
+it('applies the designed alarm class filter, but a runtime quality filter cannot hide a bad source',()=>{
+ const f=scene('HmiAlarmControl');f.host.dataset.hmiFilter="AlarmClassName = 'C'";const control=createHmiAlarmControl(f.host,vi.fn()),engine=alarms();cleanup.push(control.dispose);engine.updateSample({tag:'A',value:false,qualityCode:192});control.update(engine.snapshot());expect(f.read()).toBe(4);
+ const g=scene('HmiAlarmControl'),all=createHmiAlarmControl(g.host,vi.fn());cleanup.push(all.dispose);engine.updateSample({tag:'B',value:true,qualityCode:0});all.update(engine.snapshot());const select=g.host.querySelector<HTMLSelectElement>('[aria-label="Qualità del segnale"]');expect(select).not.toBeNull();select!.value='good';select!.dispatchEvent(new Event('change',{bubbles:true}));expect(g.read()).toBe(1);
+});
+it('leaves session alarm history None when it has no original signal quality',()=>{const f=scene('HmiAlarmControl');f.host.dataset.hmiAlarmSource='history';const control=createHmiAlarmControl(f.host,vi.fn()),engine=alarms();cleanup.push(control.dispose);engine.updateSamples([{tag:'A',value:true,qualityCode:192},{tag:'B',value:false,qualityCode:192}]);control.update(engine.snapshot());expect(f.read()).toBe(0);control.update(undefined,false);expect(f.read()).toBe(1);});
+it.each(['HmiAlarmIndicator','HmiAlarmLine'])('publishes quality for %s even when its normal display is hidden',type=>{const f=scene(type),config=defaultHmiAlarmSummaryConfig();config.classes=['C'];config.showAlways=false;f.host.dataset.hmiAlarmSummary=serializeHmiAlarmSummaryConfig(config);const control=createHmiAlarmSummary(f.host,{action:vi.fn()}),engine=alarms();cleanup.push(control.dispose);expect(f.read()).toBe(0);engine.updateSample({tag:'A',value:false,qualityCode:192});control.update(engine.snapshot());expect(f.read()).toBe(4);control.update(undefined,false);expect(f.read()).toBe(1);f.host.dataset.hmiAlarmSummary='invalid';expect(f.read()).toBe(0);control.update(engine.snapshot());expect(f.read()).toBe(1);control.dispose();expect(f.read()).toBe(0);});
+it('does not reuse quality after the control content or source metadata changes',()=>{const f=scene('HmiAlarmControl'),control=createHmiAlarmControl(f.host,vi.fn()),engine=alarms();cleanup.push(control.dispose);engine.updateSamples([{tag:'A',value:false,qualityCode:192},{tag:'B',value:false,qualityCode:192}]);control.update(engine.snapshot());expect(f.read()).toBe(4);f.host.dataset.hmiFilter="AlarmClassName = 'D'";expect(f.read()).toBe(0);control.update(engine.snapshot());expect(f.read()).toBe(0);delete f.host.dataset.hmiFilter;f.host.replaceChildren();expect(f.read()).toBe(0);});
+it('keeps unconfigured recipe and audit controls None without initiating reads',()=>{const recipe=scene('HmiRecipeControl'),r=createHmiRecipeControl(recipe.host,{});cleanup.push(r.dispose);const a=scene('HmiAuditControl'),request=vi.fn(),c=createHmiAuditControl(a.host,{enabled:false,request});cleanup.push(c.dispose);expect(recipe.read()).toBe(0);expect(a.read()).toBe(0);expect(request).not.toHaveBeenCalled();});
+it('reads recipe quality through the VM without fetching, and accepts an empty archive',async()=>{const f=recipeScene(vi.fn(async()=>json({...recipe,schemas:[]})));expect(f.read()).toBe(0);expect(f.request).not.toHaveBeenCalled();f.load();await vi.waitFor(()=>expect(f.read()).toBe(4));expect(f.request).toHaveBeenCalledOnce();for(let i=0;i<3;i++)expect(f.read()).toBe(4);expect(f.request).toHaveBeenCalledOnce();});
+it('marks a failed recipe read Bad until an explicit successful reread',async()=>{const request=vi.fn<typeof fetch>().mockResolvedValueOnce(json(recipe)).mockRejectedValueOnce(new Error('synthetic')).mockResolvedValueOnce(json(recipe)),f=recipeScene(request);f.load();await vi.waitFor(()=>expect(f.read()).toBe(4));f.load();await vi.waitFor(()=>expect(f.read()).toBe(1));expect(f.request).toHaveBeenCalledTimes(2);f.load();await vi.waitFor(()=>expect(f.read()).toBe(4));expect(f.request).toHaveBeenCalledTimes(3);});
+it('keeps recipe draft validation and mutation outcomes separate from archive quality',async()=>{const f=recipeScene();f.load();await vi.waitFor(()=>expect(f.read()).toBe(4));button(f.host,'Nuova ricetta').click();button(f.host,'Verifica operazione').click();expect(f.host.querySelector('[role="alert"]')).not.toBeNull();expect(f.read()).toBe(4);expect(f.request).toHaveBeenCalledOnce();});
+it('invalidates recipe quality immediately on identity change and rejects late results',async()=>{let release!:(value:Response)=>void;const f=recipeScene(vi.fn(()=>new Promise(resolve=>{release=resolve;})));f.load();expect(f.read()).toBe(0);auth.id='other';expect(f.read()).toBe(0);window.dispatchEvent(new Event('framecraft:user-changed'));release(json(recipe));await new Promise(resolve=>setTimeout(resolve,0));expect(f.read()).toBe(0);expect(f.host.textContent).not.toContain('sequenza 0');f.control.dispose();expect(f.read()).toBe(0);});
+it('reports audit loading, empty success, failure and explicit recovery without polling',async()=>{const request=vi.fn<typeof fetch>().mockResolvedValueOnce(json(audit())).mockRejectedValueOnce(new Error('synthetic')).mockResolvedValueOnce(json(audit())),f=auditScene(request);expect(f.read()).toBe(0);expect(request).not.toHaveBeenCalled();f.load();expect(f.read()).toBe(0);await vi.waitFor(()=>expect(f.read()).toBe(4));button(f.host,'Aggiorna dalla prima pagina').click();await vi.waitFor(()=>expect(f.read()).toBe(1));expect(request).toHaveBeenCalledTimes(2);button(f.host,'Carica registro').click();await vi.waitFor(()=>expect(f.read()).toBe(4));expect(request).toHaveBeenCalledTimes(3);});
+it('revoked audit access invalidates quality immediately and never fetches from its getter',async()=>{const f=auditScene();f.load();await vi.waitFor(()=>expect(f.read()).toBe(4));auth.capabilities=[];expect(f.read()).toBe(0);window.dispatchEvent(new Event('framecraft:user-changed'));expect(f.read()).toBe(0);expect(f.request).toHaveBeenCalledOnce();f.control.dispose();expect(f.read()).toBe(0);});
+it('validates a malformed renderer quality instead of exposing a wrapped Good value',()=>{const f=scene('HmiAuditControl'),root=document.createElement('section');f.host.replaceChildren(root);publishServiceQuality(f.host,root,()=>2**32+4);expect(f.read()).toBe(1);});
+
+it.each([[193,132],[0,1]])('aggregates displayed PLC recipe captures with wire code %s as quality %s',async(wire,quality)=>{
+ auth.capabilities.push('recipes.capture');const now=Date.now(),captured=captureRecipePlc({schemaId:'s',maxAgeMs:1000,maxSkewMs:100,fields:[{fieldId:'speed',tag:'Speed'}]},recipe.schemas[0],recipe.revision,'b'.repeat(64),[{name:'Speed',dataType:'Real',access:'read'}],()=>({connectionId:'synthetic',protocol:'opcua',state:'connected',sample:{value:12,qualityCode:wire,receivedAt:now}}),now);
+ const f=recipeScene(vi.fn(async url=>json(String(url).includes('/recipe-plc?')?captured:recipe)));f.load();await vi.waitFor(()=>expect(f.read()).toBe(4));button(f.host,'Leggi valori PLC').click();await vi.waitFor(()=>expect(f.read()).toBe(quality));expect(f.request).toHaveBeenCalledTimes(2);for(let i=0;i<3;i++)expect(f.read()).toBe(quality);expect(f.request).toHaveBeenCalledTimes(2);
+});

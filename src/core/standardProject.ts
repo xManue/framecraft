@@ -130,6 +130,8 @@ import alarmControlSource from "./hmiAlarmControl.ts?raw";
 import alarmSummarySource from "./hmiAlarmSummary.ts?raw";
 import alarmLabelSource from "../../runtime/alarm-labels.mjs?raw";
 import alarmLabelTypes from "../../runtime/alarm-labels.d.mts?raw";
+import controlQualitySource from "../../scripts/hmi-control-quality.mjs?raw";
+import controlQualityTypes from "../../scripts/hmi-control-quality.d.mts?raw";
 import alarmControlJs from "../../scripts/hmi-alarm-control.mjs?raw";
 import alarmControlTypes from "../../scripts/hmi-alarm-control.d.mts?raw";
 import alarmViewsJs from "../../scripts/hmi-alarm-views.mjs?raw";
@@ -2011,9 +2013,11 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "runtime/alarm-history-store.d.mts", content: alarmHistoryStoreTypes },
     { path: "src/framecraftHmiAlarmViews.mjs", content: alarmViewsJs },
     { path: "src/framecraftHmiAlarmViews.d.mts", content: alarmViewsTypes },
-    { path: "src/framecraftHmiAlarmControl.mjs", content: alarmControlJs.replaceAll('"./hmi-alarm-views.mjs"', '"./framecraftHmiAlarmViews.mjs"') },
+    { path: "src/framecraftHmiControlQuality.mjs", content: controlQualitySource },
+    { path: "src/framecraftHmiControlQuality.d.mts", content: controlQualityTypes },
+    { path: "src/framecraftHmiAlarmControl.mjs", content: alarmControlJs.replaceAll('"./hmi-control-quality.mjs"', '"./framecraftHmiControlQuality.mjs"').replaceAll('"./hmi-alarm-views.mjs"', '"./framecraftHmiAlarmViews.mjs"') },
     { path: "src/framecraftHmiAlarmControl.d.mts", content: alarmControlTypes.replaceAll('"./hmi-alarm-views.mjs"', '"./framecraftHmiAlarmViews.mjs"') },
-    { path: "src/framecraftHmiAlarmSummary.mjs", content: alarmSummaryJs.replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
+    { path: "src/framecraftHmiAlarmSummary.mjs", content: alarmSummaryJs.replaceAll('"./hmi-control-quality.mjs"', '"./framecraftHmiControlQuality.mjs"').replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
     { path: "src/framecraftHmiAlarmSummary.d.mts", content: alarmSummaryTypes.replaceAll('"./hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"').replaceAll('"./hmi-alarm-views.mjs"', '"./framecraftHmiAlarmViews.mjs"') },
     { path: "src/framecraftHmiAlarmControl.ts", content: alarmControlSource.replaceAll('"../../scripts/hmi-alarm-control.mjs"', '"./framecraftHmiAlarmControl.mjs"') },
     { path: "src/framecraftHmiAlarmSummary.ts", content: alarmSummarySource.replaceAll('"../../scripts/hmi-alarm-summary.mjs"', '"./framecraftHmiAlarmSummary.mjs"') },
@@ -2045,10 +2049,10 @@ export function standardProjectFiles(config: StandardProjectConfig): GeneratedPr
     { path: "src/framecraftHmiRecipeClient.ts", content: recipeClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiRecipeApplyClient"', '"./framecraftHmiRecipeApplyClient"') },
     { path: "src/framecraftHmiRecipeApplyClient.ts", content: recipeApplyClientSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiRecipeApply.ts", content: recipeApplyControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiRecipeApplyClient"', '"./framecraftHmiRecipeApplyClient"') },
-    { path: "src/framecraftHmiRecipeControl.ts", content: recipeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiRecipeExchange"', '"./framecraftHmiRecipeExchange"').replaceAll('"./hmiRecipePlc"', '"./framecraftHmiRecipePlc"').replaceAll('"./hmiRecipeApply"', '"./framecraftHmiRecipeApply"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
-    { path: "src/framecraftHmiRecipePlc.ts", content: recipePlcControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
+    { path: "src/framecraftHmiRecipeControl.ts", content: recipeControlSource.replaceAll('"../../scripts/hmi-control-quality.mjs"', '"./framecraftHmiControlQuality.mjs"').replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiRecipeExchange"', '"./framecraftHmiRecipeExchange"').replaceAll('"./hmiRecipePlc"', '"./framecraftHmiRecipePlc"').replaceAll('"./hmiRecipeApply"', '"./framecraftHmiRecipeApply"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
+    { path: "src/framecraftHmiRecipePlc.ts", content: recipePlcControlSource.replaceAll('"../../scripts/hmi-control-quality.mjs"', '"./framecraftHmiControlQuality.mjs"').replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
     { path: "src/framecraftHmiRecipeExchange.ts", content: recipeExchangeControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiRecipeClient"', '"./framecraftHmiRecipeClient"').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"') },
-    { path: "src/framecraftHmiAuditControl.ts", content: auditControlSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
+    { path: "src/framecraftHmiAuditControl.ts", content: auditControlSource.replaceAll('"../../scripts/hmi-control-quality.mjs"', '"./framecraftHmiControlQuality.mjs"').replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"') },
     { path: "src/framecraftHmiAlarmHistoryExport.ts", content: alarmHistoryExportSource.replaceAll('"../../runtime/', '"../runtime/') },
     { path: "src/framecraftHmiAlarmArchive.ts", content: alarmArchiveSource.replaceAll('"../../runtime/', '"../runtime/').replaceAll('"./hmiOperatorSession"', '"./framecraftOperatorSession"').replaceAll('"./hmiAlarmControl"', '"./framecraftHmiAlarmControl"').replaceAll('"./hmiAlarmHistoryExport"', '"./framecraftHmiAlarmHistoryExport"').replaceAll('"../../scripts/hmi-alarm-views.mjs"', '"./framecraftHmiAlarmViews.mjs"') },
     { path: "framecraft.recipes-ui.json", content: JSON.stringify({ version: 1, namespace: crypto.randomUUID() }, null, 2) + "\n" },

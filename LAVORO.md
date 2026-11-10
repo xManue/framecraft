@@ -7078,6 +7078,24 @@ Verifiche del 5 ottobre 2026:
 - Restano CurrentQuality degli altri widget di servizio, VisualizeQuality, Variant,
   formati, finestre/lifecycle e le altre voci aperte della fase 3. WCU-EVT-10 resta parziale.
 
+## 205. CurrentQuality dei controlli di servizio (10 novembre 2026)
+
+- Allarmi live, indicatore e riga: qualita' dell'usabilita' dei segnali monitorati, inclusi
+  quelli normali non visibili tra i pendenti; filtri di sorgente, indisponibilita' e pulizia.
+  Storico privo di qualita' originaria None; non inventati codici raw non disponibili.
+- Ricette/audit: nessuna lettura automatica, None prima/durante caricamento, Good dei dati
+  validati anche vuoti, Bad per letture fallite fino al recupero esplicito. Separati dati
+  letti, bozze, ricevute e conferme PLC. Confronto PLC manuale visibile incluso con
+  qualita'/limiti, errori e incompletezza; cambio schema/revisione non riusa la cattura.
+- Registro WeakMap del renderer: getter locali senza I/O; risposte tardive, identita',
+  permessi, tipo/sorgente, sostituzione e dispose invalidano i risultati non applicabili.
+  Convalidati anche gli interi fuori dominio prima delle operazioni bitwise.
+- Pacchetto 2026.11.10.1, helper e tipi generati/aggiornabili, collegamenti coerenti e
+  risorse del plugin verificate. Test mirati, ponte Canvas e pannello compilato con HTTP
+  sintetico: nessun comando macchina, PLC/broker esterno o installer reale.
+- Restano fedelta' raw/storica degli allarmi e altri adattatori, VisualizeQuality, Variant,
+  formati, finestre/lifecycle e le altre voci della fase 3. WCU-EVT-10 resta parziale.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima

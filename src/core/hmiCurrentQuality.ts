@@ -55,7 +55,7 @@ export function resolveHmiCurrentQuality(
     if(++inspected>4096)throw new Error('CurrentQuality supera 4096 sorgenti: riduci i collegamenti del gruppo o leggi i singoli controlli.');
     const count=(source.locals?.length??0)+(source.bindings?.length??0)+(source.programs?.length??0)+(source.qualities?.length??0)+(source.statusTags?.length??0);
     if(inspected+count>4096)throw new Error('CurrentQuality supera 4096 collegamenti/sorgenti: leggi i singoli controlli.');
-    for(const quality of source.qualities??[]){inspected++;codes.push(Number.isInteger(quality)&&quality>=0&&(quality&~199)===0&&[0,1,2,4].includes(quality&7)?quality:1);}
+    for(const quality of source.qualities??[]){inspected++;codes.push(Number.isInteger(quality)&&quality>=0&&quality<=199&&(quality&~199)===0&&[0,1,2,4].includes(quality&7)?quality:1);}
     for(const tag of source.statusTags??[]){inspected++;let code=statusCache.get(tag);if(code===undefined){code=typeof tag==='string'?codeFor(tag,true):1;statusCache.set(tag,code);}codes.push(code);}
     if(source.invalid)codes.push(1);
     if(source.unknown)codes.push(0);

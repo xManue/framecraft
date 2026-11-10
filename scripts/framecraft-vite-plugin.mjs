@@ -11,6 +11,7 @@ import { hmiAlarmSummaryAttribute, hmiAlarmSummaryCss, defaultHmiAlarmSummaryCon
 import { createHmiAlarmPreviewSurfaceWith, createHmiAlarmPreviewBridgeWith } from "./hmi-alarm-preview-surface.mjs";
 import { hmiFaceplateVisualRuntimeModuleSource } from "./hmi-faceplate-visuals.mjs";
 import { createHmiFaceplatePreview } from "./hmi-faceplate-preview.mjs";
+import { hmiControlQualityModuleSource } from "./hmi-control-quality.mjs";
 import { hmiTrendRuntimeModuleSource } from "./hmi-trend.mjs";
 import { hmiFunctionTrendRuntimeModuleSource } from "./hmi-function-trend.mjs";
 import { createHmiTrendPreview } from "./hmi-trend-preview.mjs";
@@ -176,8 +177,9 @@ export function installStandalonePreviewControls(view) {
 // tests check is exactly what runs inside the page.
 const sharedHelpers = `const hmiAlarmSummaryAttribute = ${JSON.stringify(hmiAlarmSummaryAttribute)};\nconst hmiAlarmSummaryCss = ${JSON.stringify(hmiAlarmSummaryCss)};\n` + [snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installHmiGeometryPreviewEndpoint, installPanelLayoutPreference, alarmStateLabel, hmiAlarmElementBlocked, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView].map((helper) => String(helper)).join("\n") + `
 ${alarmViewsRuntimeModuleSource()}
-const createHmiAlarmControl = (host, action, rowFilter) => (${String(createHmiAlarmControlWith)})(host, action, rowFilter, { alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile });
-const createHmiAlarmSummary = (host, options) => (${String(createHmiAlarmSummaryWith)})(host, options, { alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked });
+${hmiControlQualityModuleSource()}
+const createHmiAlarmControl = (host, action, rowFilter) => (${String(createHmiAlarmControlWith)})(host, action, rowFilter, { publishServiceQuality, clearControlQuality, alarmRowsQuality, alarmStateLabel, hmiAlarmElementBlocked, activeAlarmViewDefaults, alarmRowMatchesView, compareAlarmViewRows, createAlarmSavedViews, parseAlarmViewFilters, alarmColumnsAttribute, defaultAlarmColumns, parseAlarmColumns, alarmColumnValue, alarmColumnProfileAttribute, createAlarmColumnsProfile });
+const createHmiAlarmSummary = (host, options) => (${String(createHmiAlarmSummaryWith)})(host, options, { publishServiceQuality, clearControlQuality, alarmRowsQuality, alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked });
 const createHmiAlarmPreviewSurface = (root, options) => (${String(createHmiAlarmPreviewSurfaceWith)})(root, options, { createHmiAlarmControl, createHmiAlarmSummary });
 const createHmiAlarmPreviewBridge = (view, options) => (${String(createHmiAlarmPreviewBridgeWith)})(view, options, createHmiAlarmPreviewSurface);
 const faceplateRenderers = (() => { ${hmiFaceplateVisualRuntimeModuleSource().replace(/^export /gm, "")} return { renderHmiFaceplates }; })();

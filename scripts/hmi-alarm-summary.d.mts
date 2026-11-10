@@ -25,4 +25,4 @@ export function createHmiAlarmSummary(host: HTMLElement, options: { action(comma
   update(next: AlarmSnapshot | undefined, connected?: boolean): void;
   dispose(): void;
 };
-export function createHmiAlarmSummaryWith(host: HTMLElement, options: Parameters<typeof createHmiAlarmSummary>[1], runtime: { alarmStateLabel(row: AlarmRow): string; createHmiAlarmControl: typeof import("./hmi-alarm-control.mjs").createHmiAlarmControl; hmiAlarmElementBlocked(host: HTMLElement): boolean }): ReturnType<typeof createHmiAlarmSummary>;
+export function createHmiAlarmSummaryWith(host: HTMLElement, options: Parameters<typeof createHmiAlarmSummary>[1], runtime: { publishServiceQuality?(host: HTMLElement, root: Element, read: () => number): void; clearControlQuality?(host: HTMLElement): void; alarmRowsQuality?(rows: readonly AlarmRow[]): number; alarmStateLabel(row: AlarmRow): string; createHmiAlarmControl: typeof import("./hmi-alarm-control.mjs").createHmiAlarmControl; hmiAlarmElementBlocked(host: HTMLElement): boolean }): ReturnType<typeof createHmiAlarmSummary>;

@@ -1,3 +1,4 @@
+import { publishServiceQuality, clearControlQuality, alarmRowsQuality } from "./hmi-control-quality.mjs";
 import { alarmStateLabel } from "../runtime/alarm-labels.mjs";
 import { createHmiAlarmControl, hmiAlarmElementBlocked } from "./hmi-alarm-control.mjs";
 export const hmiAlarmSummaryAttribute = "data-hmi-alarm-summary";
@@ -65,7 +66,7 @@ export function hmiAlarmSummaryJsx(kind) {
 }
 export const hmiAlarmSummaryCss = `[data-hmi-alarm-summary-content][hidden]{display:none}[data-hmi-alarm-summary-content]{height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;overflow:auto;line-height:1.4}[data-hmi-alarm-summary-content] button{min-height:44px;padding:6px 10px;font:inherit;background:#252d39;color:#fff;border:1px solid #8894a4;border-radius:4px;cursor:pointer}[data-hmi-alarm-summary-content] button:focus-visible,[data-hmi-alarm-popup] :focus-visible{outline:2px solid #6bc6ff;outline-offset:2px}[data-hmi-alarm-summary-content] svg{width:28px;height:28px;flex-shrink:0}[data-hmi-alarm-flash]{animation:framecraft-alarm-attention 1s steps(2,jump-none) infinite}@keyframes framecraft-alarm-attention{50%{opacity:.25}}@media(prefers-reduced-motion:reduce){[data-hmi-alarm-flash]{animation:none}}[data-hmi-alarm-popup]{position:fixed;inset:0;z-index:1600;display:grid;place-items:center;padding:12px;background:#000a}[data-hmi-alarm-popup] section{box-sizing:border-box;width:min(1000px,100%);height:min(650px,calc(100dvh - 24px));display:flex;flex-direction:column;gap:12px;padding:16px;background:#181e28;color:#edf3fb;border:1px solid #64748b;border-radius:8px;font:16px Segoe UI,Arial,sans-serif}[data-hmi-alarm-popup] header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}[data-hmi-alarm-popup] h2{font-size:20px;margin:0}[data-hmi-alarm-popup] button{min-height:44px;padding:6px 12px;font:inherit;cursor:pointer}[data-hmi-alarm-popup] button:disabled{cursor:not-allowed;opacity:.55}`;
 export function createHmiAlarmSummaryWith(host, options, runtime) {
-    const { alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked } = runtime;
+    const { publishServiceQuality, clearControlQuality, alarmRowsQuality, alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked } = runtime;
     const doc = host.ownerDocument, original = [...host.childNodes], marker = host.getAttribute("data-hmi-alarm-summary-root");
     host.dataset.hmiAlarmSummaryRoot = "";
     const make = (tag, value) => { const node = doc.createElement(tag); if (value !== undefined)
@@ -77,8 +78,9 @@ export function createHmiAlarmSummaryWith(host, options, runtime) {
     details.type = "button";
     root.append(style, content, status, body, details);
     host.replaceChildren(root);
-    let snapshot, available = false, disposed = false, signature = "", configKey;
+    let snapshot, available = false, observed = false, disposed = false, signature = "", configKey;
     let config, popup;
+    const qualityType=host.getAttribute("data-hmi-type");
     const blocked = () => hmiAlarmElementBlocked(host);
     const closePopup = () => popup?.close();
     const filtered = (row) => !!config && alarmSummaryFilter(row, config) && (alarmSummaryMode(row, config) || row.quality !== "good");
@@ -153,6 +155,8 @@ export function createHmiAlarmSummaryWith(host, options, runtime) {
         control.update(snapshot, available);
         close.focus();
     };
+    const publishQuality=()=>publishServiceQuality?.(host,root,()=>host.getAttribute("data-hmi-type")!==qualityType?0:!observed?0:!config?1:!available?1:alarmRowsQuality?.((snapshot?.rows??[]).filter(row=>alarmSummaryFilter(row,config)))??0);
+    publishQuality();
     details.onclick = openPopup;
     return {
         update(next, connected = true) {
@@ -160,7 +164,7 @@ export function createHmiAlarmSummaryWith(host, options, runtime) {
                 return;
             if (next)
                 snapshot = next;
-            available = connected && !!next;
+            observed=true; available = connected && !!next;
             const raw = host.getAttribute(hmiAlarmSummaryAttribute);
             if (raw !== configKey) {
                 configKey = raw;
@@ -168,6 +172,7 @@ export function createHmiAlarmSummaryWith(host, options, runtime) {
                 config = raw === null ? defaultHmiAlarmSummaryConfig(host.dataset.hmiType === "HmiAlarmLine" ? "line" : "indicator") : parseHmiAlarmSummaryConfig(raw);
                 signature = "";
             }
+            publishQuality();
             if (!config) {
                 root.hidden = false;
                 root.dataset.hmiAlarmSummaryState = "unknown";
@@ -225,7 +230,7 @@ export function createHmiAlarmSummaryWith(host, options, runtime) {
             details.hidden = !config.openDetails;
             details.disabled = blocked() || !snapshot || !view.rows.length;
         },
-        dispose() { disposed = true; closePopup(); host.replaceChildren(...original); if (marker === null)
+        dispose() { disposed = true; clearControlQuality?.(host); closePopup(); host.replaceChildren(...original); if (marker === null)
             delete host.dataset.hmiAlarmSummaryRoot;
         else
             host.setAttribute("data-hmi-alarm-summary-root", marker); },
@@ -233,5 +238,5 @@ export function createHmiAlarmSummaryWith(host, options, runtime) {
 }
 
 export function createHmiAlarmSummary(host, options) {
-    return createHmiAlarmSummaryWith(host, options, { alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked });
+    return createHmiAlarmSummaryWith(host, options, { publishServiceQuality, clearControlQuality, alarmRowsQuality, alarmStateLabel, createHmiAlarmControl, hmiAlarmElementBlocked });
 }

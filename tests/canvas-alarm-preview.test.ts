@@ -224,3 +224,12 @@ describe("allarmi con Canvas e vero ponte su origini differenti", () => {
     expect(grid.textContent).toContain("Il profilo richiede"); expect(button("Salva le mie colonne", grid)).toBeUndefined(); expect(frame.localStorage.length).toBe(0); expect(network).not.toHaveBeenCalled();
   });
 });
+
+it('reads service CurrentQuality through the Canvas bridge and clears it on return to edit',async()=>{
+ const probe=frame.document.createElement('button');probe.dataset.hmiName='QualityProbe';probe.textContent='Read quality';
+ const table=frame.document.querySelector<HTMLElement>('[data-hmi-type="HmiAlarmControl"]')!;table.dataset.hmiName='AlarmTable';table.parentElement!.append(probe);
+ probe.setAttribute('data-hmi-events',JSON.stringify([{event:'Tapped',script:'HMIRuntime.Trace("ALARM_QUALITY="+Screen.Items("AlarmTable").CurrentQuality);'}]));
+ await start();await act(async()=>probe.click());await flush();expect(useEditorStore.getState().consoleEntries.map(entry=>entry.message).join('\n')).toContain('ALARM_QUALITY=4');
+ expect((frame as any)[Symbol.for('framecraft.control-quality.v1')].get(table).quality).toBe(4);
+ await act(async()=>useEditorStore.setState({interactionMode:'edit'}));await flush();expect((frame as any)[Symbol.for('framecraft.control-quality.v1')]?.get(table)).toBeUndefined();expect(network).not.toHaveBeenCalled();
+});

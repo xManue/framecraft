@@ -1,3 +1,4 @@
+import { publishServiceQuality, clearControlQuality } from "../../scripts/hmi-control-quality.mjs";
 import { auditOperations, auditOutcomes, parseAuditQuery, parseAuditSnapshot, type AuditQuery } from "../../runtime/audit-query.mjs";
 import type { RuntimeAuditSnapshot } from "../../runtime/audit-store.mjs";
 import { OperatorAuthError } from "../../runtime/operator-policy.mjs";
@@ -39,7 +40,8 @@ export function createHmiAuditControl(host: HTMLElement, options: HmiAuditContro
   let snapshot: RuntimeAuditSnapshot | undefined, applied: AuditQuery = {}, draft: Record<string, string> = {}, busy = false, active = true, epoch = 0;
   let notice = "Premi Carica registro per leggere gli eventi del servizio.", controller: AbortController | undefined, draftChanged = false, filtersOpen = false;
   const identity = () => { const user = operatorSessionProfile(); return user ? JSON.stringify([user.id, user.capabilities]) : ""; };
-  let userKey = identity();
+  let userKey = identity(), readQuality = 0;
+  const qualityType=host.getAttribute("data-hmi-type");
   let focusKey: string | undefined;
   const permitted = () => !!operatorSessionProfile()?.capabilities.includes("audit.read");
   const make = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string): HTMLElementTagNameMap[K] => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; };
@@ -50,7 +52,7 @@ export function createHmiAuditControl(host: HTMLElement, options: HmiAuditContro
   }
   function resetUser() {
     const next = identity(); if (next === userKey) return false;
-    userKey = next; epoch++; controller?.abort(); snapshot = undefined; applied = {}; draft = {}; busy = false; draftChanged = false;
+    userKey = next; readQuality=0; epoch++; controller?.abort(); snapshot = undefined; applied = {}; draft = {}; busy = false; draftChanged = false;
     notice = "Utente cambiato: i dati precedenti sono stati rimossi. Carica il registro con il nuovo accesso."; return true;
   }
   function query() {
@@ -73,7 +75,7 @@ export function createHmiAuditControl(host: HTMLElement, options: HmiAuditContro
     let input: AuditQuery;
     try { input = older && snapshot?.nextBefore ? { ...applied, limit: 50, journalId: snapshot.id, through: applied.through ?? snapshot.sequence, before: snapshot.nextBefore } : query(); }
     catch { notice = "Filtri non validi. Controlla l’intervallo delle date e l’identificativo operatore."; render(); return; }
-    const current = ++epoch, who = userKey, abort = new AbortController(); controller = abort; busy = true; draftChanged = false; snapshot = undefined; notice = "Lettura del registro…"; render();
+    const current = ++epoch, who = userKey, abort = new AbortController(); controller = abort; readQuality=0; busy = true; draftChanged = false; snapshot = undefined; notice = "Lettura del registro…"; render();
     const timer = setTimeout(() => abort.abort(), timeout);
     try {
       const params = new URLSearchParams(Object.entries(input).map(([key, value]) => [key, String(value)]));
@@ -83,10 +85,10 @@ export function createHmiAuditControl(host: HTMLElement, options: HmiAuditContro
       if (!response.ok) throw new OperatorAuthError(value?.type === "operator" && typeof value.code === "string" ? value.code : "AUTH_AUDIT_RESPONSE");
       const next = parseAuditSnapshot(value, input);
       if (!active || current !== epoch || identity() !== who || abort.signal.aborted) return;
-      snapshot = next; applied = input; notice = next.events.length ? "Eventi letti dal servizio. Nessun comando eseguito." : "Nessun evento per questi filtri.";
+      snapshot = next; readQuality=4; applied = input; notice = next.events.length ? "Eventi letti dal servizio. Nessun comando eseguito." : "Nessun evento per questi filtri.";
     } catch (error) {
       if (!active || current !== epoch || identity() !== who) return;
-      snapshot = undefined;
+      snapshot = undefined; readQuality=1;
       notice = error instanceof OperatorAuthError ? `${error.message}. ${error.remedy}` : "Registro non raggiungibile o lettura scaduta. Controlla servizio, rete e proxy, poi riprova. Nessun invio automatico.";
     } finally {
       clearTimeout(timer); if (controller === abort) controller = undefined;
@@ -98,7 +100,7 @@ export function createHmiAuditControl(host: HTMLElement, options: HmiAuditContro
     const focused = document.activeElement, scroll = host.scrollTop;
     if (focused && host.contains(focused)) focusKey = focused.getAttribute("data-audit-focus") ?? undefined;
     else if (focused && focused !== document.body) focusKey = undefined;
-    const restore = () => { host.scrollTop = scroll; if (focusKey) { const node = [...host.querySelectorAll<HTMLElement>("[data-audit-focus]")].find(node => node.dataset.auditFocus === focusKey); if (node && !node.hasAttribute("disabled")) node.focus({ preventScroll: true }); } };
+    const restore = () => { publishServiceQuality(host,host.firstElementChild!,()=>active&&options.enabled&&permitted()&&identity()===userKey&&host.getAttribute("data-hmi-type")===qualityType?readQuality:0); host.scrollTop = scroll; if (focusKey) { const node = [...host.querySelectorAll<HTMLElement>("[data-audit-focus]")].find(node => node.dataset.auditFocus === focusKey); if (node && !node.hasAttribute("disabled")) node.focus({ preventScroll: true }); } };
     resetUser(); host.replaceChildren(); host.setAttribute("aria-busy", String(busy));
     host.append(make("h2", "Registro attività"), make("p", "Accessi, richieste ed esiti registrati dal servizio. Sola lettura: non modifica allarmi, ricette o PLC."));
     if (!options.enabled) host.append(make("p", "Registro non collegato. Abilita gateway e account server nella configurazione del progetto; il PIN browser non basta."));
@@ -143,7 +145,7 @@ export function createHmiAuditControl(host: HTMLElement, options: HmiAuditContro
   const changed = () => { if (resetUser()) render(); };
   view.addEventListener("framecraft:user-changed", changed); render();
   return { refresh: render, dispose() {
-    if (!active) return; active = false; epoch++; controller?.abort(); snapshot = undefined; view.removeEventListener("framecraft:user-changed", changed); style.remove();
+    if (!active) return; active = false; clearControlQuality(host); epoch++; controller?.abort(); snapshot = undefined; view.removeEventListener("framecraft:user-changed", changed); style.remove();
     delete host.dataset.hmiAuditRoot; host.removeAttribute("aria-busy"); if (role === null) host.removeAttribute("role"); else host.setAttribute("role", role);
     if (label === null) host.removeAttribute("aria-label"); else host.setAttribute("aria-label", label); host.replaceChildren(...original);
   } };
