@@ -1,3 +1,4 @@
+import type { HmiTrendPrintSnapshot } from "./hmi-trend-print.mjs";
 import type { HmiTrendQuality } from "./hmi-trend-quality.mjs";
 import type { PlcVariableDefinition } from "../src/core/plcVariables";
 import type { HmiDataLogCatalog } from "../src/core/hmiDataLogs";
@@ -79,6 +80,7 @@ export interface HmiFunctionTrendRenderOptions {
         qualityCode?: number;
         qualityKnown?: boolean; localValue?: boolean; lastError?: number;
     }>>;
+    printSnapshot?: (snapshot:HmiTrendPrintSnapshot)=>void|Promise<void>;
     exportCsv?: (fileName: string, content: string) => void;
 }
 export declare function defaultHmiFunctionTrendConfig(): HmiFunctionTrendConfig;

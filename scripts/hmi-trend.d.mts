@@ -1,3 +1,4 @@
+import type { HmiTrendPrintSnapshot } from "./hmi-trend-print.mjs";
 import type { HmiTrendQuality } from "./hmi-trend-quality.mjs";
 import type { PlcVariableDefinition } from "../src/core/plcVariables";
 import type { HmiDataLogCatalog } from "../src/core/hmiDataLogs";
@@ -82,6 +83,7 @@ export interface HmiTrendRenderOptions {
         qualityKnown?: boolean; localValue?: boolean; lastError?: number;
     }>>;
     sources?: HmiTrendSourceCatalog;
+    printSnapshot?: (snapshot:HmiTrendPrintSnapshot)=>void|Promise<void>;
     exportCsv?: (fileName: string, content: string) => void;
     history?: (trend: HmiTrendSeries, from: number, to: number) => readonly HmiTrendSample[];
     historyState?: (source: {logId?: string; loggedTagId?: string}, from: number, to: number) => "ready" | "loading" | "error" | "unavailable";

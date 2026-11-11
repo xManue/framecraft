@@ -351,7 +351,7 @@ import { hmiAlarmMatches, nextHmiCalendarDue } from "./framecraftHmiSchedule";
 import { createHmiTimerManager } from "./framecraftHmiTimers";
 import { createHmiFaceplatePopupDomSurface, createHmiFaceplatePopupManager } from "./framecraftHmiPopups";
 import { renderHmiFaceplates } from "./framecraftHmiFaceplateVisuals";
-import { clearHmiTrendHistory, renderHmiTrendControls } from "./framecraftHmiTrend";
+import { closeTrendPrintPreview, clearHmiTrendHistory, renderHmiTrendControls } from "./framecraftHmiTrend";
 import { clearHmiFunctionTrendHistory, renderHmiFunctionTrendControls } from "./framecraftHmiFunctionTrend";
 import { createHmiDataLogRuntime } from "./framecraftHmiDataLogs";
 import { createHmiDataLogClient } from "./framecraftHmiDataLogClient";
@@ -1055,7 +1055,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
       (options.error ?? console.error)(\`[HMI \${eventType}] \${error instanceof Error ? error.message : String(error)}\`);
     });
   };
-  const target = (event: Event) => event.target instanceof Element && !event.target.closest("[data-hmi-alarm-notes], [data-hmi-recipe-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-faceplate-interface-trigger], [data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-time-zone], [data-hmi-trend-aggregation], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]") ? event.target.closest("[data-hmi-events]") : null;
+  const target = (event: Event) => !document.querySelector("[data-framecraft-trend-print-preview]") && event.target instanceof Element && !event.target.closest("[data-hmi-alarm-notes], [data-hmi-recipe-root], [data-hmi-alarm-root], [data-hmi-alarm-summary-root], [data-hmi-faceplate-interface-trigger], [data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-time-zone], [data-hmi-trend-aggregation], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]") ? event.target.closest("[data-hmi-events]") : null;
   const down = (event: Event) => run(target(event), "Down");
   const up = (event: Event) => run(target(event), "Up");
   const tapped = (event: Event) => run(target(event), "Tapped");
@@ -1087,10 +1087,12 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     return Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? "SwipeLeft" : "SwipeRight") : (dy < 0 ? "SwipeUp" : "SwipeDown");
   };
   const gestureDown = (event: PointerEvent) => {
+    if(document.querySelector("[data-framecraft-trend-print-preview]")||event.target instanceof Element&&event.target.closest("[data-hmi-trend-action=print], [data-hmi-fx-action=print]")){gestureStart=null;return;}
     if (event.target instanceof Element && event.target.closest("[data-hmi-alarm-notes]")) { gestureStart = null; return; }
     if (event.pointerType === "touch" && event.isPrimary !== false) gestureStart = { pointerId: event.pointerId, target: event.target, x: event.clientX, y: event.clientY, time: Date.now() };
   };
   const finishGesture = (event: PointerEvent, cancelled = false) => {
+    if(document.querySelector("[data-framecraft-trend-print-preview]")){gestureStart=null;return;}
     const start = gestureStart;
     if (!start || start.pointerId !== event.pointerId) return;
     gestureStart = null;
@@ -1323,7 +1325,7 @@ export function installFramecraftHmiRuntime(options: RuntimeOptions): () => void
     for (const timer of cycleTimers.values()) clearInterval(timer);
     for (const timer of scheduledIntervals) clearInterval(timer);
     for (const timer of scheduledTimeouts) clearTimeout(timer);
-    clearInterval(trendTimer);clearInterval(qualityTimer);
+    clearInterval(trendTimer);clearInterval(qualityTimer);closeTrendPrintPreview(document);
     stopDataLogSubscription();
     dataLogRuntime.stop();
     propertyFlashing.reset();

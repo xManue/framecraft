@@ -1,3 +1,5 @@
+import {requestTrendPrint,trendPrintRuntimeModuleSource} from './hmi-trend-print.mjs';
+const fxPrintRequest=requestTrendPrint;
 import {parseTrendQuality,trendQualityIssues,trendQualityColor,trendPointQuality,trendPointUsable,trendQualityRuntimeModuleSource} from './hmi-trend-quality.mjs';
 const fxParseQuality=parseTrendQuality,fxQualityIssues=trendQualityIssues,fxQualityColor=trendQualityColor,fxPointQuality=trendPointQuality,fxPointUsable=trendPointUsable;
 import { hmiControlQualityModuleSource, controlWireQuality, controlSampleCode, controlQuality, publishControlQuality, clearControlQuality } from './hmi-control-quality.mjs';
@@ -208,6 +210,15 @@ function fxDownload(config, state) {
     urlApi.revokeObjectURL(url);
 }
 function hostUrlApi() { return typeof URL === "undefined" ? undefined : URL; }
+function fxPrintMetadata(host,state){
+  const config=state.config,root=host.querySelector(':scope > [data-hmi-function-trend-root]');
+  const source=channel=>channel.source==='log'?'storico '+(channel.logId||'non collegato')+'/'+(channel.loggedTagId||'non collegato'):channel.tag||'variabile non collegata';
+  const details=['[data-hmi-fx-status]','[data-hmi-fx-quality-notes]'].map(selector=>root.querySelector(selector)).filter(element=>element&&!element.hidden).map(element=>Array.from(element.children).map(child=>child.textContent).join('; ')||element.textContent).filter(Boolean);
+  const format=time=>Number.isFinite(time)&&Math.abs(time)<=8.64e15?new Date(time).toLocaleString('it-IT'):'orario non disponibile';
+  const shown=config.trends.filter(trend=>!state.hidden.has(trend.id));
+  const sampleRange=trend=>{const points=state.displayed.get(trend.id)??[];return points.length?format(points[0].time)+' - '+format(points[points.length-1].time)+' (ora del dispositivo)':'Nessun campione';};
+  return {kind:'xy',caption:config.caption,paused:state.paused,details,series:shown.map(trend=>({name:trend.name,color:fxArgb(trend.color),source:'X: '+source(trend.x)+'; Y: '+source(trend.y),sampleRange:sampleRange(trend),area:(config.areas.find(area=>area.id===trend.areaId)?.name||trend.areaId)+' / X, Y'}))};
+}
 function fxInstallListeners(host) {
     if (fxListenerHosts.has(host)) return;
     fxListenerHosts.add(host);
@@ -233,6 +244,7 @@ function fxInstallListeners(host) {
         }
         else if (action === "zoom-area")
             state.zoomArea = !state.zoomArea;
+        else if(action==='print'){fxPrintRequest(host,fxPrintMetadata(host,state),state.options.printSnapshot);return;}
         else if (action === "export")
             fxDownload(state.config, state);
         else if (action === "previous" || action === "next") {
@@ -306,7 +318,7 @@ function fxToolbar(root, config, state) {
     toolbar.setAttribute("role", "toolbar");
     toolbar.setAttribute("aria-label", "Comandi Function Trend");
     Object.assign(toolbar.style, { display: "flex", gap: "4px", flexWrap: "wrap", alignItems: "center", padding: "5px", background: "#eef1f2" });
-    const buttons = [["pause", state.paused ? "Avvia" : "Arresta"], ["zoom-x-in", "X +"], ["zoom-x-out", "X −"], ["zoom-y-in", "Y +"], ["zoom-y-out", "Y −"], ["zoom-in", "Zoom +"], ["zoom-out", "Zoom −"], ["zoom-area", "Zoom area"], ["original", "Vista originale"], ["ruler", "Righello"], ["previous", "Curva precedente"], ["next", "Curva successiva"], ["left", "Sposta X −"], ["right", "Sposta X +"], ["down", "Sposta Y −"], ["up", "Sposta Y +"], ["export", "CSV"]];
+    const buttons = [["pause", state.paused ? "Avvia" : "Arresta"], ["zoom-x-in", "X +"], ["zoom-x-out", "X −"], ["zoom-y-in", "Y +"], ["zoom-y-out", "Y −"], ["zoom-in", "Zoom +"], ["zoom-out", "Zoom −"], ["zoom-area", "Zoom area"], ["original", "Vista originale"], ["ruler", "Righello"], ["previous", "Curva precedente"], ["next", "Curva successiva"], ["left", "Sposta X −"], ["right", "Sposta X +"], ["down", "Sposta Y −"], ["up", "Sposta Y +"], ["print", "Stampa"], ["export", "CSV"]];
     for (const [action, label] of buttons) {
         const button = doc.createElement("button");
         button.type = "button";
@@ -623,7 +635,7 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
                 return closest ? [`${trend.name}: X ${closest.x}, Y ${closest.y} · qualità ${fxPointQuality(closest)}`] : [];
             });
             fxText(group, "line", "", { x1: x, x2: x, y1: top, y2: top + plotHeight, stroke: "#20262b" });
-            fxText(group, "text", readings.join(" · ") || "Nessuna coppia X/Y", { x: left + 5, y: top + 24, fill: "#20262b", "font-size": 10 });
+            fxText(group, "text", readings.join(" · ") || "Nessuna coppia X/Y", { "data-framecraft-print-note": "Righello", x: left + 5, y: top + 24, fill: "#20262b", "font-size": 10 });
         }
         top += height + 15;
     }
@@ -661,8 +673,8 @@ export function hmiFunctionTrendJsx() {
     return `<div data-hmi-type="HmiFunctionTrendControl" data-hmi-function-trend='${serializeHmiFunctionTrendConfig(defaultHmiFunctionTrendConfig())}' style={{ width: 640, height: 400, background: "#F7F8F9" }}>Configura le sorgenti X e Y dall'Inspector</div>`;
 }
 export function hmiFunctionTrendRuntimeModuleSource() {
-    const helpers = [normalizeFxSource, normalizeFxAxis, normalizeFxRange, defaultHmiFunctionTrendConfig, parseHmiFunctionTrendConfig, functionTrendNumericValues, pairFunctionTrendSamples, fxSourceKey, fxBounds, fxVisibleRange, fxDownload, hostUrlApi, fxInstallListeners, fxToolbar, fxLocalDate, trendArgb, trendAxisValue, trendAxisLabel, trendAxisRange, trendPath, appendTrendText];
-    const source = `// @ts-nocheck\nconst hmiFunctionTrendAttribute = ${JSON.stringify(hmiFunctionTrendAttribute)};\nconst functionTrendStates = new WeakMap();\nconst fxString = ${String(fxString)};\nconst fxNumber = ${String(fxNumber)};\nconst fxOptional = ${String(fxOptional)};\nconst fxBool = ${String(fxBool)};\nconst fxObject = ${String(fxObject)};\n${hmiTrendRuntimeUiModuleSource()}\n${trendQualityRuntimeModuleSource()}\nconst fxParseQuality=parseTrendQuality,fxQualityIssues=trendQualityIssues,fxQualityColor=trendQualityColor,fxPointQuality=trendPointQuality,fxPointUsable=trendPointUsable;\n${hmiControlQualityModuleSource()}\nconst fxWireQuality=controlWireQuality, fxSampleCode=controlSampleCode, fxControlQuality=controlQuality, fxPublishQuality=publishControlQuality, fxClearQuality=clearControlQuality;\n${helpers.map(String).join("\n")}\nconst fxText = appendTrendText;\nconst fxArgb = trendArgb;\nconst fxAxisLabel = trendAxisLabel;\nconst fxAxisRange = trendAxisRange;\nconst fxAxisValue = trendAxisValue;\nconst fxPath = trendPath;\nconst fxSourcePicker = renderTrendSourcePicker;\nconst fxAreaZoom = installTrendAreaZoom;\nconst fxZoomDragging = trendAreaZoomDragging;\nconst fxZoomRange = trendRuntimeZoomRange;\nconst fxQualityClass = trendQualityClass;\nexport ${String(renderHmiFunctionTrendControl)}\nexport ${String(renderHmiFunctionTrendControls)}\n`;
+    const helpers = [normalizeFxSource, normalizeFxAxis, normalizeFxRange, defaultHmiFunctionTrendConfig, parseHmiFunctionTrendConfig, functionTrendNumericValues, pairFunctionTrendSamples, fxSourceKey, fxBounds, fxVisibleRange, fxDownload, hostUrlApi, fxPrintMetadata, fxInstallListeners, fxToolbar, fxLocalDate, trendArgb, trendAxisValue, trendAxisLabel, trendAxisRange, trendPath, appendTrendText];
+    const source = `// @ts-nocheck\nconst hmiFunctionTrendAttribute = ${JSON.stringify(hmiFunctionTrendAttribute)};\nconst functionTrendStates = new WeakMap();\nconst fxString = ${String(fxString)};\nconst fxNumber = ${String(fxNumber)};\nconst fxOptional = ${String(fxOptional)};\nconst fxBool = ${String(fxBool)};\nconst fxObject = ${String(fxObject)};\n${hmiTrendRuntimeUiModuleSource()}\n${trendPrintRuntimeModuleSource()}\nconst fxPrintRequest=requestTrendPrint;\n${trendQualityRuntimeModuleSource()}\nconst fxParseQuality=parseTrendQuality,fxQualityIssues=trendQualityIssues,fxQualityColor=trendQualityColor,fxPointQuality=trendPointQuality,fxPointUsable=trendPointUsable;\n${hmiControlQualityModuleSource()}\nconst fxWireQuality=controlWireQuality, fxSampleCode=controlSampleCode, fxControlQuality=controlQuality, fxPublishQuality=publishControlQuality, fxClearQuality=clearControlQuality;\n${helpers.map(String).join("\n")}\nconst fxText = appendTrendText;\nconst fxArgb = trendArgb;\nconst fxAxisLabel = trendAxisLabel;\nconst fxAxisRange = trendAxisRange;\nconst fxAxisValue = trendAxisValue;\nconst fxPath = trendPath;\nconst fxSourcePicker = renderTrendSourcePicker;\nconst fxAreaZoom = installTrendAreaZoom;\nconst fxZoomDragging = trendAreaZoomDragging;\nconst fxZoomRange = trendRuntimeZoomRange;\nconst fxQualityClass = trendQualityClass;\nexport ${String(renderHmiFunctionTrendControl)}\nexport ${String(renderHmiFunctionTrendControls)}\n`;
     return source.replace("const functionTrendStates = new WeakMap();", "const functionTrendStates = new WeakMap();\nconst fxListenerHosts = new WeakSet();") + `\n${String(trendCsvCell)}\nconst fxCsvCell = trendCsvCell;\nexport ${String(clearHmiFunctionTrendHistory)}\n`;
 }
 

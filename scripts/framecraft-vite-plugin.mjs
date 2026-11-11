@@ -1,3 +1,4 @@
+import {closeTrendPrintPreview} from "./hmi-trend-print.mjs";
 import { transformSync } from "@babel/core";
 import * as t from "@babel/types";
 import { equalGapOffset, gridOffset, snapOffset } from "./framecraft-snap.mjs";
@@ -176,7 +177,7 @@ export function installStandalonePreviewControls(view) {
 // The bridge is shipped to the previewed project as source text, so the maths it needs is not
 // imported by it but written into it. Stringifying the real functions keeps one copy: what the
 // tests check is exactly what runs inside the page.
-const sharedHelpers = `const hmiAlarmSummaryAttribute = ${JSON.stringify(hmiAlarmSummaryAttribute)};\nconst hmiAlarmSummaryCss = ${JSON.stringify(hmiAlarmSummaryCss)};\n` + [createHmiQualityVisuals, createHmiQualityPreview, snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installHmiGeometryPreviewEndpoint, installPanelLayoutPreference, alarmStateLabel, hmiAlarmElementBlocked, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView].map((helper) => String(helper)).join("\n") + `
+const sharedHelpers = `const hmiAlarmSummaryAttribute = ${JSON.stringify(hmiAlarmSummaryAttribute)};\nconst hmiAlarmSummaryCss = ${JSON.stringify(hmiAlarmSummaryCss)};\n` + [closeTrendPrintPreview, createHmiQualityVisuals, createHmiQualityPreview, snapOffset, gridOffset, equalGapOffset, overlayCandidate, createHmiPropertyFlashingDomSurface, installHmiGeometryPreviewEndpoint, installPanelLayoutPreference, alarmStateLabel, hmiAlarmElementBlocked, defaultHmiAlarmSummaryConfig, hmiAlarmSummaryIssues, parseHmiAlarmSummaryConfig, serializeHmiAlarmSummaryConfig, alarmSummaryFilter, alarmSummaryMode, hmiAlarmSummaryView].map((helper) => String(helper)).join("\n") + `
 const makeQualityVisuals=createHmiQualityVisuals;
 ${alarmViewsRuntimeModuleSource()}
 ${hmiControlQualityModuleSource()}
@@ -765,7 +766,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
   };
   const alarmInternal = (event) => Boolean(event.target?.closest?.("[data-hmi-alarm-root], [data-hmi-alarm-summary-root]"));
   const trendInternal = (event) => Boolean(event.target?.closest?.("[data-hmi-trend-action], [data-hmi-fx-action], [data-trend-source-picker], [data-hmi-trend-range], [data-hmi-trend-time-zone], [data-hmi-trend-aggregation], [data-hmi-trend-legend], [data-hmi-fx-range-form], [data-hmi-fx-foreground-label], [data-hmi-fx-legend]"));
-  const hmiEventTarget = (event) => alarmInternal(event) || trendInternal(event) || event.target?.closest?.("[data-hmi-faceplate-interface-trigger]") ? null : event.target?.closest?.("[data-hmi-events]");
+  const hmiEventTarget = (event) => document.querySelector("[data-framecraft-trend-print-preview]")||alarmInternal(event) || trendInternal(event) || event.target?.closest?.("[data-hmi-faceplate-interface-trigger]") ? null : event.target?.closest?.("[data-hmi-events]");
   const emitHmiEvent = (element, eventType, context = {}) => {
     if (mode !== "navigate" || !element) return;
     if (!propertyFlashingSurface.allowsReactions(element)) return;
@@ -808,6 +809,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
     return Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? "SwipeLeft" : "SwipeRight") : (dy < 0 ? "SwipeUp" : "SwipeDown");
   };
   const finishHmiGesture = (event, cancelled = false) => {
+    if(document.querySelector("[data-framecraft-trend-print-preview]")){hmiGestureStart=null;return;}
     const start = hmiGestureStart;
     if (!start || start.pointerId !== event.pointerId) return;
     hmiGestureStart = null;
@@ -1180,7 +1182,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
     if (event.data?.type === "framecraft:alarm-preview" || event.data?.type === "framecraft:alarm-command-result") { alarmPreview.receive(event); return; }
     if (event.data?.type === "framecraft:set-mode") {
       if (event.data.mode === "navigate") { cancelDrag(); endControlledTransform(true); }
-      if (event.data.mode === "edit") { qualityPreview.clear();propertyFlashingSurface.applyProperties([]); propertyFlashingSurface.apply([]); }
+      if (event.data.mode === "edit") { closeTrendPrintPreview(document);qualityPreview.clear();propertyFlashingSurface.applyProperties([]); propertyFlashingSurface.apply([]); }
       mode = event.data.mode === "navigate" ? "navigate" : "edit";
       if (mode === "navigate") { cancelNudge(); cancelRegionPick(); }
       document.documentElement.dataset.framecraftMode = mode;
@@ -1369,6 +1371,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
   }, true);
   document.addEventListener("lostpointercapture", (event) => { if (regionPick?.pointerId === event.pointerId) cancelRegionPick(); }, true);
   document.addEventListener("keydown", (event) => {
+    if(document.querySelector("[data-framecraft-trend-print-preview]"))return;
     if (!regionPick) return;
     event.stopImmediatePropagation();
     if (event.key === "Escape") { event.preventDefault(); cancelRegionPick(); }
@@ -1572,6 +1575,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
   document.addEventListener("pointercancel", finishDrag, true);
   document.addEventListener("lostpointercapture", (event) => { if (dragTarget?.pointerId === event.pointerId) cancelDrag(); }, true);
   document.addEventListener("keydown", (event) => {
+    if(document.querySelector("[data-framecraft-trend-print-preview]"))return;
     if (event.key !== "Escape" || !dragTarget) return;
     event.preventDefault(); event.stopImmediatePropagation(); cancelDrag();
   }, true);
@@ -1625,6 +1629,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
     }, 260);
   };
   document.addEventListener("keydown", (event) => {
+    if(document.querySelector("[data-framecraft-trend-print-preview]"))return;
     if (event.defaultPrevented || event.isComposing) return;
     if (inlineTarget) {
       if (event.key === "Enter") { event.preventDefault(); inlineTarget.element.blur(); }
@@ -1699,6 +1704,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
   document.addEventListener("focusout", (event) => emitHmiEvent(hmiEventTarget(event), "Deactivated"), true);
   document.addEventListener("contextmenu", (event) => emitHmiEvent(hmiEventTarget(event), "ContextTapped"), true);
   document.addEventListener("keydown", (event) => {
+    if(document.querySelector("[data-framecraft-trend-print-preview]"))return;
     const owner = hmiEventTarget(event);
     emitHmiEvent(owner, "KeyDown", { key: event.key });
     emitHmiEvent(owner, "HotKey", { key: event.key });
@@ -1708,7 +1714,7 @@ const bridgeScript = [previewThumbnailSvg, capturePreviewThumbnail, installPrevi
   document.addEventListener("framecraft:faceplate-event", emitFaceplateInterfaceEvent, true);
   document.addEventListener("framecraft:command-fired", (event) => emitHmiEvent(hmiEventTarget(event), "CommandFired", { command: typeof event.detail === "string" ? event.detail : "Command" }), true);
   document.addEventListener("pointerdown", (event) => {
-    if (mode === "navigate" && !alarmInternal(event) && event.pointerType === "touch" && event.isPrimary !== false) {
+    if (mode === "navigate" && !document.querySelector("[data-framecraft-trend-print-preview]") && !event.target?.closest?.("[data-hmi-trend-action=print], [data-hmi-fx-action=print]") && !alarmInternal(event) && event.pointerType === "touch" && event.isPrimary !== false) {
       hmiGestureStart = { pointerId: event.pointerId, target: event.target, x: event.clientX, y: event.clientY, time: Date.now() };
     }
   }, true);

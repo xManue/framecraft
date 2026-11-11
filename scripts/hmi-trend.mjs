@@ -1,3 +1,5 @@
+import {requestTrendPrint,trendPrintRuntimeModuleSource} from './hmi-trend-print.mjs';
+const timePrintRequest=requestTrendPrint;
 import {parseTrendQuality,trendQualityIssues,trendQualityColor,trendPointQuality,trendPointUsable,trendQualityRuntimeModuleSource} from './hmi-trend-quality.mjs';
 const timeParseQuality=parseTrendQuality,timeQualityIssues=trendQualityIssues,timeQualityColor=trendQualityColor,timePointQuality=trendPointQuality,timePointUsable=trendPointUsable;
 import { hmiTrendRuntimeUiModuleSource, installTrendAreaZoom, renderTrendSourcePicker, trendAreaZoomDragging, trendQualityClass, trendRuntimeZoomRange } from "./hmi-trend-runtime-ui.mjs";
@@ -355,6 +357,11 @@ function trendState(host, config) {
     trendStates.set(host, state);
     return state;
 }
+function timePrintMetadata(host,state){
+  const config=state.config,root=host.querySelector(':scope > [data-hmi-trend-root]');
+  const details=['[data-hmi-trend-display-info]','[data-hmi-trend-quality-note]'].map(selector=>root.querySelector(selector)).filter(element=>element&&!element.hidden).map(element=>element.textContent).filter(Boolean);
+  return {kind:'time',caption:config.caption,paused:state.paused,details,series:config.trends.filter(trend=>!state.hidden.has(trend.id)).map(trend=>({name:trend.name,color:trendArgb(trend.color),source:trend.source==='log'?'Storico: '+(trend.logId||'non collegato')+'/'+(trend.loggedTagId||'non collegato'):'Variabile: '+(trend.tag||'non collegata'),area:(config.areas.find(area=>area.id===trend.areaId)?.name||trend.areaId)+' / asse '+(trend.axis==='right'?'destro':'sinistro')}))};
+}
 function installTrendListeners(host) {
     if (trendListenerHosts.has(host))
         return;
@@ -397,6 +404,7 @@ function installTrendListeners(host) {
             state.zoomArea = !state.zoomArea;
         else if (action === "ruler")
             state.rulerRatio = state.rulerRatio === undefined ? .5 : undefined;
+        else if(action==='print'){timePrintRequest(host,timePrintMetadata(host,state),state.options.printSnapshot);return;}
         else if (action === "export")
             downloadTrendCsv(config, state, state.options);
         else if (target.closest("[data-hmi-trend-plot]") && config.showRuler && !state.zoomArea) {
@@ -445,7 +453,7 @@ function trendChrome(root, config) {
         toolbar.setAttribute("role", "toolbar");
         toolbar.setAttribute("aria-label", "Comandi Trend Control");
         Object.assign(toolbar.style, { display: "flex", gap: "4px", alignItems: "center", padding: "5px 7px", borderBottom: "1px solid #c8cdd0", background: "#eef1f2", flexWrap: "wrap" });
-        for (const [action, label] of [["pause", "Arresta"], ["zoom-in", "Zoom +"], ["zoom-out", "Zoom −"], ["zoom-area", "Zoom area"], ["previous", "Precedente"], ["next", "Successivo"], ["original", "Vista originale"], ["ruler", "Righello"], ["export", "CSV"]]) {
+        for (const [action, label] of [["pause", "Arresta"], ["zoom-in", "Zoom +"], ["zoom-out", "Zoom −"], ["zoom-area", "Zoom area"], ["previous", "Precedente"], ["next", "Successivo"], ["original", "Vista originale"], ["ruler", "Righello"], ["print", "Stampa"], ["export", "CSV"]]) {
             const button = doc.createElement("button");
             button.type = "button";
             button.dataset.hmiTrendAction = action;
@@ -759,7 +767,7 @@ export function renderHmiTrendControl(host, values, options = {}) {
         const ruler = appendTrendText(svg, "line", "", { x1: x, y1: plotTop, x2: x, y2: plotBottom, stroke: "#20262b", "stroke-width": 1.5 });
         appendTrendText(ruler, "title", trendFormatTime(at, zone, true));
         const readings = shown.flatMap((trend) => { const samples = visibleSamples.get(trend.id) ?? []; const closest = samples.reduce((best, sample) => !best || Math.abs(sample.time - at) < Math.abs(best.time - at) ? sample : best, undefined); return closest ? [`${trend.name}: ${timePointUsable(closest)?closest.value:"dato non utilizzabile"} · qualità ${timePointQuality(closest)}`] : []; });
-        appendTrendText(svg, "text", readings.join("  ·  ") || "Nessun campione", { x: Math.min(x + 5, 420), y: plotTop + 13, fill: "#20262b", "font-size": 10, "font-weight": 700 });
+        appendTrendText(svg, "text", readings.join("  ·  ") || "Nessun campione", { "data-framecraft-print-note": "Righello - "+trendFormatTime(at,zone,true), x: Math.min(x + 5, 420), y: plotTop + 13, fill: "#20262b", "font-size": 10, "font-weight": 700 });
     }
     if (!config.trends.some((trend) => trend.source === "online" ? trend.tag : trend.logId && trend.loggedTagId))
         appendTrendText(svg, "text", "Collega una sorgente dall'Inspector", { x: 320, y: 128, "text-anchor": "middle", fill: "#677178", "font-size": 14 });
@@ -794,7 +802,7 @@ export function hmiTrendJsx() {
     return `      <div data-hmi-type="HmiTrendControl" data-hmi-trend='${serializeHmiTrendConfig(defaultHmiTrendConfig())}' style={{ width: 640, height: 320, background: "#F7F8F9" }}>Configura il Trend Control dall'Inspector</div>\n`;
 }
 export function hmiTrendRuntimeModuleSource() {
-    const source = `// @ts-nocheck\nconst hmiTrendAttribute = ${JSON.stringify(hmiTrendAttribute)};\nconst hmiTrendModes = ${JSON.stringify(hmiTrendModes)};\nconst trendStates = new WeakMap();\nconst trendListenerHosts = new WeakSet();\n${hmiTrendRuntimeUiModuleSource()}\n${trendQualityRuntimeModuleSource()}\nconst timeParseQuality=parseTrendQuality,timeQualityIssues=trendQualityIssues,timeQualityColor=trendQualityColor,timePointQuality=trendPointQuality,timePointUsable=trendPointUsable;\n${hmiControlQualityModuleSource()}\nconst timeWireQuality=controlWireQuality, timeSampleCode=controlSampleCode, timeControlQuality=controlQuality, timePublishQuality=publishControlQuality, timeClearQuality=clearControlQuality;\nconst timeSourcePicker = renderTrendSourcePicker;\nconst timeAreaZoom = installTrendAreaZoom;\nconst timeZoomDragging = trendAreaZoomDragging;\nconst timeZoomRange = trendRuntimeZoomRange;\nconst timeQualityClass = trendQualityClass;\nconst trendString = ${String(trendString)};\nconst trendNumber = ${String(trendNumber)};\nconst trendOptionalNumber = ${String(trendOptionalNumber)};\nconst trendBool = ${String(trendBool)};\n${String(normalizeTrendAxis)}\n${String(normalizeTrendArea)}\n${String(normalizeTrendSeries)}\n${String(defaultHmiTrendConfig)}\nexport ${String(parseHmiTrendConfig)}\n${String(trendArgb)}\n${String(trendAxisValue)}\n${String(trendAxisLabel)}\n${String(trendAxisRange)}\n${String(trendPath)}\n${String(trendCsv)}\n${String(downloadTrendCsv)}\n${String(appendTrendText)}\n${String(trendState)}\n${String(installTrendListeners)}\n${String(trendChrome)}\nexport ${String(renderHmiTrendControl)}\nexport ${String(renderHmiTrendControls)}\nexport ${String(clearHmiTrendHistory)}\n`;
+    const source = `// @ts-nocheck\nconst hmiTrendAttribute = ${JSON.stringify(hmiTrendAttribute)};\nconst hmiTrendModes = ${JSON.stringify(hmiTrendModes)};\nconst trendStates = new WeakMap();\nconst trendListenerHosts = new WeakSet();\n${hmiTrendRuntimeUiModuleSource()}\n${trendPrintRuntimeModuleSource()}\nconst timePrintRequest=requestTrendPrint;\n${trendQualityRuntimeModuleSource()}\nconst timeParseQuality=parseTrendQuality,timeQualityIssues=trendQualityIssues,timeQualityColor=trendQualityColor,timePointQuality=trendPointQuality,timePointUsable=trendPointUsable;\n${hmiControlQualityModuleSource()}\nconst timeWireQuality=controlWireQuality, timeSampleCode=controlSampleCode, timeControlQuality=controlQuality, timePublishQuality=publishControlQuality, timeClearQuality=clearControlQuality;\nconst timeSourcePicker = renderTrendSourcePicker;\nconst timeAreaZoom = installTrendAreaZoom;\nconst timeZoomDragging = trendAreaZoomDragging;\nconst timeZoomRange = trendRuntimeZoomRange;\nconst timeQualityClass = trendQualityClass;\nconst trendString = ${String(trendString)};\nconst trendNumber = ${String(trendNumber)};\nconst trendOptionalNumber = ${String(trendOptionalNumber)};\nconst trendBool = ${String(trendBool)};\n${String(normalizeTrendAxis)}\n${String(normalizeTrendArea)}\n${String(normalizeTrendSeries)}\n${String(defaultHmiTrendConfig)}\nexport {closeTrendPrintPreview};\nexport ${String(parseHmiTrendConfig)}\n${String(trendArgb)}\n${String(trendAxisValue)}\n${String(trendAxisLabel)}\n${String(trendAxisRange)}\n${String(trendPath)}\n${String(trendCsv)}\n${String(downloadTrendCsv)}\n${String(appendTrendText)}\n${String(trendState)}\n${String(timePrintMetadata)}\n${String(installTrendListeners)}\n${String(trendChrome)}\nexport ${String(renderHmiTrendControl)}\nexport ${String(renderHmiTrendControls)}\nexport ${String(clearHmiTrendHistory)}\n`;
     const helpers = `const hmiTrendAggregations = ${JSON.stringify(hmiTrendAggregations)};\nconst hmiTrendTimeZones = ${JSON.stringify(hmiTrendTimeZones)};\nconst trendDateFormatters = new Map();\n${String(trendTimeZoneValid)}\n${String(trendFormatTime)}\n${String(trendWorstSample)}\n${String(aggregateTrendSamples)}\n`;
     return source.replace("const trendStates = new WeakMap();", helpers + "const trendStates = new WeakMap();").replace(String(trendCsv), String(trendCsvCell) + "\n" + String(trendCsv));
 }

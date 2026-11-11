@@ -7173,6 +7173,34 @@ Verifiche del 5 ottobre 2026:
   di curve/assi/QualityVisualization non sono ancora disponibili. Questo passaggio completa
   configurazione e resa dei campioni; non dichiara il modello oggetti completo.
 
+## 209. Stampa della vista corrente nei grafici temporali e X/Y (11 novembre 2026)
+
+- Pulsante Stampa nei due controlli: copia vettoriale della vista visibile, senza rileggere
+  gli archivi, spostare intervallo/zoom o cambiare avvio/arresto. Curve nascoste escluse;
+  sorgenti selezionate, quattro aree, qualità, soglie e righello conservati.
+- Anteprima locale nel pannello, con Chiudi e Stampa / Salva PDF. Documento statico separato:
+  titolo/pagina, istante di acquisizione, legenda delle sorgenti e note complete. Le letture
+  lunghe del righello vanno sotto il grafico per evitare testi tagliati; nessuna modifica
+  al grafico vivo mentre si stampa. Impaginazione A4 orizzontale e intestazioni ripetute.
+- Nessun servizio esterno, popup o comando macchina: SVG ammesso per elementi/attributi,
+  risorse e script esterni esclusi, documento senza script e con CSP dedicata. Limiti
+  espliciti a dimensione/profondità/nodi; errore leggibile se la copia non è preparabile.
+- Disponibilità e permessi ricontrollati; chiusura su revoca, rimozione, navigazione,
+  dismissione Runtime e ritorno a Modifica. Scorciatoie di stampa e Escape nel dialogo;
+  eventi click/touch/tastiera della stampa separati dalle azioni degli oggetti HMI.
+- Modulo condiviso e risorsa Tauri, serializzazione nel pannello standard e aggiornamento
+  componenti coerenti. Pacchetto 2026.11.11.1, nessuna nuova dipendenza o versione IR.
+- Passati 43 test mirati su stampa, grafici, ponte cross-origin e risorse; TypeScript.
+  Prova del pannello compilato Edge con Gateway HTTP sintetico, nove curve/quattro aree,
+  aggiornamenti durante l'anteprima, stampa del solo documento e arresto dei listener.
+  PDF Time e X/Y renderizzati e controllati pagina per pagina; zero scritture o rete esterna.
+- Riferimenti ufficiali: [Trend control](https://docs.tia.siemens.cloud/r/en-us/v20/configuring-screens-rt-unified/reference-of-the-screen-objects-rt-unified/controls-rt-unified/trend-control-rt-unified)
+  e [Function trend control](https://docs.tia.siemens.cloud/r/en-us/v20/configuring-screens-rt-unified/reference-of-the-screen-objects-rt-unified/controls-rt-unified/function-trend-control-rt-unified).
+  Contratto Framecraft PC/browser: stampa della vista corrente. Nessuna equivalenza dichiarata
+  con code/job dei pannelli Siemens, stampanti fisiche o dialogo nativo Tauri, non collaudati.
+- WCU-CTL-05/06 restano PARZIALI: profili utente, object model completo e collaudi target/carico
+  non sono conclusi. WCU-EVT-10 e l'obiettivo Unified complessivo restano aperti.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima
@@ -7207,7 +7235,7 @@ Verifiche del 5 ottobre 2026:
   pagine, eventi annidati, opzioni container, contesto esatto di `Faceplate.Close`, screen window
   generiche, UDT e migrazione massiva/nidata delle versioni; confronto e migrazione della singola
   istanza al punto 104 (`WCU-FP-*`, `WCU-ENG-12`, `WCU-TAG-05`).
-- **Roadmap WinCC, fase 6 da completare**: stampa, profili, codici fuso vendor/object model
+- **Roadmap WinCC, fase 6 da completare**: profili, codici fuso vendor/object model
   dei trend e collaudo reale; fusi IANA e aggregazione per pixel aggiunti al punto 114
   (`WCU-CTL-05/06`, `WCU-DAT-04/05`).
 - **Roadmap WinCC, fase 7 da completare**: Data Log condivisi MQTT/OPC UA/SQLite al punto 179;
