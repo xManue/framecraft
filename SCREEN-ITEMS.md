@@ -592,3 +592,39 @@ export. Compatibilita' di lettura verso i record vecchi verificata; il vecchio R
 rifiuta il campo nuovo. Dopo aver registrato eventi nuovi non basta ripristinare solo
 i file di codice precedenti: occorre una procedura verificata di compatibilita' dei dati.
 Nessun evento nuovo viene cancellato o degradato automaticamente per consentire un ritorno.
+
+## Parti Caption/Title dal pacchetto 2026.11.11.2
+
+Una parte di testo dichiarata dal renderer espone Text (String), ForeColor (UInt32 ARGB),
+Visible (Boolean) e Font con Name/Size/Weight/Italic/Underline/StrikeOut, con gli stessi tipi
+validati del Font principale. Caption, Title e i loro Font sono riferimenti opachi distinti:
+nessun DOM, prototipo o metodo dell'host passa allo script. La parte non è sostituibile.
+
+```js
+const caption = Screen.Items("TrendTemperatura").Caption;
+caption.Text = "Temperature forno";
+caption.ForeColor = 0xff007a32;
+caption.Font.Size = 16.5;
+caption.Font.Weight = 700;
+caption.Visible = true;
+```
+
+I due trend standard espongono Caption. Gli altri renderer possono dichiarare un solo
+nodo HTML per parte, con data-hmi-text-part="Caption" oppure "Title", appartenente al
+controllo; non viene cercato dentro oggetti HMI/faceplate figli. Nessuna inferenza da un
+qualsiasi header/h2: se la parte manca o è ambigua l'accesso fallisce esplicitamente.
+I font degli assi e le parti non dichiarate negli altri controlli restano da completare.
+
+Text resta letterale e conserva icone/listener dei fratelli. Il livello script segue
+ridisegni e sostituzioni dei nodi della parte; reset/Modifica/dismissione restituiscono
+l'ultima base del renderer e le priorità CSS. Un cambiamento al solo SVG non richiede
+rilettura dei titoli. Il Runtime riconosce gli stili interni delle parti anche nei batch
+misti con aggiornamenti dei grafici, evitando il ciclo di ridisegno.
+
+La didascalia stampata è quella attualmente visibile. Le modifiche restano temporanee:
+non riscrivono pagina/configurazione, non modificano valori PLC e non aprono trasporti.
+Verificati DOM, Canvas con iframe cross-origin e pannello compilato Edge; finestra
+Tauri e target industriali reali restano da collaudare.
+
+Riferimenti primari: [Trend control, Caption e Font](https://docs.tia.siemens.cloud/r/en-us/v20/configuring-screens-rt-unified/reference-of-the-screen-objects-rt-unified/controls-rt-unified/trend-control-rt-unified)
+e [indice ufficiale JavaScript, FunctionTrendControl.Caption e Gauge.Title](https://docs.tia.siemens.cloud/r/en-us/v20/wincc-unified-javascript-object-model-rt-unified/hmiruntime-rt-unified/resources-rt-unified).

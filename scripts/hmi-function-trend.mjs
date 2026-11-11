@@ -217,7 +217,7 @@ function fxPrintMetadata(host,state){
   const format=time=>Number.isFinite(time)&&Math.abs(time)<=8.64e15?new Date(time).toLocaleString('it-IT'):'orario non disponibile';
   const shown=config.trends.filter(trend=>!state.hidden.has(trend.id));
   const sampleRange=trend=>{const points=state.displayed.get(trend.id)??[];return points.length?format(points[0].time)+' - '+format(points[points.length-1].time)+' (ora del dispositivo)':'Nessun campione';};
-  return {kind:'xy',caption:config.caption,paused:state.paused,details,series:shown.map(trend=>({name:trend.name,color:fxArgb(trend.color),source:'X: '+source(trend.x)+'; Y: '+source(trend.y),sampleRange:sampleRange(trend),area:(config.areas.find(area=>area.id===trend.areaId)?.name||trend.areaId)+' / X, Y'}))};
+  return {kind:'xy',caption:root.querySelector(':scope > [data-hmi-text-part=Caption]')?.textContent??config.caption,paused:state.paused,details,series:shown.map(trend=>({name:trend.name,color:fxArgb(trend.color),source:'X: '+source(trend.x)+'; Y: '+source(trend.y),sampleRange:sampleRange(trend),area:(config.areas.find(area=>area.id===trend.areaId)?.name||trend.areaId)+' / X, Y'}))};
 }
 function fxInstallListeners(host) {
     if (fxListenerHosts.has(host)) return;
@@ -468,6 +468,7 @@ export function renderHmiFunctionTrendControl(host, values, options = {}) {
         style.textContent = "[data-hmi-function-trend-root] :is(button,input,select,summary):focus-visible{outline:2px solid #00647d;outline-offset:2px}[data-hmi-function-trend-root] button:hover{background:#e2f3f7!important}";
         root.append(style);
         header = doc.createElement("header");
+        header.setAttribute("data-hmi-text-part","Caption");
         Object.assign(header.style, { padding: "7px 10px", background: "#3f464c", color: "#fff", fontWeight: "700" });
         root.append(header);
         if (config.showToolbar) {

@@ -360,7 +360,7 @@ function trendState(host, config) {
 function timePrintMetadata(host,state){
   const config=state.config,root=host.querySelector(':scope > [data-hmi-trend-root]');
   const details=['[data-hmi-trend-display-info]','[data-hmi-trend-quality-note]'].map(selector=>root.querySelector(selector)).filter(element=>element&&!element.hidden).map(element=>element.textContent).filter(Boolean);
-  return {kind:'time',caption:config.caption,paused:state.paused,details,series:config.trends.filter(trend=>!state.hidden.has(trend.id)).map(trend=>({name:trend.name,color:trendArgb(trend.color),source:trend.source==='log'?'Storico: '+(trend.logId||'non collegato')+'/'+(trend.loggedTagId||'non collegato'):'Variabile: '+(trend.tag||'non collegata'),area:(config.areas.find(area=>area.id===trend.areaId)?.name||trend.areaId)+' / asse '+(trend.axis==='right'?'destro':'sinistro')}))};
+  return {kind:'time',caption:root.querySelector(':scope > [data-hmi-text-part=Caption]')?.textContent??config.caption,paused:state.paused,details,series:config.trends.filter(trend=>!state.hidden.has(trend.id)).map(trend=>({name:trend.name,color:trendArgb(trend.color),source:trend.source==='log'?'Storico: '+(trend.logId||'non collegato')+'/'+(trend.loggedTagId||'non collegato'):'Variabile: '+(trend.tag||'non collegata'),area:(config.areas.find(area=>area.id===trend.areaId)?.name||trend.areaId)+' / asse '+(trend.axis==='right'?'destro':'sinistro')}))};
 }
 function installTrendListeners(host) {
     if (trendListenerHosts.has(host))
@@ -446,6 +446,7 @@ function trendChrome(root, config) {
     style.textContent = "[data-hmi-trend-root] :is(button,input,select,summary):focus-visible{outline:2px solid #00647d;outline-offset:2px}[data-hmi-trend-root] button:hover{background:#e2f3f7!important}";
     root.append(style);
     const caption = doc.createElement("header");
+    caption.setAttribute("data-hmi-text-part","Caption");
     Object.assign(caption.style, { padding: "7px 10px", background: "#3f464c", color: "#fff", fontWeight: "700" });
     root.append(caption);
     if (config.showToolbar) {

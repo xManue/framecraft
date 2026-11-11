@@ -9,13 +9,18 @@ export function createHmiPropertyFlashing(surface) {
   const reported = new Set();
   const properties = ["BackColor", "ForeColor", "BorderColor"];
   const fontProperties = ["Name", "Size", "Weight", "Italic", "Underline", "StrikeOut"];
+  const textParts=["Caption","Title"],fontParts=["Font","Caption.Font","Title.Font"],referenceParts=[...fontParts,...textParts,"Margin","Padding"];
   const pivotProperties=["RotationCenterPlacement","RotationCenterX","RotationCenterY"];
   const insetSides=["Left","Top","Right","Bottom"];
   const validateInt32Inset=(property,value)=>{if(typeof value!=="number"||!Number.isInteger(value)||value < -2147483648||value>2147483647)throw new Error(property+" richiede un numero intero tra -2147483648 e 2147483647 (Int32).");};
   const propertyKey = (reference, property) => {
-    if (reference.screenPropertyPath === "Font") {
+    if (fontParts.includes(reference.screenPropertyPath)) {
       if (!fontProperties.includes(property)) throw new Error("Font non espone la proprieta' " + property + ".");
-      return "Font." + property;
+      return reference.screenPropertyPath + "." + property;
+    }
+    if(textParts.includes(reference.screenPropertyPath)){
+      if(!["Text","ForeColor","Visible"].includes(property))throw new Error(reference.screenPropertyPath+" non espone la proprieta' "+property+".");
+      return reference.screenPropertyPath+"."+property;
     }
     if(["Margin","Padding"].includes(reference.screenPropertyPath)){
       if(!insetSides.includes(property))throw new Error(reference.screenPropertyPath+" non espone la proprieta' "+property+".");
@@ -74,7 +79,7 @@ export function createHmiPropertyFlashing(surface) {
       const assertActive = () => { if (contextRevision !== revision) throw new Error("Il contesto oggetti HMI non e' piu' attivo."); };
       const itemFor = (reference) => {
         assertActive();
-        if (!reference || typeof reference.screenItemId !== "string" || (reference.screenPropertyPath !== undefined && !["Font","Margin","Padding"].includes(reference.screenPropertyPath))) throw new Error("Riferimento grafico HMI non valido.");
+        if (!reference || typeof reference.screenItemId !== "string" || (reference.screenPropertyPath !== undefined && !referenceParts.includes(reference.screenPropertyPath))) throw new Error("Riferimento grafico HMI non valido.");
         const items = surface.items();
         if (ownerId && !items.some((item) => item.itemId === ownerId)) throw new Error("L'oggetto HMI del contesto non e' piu' disponibile.");
         const item = items.find((candidate) => candidate.itemId === reference.screenItemId);
@@ -145,6 +150,11 @@ export function createHmiPropertyFlashing(surface) {
         },
         get(reference, property) {
           const item = itemFor(reference);
+          if(!reference.screenPropertyPath&&textParts.includes(property)||textParts.includes(reference.screenPropertyPath)&&property==="Font"){
+            const path=reference.screenPropertyPath?reference.screenPropertyPath+'.Font':property;
+            if(!Object.keys(item.properties??{}).some(key=>key.startsWith(path+'.')))throw new Error("L'oggetto HMI non espone "+path+": serve una parte di testo univoca del controllo.");
+            return {screenItemId:item.itemId,screenPropertyPath:path};
+          }
           if (!reference.screenPropertyPath && property === "Font") {
             if (!fontProperties.some((name) => Object.hasOwn(item.properties ?? {}, "Font." + name))) throw new Error("L'oggetto HMI non espone Font: serve un testo univoco o un campo input.");
             return { screenItemId: item.itemId, screenPropertyPath: "Font" };
@@ -168,34 +178,35 @@ export function createHmiPropertyFlashing(surface) {
         set(reference, property, value) {
           const item = itemFor(reference);
           if (!reference.screenPropertyPath && property === "Font") throw new Error("Font e' un riferimento grafico non sostituibile: modifica le sue proprieta'.");
-          const key = propertyKey(reference, property);
+          if(!reference.screenPropertyPath&&textParts.includes(property)||textParts.includes(reference.screenPropertyPath)&&property==='Font')throw new Error("La parte di testo non e' sostituibile: modifica le sue proprieta'.");
+          const key = propertyKey(reference, property),validationKey=key.replace(/^(Caption|Title)\./,'');
           if (key === "Name") throw new Error("Name e' in sola lettura nel Runtime: modifica il nome nell'Inspector.");
           if(key==='CurrentQuality')throw new Error("CurrentQuality è in sola lettura: dipende dai campioni e dai collegamenti dell’oggetto.");
           if (!Object.prototype.hasOwnProperty.call(item.properties ?? {}, key)) throw new Error(key === "RotationAngle" ? "L'oggetto HMI non espone RotationAngle: usa un contenitore con una trasformazione CSS 2D piana risolvibile." : "L'oggetto HMI non espone la proprieta' " + key + ".");
-          if(key==="RotationCenterPlacement"){if(![0,1,2].includes(value))throw new Error("RotationCenterPlacement richiede AbsoluteFromCenter (0), NormedFromCenter (1) o AbsoluteToContainer (2).");}
-          else if(["RotationCenterX","RotationCenterY"].includes(key)){if(typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value)))throw new Error(key+" richiede un Float finito, anche negativo.");}
-          else if(key==="RotationAngle"){if(typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767)throw new Error("RotationAngle richiede un numero intero tra -32768 e 32767 (Int16).");}
-          else if(key==='ProcessValue'){
+          if(validationKey==="RotationCenterPlacement"){if(![0,1,2].includes(value))throw new Error("RotationCenterPlacement richiede AbsoluteFromCenter (0), NormedFromCenter (1) o AbsoluteToContainer (2).");}
+          else if(["RotationCenterX","RotationCenterY"].includes(validationKey)){if(typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value)))throw new Error(validationKey+" richiede un Float finito, anche negativo.");}
+          else if(validationKey==="RotationAngle"){if(typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767)throw new Error("RotationAngle richiede un numero intero tra -32768 e 32767 (Int16).");}
+          else if(validationKey==='ProcessValue'){
             if(item.processValue?.binding)throw new Error('ProcessValue collegato deve passare dal motore script e dal trasporto tag.');
             if(value===null||!['string','number','boolean'].includes(typeof value)||typeof value==='number'&&!Number.isFinite(value)||typeof value==='string'&&value.length>20000)throw new Error('ProcessValue richiede un valore scalare valido.');
           }
-          else if(key.startsWith("Margin.")||key.startsWith("Padding."))validateInset(item,reference.screenPropertyPath,property,value);
-          else if (["Visible", "Enabled", "VisualizeQuality", "Font.Italic", "Font.Underline"].includes(key)) {
-            if (typeof value !== "boolean") throw new Error(key + " richiede un Boolean.");
-          } else if (key === "Font.Name") {
+          else if(validationKey.startsWith("Margin.")||validationKey.startsWith("Padding."))validateInset(item,reference.screenPropertyPath,property,value);
+          else if (["Visible", "Enabled", "VisualizeQuality", "Font.Italic", "Font.Underline"].includes(validationKey)) {
+            if (typeof value !== "boolean") throw new Error(validationKey + " richiede un Boolean.");
+          } else if (validationKey === "Font.Name") {
             if (typeof value !== "string" || value.length > 20000 || /[\u0000-\u001f\u007f]/.test(value)) throw new Error("Font.Name richiede una stringa fino a 20000 caratteri senza caratteri di controllo.");
-          } else if (key === "Font.Size") {
+          } else if (validationKey === "Font.Size") {
             if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || !Number.isFinite(Math.fround(value))) throw new Error("Font.Size richiede un Float finito non negativo in DIU.");
-          } else if (key === "Font.Weight") {
+          } else if (validationKey === "Font.Weight") {
             if (![0, 300, 400, 600, 700].includes(value)) throw new Error("Font.Weight richiede HmiFontWeight: None (0), Light (300), Normal (400), SemiBold (600) o Bold (700).");
-          } else if (key === "Font.StrikeOut") {
+          } else if (validationKey === "Font.StrikeOut") {
             if (![0, 1].includes(value)) throw new Error("Font.StrikeOut richiede HmiFontStrikeOut: None (0) o Single (1), non Boolean.");
-          } else if (key === "Text") {
+          } else if (validationKey === "Text") {
             if (typeof value !== "string" || value.length > 20000) throw new Error("Text richiede una stringa fino a 20000 caratteri.");
-          } else if (["Left", "Top", "Width", "Height", ...properties].includes(key)) {
-            const signed = key === "Left" || key === "Top";
-            if (typeof value !== "number" || !Number.isInteger(value) || value < (signed ? -2147483648 : 0) || value > (signed ? 2147483647 : 0xffffffff)) throw new Error(key + " richiede un " + (signed ? "Int32." : "UInt32."));
-          } else throw new Error("Proprieta' grafica non supportata: " + key);
+          } else if (["Left", "Top", "Width", "Height", ...properties].includes(validationKey)) {
+            const signed = validationKey === "Left" || validationKey === "Top";
+            if (typeof value !== "number" || !Number.isInteger(value) || value < (signed ? -2147483648 : 0) || value > (signed ? 2147483647 : 0xffffffff)) throw new Error(validationKey + " richiede un " + (signed ? "Int32." : "UInt32."));
+          } else throw new Error("Proprieta' grafica non supportata: " + validationKey);
           if (!surface.applyProperties) throw new Error("Il contesto corrente non permette modifiche grafiche.");
           if (propertyState.get(item.itemId)?.get(key) === value) return;
           const previous=propertyState.get(item.itemId),next=new Map(previous);
@@ -458,6 +469,12 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     const selected = marked.length === 1 ? marked : candidates;
     return selected.length === 1 ? { host: selected[0], nodes: [...selected[0].childNodes].filter((node) => node.nodeType === 3) } : null;
   };
+  const textPartNames=['Caption','Title'];
+  const textPartHost=(element,part)=>{
+    const candidates=[...element.querySelectorAll('[data-hmi-text-part="'+part+'"]')].filter(child=>{const owner=child.closest('[data-hmi-type],[data-hmi-name],[data-hmi-events],[data-hmi-faceplate]');return child.namespaceURI==='http://www.w3.org/1999/xhtml'&&(!owner||owner===element);});
+    return candidates.length===1?candidates[0]:null;
+  };
+  const textPartProperty=property=>/^(Caption|Title)\.(?:Text|ForeColor|Visible|Font\.(?:Name|Size|Weight|Italic|Underline|StrikeOut))$/.test(property);
   const fontHost = (element) => {
     if (element.namespaceURI !== "http://www.w3.org/1999/xhtml") return null;
     if (/^(input|textarea|select)$/.test(element.localName)) return element;
@@ -550,7 +567,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     }
     return source;
   };
-  const snapshotProperties = (element) => {
+  const snapshotProperties = (element,includeParts=true) => {
     const computed = root.defaultView?.getComputedStyle(element) ?? element.style;
     const px = (name, fallback) => /^-?[\d.]+px$/.test(computed[name]) ? Math.round(parseFloat(computed[name])) : Math.round(fallback || 0);
     const values = { VisualizeQuality: element.getAttribute('data-hmi-visualize-quality')==='true', Left: px("left", element.offsetLeft), Top: px("top", element.offsetTop), Width: Math.round(element.offsetWidth || px("width", 0)), Height: Math.round(element.offsetHeight || px("height", 0)),
@@ -595,6 +612,7 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       const color = colorNumber(element.style.getPropertyValue(cssProperties[property]) || baseColors.get(element)?.[property] || computed.getPropertyValue(cssProperties[property]));
       values[property] = color ?? null;
     }
+    if(includeParts)for(const part of textPartNames){const target=textPartHost(element,part);if(!target)continue;for(const[key,value]of Object.entries(snapshotProperties(target,false)))if(['Text','ForeColor','Visible',...fontProperties].includes(key))values[part+'.'+key]=value;}
     return values;
   };
   const restoreProperties = (element) => {
@@ -607,9 +625,10 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
         if (entry.value) target.style.setProperty(entry.name, entry.value, entry.priority);
         else target.style.removeProperty(entry.name);
       } else if (entry.kind === "attribute") {
-        if (element.getAttribute(entry.name) !== entry.applied) continue;
-        if (entry.value === null) element.removeAttribute(entry.name);
-        else element.setAttribute(entry.name, entry.value);
+        const target=entry.target??element;
+        if (target.getAttribute(entry.name) !== entry.applied) continue;
+        if (entry.value === null) target.removeAttribute(entry.name);
+        else target.setAttribute(entry.name, entry.value);
       } else if(entry.kind==='property'){
         if(element[entry.name]===entry.applied)element[entry.name]=entry.value;
       } else if (entry.node.data === entry.applied) {
@@ -631,23 +650,25 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       target.style.setProperty(name, value, priority);
       entries.push({ ...entry, applied: target.style.getPropertyValue(name), appliedPriority: target.style.getPropertyPriority(name) });
     };
-    const attribute = (name, value) => {
-      const previous = element.getAttribute(name);
+    const attribute = (name, value, target=element) => {
+      const previous = target.getAttribute(name);
       if (previous === value) return;
-      if (value === null) element.removeAttribute(name); else element.setAttribute(name, value);
-      entries.push({ kind: "attribute", name, value: previous, applied: value });
+      if (value === null) target.removeAttribute(name); else target.setAttribute(name, value);
+      entries.push({ kind: "attribute", target, name, value: previous, applied: value });
     };
     const computed = root.defaultView?.getComputedStyle(element);
     const font = fontHost(element);
-    if (font && (overrides.has("Font.Underline") || overrides.has("Font.StrikeOut"))) {
-      const decorations = scopedDecorations(element, font);
+    for(const[prefix,base]of [['Font',element],...textPartNames.map(part=>[part+'.Font',textPartHost(element,part)])]){if(!base)continue;const font=fontHost(base);
+    if (font && (overrides.has(prefix+".Underline") || overrides.has(prefix+".StrikeOut"))) {
+      const decorations = scopedDecorations(base, font);
       const previous = new Map([...decorations].map(([target, lines]) => [target, [...lines].join(" ")]));
-      for (const [property, line] of [["Font.Underline", "underline"], ["Font.StrikeOut", "line-through"]]) {
+      for (const [property, line] of [[prefix+".Underline", "underline"], [prefix+".StrikeOut", "line-through"]]) {
         if (!overrides.has(property)) continue;
         if (!overrides.get(property)) for (const lines of decorations.values()) lines.delete(line);
         else if (![...decorations.values()].some((lines) => lines.has(line))) decorations.get(font).add(line);
       }
       for (const [target, lines] of decorations) if ([...lines].join(" ") !== previous.get(target)) style("text-decoration-line", [...lines].join(" ") || "none", target);
+    }
     }
     if ((overrides.has("Left") || overrides.has("Top")) && (!computed?.position || computed.position === "static")) {
       const left = element.offsetLeft || 0, top = element.offsetTop || 0;
@@ -657,7 +678,13 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     }
     if (overrides.has("Width") || overrides.has("Height")) style("box-sizing", "border-box");
     for (const [property, value] of overrides) {
-      if(property==='ProcessValue'){
+      if(textPartProperty(property)){
+        const part=property.split('.')[0],key=property.slice(part.length+1),target=textPartHost(element,part);if(!target)continue;
+        if(key==='Text'){const text=textNodes(target);if(!text)continue;if(!text.nodes.length){const node=root.createTextNode('');createdText.add(node);text.host.appendChild(node);text.nodes.push(node);}text.nodes.forEach((node,index)=>{const applied=index===0?value:'';if(node.data!==applied||createdText.has(node))entries.push({kind:'text',node,value:node.data,applied});node.data=applied;});}
+        else if(Object.hasOwn(fontCssProperties,key)){const font=fontHost(target);if(font)style(fontCssProperties[key],key==='Font.Name'?fontFamilyCss(value):key==='Font.Size'?pixelLength(value):key==='Font.Weight'?(value===0?'normal':String(value)):value?'italic':'normal',font);}
+        else if(key==='ForeColor')style('color',cssColor('#'+value.toString(16).padStart(8,'0')),target);
+        else if(key==='Visible'){if(value){attribute('hidden',null,target);if(root.defaultView?.getComputedStyle(target).display==='none')style('display','revert',target);}style('visibility',value?'visible':'hidden',target);}
+      }else if(property==='ProcessValue'){
         const name=element.tagName==='INPUT'&&['checkbox'].includes(element.type)?'checked':'value';
         if(name in element&&element.tagName!=='OUTPUT'){const previous=element[name];element[name]=name==='checked'?value:String(value);entries.push({kind:'property',name,value:previous,applied:element[name]});}
         else if(element.hasAttribute('aria-valuenow')){attribute('aria-valuenow',String(value));const fill=element.querySelector('[data-hmi-faceplate-bar-fill]');if(fill)style('width',Math.max(0,Math.min(100,Number(value)))+'%',fill);}
@@ -739,12 +766,16 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     }
     before.delete(element);
   };
+  const partSignatures=new Map();
+  const partSignature=element=>textPartNames.flatMap(part=>{const target=textPartHost(element,part),font=target&&fontHost(target);return[target,target?.style.cssText,target?.getAttribute('hidden'),target?.textContent,font,font?.style.cssText];});
   const render = (element,propertiesChanged=false) => {
+    partSignatures.delete(element);
     restore(element);
     if(!propertiesChanged)syncNativeProcessValue(element);
     restoreProperties(element);
     if (suspendDepth || !element.isConnected || !element.style) return;
     applyProperties(element);
+    if([...propertyOverrides.get(identifyItem(element))?.keys()??[]].some(textPartProperty))partSignatures.set(element,partSignature(element));
     const visuals = new Map((declarative.get(element) ?? []).map((visual) => [visual.property, visual]));
     for (const entry of scripted.get(identifyItem(element)) ?? []) {
       if (entry.enabled) visuals.set(entry.property, entry);
@@ -766,6 +797,9 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     const baseAnimation = before.get(element).get("animation").value;
     element.style.animation = (baseAnimation && baseAnimation !== "none" ? baseAnimation + ", " : "") + animations.join(", ");
   };
+  let disposed=false;
+  const partObserver=root.defaultView?.MutationObserver?new root.defaultView.MutationObserver(records=>{if(disposed||suspendDepth||!partSignatures.size||!records.some(record=>(record.target.nodeType===1?record.target:record.target.parentElement)?.namespaceURI==='http://www.w3.org/1999/xhtml'))return;for(const[element,before]of [...partSignatures]){const after=partSignature(element);if(!element.isConnected||after.some((value,index)=>value!==before[index])){try{render(element);}catch(error){partSignatures.delete(element);onError('Parte di testo: '+String(error?.message??error));}}}}):undefined;
+  partObserver?.observe(root.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['style','hidden','data-hmi-text-part']});
   return {
     hasQualityTargets(){return Boolean(root.querySelector('[data-hmi-visualize-quality="true"]'))||[...propertyOverrides.values()].some(values=>values.get('VisualizeQuality')===true);},
     qualityItems(){return this.items(true).map(item=>({itemId:item.itemId,parentItemId:item.parentItemId,name:item.name,screenId:item.screenId,faceplateId:item.faceplateId,parentFaceplateId:item.parentFaceplateId,flashing:[],visualizeQuality:item.visualizeQuality,quality:item.quality}));},
@@ -817,6 +851,9 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
       for (const command of commands) {
         if (!command || typeof command.itemId !== "string" || !targets.has(command.itemId)) continue;
         const { property } = command;let value=command.value;
+        const isPart=textPartProperty(property),validationProperty=isPart?property.replace(/^(Caption|Title)\./,''):property;
+        if(/^(Caption|Title)\./.test(property)&&!isPart)continue;
+        const propertyTarget=isPart?textPartHost(targets.get(command.itemId),property.split('.')[0]):targets.get(command.itemId);if(!propertyTarget)continue;
         if(property==='CurrentQuality')throw new Error("CurrentQuality è in sola lettura e non può essere impostato dal ponte grafico.");
         if(property==='ProcessValue'){
           const source=processValueSource(targets.get(command.itemId));
@@ -828,22 +865,22 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
           if(typeof value!=="number"||!Number.isInteger(value)||value<0||value>2147483647)throw new Error(property+" richiede un Int32 non negativo per questo elemento HTML.");
           if(!supportsPadding(targets.get(command.itemId)))throw new Error("L'oggetto HMI non espone Padding nel layout corrente.");
         }
-        if (!Object.hasOwn(cssProperties, property) && !["Text", "ProcessValue", "Enabled", "VisualizeQuality", "RotationAngle", ...pivotProperties, ...fontProperties,...Object.keys(marginCssProperties),...Object.keys(paddingCssProperties)].includes(property)) continue;
-        if (property==='ProcessValue'?false:["Enabled", "Visible", "VisualizeQuality", "Font.Italic", "Font.Underline"].includes(property) ? typeof value !== "boolean"
-          : property === "Text" || property === "Font.Name" ? typeof value !== "string" || value.length > 20000 || (property === "Font.Name" && /[\u0000-\u001f\u007f]/.test(value))
-          : property === "RotationCenterPlacement" ? ![0,1,2].includes(value)
-          : ["RotationCenterX","RotationCenterY"].includes(property) ? typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value))
-          : property === "RotationAngle" ? typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767
-          : Object.hasOwn(paddingCssProperties,property) ? false
-          : Object.hasOwn(marginCssProperties,property) ? typeof value!=="number"||!Number.isInteger(value)||value < -2147483648||value>2147483647
-          : property === "Font.Size" ? typeof value !== "number" || !Number.isFinite(value) || value < 0 || !Number.isFinite(Math.fround(value))
-          : property === "Font.Weight" ? ![0, 300, 400, 600, 700].includes(value)
-          : property === "Font.StrikeOut" ? ![0, 1].includes(value)
-          : typeof value !== "number" || !Number.isInteger(value) || value < (["Left", "Top"].includes(property) ? -2147483648 : 0) || value > (["Left", "Top"].includes(property) ? 2147483647 : 0xffffffff)) continue;
-        if(property==="RotationAngle"&&!planarRotation(targets.get(command.itemId)))continue;
-        if (property === "Text" && !textNodes(targets.get(command.itemId))) continue;
-        if(Object.hasOwn(marginCssProperties,property)&&!supportsMargin(targets.get(command.itemId)))continue;
-        if (fontProperties.includes(property) && !fontHost(targets.get(command.itemId))) continue;
+        if (!isPart && !Object.hasOwn(cssProperties, property) && !["Text", "ProcessValue", "Enabled", "VisualizeQuality", "RotationAngle", ...pivotProperties, ...fontProperties,...Object.keys(marginCssProperties),...Object.keys(paddingCssProperties)].includes(property)) continue;
+        if (validationProperty==='ProcessValue'?false:["Enabled", "Visible", "VisualizeQuality", "Font.Italic", "Font.Underline"].includes(validationProperty) ? typeof value !== "boolean"
+          : validationProperty === "Text" || validationProperty === "Font.Name" ? typeof value !== "string" || value.length > 20000 || (validationProperty === "Font.Name" && /[\u0000-\u001f\u007f]/.test(value))
+          : validationProperty === "RotationCenterPlacement" ? ![0,1,2].includes(value)
+          : ["RotationCenterX","RotationCenterY"].includes(validationProperty) ? typeof value!=="number"||!Number.isFinite(value)||!Number.isFinite(Math.fround(value))
+          : validationProperty === "RotationAngle" ? typeof value!=="number"||!Number.isInteger(value)||value < -32768||value > 32767
+          : Object.hasOwn(paddingCssProperties,validationProperty) ? false
+          : Object.hasOwn(marginCssProperties,validationProperty) ? typeof value!=="number"||!Number.isInteger(value)||value < -2147483648||value>2147483647
+          : validationProperty === "Font.Size" ? typeof value !== "number" || !Number.isFinite(value) || value < 0 || !Number.isFinite(Math.fround(value))
+          : validationProperty === "Font.Weight" ? ![0, 300, 400, 600, 700].includes(value)
+          : validationProperty === "Font.StrikeOut" ? ![0, 1].includes(value)
+          : typeof value !== "number" || !Number.isInteger(value) || value < (["Left", "Top"].includes(validationProperty) ? -2147483648 : 0) || value > (["Left", "Top"].includes(validationProperty) ? 2147483647 : 0xffffffff)) continue;
+        if(validationProperty==="RotationAngle"&&!planarRotation(targets.get(command.itemId)))continue;
+        if (validationProperty === "Text" && !textNodes(propertyTarget)) continue;
+        if(Object.hasOwn(marginCssProperties,validationProperty)&&!supportsMargin(targets.get(command.itemId)))continue;
+        if (fontProperties.includes(validationProperty) && !fontHost(propertyTarget)) continue;
         if (!next.has(command.itemId)) next.set(command.itemId, new Map());
         next.get(command.itemId).set(property, value);
       }
@@ -862,6 +899,6 @@ export function createHmiPropertyFlashingDomSurface(root, identify, interactionE
     setDeclarative(element, visuals) { declarative.set(element, visuals); targets.set(identifyItem(element), element); render(element); },
     suspend() { if (++suspendDepth !== 1) return; qualityVisuals?.hide();cancelPivotFrame(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]){syncNativeProcessValue(element);restoreProperties(element);} },
     resume() { qualityVisuals?.refresh();suspendDepth = Math.max(0, suspendDepth - 1); if (suspendDepth) return; for (const element of new Set([...declarative.keys(), ...[...scripted.keys(), ...propertyOverrides.keys()].map((id) => targets.get(id)).filter(Boolean)])) render(element); refreshPivots();schedulePivotFrame(); },
-    dispose() { qualityVisuals?.dispose();cancelPivotFrame();pivotErrors.clear();absolutePivotIds.clear();scripted.clear(); propertyOverrides.clear(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); declarative.clear(); targets.clear(); for (const type of interactionEvents) root.removeEventListener(type, guardInteraction, true); },
+    dispose() { disposed=true;partObserver?.disconnect();partSignatures.clear();qualityVisuals?.dispose();cancelPivotFrame();pivotErrors.clear();absolutePivotIds.clear();scripted.clear(); propertyOverrides.clear(); for (const element of [...before.keys()]) restore(element); for (const element of [...propertyBefore.keys()]) restoreProperties(element); declarative.clear(); targets.clear(); for (const type of interactionEvents) root.removeEventListener(type, guardInteraction, true); },
   };
 }

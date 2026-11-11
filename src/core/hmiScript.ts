@@ -151,7 +151,7 @@ export interface HmiScriptPopupOpenOptions {
 export interface HmiScriptPopupReference { readonly popupId: string }
 
 export interface HmiScriptBox { Left:number; Top:number; Width:number; Height:number }
-export interface HmiScriptScreenItemReference { readonly screenItemId: string; readonly screenPropertyPath?: "Font" | "Margin" | "Padding" }
+export interface HmiScriptScreenItemReference { readonly screenItemId: string; readonly screenPropertyPath?: "Font" | "Margin" | "Padding" | "Caption" | "Title" | "Caption.Font" | "Title.Font" }
 export interface HmiScriptScreenItemManager {
   resolve(scope: "screen" | "faceplate" | "item", name?: string): HmiScriptScreenItemReference;
   /** Current members, excluding the root and interiors of nested faceplates. */

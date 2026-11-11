@@ -7201,6 +7201,32 @@ Verifiche del 5 ottobre 2026:
 - WCU-CTL-05/06 restano PARZIALI: profili utente, object model completo e collaudi target/carico
   non sono conclusi. WCU-EVT-10 e l'obiettivo Unified complessivo restano aperti.
 
+## 210. Parti di testo Caption/Title e font annidati da script (11 novembre 2026)
+
+- Verificato HmiTextPart nei riferimenti e nella struttura dei JSON locali, senza pubblicarli.
+  Caption e Title hanno riferimenti opachi distinti, Text/ForeColor/Visible e Font con sei
+  proprietà tipizzate. La parte non si sostituisce e non può diventare un valore PLC.
+- Partenza esplicita dal controllo: Caption dei trend temporali e X/Y nello standard;
+  altre parti dichiarate dal renderer con data-hmi-text-part. Nessuna scelta automatica
+  fra testi multipli o dentro istanze faceplate annidate. Le parti assenti restano errori
+  espliciti: questo non completa tutte le opzioni di ogni controllo vendor.
+- Scritture testuali letterali, senza interpretare HTML; font, colori UInt32 e visibilità
+  validati anche nel frame ricevente. Le decorazioni e i contenuti fratelli restano separati.
+  Ripristino delle proprietà originali e delle priorità CSS, compresi gli aggiornamenti
+  intervenuti nel renderer; sospensione/Modifica, sostituzione nodi e dismissione verificati.
+- Il livello transitorio segue i titoli ridisegnati dal controllo vivo. Corretto anche il
+  ciclo fra osservatori: gli aggiornamenti interni di stile delle parti non provocano
+  ricostruzioni continue degli altri controlli. Le modifiche alla configurazione restano
+  osservate; le sole modifiche SVG non richiedono la rilettura delle parti di testo.
+- La stampa usa il testo effettivamente visibile della didascalia. Moduli e timer mantengono
+  la stessa identità dei riferimenti; nessun accesso DOM negli script e nessuna nuova I/O.
+- Pipeline standard, anteprima cross-origin reale e pacchetto 2026.11.11.2. IR e lettori 1-9
+  conservati, nessuna dipendenza nuova. Passati 119 test mirati e TypeScript; pannello compilato
+  Edge con font/testo/visibilità, timer, ridisegno, sostituzione e ripristino. Zero rete esterna,
+  richieste ai servizi o scritture PLC. La prova comprende lo stallo che mancava nei test DOM.
+- WCU-EVT-10 resta PARZIALE: assi/collezioni dei trend e relativi Font/QualityVisualization,
+  altre parti e proprietà specifiche, lifecycle e collaudo industriale sono ancora aperti.
+
 ## Da fare, dopo
 
 - **Priorità dell'utente, 30 ottobre**: terminare le voci/fasi Unified rimaste parziali prima
